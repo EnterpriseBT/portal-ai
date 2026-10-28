@@ -42,6 +42,18 @@ export const PublicSiteTierSchema = z.strictObject({
    *  `@portalai/core/registries` at build time. */
   builtinToolpacks: z.array(z.string()),
   customToolpacks: z.boolean(),
+  /** Custom roles and policies (`tiers.custom_rbac`, #622). The pricing page
+   *  lists it on the cards that carry it (#615).
+   *
+   *  Defaults to false when absent: the prod site deploy starts on the same
+   *  `release: published` as the API deploy and doesn't wait for it, so a
+   *  site build can read an API that predates these fields. Absent reads as
+   *  "not listed", never as a failed build. */
+  customRbac: z.boolean().default(false),
+  /** Advanced (SQL) curated-view filters (`tiers.advanced_view_filters`,
+   *  #644). Listed on the cards that carry it (#615). Defaults like
+   *  `customRbac`, for the same reason. */
+  advancedViewFilters: z.boolean().default(false),
   /** null ⇔ the tier has no Stripe price (the bespoke contact card). An
    *  unresolvable non-null price is a 503 upstream, never a null here —
    *  the split rule that keeps a Stripe outage from being published as a

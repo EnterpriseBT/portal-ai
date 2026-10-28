@@ -21,6 +21,8 @@ const validTier = {
   credits: { metered: null, expensive: 1_000_000 },
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
+  customRbac: false,
+  advancedViewFilters: true,
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
 };
 
@@ -33,8 +35,33 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
   it("parses a full snapshot", () => {
     const parsed = PublicSiteConfigResponseSchema.parse(validSnapshot);
     expect(parsed.tiers[0].slug).toBe("pro");
+    expect(parsed.tiers[0].customRbac).toBe(false);
+    expect(parsed.tiers[0].advancedViewFilters).toBe(true);
     expect(parsed.generatedAt).toBeTruthy();
   });
+
+  // #615: the prod site build can read an API deployed before these fields
+  // existed (both deploys start on the same release event), so an absent
+  // flag reads as false rather than failing the build.
+  it.each(["customRbac", "advancedViewFilters"] as const)(
+    "reads a tier missing %s as false",
+    (field) => {
+      const tier: Record<string, unknown> = { ...validTier };
+      delete tier[field];
+      const parsed = PublicSiteTierSchema.safeParse(tier);
+      expect(parsed.success).toBe(true);
+      expect(parsed.success && parsed.data[field]).toBe(false);
+    }
+  );
+
+  it.each(["customRbac", "advancedViewFilters"])(
+    "rejects a non-boolean %s",
+    (field) => {
+      expect(
+        PublicSiteTierSchema.safeParse({ ...validTier, [field]: "yes" }).success
+      ).toBe(false);
+    }
+  );
 
   // #369: contact addresses left this contract. They are env-derived at build
   // time now — SSM is the single write path — so the API no longer tells the

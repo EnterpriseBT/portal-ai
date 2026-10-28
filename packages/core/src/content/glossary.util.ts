@@ -73,9 +73,9 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Connector Definition",
     category: GlossaryCategory.DataSources,
     definition:
-      "A blueprint describing a type of data source you can connect to — for example, CSV uploads or a specific database engine.",
+      "A blueprint describing a type of data source you can connect to — File Upload (CSV and Excel files), Google Sheets, Excel on OneDrive, or a REST API.",
     example:
-      "The CSV connector definition is the template; you can create many CSV connector instances from it.",
+      "The File Upload connector definition is the template; you can create many file-upload connector instances from it.",
     relatedTerms: ["Connector Instance", "Connector Entity"],
   },
   {
@@ -93,7 +93,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A single data object (table, sheet, or collection) exposed by a connector instance.",
     example:
-      "A database connector instance might expose Customers, Orders, and Products as separate connector entities.",
+      "An Excel workbook connector instance might expose Customers, Orders, and Products as separate connector entities, one per sheet region.",
     relatedTerms: ["Connector Instance", "Entity Record", "Field Mapping"],
   },
   {
@@ -109,7 +109,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Sync",
     category: GlossaryCategory.DataSources,
     definition:
-      "Pulling the latest data from a connector into Portals AI so your entities stay current.",
+      "Pulling the latest data from a connector into Portals AI so your entities stay current. A sync runs when you start it; while it runs, the connector's entities are locked from edits.",
     example:
       'Click "Sync" on a connector instance to fetch any new or changed records from the source.',
     relatedTerms: ["Connector Instance", "Entity Record", "Job"],
@@ -278,18 +278,18 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Tool",
     category: GlossaryCategory.Analytics,
     definition:
-      "A single function the assistant can call during a portal session — for example, `correlate`, `regression`, or a custom `lookup_company`. Tools come grouped into toolpacks; a station decides which toolpacks are enabled, which determines the set of tools the model can choose from on each turn. Tools shine for analytical work over the station's data: statistical tests, regressions, time-series decomposition, financial math. Use connectors for data storage and lookup; reach for tools when the answer requires computation, not retrieval.",
+      "A single function the assistant can call during a portal session — for example, `hypothesis_test`, `regression`, or a custom `lookup_company`. Tools come grouped into toolpacks; a station decides which toolpacks are enabled, which determines the set of tools the model can choose from on each turn. Tools shine for analytical work over the station's data: statistical tests, clustering, regressions, forecasts, financial math. Use connectors for data storage and lookup; reach for tools when the answer requires computation, not retrieval.",
     example:
-      "Inside a portal session, the assistant calls the `correlate` tool to compute the Pearson correlation between two columns of an entity, then `visualize_d3` to render the result as an interactive chart.",
+      "Inside a portal session, the assistant calls the `hypothesis_test` tool to compare two groups in an entity, then `visualize_d3` to render the result as an interactive chart.",
     relatedTerms: ["Tool Pack", "Custom Toolpack", "Connector Instance"],
   },
   {
     term: "Tool Pack",
     category: GlossaryCategory.Analytics,
     definition:
-      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, and entity management. Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs.",
+      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs.",
     example:
-      "Enable the regression tool pack on a station so the assistant has the `regression`, `forecast`, and `decompose` tools available for time-series questions.",
+      "Enable the regression tool pack on a station so the assistant has the `regression`, `logistic_regression`, and `forecast` tools available for trend and prediction questions.",
     relatedTerms: ["Tool", "Station", "Portal", "Custom Toolpack"],
   },
   {
@@ -305,7 +305,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Custom Toolpack",
     category: GlossaryCategory.Analytics,
     definition:
-      "A user-registered toolpack backed by your organization's webhook endpoints. Define a schema endpoint (lists the tools and their input schemas), a runtime endpoint (the assistant POSTs `{tool, input}` here per call), and an optional metadata endpoint (docs and examples). Once registered, attach the pack to any station the same way you enable a built-in pack. Custom toolpacks are most useful for *analytical* operations specific to your domain — a risk-scoring algorithm, an LTV model, a domain-specific anomaly detector. For raw data storage and lookup, prefer connectors: connectors materialize data into entity records that the data-query toolpack can already SELECT against, without burning context window on per-record lookups. Every outbound call is HMAC-signed with a per-toolpack secret so your server can cryptographically verify the request came from us — see the **Signing Secret** entry for the wire format.",
+      "A user-registered toolpack backed by your organization's webhook endpoints. Define a schema endpoint (lists the tools and their input schemas), a runtime endpoint (the assistant POSTs `{tool, input}` here per call), and an optional metadata endpoint (docs and examples). Once registered, attach the pack to any station the same way you enable a built-in pack. Custom toolpacks are most useful for *analytical* operations specific to your domain — a risk-scoring algorithm, an LTV model, a domain-specific anomaly detector. For raw data storage and lookup, prefer connectors: connectors materialize data into entity records that the data-query toolpack can already SELECT against, without burning context window on per-record lookups. Every outbound call is HMAC-signed with a per-toolpack secret so your server can cryptographically verify the request came from us — see the **Signing Secret** entry for the wire format and the one exception at registration.",
     example:
       'Register a "customer_intel" pack with a `score_churn_risk` tool that calls your in-house ML service. Attach it to your retention station and the assistant can compute risk scores mid-session — something a SQL query alone can\'t do.',
     relatedTerms: ["Tool", "Tool Pack", "Station", "Portal", "Signing Secret"],
@@ -314,7 +314,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Signing Secret",
     category: GlossaryCategory.Analytics,
     definition:
-      "A per-toolpack HMAC secret (`whsec_*` prefix, 32 random bytes) used to sign every outbound webhook call. Generated server-side at registration and shown to you exactly once — copy it into your toolpack server's environment immediately. The secret is encrypted at rest; subsequent reads only confirm presence, never plaintext. To re-view a secret, rotate it from the toolpack's edit dialog: a fresh value is generated, the old one is invalidated immediately, and the new plaintext is shown once.\n\nEvery outbound call carries three headers:\n\n```\nX-Portalai-Timestamp: <unix-seconds>\nX-Portalai-Webhook-Id: <uuid>\nX-Portalai-Signature: v1=<hex>\n```\n\nThe signature is `HMAC-SHA256` over the string `<timestamp>.<webhook-id>.<body>` (empty body for GETs). Your server should reject requests where the timestamp is more than 300 seconds old (replay window) or where the recomputed signature doesn't match using a constant-time comparison.",
+      "A per-toolpack HMAC secret (`whsec_*` prefix, 32 random bytes) used to sign every outbound webhook call. Generated server-side at registration and shown to you exactly once — copy it into your toolpack server's environment immediately. The secret is encrypted at rest; subsequent reads only confirm presence, never plaintext. To re-view a secret, rotate it from the toolpack's edit dialog: a fresh value is generated, the old one is invalidated immediately, and the new plaintext is shown once.\n\nEvery outbound call carries three headers:\n\n```\nX-Portalai-Timestamp: <unix-seconds>\nX-Portalai-Webhook-Id: <uuid>\nX-Portalai-Signature: v1=<hex>\n```\n\nThe signature is `HMAC-SHA256` over the string `<timestamp>.<webhook-id>.<body>` (empty body for GETs). Your server should reject requests where the timestamp is more than 300 seconds old (replay window) or where the recomputed signature doesn't match using a constant-time comparison.\n\nOne exception: the schema and metadata fetches (`GET`s) made *during registration* are signed with the new secret before you've received it, so your server can't verify them. Let `GET`s through unverified (they read your tool catalog, not customer data; verifying a later refresh would break the next registration) and verify every `POST` to your runtime endpoint.",
     example:
       "Register a toolpack, copy the displayed `whsec_...` secret into your server's environment (e.g. `TOOLPACK_SIGNING_SECRET`), and verify every incoming request before processing — recompute the HMAC over `<ts>.<id>.<rawBody>` and compare with `crypto.timingSafeEqual` (Node) / `hmac.compare_digest` (Python) / `hmac.Equal` (Go).",
     relatedTerms: ["Custom Toolpack", "Tool Pack"],
@@ -404,10 +404,19 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Job",
     category: GlossaryCategory.System,
     definition:
-      "A background task — syncs, system checks, or revalidations — that the platform runs on your behalf.",
+      "A background task the platform runs on your behalf — a sync, a file import, a revalidation, a bulk geocode or transform, a long query, or deleting an entity's data. While a job runs, the data it works on is locked from edits.",
     example:
       "Re-validating an entity definition spawns a revalidation job that runs in the background while you keep working.",
-    relatedTerms: ["Job Status", "Sync"],
+    relatedTerms: ["Job Status", "Sync", "Data Lock"],
+  },
+  {
+    term: "Data Lock",
+    category: GlossaryCategory.System,
+    definition:
+      "While a job works on some data, that data is read-only everywhere — in the app and for the assistant — so nothing changes underneath it. The affected pages say which job is running and which actions are paused; the lock lifts when the job finishes, fails, or is cancelled.",
+    example:
+      "During an import, the connector page says that sync, field edits, and delete are paused until the import finishes.",
+    relatedTerms: ["Job", "Sync", "Capabilities"],
   },
   {
     term: "Job Status",
@@ -431,7 +440,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Policy",
     category: GlossaryCategory.Organization,
     definition:
-      "A named bundle of access rules (statements). Each statement allows or denies a verb (read, write, delete, share, …) on a resource type, optionally scoped to specific objects or to what you created. Every org has the built-in system policies; on eligible plans, admins author custom ones.",
+      "A named bundle of access rules (statements). Each statement allows or denies a verb (read, write, delete, share, …) on a resource type, optionally scoped to specific objects or to what you created. Every org has the built-in system policies; on plans with custom roles, anyone with permission to assign roles can author custom ones.",
     example:
       'An "Analysts" policy that allows read on all stations but write only on the ones you created.',
     relatedTerms: ["Role", "Group", "Permission Boundary"],
@@ -440,7 +449,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Role",
     category: GlossaryCategory.Organization,
     definition:
-      "A named set of policies you assign to members. The three system roles — owner, admin, member — ship with every org; on eligible plans, admins create custom roles that bundle custom policies.",
+      "A named set of policies you assign to members. The three system roles — owner, admin, member — ship with every org; on plans with custom roles, anyone with permission to assign roles can create custom roles that bundle custom policies.",
     example:
       'A custom "Regional Analyst" role bundling a read-only analytics policy, assigned to several members.',
     relatedTerms: ["Policy", "Group"],
@@ -462,6 +471,51 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Someone without permission to manage billing can't create a policy granting it, because they don't hold it themselves.",
     relatedTerms: ["Policy", "Role"],
+  },
+  {
+    term: "Share",
+    category: GlossaryCategory.Organization,
+    definition:
+      "Giving someone access to one specific object — a station, a pinned result, or a curated view — without changing their role. A station or pin can be shared read-only or read & write with a teammate or the whole team; a curated view is shared read-only, which gives access to exactly the columns and rows it shows.",
+    example:
+      'Share the "Q3 Pipeline" station read-only with the sales team so they can open portals on it but not change it.',
+    relatedTerms: ["Station", "Curated View", "Pinned Result", "Capabilities"],
+  },
+  {
+    term: "Capabilities",
+    category: GlossaryCategory.Organization,
+    definition:
+      "What you can do with a particular object — read, write, delete, and for shareable objects share — worked out by the server from your roles, groups, policies, and shares. The app uses them to decide which actions to show: an action you aren't permitted is usually hidden, except a page's main action you could be given access to (like Create on a list page), which shows disabled with a note saying what access it needs; one your plan doesn't include points to billing; and one blocked by something temporary (like a running job) is disabled with the reason.",
+    example:
+      "A station shared with you read-only shows no Edit or Delete, because your capabilities on it are read only.",
+    relatedTerms: ["Share", "Policy", "Role", "Data Lock"],
+  },
+  {
+    term: "Invitation",
+    category: GlossaryCategory.Organization,
+    definition:
+      "How a new member joins an organization: someone with permission to invite members creates an invitation for an email address and a role, then shares the invitation link with that person, who accepts it by signing in with that email. The link is shown once, and an invitation expires after 7 days if it isn't accepted.",
+    example:
+      "Invite a colleague from Settings → Members, copy the invitation link, and send it to them; they join with the role you chose once they sign in.",
+    relatedTerms: ["Organization", "Role"],
+  },
+  {
+    term: "Activity Log",
+    category: GlossaryCategory.Organization,
+    definition:
+      "The organization's security audit log: sign-ins, member and role changes, shares, and other security-relevant actions, each with who did it and when. Shown on the Settings → Activity tab to anyone with permission to read the audit log, and kept for about 24 months.",
+    example:
+      "Check the Activity tab to see who changed a member's role last week.",
+    relatedTerms: ["Organization", "Role", "Share"],
+  },
+  {
+    term: "SSO",
+    category: GlossaryCategory.Organization,
+    definition:
+      "Single sign-on: signing in through your organization's own identity provider (for example Okta or Microsoft Entra ID) instead of a Google account. Set up with the Portals AI team for organizations that need it; members still need an invitation to join.",
+    example:
+      "With SSO set up, your team signs in with their company accounts and you manage access in your own identity provider.",
+    relatedTerms: ["Organization", "Invitation"],
   },
   {
     term: "Default Station",

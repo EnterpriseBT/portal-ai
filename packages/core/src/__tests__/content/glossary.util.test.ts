@@ -447,3 +447,57 @@ describe("GLOSSARY_ENTRIES describe access by permission (#711)", () => {
     }
   );
 });
+
+// #615: the glossary is published on the marketing site too, so it must not
+// describe what the product doesn't do, and it must cover what it does.
+describe("GLOSSARY_ENTRIES match the shipped product (#615)", () => {
+  const text = GLOSSARY_ENTRIES.map(
+    (e) => `${e.definition} ${e.example ?? ""}`
+  ).join("\n");
+
+  it("names no database connector", () => {
+    expect(text).not.toMatch(/\bdatabase\b/i);
+  });
+
+  it("names no removed tool", () => {
+    expect(text).not.toMatch(/`(correlate|decompose)`/);
+  });
+
+  it("lists every built-in pack in the Tool Pack entry", () => {
+    const entry = GLOSSARY_ENTRIES.find((e) => e.term === "Tool Pack");
+    for (const phrase of [
+      "data querying",
+      "statistics",
+      "regression",
+      "financial",
+      "web search",
+      "entity management",
+      "access & roles",
+      "curated views",
+      "visualization",
+      "GIS",
+    ]) {
+      expect(entry!.definition).toContain(phrase);
+    }
+  });
+
+  it.each([
+    "Share",
+    "Capabilities",
+    "Invitation",
+    "Activity Log",
+    "Data Lock",
+    "SSO",
+  ])("defines %s", (term) => {
+    expect(GLOSSARY_ENTRIES.some((e) => e.term === term)).toBe(true);
+  });
+
+  it.each(["Policy", "Role"])(
+    "%s describes authoring by permission",
+    (term) => {
+      const entry = GLOSSARY_ENTRIES.find((e) => e.term === term);
+      expect(entry!.definition).not.toMatch(/\badmins (author|create)\b/i);
+      expect(entry!.definition).toMatch(/permission to assign roles/);
+    }
+  );
+});

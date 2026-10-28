@@ -1,8 +1,21 @@
-# Supply-chain security — API image
+# Supply-chain security — container images
 
-How the Portals AI API container image is scanned, attested, and signed, and how to verify it. This is a **durable reference** (no phase-doc suffix) — keep it in sync with `.github/workflows/deploy-dev.yml` and `deploy-prod.yml`. Introduced by #573.
+How the Portals AI container images are scanned, attested, and signed, and how to verify them. This is a **durable reference** (no phase-doc suffix) — keep it in sync with `.github/workflows/deploy-dev.yml` and `deploy-prod.yml`. Introduced by #573.
 
-## What the deploy pipeline does
+## Which images
+
+Each deploy's `deploy-backend` job builds and pushes **two** images:
+
+| Image | Built from | Used by | Gated (this doc) |
+|---|---|---|---|
+| **API** | `apps/api/Dockerfile` | SaaS (ECS) and residency (Helm `image.api`) | **Yes** — every step below |
+| **Web** | `apps/web/Dockerfile` | Residency only (Helm `image.web`, #566); SaaS serves the SPA from S3/CloudFront | **No — known exception, see below** |
+
+### Known exception — the residency web image is not gated (#909)
+
+The web image is pushed straight to ECR (`Build and push web image` in `deploy-dev.yml` / `deploy-prod.yml`) with `provenance: false`: **no Trivy scan, no SBOM, no provenance attestation, no cosign signature**. A residency customer mirroring `image.web` gets none of the evidence in "Verifying a published image" below for it. #909 brings it under the same gate; until then, record it as an accepted exception in the client's deployment review (`docs/DEPLOYMENT_SECURITY_REVIEW.md` §4, "Image provenance").
+
+## What the deploy pipeline does (API image)
 
 The API image is built only at deploy time (dev: push to `main` / manual dispatch; prod: release/tag). Each deploy runs, in order, inside the `deploy-backend` job:
 
@@ -14,7 +27,6 @@ The API image is built only at deploy time (dev: push to `main` / manual dispatc
    - **Bundled `npm`/`npx`/`corepack` deleted from the runtime layer.** The service and the one-off migrate/seed ECS tasks all run `node dist/...` directly (the task command overrides in the deploy workflows point at `node`, not `npm run`), so npm is never invoked at runtime; its bundled transitive deps (tar, pacote, …) went with it.
    - **OS packages** are patched at build time via `apk upgrade` in the runtime stage.
 
-   `npm audit` (`.github/workflows/npm-audit.yml`) remains a non-gating check for the **source** dependency tree; the image gate is what enforces the shipped artifact.
 3. **Push + attest** — the image is pushed to ECR with a **CycloneDX/SPDX SBOM** (`sbom: true`) and **SLSA build provenance** (`provenance: mode=max`) attached as OCI attestation manifests.
 4. **Sign** — the pushed **digest** is signed with **cosign keyless** (GitHub Actions OIDC → Fulcio; no long-lived keys). Signing the digest (not the tag) makes the signature immutable.
 
@@ -22,7 +34,7 @@ The API image is built only at deploy time (dev: push to `main` / manual dispatc
 
 ## Patch SLA
 
-Remediate vulnerabilities that the gate reports (fixable, in the API image) within:
+Remediate vulnerabilities that the gate reports (fixable, in the API image — and in the web image once #909 gates it) within:
 
 | Severity | SLA |
 |---|---|
@@ -34,7 +46,7 @@ A fixable Critical/High blocks the deploy on arrival, so the practical floor is 
 
 ## Verifying a published image
 
-Replace `<ECR_URI>` with the repository URI and `<tag>` with e.g. `dev-<sha>` / `prod-<sha>`.
+Applies to the **API image** (the web image carries no signature or attestations until #909). Replace `<ECR_URI>` with the repository URI and `<tag>` with e.g. `dev-<sha>` / `prod-<sha>`.
 
 **Signature (cosign keyless):**
 

@@ -1,6 +1,6 @@
 # Custom Toolpack Integration Guide
 
-This guide is for developers building a **toolpack server** — an HTTP service that Portal.ai calls to fetch a tool catalog and execute tool invocations during portal sessions. If you're an org admin enabling an existing toolpack, you don't need this guide.
+This guide is for developers building a **toolpack server** — an HTTP service that Portals AI calls to fetch a tool catalog and execute tool invocations during portal sessions. If you're registering or enabling an existing toolpack in the app, you don't need this guide.
 
 A reference implementation lives at `apps/api/src/scripts/mock-toolpack-server.ts`. Run it with `npm run webhook:toolpack` from `apps/api/` and point a registration at `http://localhost:4100` to see the contract end-to-end.
 
@@ -12,7 +12,7 @@ For a **deployable** worked example — a real, hosted endpoint conforming to th
 
 **Precondition (#214):** custom toolpacks are a subscription-tier entitlement. Registering one when the organization's plan doesn't include them returns `403 TOOLPACK_NOT_ENTITLED` — nothing is fetched or stored. Existing registrations are never deleted on a plan downgrade: they show as *Inactive on your plan*, their tools stop being offered in portal sessions, management (edit/refresh/delete) stays available, and everything reactivates automatically when the plan allows them again.
 
-Your server exposes three HTTP endpoints. Portal.ai calls them as the registering org admin, signing every request with a per-toolpack HMAC secret your server can verify.
+Your server exposes three HTTP endpoints. Portals AI calls them from its own servers — at registration, on a schema refresh, and once per tool call in a portal session — signing every request with a per-toolpack HMAC secret. Registering needs `write` permission on toolpacks; the calls carry no user identity. Your server can verify every signed request except the two catalog fetches made *during registration* (see [Which requests you can verify](#which-requests-you-can-verify)).
 
 | Method | Path | When called | Required |
 |---|---|---|---|
@@ -24,9 +24,9 @@ You pick the URL paths. The three endpoints can live on the same host or on diff
 
 ---
 
-## What Portal.ai sends on every request
+## What Portals AI sends on every request
 
-Three signing headers are added to every outbound call (schema, metadata, runtime):
+Three signing headers are added to every outbound call (schema, metadata, runtime). The registration-time schema and metadata fetches are signed too, but with a secret you don't have yet — see below.
 
 ```
 X-Portalai-Timestamp: 1779148800
@@ -42,7 +42,20 @@ In addition, any custom auth headers you configured during registration (e.g. `A
 
 ## Verifying signatures
 
-Your server should verify three things on every request, in this order:
+### Which requests you can verify
+
+Portals AI generates the signing secret **at registration** and signs the registration-time `GET /schema` and `GET /metadata` with it — but the secret only reaches you in the registration *response*, after those fetches. So your server can't verify those two requests, and a server that rejects them can never be registered (it fails with `TOOLPACK_SCHEMA_FETCH_FAILED`).
+
+The rule, as `packages/demo-toolpack` implements it (the local `mock-toolpack-server.ts` sidesteps the problem differently: it verifies nothing until you set `MOCK_TOOLPACK_SIGNING_SECRET`, which you can only do after registering):
+
+- **Let `GET` requests through without verification.** Portals AI only ever sends your server a `GET` to fetch the tool catalog — the schema and metadata endpoints, at whatever URLs you registered — and the catalog is not customer data. Don't verify a schema refresh either: a server that does can't be registered again (a re-registration signs with a new secret it doesn't have yet).
+- **Verify every `POST`**: the runtime endpoint, which receives tool input and records.
+
+[#911](https://github.com/EnterpriseBT/portal-ai/issues/911) tracks letting the registration fetches be verified too.
+
+### The checks
+
+Your server should verify three things on every request it verifies, in this order:
 
 1. **Headers are present.** Reject `401 SIGNATURE_MISSING` if any of the three signing headers are absent.
 2. **Timestamp is fresh.** Reject `401 TIMESTAMP_STALE` if `X-Portalai-Timestamp` is more than 300 seconds old or more than 60 seconds in the future. The 300-second replay window matches Stripe / Slack / Svix.
@@ -69,7 +82,9 @@ app.use(
   })
 );
 
+// Catalog fetches (GET) can't be verified at registration (see above).
 app.use((req, res, next) => {
+  if (req.method === "GET") return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -107,8 +122,11 @@ from flask import Flask, request, abort
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
+# Catalog fetches (GET) can't be verified at registration (see above).
 @app.before_request
 def verify_signature():
+    if request.method == "GET":
+        return None
     ts = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
     sig = request.headers.get("X-Portalai-Signature", "")
@@ -146,8 +164,13 @@ import (
 
 var signingSecret = []byte(os.Getenv("TOOLPACK_SIGNING_SECRET"))
 
+// Catalog fetches (GET) can't be verified at registration (see above).
 func verifySignature(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            next.ServeHTTP(w, r)
+            return
+        }
         ts := r.Header.Get("X-Portalai-Timestamp")
         id := r.Header.Get("X-Portalai-Webhook-Id")
         sig := r.Header.Get("X-Portalai-Signature")
@@ -218,7 +241,7 @@ Returns the catalog of tools your toolpack provides.
 
 #### `capability` (optional)
 
-A tool may declare a `capability` object describing how Portal.ai consumes it. Custom tools run third-party with no backend access, so they may declare only the **pure-consumer subset** — registration rejects anything outside it with `TOOLPACK_CAPABILITY_INVALID`:
+A tool may declare a `capability` object describing how Portals AI consumes it. Custom tools run third-party with no backend access, so they may declare only the **pure-consumer subset** — registration rejects anything outside it with `TOOLPACK_CAPABILITY_INVALID`:
 
 | Field | Allowed for a custom tool |
 |---|---|
@@ -231,7 +254,7 @@ A tool may declare a `capability` object describing how Portal.ai consumes it. C
 | `resultKind` | `scalar` \| `data-table` \| `d3` \| `geo` (not `mutation-result` / `progress`). Must agree with `production`: `scalar` ⇒ `production.kind: "value"`. |
 | `costHint` | `free` \| `metered` \| `expensive`. **Advisory for custom tools** — never billed against the org's Portal allocation (see the note below). |
 
-> **`costHint` is advisory for custom tools (#169).** Portal.ai meters *its own* cost — the paid third-party APIs and heavy compute behind **built-in** tools — against an organization's subscription usage allocation. A custom toolpack runs on **your** endpoint and bills **you**, so a custom tool is **never charged against the org's Portal usage**, whatever its `costHint`. Declaring `metered`/`expensive` does **not** gate or deny the call; it only surfaces advisory context to the agent (it's told the tool "may be costly — call it only when needed") so it uses your endpoint judiciously. (Built-in `metered`/`expensive` tools *are* server-enforced against the allocation; the `expensive` bulk cost-acknowledgement handshake is unchanged.)
+> **`costHint` is advisory for custom tools (#169).** Portals AI meters *its own* cost — the paid third-party APIs and heavy compute behind **built-in** tools — against an organization's subscription usage allocation. A custom toolpack runs on **your** endpoint and bills **you**, so a custom tool is **never charged against the org's Portal usage**, whatever its `costHint`. Declaring `metered`/`expensive` does **not** gate or deny the call; it only surfaces advisory context to the agent (it's told the tool "may be costly — call it only when needed") so it uses your endpoint judiciously. (Built-in `metered`/`expensive` tools *are* server-enforced against the allocation; the `expensive` bulk cost-acknowledgement handshake is unchanged.)
 
 `consumption` (input) and `production` (output) are **independent**: any combination is valid. In particular `production.onLarge: "handle"` works for **any** input mode — declaring it earns your tool an `output` write-grant (see [Scaling over large datasets](#scaling-over-large-datasets)), so even a `consumption: none` tool can stage a large result handle.
 
@@ -278,7 +301,7 @@ Returns human-readable descriptions, summaries, and worked examples shown in the
 }
 ```
 
-If unconfigured or any failure (HTTP, oversize, malformed), Portal.ai registers without metadata — the toolpack still works at runtime. Capped at **256 KB**.
+If unconfigured or any failure (HTTP, oversize, malformed), Portals AI registers without metadata — the toolpack still works at runtime. Capped at **256 KB**.
 
 ### `POST /runtime`
 
@@ -291,7 +314,7 @@ Called once per tool invocation during a portal session. Body:
 }
 ```
 
-Return JSON. The shape is opaque to Portal.ai — it's handed straight to the model. Examples:
+Return JSON. The shape is opaque to Portals AI — it's handed straight to the model. Examples:
 
 ```json
 { "name": "Acme", "industry": "Software", "employees": 250 }
@@ -310,11 +333,11 @@ Return JSON. The shape is opaque to Portal.ai — it's handed straight to the mo
 
 ## Scaling over large datasets
 
-A tool that reduces or maps over a dataset shouldn't force every row through the model's context, and its result shouldn't be capped at 1 MB. Declare a `consumption.mode` and Portal.ai handles the transport — **rows never enter the agent's context**, in either direction. The mode you declare *is* the tier:
+A tool that reduces or maps over a dataset shouldn't force every row through the model's context, and its result shouldn't be capped at 1 MB. Declare a `consumption.mode` and Portals AI handles the transport — **rows never enter the agent's context**, in either direction. The mode you declare *is* the tier:
 
 ### `bounded` — records in the request body
 
-Portal.ai resolves the dataset (a query handle the agent already has, or inline rows) up to your `maxRows` and POSTs them alongside the input. Declare:
+Portals AI resolves the dataset (a query handle the agent already has, or inline rows) up to your `maxRows` and POSTs them alongside the input. Declare:
 
 ```json
 "consumption": { "mode": "bounded", "maxRows": 50000, "onOverflow": "error" }
@@ -384,7 +407,7 @@ then your `/runtime` response is simply:
 { "resultHandle": "qh-def456" }
 ```
 
-Portal.ai verifies the handle was the one staged for *this* call and hands the agent a query handle (it reads/charts it like any other). Small results still return inline — staging is opt-in.
+Portals AI verifies the handle was the one staged for *this* call and hands the agent a query handle (it reads/charts it like any other). Staged rows are stored as text and JSON, so any NUL (`U+0000`) character in them is stripped on the way in (#805). Small results still return inline — staging is opt-in.
 
 > Auth failures on the read/write endpoints are `401` (`WEBHOOK_READ_TOKEN_INVALID` / `_EXPIRED`) or `403` (`WEBHOOK_HANDLE_SCOPE_MISMATCH`). The endpoints fail closed against a token used past its window, for the wrong handle, the wrong org, or the wrong direction.
 
@@ -406,18 +429,18 @@ If your toolpack is on a corporate VPN with a private IP, you'll need a public i
 
 ## The signing secret
 
-When you (or your org admin) registers a toolpack:
+When someone with permission to manage toolpacks registers one:
 
-1. Portal.ai generates a fresh `whsec_<base64url-32B>` secret server-side.
+1. Portals AI generates a fresh `whsec_<base64url-32B>` secret server-side, and signs the registration's schema and metadata fetches with it (which is why your server can't verify those two).
 2. The plaintext is shown **exactly once** on the registration response.
-3. The secret is encrypted at rest in Portal.ai's database (AES-256-GCM, per-deployment key).
+3. The secret is encrypted at rest in Portals AI's database (AES-256-GCM, per-deployment key).
 4. Every subsequent read returns only `{ signingSecretStatus: { has: true } }` — the plaintext never leaves the server again.
 
 Copy the secret out of band into your toolpack server's environment (e.g. `TOOLPACK_SIGNING_SECRET`).
 
 ### Rotation
 
-If you lose the secret or suspect compromise, click **"Rotate signing secret"** on the toolpack's edit dialog. Portal.ai generates and reveals a fresh secret; the old one is invalidated immediately. Update your server's environment to the new value to resume verification.
+If you lose the secret or suspect compromise, click **"Rotate signing secret"** on the toolpack's edit dialog. Portals AI generates and reveals a fresh secret; the old one is invalidated immediately. Update your server's environment to the new value to resume verification.
 
 This is the only way to re-view a secret — there is no "show secret" endpoint.
 
@@ -431,7 +454,7 @@ The signing protocol is the authoritative authentication mechanism — auth head
 
 | Need | Reach for |
 |---|---|
-| Cryptographic proof the request came from Portal.ai | Signing (always on) |
+| Cryptographic proof the request came from Portals AI | Signing (always on) |
 | Multi-tenant routing inside your toolpack server | Signing identifies the toolpack via the secret used; you don't need a separate token. |
 | Drop-in compatibility with an existing API gateway | Configure the gateway's auth header at registration; the gateway sees what it expects. |
 | Per-environment isolation | One toolpack per environment, with its own signing secret. |
@@ -452,7 +475,7 @@ It listens on `http://localhost:4100` and verifies the same three headers your s
 
 - **`401 SIGNATURE_MISSING`** — the request had no signing headers (or some were absent).
 - **`401 TIMESTAMP_STALE`** — the timestamp was outside the ±300 s / ±60 s window. Check clock drift.
-- **`401 SIGNATURE_INVALID`** — the signature didn't match. Check that you're hashing the raw body (not re-stringified JSON), that the secret matches what Portal.ai sent, and that the payload is `<ts>.<id>.<body>` exactly.
+- **`401 SIGNATURE_INVALID`** — the signature didn't match. Check that you're hashing the raw body (not re-stringified JSON), that the secret matches what Portals AI sent, and that the payload is `<ts>.<id>.<body>` exactly.
 
 If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts unsigned requests — useful for early development before you've registered, but never in any environment you trust.
 
@@ -475,14 +498,14 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 
 ## Failure-mode debugging
 
-| Symptom in Portal.ai | Likely cause |
+| Symptom in Portals AI | Likely cause |
 |---|---|
 | Registration fails with `TOOLPACK_URL_PRIVATE_HOST` | Your URL hostname resolves to an RFC1918 / link-local / loopback IP. Use a public ingress. |
 | Registration fails with `TOOLPACK_URL_NOT_HTTPS` | Production rejects `http://`. Configure TLS or use `https://`. |
-| Registration fails with `TOOLPACK_SCHEMA_FETCH_FAILED` | Your `/schema` endpoint returned non-2xx, timed out, or your server isn't reachable from Portal.ai's egress. |
+| Registration fails with `TOOLPACK_SCHEMA_FETCH_FAILED` | Your `/schema` endpoint returned non-2xx, timed out, or your server isn't reachable from Portals AI's egress. |
 | Registration fails with `TOOLPACK_SCHEMA_TOO_LARGE` | Schema response exceeded 256 KB. Trim tool descriptions; split into multiple toolpacks. |
-| Registration fails with `TOOLPACK_TOOL_NAME_CONFLICT` | One of your tool names matches a built-in (e.g. `correlate`, `regression`). Rename. |
-| Runtime calls fail with `TOOLPACK_RUNTIME_TOO_LARGE` | Your `/runtime` response exceeded 1 MB. Stream into pagination, or shrink the payload. |
+| Registration fails with `TOOLPACK_TOOL_NAME_CONFLICT` | One of your tool names matches a built-in (e.g. `cluster`, `regression`). Rename. |
+| Runtime calls fail with `TOOLPACK_RUNTIME_TOO_LARGE` | Your `/runtime` response exceeded 1 MB. Stage it to `output.writeUrl` and return the handle (see [Scaling over large datasets](#scaling-over-large-datasets)), or shrink the payload. |
 | Tool always returns "not valid JSON" | `/runtime` is returning HTML (likely an auth-failure page) or non-JSON. Check your response shape. |
 
 ---
@@ -491,11 +514,11 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 
 Before going live, confirm your toolpack server:
 
-- [ ] Verifies all three signing headers on every endpoint.
+- [ ] Verifies all three signing headers on every `POST` (the runtime endpoint); lets the catalog `GET`s through.
 - [ ] Hashes the **raw** body, not re-serialized JSON.
 - [ ] Uses a constant-time comparison (`hmac.compare_digest`, `crypto.timingSafeEqual`, `hmac.Equal`).
 - [ ] Enforces the 300-second replay window.
-- [ ] Returns within 30 seconds (Portal.ai aborts past that).
+- [ ] Returns within 30 seconds (Portals AI aborts past that).
 - [ ] Returns valid JSON from `/schema`, `/metadata`, and `/runtime`.
 - [ ] Stays under 256 KB on schema/metadata responses, 1 MB on runtime.
 - [ ] Reachable over HTTPS from the public internet (in production).

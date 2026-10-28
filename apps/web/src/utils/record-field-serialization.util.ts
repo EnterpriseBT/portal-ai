@@ -154,6 +154,12 @@ export function serializeRecordFields(
 
 /**
  * Validate required fields. Returns errors for required columns with empty/null values.
+ *
+ * Deliberately stricter than the API (#615): the API accepts a record with a
+ * missing required field and records it as a soft `validationErrors` entry
+ * ("Required field is missing", apps/api/src/utils/field-validation.util.ts),
+ * because synced data arrives incomplete. A person filling in the form can
+ * supply the value, so the form blocks instead.
  */
 export function validateRequiredFields(
   columns: ResolvedColumn[],

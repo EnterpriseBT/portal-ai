@@ -21,7 +21,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Connector Instance": ApplicationRoute.Connectors,
   "Connector Entity": ApplicationRoute.Entities,
   "Entity Record": ApplicationRoute.Entities,
-  Sync: ApplicationRoute.Entities,
+  Sync: ApplicationRoute.Connectors,
   // Data Modeling
   "Column Definition": ApplicationRoute.ColumnDefinitions,
   "Field Mapping": ApplicationRoute.Entities,
@@ -40,6 +40,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   // Analytics
   Station: ApplicationRoute.Stations,
   "Curated View": ApplicationRoute.CuratedViews,
+  "Advanced Filter": ApplicationRoute.CuratedViews,
   "Map Visualization": ApplicationRoute.Stations,
   "Tool Pack": ApplicationRoute.Toolpacks,
   "Plan Entitlement": ApplicationRoute.Toolpacks,
@@ -49,9 +50,19 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   // System
   Job: ApplicationRoute.Jobs,
   "Job Status": ApplicationRoute.Jobs,
+  "Data Lock": ApplicationRoute.Jobs,
+  Organization: ApplicationRoute.Settings,
   "Default Station": ApplicationRoute.Stations,
   "Subscription Plan": ApplicationRoute.Settings,
   "Billing Portal": ApplicationRoute.Settings,
+  // Access (#615): roles, policies, groups, invitations and the audit log
+  // all live under Settings (Access, Members and Activity tabs).
+  Policy: ApplicationRoute.Settings,
+  Role: ApplicationRoute.Settings,
+  Group: ApplicationRoute.Settings,
+  "Permission Boundary": ApplicationRoute.Settings,
+  Invitation: ApplicationRoute.Settings,
+  "Activity Log": ApplicationRoute.Settings,
 };
 
 /**

@@ -2,7 +2,7 @@
 
 Provider-agnostic spreadsheet interpretation and replay. Turns irregular CSV/XLSX/Google-Sheets/Excel-Online workbooks into a declarative `LayoutPlan`, then deterministically replays that plan to produce records.
 
-See [`docs/SPREADSHEET_PARSING.architecture.spec.md`](../../docs/SPREADSHEET_PARSING.architecture.spec.md) for the domain model and [`docs/SPREADSHEET_PARSING.backend.spec.md`](../../docs/SPREADSHEET_PARSING.backend.spec.md) for concrete types and algorithms. [`docs/SPREADSHEET_PARSING.backend.plan.md`](../../docs/SPREADSHEET_PARSING.backend.plan.md) is the phased build-out.
+The design docs (`docs/SPREADSHEET_PARSING.architecture.spec.md`, `.backend.spec.md`, `.backend.plan.md`) were phase docs and have been swept from `docs/`; read them from history with `git log --diff-filter=D -- 'docs/SPREADSHEET_PARSING*'` and `git show <sha>:<path>`. The schemas in `src/plan/` are the current contract.
 
 ## Three-subpath export convention
 
@@ -79,4 +79,4 @@ import {} from "@portalai/spreadsheet-parsing/ui";
 - Phase 9 — Structured stage observability (`interpret.stage.completed` + `interpret.cost.summary`) + blocker-warnings commit gate ✅
 - Phase 10 — Final audit + docs ✅
 
-See [`docs/SPREADSHEET_PARSING.backend.plan.md`](../../docs/SPREADSHEET_PARSING.backend.plan.md).
+The plan doc is in git history (see the top of this README).

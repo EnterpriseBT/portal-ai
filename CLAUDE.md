@@ -15,6 +15,9 @@ Portals AI is a Turborepo monorepo for displaying dynamic UI content from a Mode
 | `@portalai/cli-env` | `packages/cli-env/` | Shared CLI environment-access layer: env registry, AWS-IAM + Auth0 device-flow authorization, `resolveEnvConnection`. Node-only — never imported by web/core |
 | `@portalai/devops-cli` | `packages/devops-cli/` | `portalops` — infrastructure + business-config operator CLI (DB tunnels/psql/reset/seed, Secrets Manager + SSM config catalog, tier-catalog provisioning via `tier apply`, the encrypted Redis's `cache status`, and `service scale` + `jobs redispatch` for a lossless Redis replacement) over `cli-env`. Replaces `apps/api/scripts/api-cli.sh` |
 | `@portalai/admin-cli` | `packages/admin-cli/` | `portalai` — customer-app-data operator CLI (org/user/member/tier management, full org provisioning, fixtures) over `cli-env`. Infra-free |
+| `@portalai/spreadsheet-parsing` | `packages/spreadsheet-parsing/` | Pure workbook layout interpretation (`interpret`) and replay, shared by the API and the region editor |
+| `@portalai/e2e` | `packages/e2e/` | Playwright harness: the `E2E Tests` CI specs, the post-deploy `verify-login` check, and agent browser sessions (see "Agent-guided browser sessions") |
+| `@portalai/demo-toolpack` | `packages/demo-toolpack/` | A deployable reference custom toolpack (AWS Lambda function URL), used by the demo org |
 
 ## Key Scripts
 
@@ -25,7 +28,7 @@ npm run lint / lint:fix   # ESLint across monorepo
 npm run format           # Prettier across monorepo
 npm run type-check       # TypeScript validation
 npm run test             # Jest tests across monorepo
-npm run storybook        # Storybook (core :7006, web :6007)
+npm run storybook        # Storybook (core :7006, web :7007)
 ```
 
 ### Formatting enforcement
@@ -612,7 +615,7 @@ Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persiste
 | API Server | http://localhost:3001 |
 | Swagger Docs | http://localhost:3001/api/docs |
 | Core Storybook | http://localhost:7006 |
-| Web Storybook | http://localhost:6007 |
+| Web Storybook | http://localhost:7007 |
 
 ## Operating the Portal CLIs (`portalops` / `portalai`)
 
@@ -847,8 +850,11 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 - `packages/core/src/content/faq.util.ts` — Q&A pairs. Also rendered as `FAQPage` JSON-LD on the marketing site.
 - `apps/web/src/utils/getting-started.util.ts` — onboarding steps + CTAs
 
+**Customer-facing marketing site** (`apps/site`)
+- `src/pages/*.astro` and `src/lib/use-cases.ts` — what the product does, plans, terms and privacy. A claim here is a public promise: say what ships, never a roadmap item. The `/security/` page's claims carry code evidence checked by `security-controls.test.ts`; pricing reads the public site-config snapshot
+
 **Agent / tool contract** (three places that drift independently)
-- `apps/api/src/tools/<tool>.tool.ts` — the `description` field on the `Tool` subclass (the agent-facing contract). For pack tools, keep the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` in sync (else the modal + `tools.service.ts` disagree); system tools (`current_time`, `station_context`) live only in the tool file — nothing to mirror.
+- `apps/api/src/tools/<tool>.tool.ts` — the `description` field on the `Tool` subclass (the agent-facing contract). For pack tools, keep the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` in sync (else the modal + `tools.service.ts` disagree); system tools (`current_time`, `station_context`, `platform_help`) live only in the tool file — nothing to mirror. `builtin-toolpack-schema-parity.test.ts` (api) fails CI when a mirror's `parameterSchema` names different fields or `required` keys than the tool's Zod schema (#615); descriptions may still summarise, so wording stays your check.
 - `apps/api/src/prompts/system.prompt.ts` — agent guidance (which tool to reach for, how to read a result, workflow ordering). Prefer making a tool's **output** unambiguous over prose alone — an LLM can misread guidance; it can't misread a field it must echo.
 
 **In-workflow examples, helper text & sample references**
@@ -862,8 +868,9 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 - `README.md` (root), `apps/web/README.md`, `apps/api/README.md`, `packages/core/README.md`, `packages/spreadsheet-parsing/README.md`
 - The **durable** (unsuffixed) `docs/` set — `CLI_OPERATIONS_CHARTER.md`, `LOCAL_DEVELOPMENT.md`, the `*.runbook.md` files, the vendor CLI ops guides. Phase docs (`.discovery`/`.spec`/`.plan`/`.smoke`/`.adversarial`/`.condensed`) are **not** on this list: they describe a decision at a point in time and get swept, so they are never updated to match later behavior
 - `docs/CUSTOM_TOOLPACK_INTEGRATION.md` — the custom-tool author contract
+- `deploy/helm/portalai/README.md` + `values.yaml` — the residency install contract a customer follows (an example value that the boot guard refuses breaks an install)
 - `docs/DEPLOYMENT_SECURITY_REVIEW.md` (#582) — the residency review-record template + SaaS baseline. Its **egress and subprocessor sections are code-derived** (the third-party-calling tools + their egress env vars), so a change to what the app sends off-box drifts it. Keep it in sync — see the table row below
-- `CLAUDE.md` itself, when a change alters a documented convention (and its mirror, `.github/copilot-instructions.md`)
+- `CLAUDE.md` itself, when a change alters a documented convention
 
 ### What changed → what to check
 
@@ -876,9 +883,9 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 | a tool (capability/input/semantics) | the three tool surfaces above (`.tool.ts` + `builtin-toolpacks.ts` mirror + `system.prompt.ts`) |
 | the custom-tool wire/capability contract | `CUSTOM_TOOLPACK_INTEGRATION.md` + `RegisterToolpackDialog` |
 | an **egress vector** — a tool that makes a third-party network call, its egress env var (`ANTHROPIC_BASE_URL`/`TAVILY_API_KEY`/`GEOCODING_API_KEY`/a new one), or a subprocessor/telemetry behavior | `docs/DEPLOYMENT_SECURITY_REVIEW.md` (egress §1 + subprocessor §2 + telemetry §3, and the SaaS baseline), and `SUBPROCESSORS` in `packages/core/src/content/subprocessors.util.ts` — the public list the marketing site's `/security/` and privacy pages render (#613). `subprocessor-egress-parity.test.ts` (api) fails CI until every env var the API reads is classified as a subprocessor or internal, and `subprocessor-browser-egress.guard.test.ts` (web) does the same for every external host and `VITE_*` var the browser app uses (map tiles, Google's picker, Auth0), so a new one forces the question |
-| a convention, script, or setup step | the relevant `README.md` / `docs/*.md` / `CLAUDE.md` (+ `.github/copilot-instructions.md`) |
+| a convention, script, or setup step | the relevant `README.md` / `docs/*.md` / `CLAUDE.md` |
 
-The pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`, `glossary.util.test.ts`, `faq.util.test.ts`) catch some drift — but not semantic drift or the prose surfaces. The check is yours, not the test suite's.
+The pinning tests (`builtin-toolpacks.test.ts`, `builtin-toolpack-schema-parity.test.ts`, `system.prompt.test.ts`, `glossary.util.test.ts`, `faq.util.test.ts`) and the permission-copy guards (which also scan the durable `docs/`) catch some drift — but not semantic drift or most prose. The check is yours, not the test suite's.
 
 ## Detailed Documentation
 

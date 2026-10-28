@@ -91,7 +91,7 @@ printf '%s' 'https://api.portalsai.io'   | portalops vars set AUTH0_AUDIENCE - -
 printf '%s' '<m2m client id>'            | portalops vars set AUTH0_CLI_CLIENT_ID - --env $ENV $GUARD
 ```
 
-- [ ] The **SPA** client id, domain and audience also go into GitHub Actions secrets — `${PREFIX}_VITE_AUTH0_CLIENT_ID`, `${PREFIX}_VITE_AUTH0_DOMAIN`, `${PREFIX}_VITE_AUTH0_AUDIENCE`. They are build-time inputs to the web bundle, not runtime config, which is why they are repo secrets rather than catalog keys.
+- [ ] The **SPA** client id, domain and audience also go into GitHub Actions secrets — `${PREFIX}_VITE_AUTH0_CLIENT_ID`, `${PREFIX}_VITE_AUTH0_DOMAIN`, `${PREFIX}_VITE_AUTH0_AUDIENCE` — plus `${PREFIX}_VITE_AUTH0_QA_CONNECTION`, the QA sign-in's Database connection name (#489, `docs/E2E_DEPLOYED_QA.runbook.md`). They are build-time inputs to the web bundle, not runtime config, which is why they are repo secrets rather than catalog keys.
 
 ### Verify §2 from a terminal, before anything is deployed
 
@@ -152,21 +152,25 @@ Then confirm the connection is not on Auth0's developer keys, by reading `redire
 > **Adding a single sensitive or restricted scope reverses all three** and pulls in a CASA security assessment on top. `drive.readonly` and `spreadsheets.readonly` are the two that look tempting — they are exactly what #408 removed. If a future feature seems to need one, that is a product decision with a recurring cost, not a configuration tweak.
 
 ```bash
-printf '%s' '<client id>'     | portalops vars set GOOGLE_OAUTH_CLIENT_ID - --env $ENV $GUARD
-printf '%s' '<client secret>' | portalops vars set GOOGLE_OAUTH_CLIENT_SECRET - --env $ENV $GUARD
+printf '%s' '<client id>'      | portalops vars set GOOGLE_OAUTH_CLIENT_ID - --env $ENV $GUARD
+printf '%s' '<client secret>'  | portalops vars set GOOGLE_OAUTH_CLIENT_SECRET - --env $ENV $GUARD
+printf '%s' '<browser API key>' | portalops vars set GOOGLE_PICKER_API_KEY - --env $ENV $GUARD
+printf '%s' '<project number>'  | portalops vars set GOOGLE_CLOUD_PROJECT_NUMBER - --env $ENV $GUARD
 ```
 
-The web build needs three of these values too, as `${PREFIX}_VITE_*` **GitHub Actions secrets** (they are baked into the bundle at build time, not read from SSM):
+The browser's file picker needs three of these values. Since #580 the web app reads them **at runtime** from `GET /api/connector-config`, which serves `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_PICKER_API_KEY` and `GOOGLE_CLOUD_PROJECT_NUMBER` (never the client secret) — so they are catalog keys, not build secrets:
 
-| Secret | Value |
+| Key | Value |
 |---|---|
-| `PROD_VITE_GOOGLE_OAUTH_CLIENT_ID` | the same client id as above — a different client mints a grant the server's token cannot see |
-| `PROD_VITE_GOOGLE_PICKER_API_KEY` | the browser API key |
-| `PROD_VITE_GOOGLE_CLOUD_PROJECT_NUMBER` | the numeric prefix of the client id, passed to the picker as `setAppId` |
+| `GOOGLE_OAUTH_CLIENT_ID` | the client id above — a different client mints a grant the server's token cannot see |
+| `GOOGLE_PICKER_API_KEY` | the browser API key (restricted in GCP by referrer + API, not by secrecy) |
+| `GOOGLE_CLOUD_PROJECT_NUMBER` | the numeric prefix of the client id, passed to the picker as `setAppId` |
+
+The `PROD_VITE_GOOGLE_*` GitHub secrets that predate #580 are still passed by `deploy-prod.yml` but **no longer read** by the web build.
 
 `setAppId` is load-bearing: without it the picker creates no per-file grant and the first Sheets read fails with a **404** — not a 403 — which reads as a rejected scope and sends you hunting in the wrong place.
 
-> **Nothing fails loudly if these secrets are missing.** Every test still passes and the deploy still succeeds; the connector's picker step just reports itself unavailable. Set them before the first prod deploy that includes the connector.
+> **Nothing fails loudly if these keys are missing.** Every test still passes and the deploy still succeeds; the connector's picker step just reports itself unavailable. Set them before the first prod deploy that includes the connector.
 
 ## 4 — Microsoft Entra ID app (Excel connector)
 
@@ -351,6 +355,8 @@ done
 | `AUTH0_AUDIENCE` | ssm | Auth0 | 2 |
 | `AUTH0_CLI_CLIENT_ID` | ssm | Auth0 M2M | 2 |
 | `GOOGLE_OAUTH_CLIENT_ID` | ssm | Google Cloud | 3 |
+| `GOOGLE_PICKER_API_KEY` | ssm | Google Cloud (served to the browser by `/api/connector-config`, #580) | 3 |
+| `GOOGLE_CLOUD_PROJECT_NUMBER` | ssm | Google Cloud (served to the browser, #580) | 3 |
 | `MICROSOFT_OAUTH_CLIENT_ID` | ssm | Entra ID | 4 |
 | `MICROSOFT_OAUTH_TENANT` | ssm | `common` | 4 |
 | `CORS_ORIGIN` | ssm | the app URL | 7 |
@@ -359,6 +365,10 @@ done
 | `SALES_EMAIL` | ssm | real inbox | 8 |
 | `ADMIN_EMAIL` | ssm | real inbox | 8 |
 | `SECURITY_EMAIL` | ssm | real inbox | 8 |
+| `DEMO_TOOLPACK_URL` | ssm | the demo toolpack stack's Function URL | `docs/DEMO_ORG.runbook.md` |
+| `DEMO_TOOLPACK_SIGNING_SECRETS` | secret | the demo toolpack's signing secrets | `docs/DEMO_ORG.runbook.md` |
+| `QA_AUTH0_USERNAME` / `QA_AUTH0_PASSWORD` (+ `_ADMIN`, `_MEMBER` pairs) | secret | the env's QA identities (#489) | `docs/E2E_DEPLOYED_QA.runbook.md` |
+| `QA_ORG_ID` | secret | the env's QA org | `docs/E2E_DEPLOYED_QA.runbook.md` |
 
 The catalog is `packages/devops-cli/src/catalog.ts`. A key belongs in it **iff** it is an operator-settable per-environment value stored in Secrets Manager or SSM — template-computed values (`REDIS_URL`, the `UPLOAD_S3_*` trio, the OAuth redirect URIs) are correctly absent, and a guard test asserts every secret the task definition consumes has an entry.
 

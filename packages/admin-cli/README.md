@@ -16,10 +16,11 @@ npx portalai org list --env app-dev
 
 Bare command: `alias portalai="npx portalai"` or `npm link` inside `packages/admin-cli`.
 
-For `--env local`, `DATABASE_URL` must be in your **shell env**:
+For `--env local`, the CLI auto-loads `DATABASE_URL` (and `AUTH0_*` for `portalai login`) from its **own package `.env`** — `packages/admin-cli/.env`, git-ignored; copy it from the committed `.env.example` (#632). An explicit shell export still wins, and `app-dev`/`prod` ignore the file.
 
 ```bash
-DATABASE_URL=$(grep ^DATABASE_URL apps/api/.env | cut -d= -f2-) npx portalai org list --env local
+cp packages/admin-cli/.env.example packages/admin-cli/.env   # once; set DATABASE_URL
+npx portalai org list --env local
 ```
 
 ## Login is part of the design
@@ -59,7 +60,7 @@ portalai member switch <printed orgId> you@portalsai.io --env local
 portalai org reset <orgId> --env local
 ```
 
-`org create` and `seed org` run the **app's own provisioning transaction** (`ApplicationService`) — the org gets system column definitions, the Sandbox connector, a default station with the `data_query` toolpack, and `defaultStationId`, exactly like a webhook-created org. `org reset` spawns the app's `db:reset` (which stays as the app's own entrypoint).
+`org create` and `seed org` run the **app's own provisioning transaction** (`ApplicationService`) — the org gets system column definitions, the Sandbox connector, a default station with the `data_query` toolpack, and `defaultStationId`, exactly like an org provisioned on a user's first sign-in. `org reset` spawns the app's `db:reset` (which stays as the app's own entrypoint).
 
 ## The rules
 

@@ -5,7 +5,7 @@ import { siteUrl } from "../lib/site-context.js";
 import { breadcrumbLd, definedTermSetLd, faqPageLd } from "../lib/jsonld.js";
 
 /**
- * Four pillars, in the order a new user meets them (#360). Benefit-led copy —
+ * Five pillars, in the order a new user meets them (#360, sharing added in #615). Benefit-led copy —
  * this page sells the product, it is not a glossary. (The in-app vocabulary
  * lives in `@portalai/core/content`; it powers the DefinedTermSet JSON-LD below
  * for SEO, but is deliberately not enumerated in the visible copy.)
@@ -19,11 +19,11 @@ const PILLARS: Array<{
   {
     id: "connect",
     heading: "Connect anything you already have",
-    lede: "Spreadsheets, databases, REST APIs, Google Sheets, Excel on OneDrive — bring in the data you already work with. Each connection stays live: set a sync cadence and it keeps up on its own.",
+    lede: "CSV and Excel files, Google Sheets, Excel on OneDrive, and REST APIs — bring in the data you already work with. Re-sync a connection whenever its source changes.",
     points: [
-      "Ready-made connectors for files, databases, and the tools your team already runs.",
-      "Scheduled syncs keep everything current — no manual re-uploads or stale exports.",
-      "Connect read-only or read-write per source; your data stays yours.",
+      "Ready-made connectors for files, spreadsheets, and the APIs your team already runs.",
+      "Sync on demand to pull a source's latest data — no manual re-uploads.",
+      "Uploaded data can be edited in Portals AI; data synced from Google Sheets, Excel, and REST APIs is read-only.",
     ],
   },
   {
@@ -44,6 +44,16 @@ const PILLARS: Array<{
       "Chat with your data — no SQL, no dashboards to wire up first.",
       "Answers arrive as tables, charts, and interactive maps you can explore.",
       "Pin any result to keep it handy; it stays tied to live data.",
+    ],
+  },
+  {
+    id: "share",
+    heading: "Share it with the right people",
+    lede: "Every station, view, and pinned result has an owner, and you decide who else can see or change it. Permissions are checked on the server for every request, so what the app hides it also refuses.",
+    points: [
+      "Share a station or pinned result with a teammate or the whole team, read-only or editable.",
+      "Share a curated view to give read access to just the columns and rows someone needs — with SQL filters on the plans that include them.",
+      "For larger organizations: custom roles and policies, sign-in through your own identity provider, and deployment in your own cloud — see Pricing or talk to us.",
     ],
   },
   {
@@ -76,7 +86,7 @@ const jsonLd = [
 
 <Page
   title="Features — Portals AI"
-  description="Connect spreadsheets, databases and APIs; normalise them onto a shared vocabulary; then ask questions and get tables, charts and pinned results from your live data."
+  description="Connect spreadsheets and APIs; normalise them onto a shared vocabulary; share curated views with your team; then ask questions and get tables, charts and pinned results from your live data."
   path="/features/"
   jsonLd={jsonLd}
 >

@@ -27,6 +27,9 @@ Put these in `packages/e2e/.env` (git-ignored — copy `.env.example`) so they l
 | `E2E_TARGET` | `local` · `app-dev` · `prod` | `local` |
 | `E2E_SIGN_IN_VIA` | `dev` (`/?e2e=1`) · `qa` (`/login?qa=1`); deployed targets are always `qa` | `dev` locally |
 | `E2E_IDENTITY` | the identity `e2e:auth` and the `login` spec sign in as | the owner |
+| `E2E_QA_CONNECTION` | the Auth0 Database connection the QA sign-in pins (`e2e-stack.sh up` requires it) | — |
+| `E2E_ANTHROPIC_STUB_PORT` | port for the Anthropic stub the CI stack runs | `4010` |
+| `E2E_ORG_ID` | pins a local session to this org (ignored on deployed targets, which use their QA org) | — |
 
 For an arbitrary identity `<X>`, `e2e:auth --identity <X>` reads `E2E_AUTH0_USERNAME_<X>` / `E2E_AUTH0_PASSWORD_<X>` (uppercased) and writes `.auth/<x>.storageState.json`.
 

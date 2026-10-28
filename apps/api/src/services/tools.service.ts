@@ -118,6 +118,7 @@ import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.j
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
 import { environment } from "../environment.js";
+import { geocodingTools } from "../utils/geocoding-tools.util.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
@@ -673,18 +674,19 @@ export class ToolService {
         organizationId,
         userId
       );
-      // Geocoding (#315) is metered and needs a provider key. Build the two
-      // geocode tools only when GEOCODING_API_KEY is configured — build() itself
-      // throws on a missing key (the web_search precedent), and the guard keeps
-      // a keyless env from taking down the free, keyless visualize_map. The
+      // Geocoding (#315) needs a provider key: build() itself throws on a
+      // missing key (the web_search precedent), and the guard keeps a keyless
+      // env from taking down the free, keyless visualize_map. The rule lives
+      // in geocodingTools(), which the system prompt reads too (#615). The
       // zero-unit cache resolvers are registered idempotently.
-      if (environment.GEOCODING_API_KEY) {
+      const geocoding = geocodingTools({ gis: true, inPortal: !!portalId });
+      if (geocoding.geocode) {
         registerGeocodingCostResolvers();
         tools.geocode = new GeocodeTool().build();
         tools.reverse_geocode = new ReverseGeocodeTool().build();
         // Bulk-column geocode is an async job (ack + lock + progress); only
         // wired when the portal is known (production always supplies it).
-        if (portalId) {
+        if (geocoding.bulkGeocode && portalId) {
           tools.bulk_geocode_records = new BulkGeocodeRecordsTool().build(
             portalId,
             stationId,

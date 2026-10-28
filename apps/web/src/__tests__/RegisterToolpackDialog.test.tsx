@@ -200,6 +200,52 @@ describe("RegisterToolpackDialogUI", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // #615 / #801: the description's 2000-character limit used to block
+  // submit with no visible error — the field had no error display at all.
+  it("shows the description's length limit as a field error and blocks submit", async () => {
+    const onSubmit = jest.fn();
+    render(<RegisterToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "customer_intel" },
+    });
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: "x".repeat(2001) },
+    });
+    fireEvent.change(screen.getByLabelText(/Schema endpoint/), {
+      target: { value: "https://example.com/schema" },
+    });
+    fireEvent.change(screen.getByLabelText(/Runtime endpoint/), {
+      target: { value: "https://example.com/runtime" },
+    });
+    fireEvent.blur(screen.getByLabelText(/Description/));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/Description/).getAttribute("aria-invalid")
+      ).toBe("true");
+    });
+    expect(screen.getByText(/2000/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText(/Description/).getAttribute("aria-invalid")
+      ).toBe("true")
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("doesn't flag the description when focus leaves it for Cancel", () => {
+    const onClose = jest.fn();
+    render(<RegisterToolpackDialogUI {...defaultProps} onClose={onClose} />);
+    const description = screen.getByLabelText(/Description/);
+    fireEvent.change(description, { target: { value: "x".repeat(2001) } });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    fireEvent.blur(description, { relatedTarget: cancel });
+    expect(description.getAttribute("aria-invalid")).not.toBe("true");
+    fireEvent.click(cancel);
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("calls onClose when Cancel is clicked", () => {
     const onClose = jest.fn();
     render(<RegisterToolpackDialogUI {...defaultProps} onClose={onClose} />);
@@ -272,6 +318,31 @@ describe("RegisterToolpackDialogUI", () => {
     );
     expect(snippet.textContent).toContain("FixedTimeEquals");
     expect(snippet.textContent).not.toContain("hmac.compare_digest");
+  });
+
+  // #615: registration signs the catalog GETs with a secret the server
+  // doesn't have yet, so a snippet that verified every request made
+  // registration impossible. Each one lets GETs through and verifies POSTs.
+  it("lets the registration-time catalog fetches through in every snippet", () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    fireEvent.click(
+      screen.getByTestId("register-toolpack-verify-snippets-summary")
+    );
+    const snippet = screen.getByTestId(
+      "register-toolpack-verify-snippets-active-snippet"
+    );
+    for (const tab of ["typescript", "python", "c-"]) {
+      fireEvent.click(
+        screen.getByTestId(`register-toolpack-verify-snippets-tab-${tab}`)
+      );
+      // Skipped by method, not by path: the catalog URLs are whatever the
+      // user registered, so a path list would miss a prefixed one.
+      expect(snippet.textContent).toMatch(/registration/i);
+      expect(snippet.textContent).toMatch(
+        /Let GETs through; verify every POST/
+      );
+      expect(snippet.textContent).not.toContain('"/schema"');
+    }
   });
 
   // ── auth-header boilerplate quick-inserts ──────────────────────

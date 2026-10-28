@@ -67,7 +67,9 @@ function buildPatch(
     patch.name = current.name.trim();
   }
   if (current.description.trim() !== initial.description.trim()) {
-    patch.description = current.description.trim() || undefined;
+    // An emptied field clears it: `null`, because JSON drops `undefined` and
+    // the PATCH would silently change nothing (#615).
+    patch.description = current.description.trim() || null;
   }
   const endpointsChanged =
     current.schemaUrl.trim() !== initial.schemaUrl.trim() ||
@@ -177,6 +179,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
   const handleSubmit = () => {
     setTouched({
       name: true,
+      description: true,
       schemaUrl: true,
       runtimeUrl: true,
       authHeaders: true,
@@ -268,6 +271,15 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
+          error={touched.description && !!fieldError("description")}
+          helperText={touched.description && fieldError("description")}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.description && !!fieldError("description"),
+            },
+          }}
           fullWidth
           multiline
           rows={2}

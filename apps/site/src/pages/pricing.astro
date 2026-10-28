@@ -2,6 +2,7 @@
 import Page from "../layouts/Page.astro";
 import { siteConfig, siteUrl, appUrl } from "../lib/site-context.js";
 import { orderedTiers, formatPrice } from "../lib/site-config.js";
+import { packLabel, planFeatures } from "../lib/pack-label.js";
 import {
   breadcrumbLd,
   softwareApplicationLd,
@@ -28,12 +29,6 @@ const jsonLd = [
 /** `null` credits mean unlimited, not zero — the distinction is the plan. */
 const credit = (value: number | null) =>
   value === null ? "Unlimited" : value.toLocaleString("en-US");
-
-const packLabel = (slug: string) =>
-  slug
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 ---
 
 <Page
@@ -92,8 +87,15 @@ const packLabel = (slug: string) =>
             {tier.builtinToolpacks.length > 0
               ? `Toolpacks: ${tier.builtinToolpacks.map(packLabel).join(", ")}`
               : "Core workspace only"}
-            {tier.customToolpacks && " · your own webhook tools"}
           </p>
+
+          {planFeatures(tier).length > 0 && (
+            <ul class="features">
+              {planFeatures(tier).map((feature) => (
+                <li>{feature}</li>
+              ))}
+            </ul>
+          )}
 
           <div class="card__spacer" />
 
@@ -132,6 +134,11 @@ const packLabel = (slug: string) =>
       font-family: var(--font-family-heading);
       font-size: 2rem;
       font-weight: var(--font-weight-bold);
+    }
+
+    .features {
+      margin: 0 0 calc(var(--space-unit) * 2);
+      padding-inline-start: 1.25em;
     }
 
     .allowance {

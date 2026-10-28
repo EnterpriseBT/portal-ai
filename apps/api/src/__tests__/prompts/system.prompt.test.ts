@@ -216,12 +216,62 @@ describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
 
   it("teaches geocoding for addresses without coordinates + the no-fabrication rule (#315)", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ effectiveToolPacks: ["data_query", "gis"] })
+      makeContext({
+        effectiveToolPacks: ["data_query", "gis"],
+        geocodingAvailable: true,
+        stationWritable: true,
+      })
     );
-    expect(prompt).toContain("geocode");
+    expect(prompt).toContain("`geocode`");
     expect(prompt).toContain("bulk_geocode_records");
     expect(prompt).toContain("acknowledgeCost: true");
     expect(prompt.toLowerCase()).toContain("never fabricate coordinates");
+  });
+
+  // #615: the GIS section names only the geocoding tools the session has.
+  // Both need GEOCODING_API_KEY; bulk_geocode_records also writes, so the
+  // station write gate withholds it on a read-only station.
+  describe("geocoding guidance follows the tools actually built (#615)", () => {
+    it("offers no geocoding tool when geocoding isn't configured", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ["data_query", "gis"],
+          geocodingAvailable: false,
+          stationWritable: true,
+        })
+      );
+      expect(prompt).not.toContain("`geocode`");
+      expect(prompt).not.toContain("bulk_geocode_records");
+      expect(prompt).toContain("can't be geocoded in this session");
+      expect(prompt.toLowerCase()).toContain("never fabricate coordinates");
+    });
+
+    it("offers geocode but not the bulk job on a read-only station", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ["data_query", "gis"],
+          geocodingAvailable: true,
+          stationWritable: false,
+        })
+      );
+      expect(prompt).toContain("`geocode`");
+      expect(prompt).not.toContain("bulk_geocode_records");
+      expect(prompt.toLowerCase()).toContain("never fabricate coordinates");
+    });
+
+    it("offers both, and calls the bulk job expensive, when writes are reachable", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ["data_query", "gis"],
+          geocodingAvailable: true,
+          stationWritable: true,
+        })
+      );
+      expect(prompt).toContain("`geocode`");
+      expect(prompt).toContain("bulk_geocode_records");
+      expect(prompt).toContain("**expensive**");
+      expect(prompt).not.toMatch(/bulk_geocode_records[^.]*\*\*metered\*\*/);
+    });
   });
 });
 
@@ -257,7 +307,9 @@ describe("buildSystemPrompt — entity management notes", () => {
     );
 
     expect(prompt).toContain("normalizedKey");
-    expect(prompt).toContain("normalizedData");
+    // #615: the entity_record_* tools take `data`, not `normalizedData`.
+    expect(prompt).toContain("tools' `data` payload");
+    expect(prompt).not.toContain("normalizedData");
   });
 
   it("documents validationPattern and canonicalFormat on column definitions", () => {
@@ -760,6 +812,22 @@ describe("buildSystemPrompt — read-only connectors (#824)", () => {
     );
     expect(section(prompt)).toMatch(/not a plan limit/i);
     expect(section(prompt)).not.toMatch(/Subscription & Billing/);
+    // #615: the write gate withholds every write tool, not only the
+    // create/update/delete ones — but only tools the session could have.
+    expect(section(prompt)).toContain("transform_entity_records");
+    expect(section(prompt)).not.toContain("bulk_geocode_records");
+  });
+
+  it("names bulk_geocode_records among the withheld tools only when gis and geocoding are on (#615)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management", "gis"],
+        connectorInstances: [instance(false)],
+        stationWritable: false,
+        geocodingAvailable: true,
+      })
+    );
+    expect(section(prompt)).toContain("bulk_geocode_records");
   });
 
   it("explains it when nothing is attached at all", () => {
@@ -1204,5 +1272,19 @@ describe("buildSystemPrompt — Help (#367)", () => {
       const prompt = buildSystemPrompt(ctx);
       expect(prompt).not.toMatch(/admin-only|admin-curated|ask their admin/i);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #615 — the Access & Roles note covers every shareable object
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Access & Roles notes (#615)", () => {
+  it("names curated views among the objects that can be shared", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "rbac_management"] })
+    );
+    expect(prompt).toContain("## Access & Roles Notes");
+    expect(prompt).toContain("sharing of stations, pins and curated views");
   });
 });

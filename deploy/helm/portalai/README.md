@@ -59,10 +59,10 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `image.api.repository` / `.tag` | `""` | API image (required). |
 | `image.web.repository` / `.tag` | `""` | Web image (required). |
 | `imagePullSecrets` | `[]` | Pull secrets for a private registry. |
-| `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. |
+| `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. A residency install sets `residency` explicitly; the API then refuses to boot without `oidc.issuer`/`.audience` or with central Stripe credentials (`apps/api/src/config/deploy-mode.ts`). |
 | `oidc.issuer` / `.audience` / `.clientId` | `""` | Customer OIDC identity (residency). Reaches the API validator and the web `config.js`. |
 | `config` | `{}` | Non-secret env → ConfigMap (e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`). `WEB_APP_URL` (invite links) and `PUBLIC_API_BASE_URL` (where webhook toolpack runtimes call back) default from `ingress.host`. Without the chart's ingress, set them here. A missing `WEB_APP_URL` refuses invitations; a missing `PUBLIC_API_BASE_URL` only stops webhook tools that stream data in, or return results too large to send inline (`WEBHOOK_CALLBACK_UNCONFIGURED`), so an install without custom webhook toolpacks can leave it. The install notes and a startup warning name either one. |
-| `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `STRIPE_*`, `OAUTH_STATE_SECRET`). |
+| `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `OAUTH_STATE_SECRET`). Never `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` on a residency install: the API refuses to boot with them. |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
 | `api.resources` / `web.resources` | see values | Resource requests/limits. |
@@ -149,4 +149,31 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
   tools (`reader-role-unavailable … does not exist`) until the role exists.
   Re-apply `0118` as a CREATEROLE user, or run the manual statements above.
 - **No AWS runtime dependency.** `DB_MASTER_SECRET_ARN` is never set; the DB
-  password is carried in the `DATABASE_URL` Secret.
+  password is carried in the `DATABASE_URL` Secret. (AWS Marketplace
+  entitlement, if enabled, is the exception: the Entitlement Service is
+  us-east-1 only.)
+
+## Egress
+
+What the install sends outside the cluster is decided per vector in the
+deployment security review (`docs/DEPLOYMENT_SECURITY_REVIEW.md` §1), which
+lists every server-side and browser-side call with its switch. The ones a
+residency operator most often needs to know about:
+
+- **LLM.** Every model call goes to `ANTHROPIC_BASE_URL` when it is set (a
+  proxy or self-hosted gateway), and to Anthropic directly when it isn't. Some
+  callers send record or sample values; the review lists which.
+- **Map basemaps (browser).** The web app's map widget loads basemap tiles
+  from CARTO and OpenStreetMap, and there is **no override yet** (#910). A
+  browser egress policy that blocks them leaves maps without a basemap.
+- **Optional tools and connectors.** Web search, geocoding and the Google and
+  Microsoft connectors are off unless their keys are set.
+
+## Security review & image verification
+
+- Complete `docs/DEPLOYMENT_SECURITY_REVIEW.md` with the customer before the
+  install ships.
+- Verify the **API image** before mirroring it: it is Trivy-gated,
+  SBOM-attested and cosign-signed (`docs/SUPPLY_CHAIN.md` → "Verifying a
+  published image"). The **web image** carries no scan, attestation or
+  signature yet (#909); record it as an accepted exception in the review.

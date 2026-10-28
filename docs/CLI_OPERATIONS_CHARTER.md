@@ -133,6 +133,14 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 | Reset the database (destructive) | maintenance | local · app-dev | portalops | `portalops db reset --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (destructive — blocked in prod) |
 | Seed the database | maintenance | local · app-dev | portalops | `portalops db seed --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Converge tier catalog to the DB (Stripe price resolution) | configuration | local · app-dev | portalops | `portalops tier apply --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Compose the env's `DATABASE_URL` (password redacted unless `--write`) | configuration | app-dev · prod | portalops | `portalops db url --env app-dev --json` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered |
+| Truncate + re-seed the database (destructive) | maintenance | local · app-dev | portalops | `portalops db reset-seed --env app-dev --yes` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (destructive — blocked in prod) |
+| Upgrade the database: migrations + seed under one advisory lock | maintenance | local · app-dev · prod | portalops | `portalops db upgrade --env app-dev --yes` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (#581; ECS one-off task, or the app's `db:upgrade` locally) |
+| Report each cache's encryption | maintenance | app-dev · prod | portalops | `portalops cache status --env app-dev --json` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (#852; read-only) |
+| Scale the API service's task count | maintenance | app-dev · prod | portalops | `portalops service scale <n> --env app-dev --yes` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (scale to 0 refuses while jobs are active) |
+| Show live non-terminal jobs by status and type | maintenance | local · app-dev · prod | portalops | `portalops jobs status --env app-dev --json` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (read-only) |
+| Re-queue live jobs missing from the queue | maintenance | local · app-dev · prod | portalops | `portalops jobs redispatch --env app-dev --yes` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered (#867; fails fast when Redis is unreachable) |
+| Update a custom tier's fields / set its blurb | configuration | local · app-dev · prod | portalops | `portalops tier update <slug> … --env app-dev --yes` · `portalops tier description <slug> … --env app-dev --yes` | yes | [COMMANDS.md](../packages/devops-cli/COMMANDS.md) | covered |
 | One-shot local provisioning after a full reset (migrate + seed + tier apply + optional e2e org) | maintenance | local | portalops | `portalops local provision --env local --yes` | yes | [#490](https://github.com/EnterpriseBT/portal-ai/issues/490) | covered (local-only by contract — other envs exit 2) |
 | List / inspect organizations | maintenance | local · app-dev | portalai | `portalai org list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Create / provision an organization | configuration | local · app-dev | portalai | `portalai org create --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
@@ -194,7 +202,7 @@ _(No `TIER_CATALOG` change — the catalog references the lookup key, not the pr
 
 **Findings:**
 
-- **(a) `stripe-secret-key` deploy wiring.** The key is in the `portalops vars` catalog and settable via `portalops vars set STRIPE_SECRET_KEY --env app-dev --yes` (operable), but is **not yet provisioned into the CloudFormation backend stack** (`backend.yml` has no Stripe secret `ValueFrom`), so the live `app-dev` app can't resolve it for `tier apply`. **Route:** deploy-infra (add the `ValueFrom`), documented in [#225](https://github.com/EnterpriseBT/portal-ai/issues/225). Illustrates the ownership line — `portalops` owns the config *value*; deploy/IaC owns wiring it into the task.
+- **(a) `stripe-secret-key` deploy wiring — resolved.** The key was in the `portalops vars` catalog but not wired into the task. `backend.yml` now carries the `STRIPE_SECRET_KEY` (and `STRIPE_WEBHOOK_SECRET`) `ValueFrom`, and both deploy workflows pass `SecretArnStripeSecretKey`, so the live app resolves it. The general operation it illustrated — injecting a *new* secret into the running task — is still a deploy-side wiring step rather than a CLI command ([#225](https://github.com/EnterpriseBT/portal-ai/issues/225)). Illustrates the ownership line — `portalops` owns the config *value*; deploy/IaC owns wiring it into the task.
 - **(b) Audit-log reader — declined (conscious exception).** Every mutating native CLI op appends to `~/.portalai/audit.log` (best-effort, local JSONL), but there is **no query command** to read it. Decision: the log stays **write-only**; a reader is out of scope. AWS-side operation auditing is covered by **CloudTrail** (see the AWS surface / [#224](https://github.com/EnterpriseBT/portal-ai/issues/224)); centralized/server-side audit is a separate concern (#179). **Disposition:** `exception` — not a gap to fill.
 
 No other non-operable operations. Every inventoried operation carries a disposition (100% classified).
@@ -203,11 +211,11 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 Computed from the tables above (51 operations total).
 
-**Maintenance + configuration (the bar's denominator):** `D = 52`, of which `N = 49` are operable → **94.2%** (`49/52`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring); #509 added two demo-org operations (`demo seed`/`demo reset`) and #511 the `demo` tier create, all operable, which is why the figure ticks up from 93.9%.
+**Maintenance + configuration (the bar's denominator):** `D = 61`, of which `N = 58` are operable → **95.1%** (`58/61`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring). The native index now lists 26 operations, all operable: #490's `local provision`, #509's `demo seed`/`demo reset`, #511's `tier create`, and (recounted in #615) `db url`, `db reset-seed`, `db upgrade`, `cache status`, `service scale`, `jobs status`, `jobs redispatch` and `tier update`/`description`.
 
 **Logging (reported separately):** `6 / 6` operable → **100%**.
 
-**Classified:** `55 / 55` operations carry a non-blank disposition → **100% classified**, zero unclassified gaps.
+**Classified:** `67 / 67` operations carry a non-blank disposition → **100% classified**, zero unclassified gaps.
 
 **Parity defects:** none. AWS operations are `app-dev`-only *by nature* (no AWS surface exists for `local`), not parity defects; Auth0 (separate per-env tenants) and native operations are operable across every environment they list.
 
@@ -218,7 +226,7 @@ Per-surface:
 | AWS | 18 | 15 | 3 | 13 / 16 |
 | Auth0 | 14 | 14 | 0 | 12 / 12 |
 | Stripe | 9 | 9 | 0 | 7 / 7 |
-| Native | 14 | 14 | 0 | 14 / 14 |
-| **Total** | **55** | **52** | **3** | **46 / 49 (93.9%)** |
+| Native | 26 | 26 | 0 | 26 / 26 |
+| **Total** | **67** | **64** | **3** | **58 / 61 (95.1%)** |
 
-Three operations are non-operable. One — inject a secret into the running ECS task — is a deploy-side wiring step (finding (a)), not a missing CLI command; its config *value* half is operable via `portalops vars set`. The other two are #369's mailbox provisioning and DKIM retrieval: **out-of-band by nature**, performed in a vendor console, and carried by [`docs/PORTALSAI_MAIL.runbook.md`](PORTALSAI_MAIL.runbook.md) rather than by a command. See [Gap list & findings](#gap-list--findings).
+Three operations are non-operable. One — inject a new secret into the running ECS task — is a deploy-side wiring step (the class finding (a) illustrated; the Stripe instance is resolved), not a missing CLI command; its config *value* half is operable via `portalops vars set`. The other two are #369's mailbox provisioning and DKIM retrieval: **out-of-band by nature**, performed in a vendor console, and carried by [`docs/PORTALSAI_MAIL.runbook.md`](PORTALSAI_MAIL.runbook.md) rather than by a command. See [Gap list & findings](#gap-list--findings).

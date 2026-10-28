@@ -4,7 +4,7 @@ Index: Table 1
 ,,
 ,Sheet,Description
 ,Single Axis Static,Row/column oriented table with one set of purely static headers
-,Single Axis Dynamic,Row/column oriented table with one set of purely static headers
+,Single Axis Dynamic,Row/column oriented table with one set of purely dynamic headers
 ,Pivot,Row/column hybrid static/dynamic columns along one axis
 ,Crosstab,Row/column hybrid static/dynamic columns along both axes
 ,Hybrid Crosstab,Multiple hybrid static/dynamic headers along both axes
@@ -27,7 +27,6 @@ Single Axis Static: Table 1
 ,105,Eva Martínez,Marketing,76000,2023-05-18
 ,,,,,
 ,"→ JSON record:  { employee_id, name, department, salary, hire_date }",,,,
-,→ Parser config:  orientation=row  |  header_row=1 (static)  |  data_start_row=2,,,,
 
 Single Axis Static: Table 1-1
 ,Single Axis  ·  Column Orientation  ·  Static Headers,,,,,
@@ -40,7 +39,6 @@ Single Axis Static: Table 1-1
 ,hire_date,2021-03-15,2020-07-01,2019-11-22,2022-01-10,2023-05-18
 ,,,,,,
 ,"→ JSON record:  { employee_id, name, department, salary, hire_date }",,,,,
-,→ Parser config:  orientation=column  |  header_col=1 (static)  |  data_start_col=2,,,,,
 
 Single Axis Dynamic: Table 1
 ,Single Axis  ·  Row Orientation  ·  Dynamic headers,,,,,
@@ -52,7 +50,6 @@ Single Axis Dynamic: Table 1
 ,94325,75324,64234,41532,63642,32455
 ,,,,,,
 ,"→ JSON record (after unpivot):  { month, sales }  — 'month'/'sales' are user-supplied field names",,,,,
-,→ Parser config:  orientation=row  |  header_row=1 (dynamic)  |  row_label_col=1 (dynamic),,,,,
 
 Single Axis Dynamic: Table 1-1
 ,Single Axis  ·  Column Orientation  ·  Dynamic headers,,,
@@ -65,8 +62,7 @@ Single Axis Dynamic: Table 1-1
 ,May,60100,45532,43554
 ,June,58700,42111,33444
 ,,,,
-,"→ JSON record (after unpivot):  { month, sales }  — same record shape as sheet 3
-→ Parser config:  orientation=column  |  header_col=1 (dynamic)  |  col_label_row=1 (dynamic)",,,
+,"→ JSON record (after unpivot):  { month, sales }  — same record shape as sheet 3",,,
 ,,,,
 
 Pivot: Table 1
@@ -80,8 +76,7 @@ Pivot: Table 1
 ,Lowe’s,Product 4,300000,350000,400000,450000
 ,,,,,,
 ,"→ JSON record:  { account, product, year, revenue }  — static col names → fields; ‘year' is user-supplied column-label field name; 
-     ‘revenue is user-supplied value-label field’
-→ Parser config:  orientation=row  |  header_row=1 (static)  |  row_label_col=1 (dynamic)  |  row_label_field=‘revenue’ | row_label_value=‘revenue’",,,,,
+     ‘revenue is user-supplied value-label field’",,,,,
 ,,,,,,
 
 Pivot: Table 1-1
@@ -96,8 +91,7 @@ Pivot: Table 1-1
 ,2023,100000,541000,500000,500000
 ,,,,,
 ,"→ JSON record:  { account, product, year, revenue }  — static col names → fields; ‘year' is user-supplied column-label field name; 
-     ‘revenue is user-supplied value-label field’
-→ Parser config:  orientation=column  |  header_row=1 (static)  |  row_label_col=1 (dynamic)  |  row_label_field=‘revenue’ | row_label_value=‘revenue’",,,,
+     ‘revenue is user-supplied value-label field’",,,,
 ,,,,,
 
 Crosstab: Table 1
@@ -112,7 +106,6 @@ Crosstab: Table 1
 ,QA,0,3,21,42
 ,,,,,
 ,"→ JSON record (after melt):  { team, severity, tickets }  — all three field names are user-supplied",,,,
-,→ Parser config:  orientation=both  |  row_label_col=1 (dynamic)  |  col_label_row=1 (dynamic)  |  corner=blank,,,,
 
 Crosstab: Table 1-1
 ,CROSSTAB  ·  Both axes  ·  Static × Static headers,,,,
@@ -126,7 +119,6 @@ Crosstab: Table 1-1
 ,QA,0,3,21,42
 ,,,,,
 ,"→ JSON record (after melt):  { team, severity, tickets }  — same record shape as sheet 7; field names now self-describing",,,,
-,→ Parser config:  orientation=both  |  row_label_col=1 (static)  |  col_label_row=1 (static)  |  corner=row_field_name,,,,
 
 Hybrid Crosstab: Table 1-1-1
 ,CROSSTAB  ·  Both axes  ·  Hybrid headers,,,,,,
@@ -141,7 +133,5 @@ Hybrid Crosstab: Table 1-1-1
 ,Shell,Energy,The Hague,200,210,205,195
 ,,,,,,,
 ,"→ JSON record (after melt):  { company, quarter, revenue, currency, scope, industry, hq }",,,,,,
-,"→ Parser config:  orientation=both  |  row_label_col=1 (static)  |  col_label_col=1 (dynamic) |  
-     row_label_col=3 (dynamic)  | col_label_col=3 (dynamic) | corner=row_field_name",,,,,,
 ,,,,,,,
 ,,,,,,,

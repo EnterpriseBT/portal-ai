@@ -67,6 +67,7 @@ const SECTIONS: Section[] = [
         list: [
           "Connected records are retained while they are live and are purged approximately 30 days after they are removed from your workspace. Records whose parent connector has itself been deleted are purged sooner — approximately 7 days — because nothing can reference them again.",
           "The usage audit ledger, which records metered tool activity for billing and accountability, is retained for approximately 24 months and then purged.",
+          "The security audit log, which records sign-ins, access changes, and other security-relevant actions in your organization, is retained for approximately 24 months and then purged.",
         ],
       },
       "Deleting a record, a connector, or an organization removes the associated data from the active Service and schedules it for purge on the windows above. Backups and logs age out on their own routine cycles.",
@@ -75,7 +76,7 @@ const SECTIONS: Section[] = [
   {
     heading: "Your rights",
     blocks: [
-      "You can access, correct, export, and delete the data you hold in the Service directly from the app: records and connectors are editable and deletable in your workspace, and an organization owner can delete the entire organization.",
+      "You can access, correct, and delete the data you hold in the Service directly from the app: records and connectors are editable and deletable in your workspace, and an organization owner can delete the entire organization.",
       `Depending on where you live, you may have additional rights over your personal data, such as the right to access, correct, delete, or port it, or to object to or restrict certain processing. To exercise a right we cannot service in-app, or to ask a question about your data, contact us at ${adminEmail} and we will respond as required by applicable law.`,
     ],
   },

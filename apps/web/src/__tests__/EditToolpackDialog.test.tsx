@@ -76,6 +76,19 @@ describe("EditToolpackDialogUI", () => {
     expect(onSubmit).toHaveBeenCalledWith({ name: "renamed_pack" });
   });
 
+  // #615: clearing the description used to send `undefined`, which JSON
+  // drops, so the save reported success and changed nothing.
+  it("sends null when the description is cleared", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ description: null });
+  });
+
   it("submits the endpoints object when any endpoint URL changes", async () => {
     const onSubmit = jest.fn();
     render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
@@ -112,6 +125,22 @@ describe("EditToolpackDialogUI", () => {
         screen.getByText(/At least one field must change/)
       ).toBeInTheDocument();
     });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // #615 / #801: an over-long description is a visible field error, not a
+  // silently disabled save.
+  it("shows the description's length limit as a field error and blocks save", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    const description = screen.getByLabelText(/Description/);
+    fireEvent.change(description, { target: { value: "x".repeat(2001) } });
+    fireEvent.blur(description);
+    await waitFor(() =>
+      expect(description.getAttribute("aria-invalid")).toBe("true")
+    );
+    expect(screen.getByText(/2000/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

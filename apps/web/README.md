@@ -9,7 +9,7 @@ React web application for the Portals AI project with config-driven authenticati
 - ✅ TanStack Router for file-based routing
 - ✅ TanStack Query for data fetching and caching
 - ✅ Material UI (MUI) components
-- ✅ Theme switching (Brand, Light, Dark themes)
+- ✅ Theme switching (Brand and Brand Dark)
 - ✅ Protected and public routes
 - ✅ Storybook for component development
 - ✅ Jest + React Testing Library for testing
@@ -19,19 +19,23 @@ React web application for the Portals AI project with config-driven authenticati
 
 ### Prerequisites
 
-- Node.js (v18+)
+- Node.js 22, at least 22.23.4 (the root `engines` field)
 - npm or pnpm
 - Running API server (see `/apps/api/README.md`)
 
 ### Environment Variables
 
-Create a `.env` file in the web app directory (`apps/web/.env`) with the following variables:
+Copy `apps/web/.env.example` to `apps/web/.env`; each variable is documented there:
 
-```env
-VITE_AUTH0_CLIENT_ID=your-auth0-client-id
-VITE_AUTH0_DOMAIN=your-domain.auth0.com
-VITE_AUTH0_AUDIENCE=https://api-dev.portalsai.io
-```
+| Variable | Purpose |
+|---|---|
+| `VITE_AUTH0_CLIENT_ID` / `_DOMAIN` / `_AUDIENCE` | Auth0 SPA config (SaaS and local dev) |
+| `VITE_AUTH0_QA_CONNECTION` | Enables the deployed QA sign-in (`/login?qa=1`); empty locally (#489) |
+| `VITE_DEPLOY_MODE` | `saas` locally; residency images read it at runtime instead |
+| `VITE_APP_VERSION` / `VITE_APP_SHA` | Build labels shown in the sidebar |
+| `VITE_API_BASE_URL` | API origin; empty means same origin (the Vite dev proxy) |
+| `VITE_SUPPORT_EMAIL` / `VITE_SALES_EMAIL` | Contact addresses shown in Help |
+| `VITE_SITE_URL` | The marketing site's origin, for links to it |
 
 > **Note:** All environment variables must be prefixed with `VITE_` to be accessible in the Vite application.
 
@@ -85,7 +89,7 @@ The production build will be output to `dist/`.
 - `npm run test` - Run Jest tests
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Generate test coverage report
-- `npm run storybook` - Start Storybook on port 6007
+- `npm run storybook` - Start Storybook on port 7007
 - `npm run build-storybook` - Build static Storybook site
 
 ## Project Structure
@@ -101,8 +105,9 @@ src/
 ├── views/              # Page view components (*.view.tsx)
 ├── modules/            # Large-scale reusable modules, context-agnostic (see below)
 ├── workflows/          # Multi-step workflow modules (see below)
+├── providers/          # App-wide providers (application, auth, layout, toast)
 ├── __tests__/          # Test files and setup
-├── App.tsx             # Root app component with providers
+├── Application.tsx     # Root app component with providers
 ├── client.ts           # TanStack Query client configuration
 ├── main.tsx            # Application entry point
 ├── router.ts           # Router configuration
@@ -282,7 +287,7 @@ import { Box } from "@mui/material";
 import { ThemeProvider } from "@portalai/core";
 import { Header } from "../components/Header.component";
 import { sdk } from "../api/sdk";
-import type { UserProfile } from "@portalai/types";
+import type { UserProfile } from "@portalai/core/contracts";
 ```
 
 ## Routing
@@ -458,11 +463,10 @@ When testing API endpoints in Swagger or other tools:
 
 ## Theming
 
-The app supports three themes managed by the `@portalai/core` package:
+The app supports two themes managed by the `@portalai/core` package:
 
-- **Brand** - Custom branded theme (default)
-- **Light** - Light mode
-- **Dark** - Dark mode
+- **Brand** (`"brand"`) - the default, light
+- **Brand Dark** (`"brand.dark"`)
 
 Theme preference is stored in localStorage and persists across sessions.
 
@@ -474,10 +478,10 @@ Use the `ThemeSwitcher` component (in navbar) or programmatically:
 import { useTheme } from "@portalai/core";
 
 const MyComponent = () => {
-  const { theme, setTheme } = useTheme();
+  const { themeName, setThemeName } = useTheme();
 
   const switchToDark = () => {
-    setTheme("dark");
+    setThemeName("brand.dark");
   };
 };
 ```
@@ -531,7 +535,7 @@ Storybook is configured for component development and documentation.
 npm run storybook
 ```
 
-Storybook will start at `http://localhost:6007`.
+Storybook will start at `http://localhost:7007`.
 
 ### Writing Stories
 
@@ -595,8 +599,7 @@ npm run type-check
 
 This app depends on internal monorepo packages:
 
-- **`@portalai/core`** - Shared UI components, themes, and utilities
-- **`@portalai/types`** - Shared TypeScript type definitions
+- **`@portalai/core`** - Shared UI components, themes, Zod models and contracts, and utilities
 
 When making changes to these packages, rebuild them:
 
@@ -626,17 +629,18 @@ npm run build
 
 ### Route Not Found
 
-**Solution:** Restart the dev server to regenerate the route tree
+**Solution:** Regenerate the route tree, which also fails loudly on a route id the generator rejects (#899). The dev server only logs that rejection and stops updating the tree.
 ```bash
-npm run dev
+npm run generate:routes
 ```
+Commit `routeTree.gen.ts` with the route change; Static Checks fails on a stale tree.
 
 ## Environment URLs
 
 - **Web App**: http://localhost:3000
 - **API Server**: http://localhost:3001
 - **Swagger Docs**: http://localhost:3001/api/docs
-- **Storybook**: http://localhost:6007
+- **Storybook**: http://localhost:7007
 
 ## Additional Resources
 

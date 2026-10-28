@@ -418,3 +418,37 @@ describe("view_management pack (#645)", () => {
     }
   });
 });
+
+// #615: mirror wording the schema-parity guard (apps/api) can't see, because
+// it compares field names, not descriptions.
+describe("mirror descriptions match tool behaviour (#615)", () => {
+  const tool = (name: string) => {
+    const found = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+      (t) => t.name === name
+    );
+    if (!found) throw new Error(`no mirror for ${name}`);
+    return found;
+  };
+
+  it("sql_query describes the cost gate, not a database connection", () => {
+    const sql = tool("sql_query");
+    expect(sql.description).not.toMatch(/database connection/i);
+    expect(sql.description).toContain("SQL_QUERY_COST_NOT_ACKNOWLEDGED");
+    expect(
+      (sql.parameterSchema as { properties: Record<string, unknown> })
+        .properties
+    ).toHaveProperty("acknowledgeCost");
+  });
+
+  it("transform_entity_records says its source is locked during the job", () => {
+    const text = JSON.stringify(tool("transform_entity_records"));
+    expect(text).not.toMatch(/not locked/);
+    expect(text).toMatch(/locked for the duration of the job/);
+  });
+
+  it("bulk_geocode_records names its cost class, which is expensive", () => {
+    const text = JSON.stringify(tool("bulk_geocode_records"));
+    expect(text).not.toMatch(/\bmetered\b/i);
+    expect(text).toMatch(/expensive allocation/);
+  });
+});

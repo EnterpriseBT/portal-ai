@@ -504,25 +504,18 @@ describe("prod has no certificate stack of its own (#386)", () => {
 // verified. Encoding that here means the next person to run the same grep
 // finds the distinction already made for them.
 describe("reference docs describe prod as real (#387)", () => {
-  /** Records of a past walkthrough or a past decision. Never swept. */
+  /** Records of a past walkthrough or a past decision: the six phase-doc
+   *  suffixes (#419), condensed tickets included since they carry
+   *  `.condensed.md`. Never rewritten. */
   const isHistorical = (name: string): boolean =>
-    /\.(smoke|discovery|spec|plan)\.md$/.test(name);
-
-  /** Condensed tickets put design + smoke in one un-suffixed file, so they
-   *  cannot be recognised by name — enumerated, each with its reason. */
-  const DESIGN_DOCS: Record<string, string> = {
-    "PROD_CLI_ACTIVATION.md": "#387's own design doc — it explains the rule",
-    "PROD_MARKETING_SITE.md": "#386 condensed design + smoke",
-    "PROD_TIER_CATALOG.md": "#325 condensed design + smoke",
-    "DEPLOYED_ENV_CONFIG.md": "#382 condensed design + smoke",
-  };
+    /\.(smoke|discovery|spec|plan|adversarial|condensed)\.md$/.test(name);
 
   const referenceDocs = (): Array<[string, string]> => {
     const dir = path.join(ROOT, "docs");
     return fs
       .readdirSync(dir)
       .filter((f) => f.endsWith(".md"))
-      .filter((f) => !isHistorical(f) && !(f in DESIGN_DOCS))
+      .filter((f) => !isHistorical(f))
       .map(
         (f) =>
           [f, fs.readFileSync(path.join(dir, f), "utf8")] as [string, string]

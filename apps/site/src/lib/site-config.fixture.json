@@ -8,10 +8,18 @@
       "displayOrder": 1,
       "credits": {
         "metered": 500,
-        "expensive": 20
+        "expensive": 100
       },
-      "builtinToolpacks": ["data_query", "web_search"],
+      "builtinToolpacks": [
+        "data_query",
+        "web_search",
+        "entity_management",
+        "rbac_management",
+        "view_management"
+      ],
       "customToolpacks": false,
+      "customRbac": false,
+      "advancedViewFilters": false,
       "price": null
     },
     {
@@ -21,16 +29,22 @@
       "cta": "subscribe",
       "displayOrder": 2,
       "credits": {
-        "metered": 5000,
-        "expensive": 200
+        "metered": 3000,
+        "expensive": 2000
       },
       "builtinToolpacks": [
         "data_query",
         "statistics",
+        "regression",
+        "financial",
         "web_search",
-        "entity_management"
+        "entity_management",
+        "rbac_management",
+        "view_management"
       ],
       "customToolpacks": false,
+      "customRbac": false,
+      "advancedViewFilters": false,
       "price": {
         "unitAmount": 0,
         "currency": "usd",
@@ -44,8 +58,8 @@
       "cta": "subscribe",
       "displayOrder": 3,
       "credits": {
-        "metered": null,
-        "expensive": 1000000
+        "metered": 15000,
+        "expensive": 20000
       },
       "builtinToolpacks": [
         "data_query",
@@ -54,9 +68,14 @@
         "financial",
         "web_search",
         "entity_management",
-        "visualize"
+        "rbac_management",
+        "view_management",
+        "visualize",
+        "gis"
       ],
       "customToolpacks": true,
+      "customRbac": false,
+      "advancedViewFilters": true,
       "price": {
         "unitAmount": 0,
         "currency": "usd",
@@ -80,9 +99,14 @@
         "financial",
         "web_search",
         "entity_management",
-        "visualize"
+        "rbac_management",
+        "view_management",
+        "visualize",
+        "gis"
       ],
       "customToolpacks": true,
+      "customRbac": true,
+      "advancedViewFilters": true,
       "price": null
     }
   ],

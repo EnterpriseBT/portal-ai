@@ -16,7 +16,7 @@ export const GETTING_STARTED_STEPS: GettingStartedStep[] = [
   {
     title: "Connect a data source",
     description:
-      "Pick a connector definition from the catalog — like a CSV upload or a database — and configure it with your file or credentials. The result is a connector instance you can use across stations.",
+      "Pick a connector definition from the catalog — like a file upload, Google Sheets, or a REST API — and configure it with your file or credentials. The result is a connector instance you can use across stations.",
     ctaLabel: "Go to Connectors",
     ctaRoute: ApplicationRoute.Connectors,
   },

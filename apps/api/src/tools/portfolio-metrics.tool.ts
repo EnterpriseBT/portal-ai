@@ -64,7 +64,9 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
     "Compute portfolio performance metrics over a returns series you provide " +
     "(pass a `queryHandle` from sql_query or inline `rows`): total return, CAGR, " +
     "Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, " +
-    "information ratio, tracking error, up/down capture.";
+    "information ratio, tracking error, up/down capture. Pass `dateColumn` " +
+    "(and `benchmarkDateColumn` for a benchmark) to stream a series past " +
+    "100k rows.";
 
   get schema() {
     return InputSchema;

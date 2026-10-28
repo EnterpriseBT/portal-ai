@@ -3,14 +3,16 @@
  * Fails when the review-chain merge gate drifts between the surfaces that
  * describe it (#634).
  *
- * Why this exists: the gate lives in prose across three places that drift
+ * Why this exists: the gate lives in prose across places that drift
  * independently — `CLAUDE.md` (the authoritative "### The merge gate" section,
- * the coverage matrix, and the PR `## Test plan` checklist template) and its
- * `.github/copilot-instructions.md` mirror — plus two skills (`/adversarial-review`
- * scaffolds the checklist, generalized `/smoke-walk` walks it). Every one of
- * these can be edited without touching the others, and the failure is silent:
- * a PR checklist that quietly drops `security`, or a mirror that never learned
- * about `adversarial`, reads as fine in the diff and gates nothing. None of it
+ * the coverage matrix, and the PR `## Test plan` checklist template) plus two
+ * skills (`/adversarial-review` scaffolds the checklist, generalized
+ * `/smoke-walk` walks it). Every one of these can be edited without touching
+ * the others, and the failure is silent: a PR checklist that quietly drops
+ * `security` reads as fine in the diff and gates nothing. (A
+ * `.github/copilot-instructions.md` mirror was checked here too until #615
+ * deleted it: the team works in Claude only, and the mirror had drifted into a
+ * summary that contradicted CLAUDE.md.) None of it
  * had a test before this script. This is the same class of silent doc-drift the
  * repo already guards with `check-ci-cache.mjs` / `check-doc-pointers.mjs`.
  *
@@ -19,8 +21,7 @@
  * `--self-test` runs only the fixtures.
  *
  * Rules (see `docs/REVIEW_CHAIN_MERGE_GATE.spec.md` §E):
- *   1. The four gate phases are named in BOTH CLAUDE.md's merge-gate section
- *      and the copilot mirror's lifecycle section.
+ *   1. The four gate phases are named in CLAUDE.md's merge-gate section.
  *   2. The PR `## Test plan` gate checklist lists exactly the five conditions,
  *      in canonical order (CI + the four phases).
  *   3. `/adversarial-review` SKILL.md exists and declares its name; `/smoke-walk`
@@ -37,7 +38,6 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const CLAUDE_MD = "CLAUDE.md";
-const COPILOT_MD = ".github/copilot-instructions.md";
 const ADVERSARIAL_SKILL = ".claude/skills/adversarial-review/SKILL.md";
 const SMOKE_WALK_SKILL = ".claude/skills/smoke-walk/SKILL.md";
 
@@ -121,18 +121,17 @@ function arraysEqual(a, b) {
  * Finds every rule violation. Pure: takes already-read text, touches no
  * filesystem, so the fixtures below and the real tree share one code path.
  *
- * @param {{claudeMd?: string, copilotMd?: string, adversarialSkill?: string|null, smokeWalkSkill?: string|null}} input
+ * @param {{claudeMd?: string, adversarialSkill?: string|null, smokeWalkSkill?: string|null}} input
  * @returns {Array<{rule: number, file: string, message: string}>}
  */
 export function findViolations({
   claudeMd = "",
-  copilotMd = "",
   adversarialSkill = null,
   smokeWalkSkill = null,
 } = {}) {
   const violations = [];
 
-  // Rule 1 — both surfaces name all four phases in their gate/lifecycle section.
+  // Rule 1 — CLAUDE.md's gate section names all four phases.
   const gateSection = sliceSection(claudeMd, /^###\s+The merge gate\b/);
   if (!gateSection) {
     violations.push({
@@ -147,24 +146,6 @@ export function findViolations({
         rule: 1,
         file: CLAUDE_MD,
         message: `the merge-gate section does not name ${missing.join(", ")}. All four review phases must appear there.`,
-      });
-    }
-  }
-
-  const copilotLifecycle = sliceSection(copilotMd, /^##\s+Issue → PR workflow/);
-  if (!copilotLifecycle) {
-    violations.push({
-      rule: 1,
-      file: COPILOT_MD,
-      message: 'no "## Issue → PR workflow" lifecycle section — the mirror cannot describe the gate.',
-    });
-  } else {
-    const missing = GATE_PHASES.filter((p) => !copilotLifecycle.toLowerCase().includes(p));
-    if (missing.length) {
-      violations.push({
-        rule: 1,
-        file: COPILOT_MD,
-        message: `the lifecycle mirror does not name ${missing.join(", ")}. It must stay in sync with CLAUDE.md's gate (a mirror that drops a phase gates nothing).`,
       });
     }
   }
@@ -286,16 +267,6 @@ ${kinds
 Housekeeping.
 `;
 
-const cleanCopilot = ({ gatePhases = GATE_PHASES } = {}) => `## Issue → PR workflow (lifecycle)
-
-One feature = one branch = one PR. The merge gate requires green CI plus human
-confirmation of ${gatePhases.join(", ")}. Each phase has a skill.
-
-## Next section
-
-Unrelated.
-`;
-
 const cleanAdvSkill = `---
 name: adversarial-review
 description: scaffold the adversarial probe checklist.
@@ -317,7 +288,6 @@ const FIXTURES = [
     name: "all clean",
     input: {
       claudeMd: cleanClaude(),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -327,17 +297,6 @@ const FIXTURES = [
     name: "rule 1 — CLAUDE.md gate section drops a phase",
     input: {
       claudeMd: cleanClaude({ gatePhases: ["code-review", "security", "smoke"] }),
-      copilotMd: cleanCopilot(),
-      adversarialSkill: cleanAdvSkill,
-      smokeWalkSkill: cleanSmokeWalk(),
-    },
-    expectRule: 1,
-  },
-  {
-    name: "rule 1 — copilot mirror drops a phase",
-    input: {
-      claudeMd: cleanClaude(),
-      copilotMd: cleanCopilot({ gatePhases: ["code-review", "security", "smoke"] }),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -354,7 +313,6 @@ const FIXTURES = [
   - [ ] smoke confirmed
   - [ ] adversarial confirmed`,
       }),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -370,7 +328,6 @@ const FIXTURES = [
 - [ ] smoke confirmed
 - [ ] adversarial confirmed`,
       }),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -387,7 +344,6 @@ const FIXTURES = [
 - [ ] smoke confirmed
 - [ ] adversarial confirmed`,
       }),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -397,7 +353,6 @@ const FIXTURES = [
     name: "rule 2 — no checklist block at all",
     input: {
       claudeMd: cleanClaude({ checklist: "(no checklist here)" }),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -407,7 +362,6 @@ const FIXTURES = [
     name: "rule 3 — adversarial-review skill missing",
     input: {
       claudeMd: cleanClaude(),
-      copilotMd: cleanCopilot(),
       adversarialSkill: null,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -417,7 +371,6 @@ const FIXTURES = [
     name: "rule 3 — smoke-walk references only .smoke.md",
     input: {
       claudeMd: cleanClaude(),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk({ refs: [".smoke.md"] }),
     },
@@ -427,7 +380,6 @@ const FIXTURES = [
     name: "rule 4 — coverage matrix missing the chore row",
     input: {
       claudeMd: cleanClaude({ kinds: ["feature", "bug", "condensed", "trivial"] }),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -437,7 +389,6 @@ const FIXTURES = [
     name: "rule 4 — coverage section absent",
     input: {
       claudeMd: cleanClaude().replace("### Coverage by ticket kind", "### Something else"),
-      copilotMd: cleanCopilot(),
       adversarialSkill: cleanAdvSkill,
       smokeWalkSkill: cleanSmokeWalk(),
     },
@@ -496,7 +447,6 @@ function readOrNull(relPath) {
 function runRealTree() {
   const found = findViolations({
     claudeMd: readOrNull(CLAUDE_MD) ?? "",
-    copilotMd: readOrNull(COPILOT_MD) ?? "",
     adversarialSkill: readOrNull(ADVERSARIAL_SKILL),
     smokeWalkSkill: readOrNull(SMOKE_WALK_SKILL),
   });

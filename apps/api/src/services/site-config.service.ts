@@ -89,6 +89,8 @@ export class SiteConfigService {
           },
           builtinToolpacks: row.builtinToolpacks,
           customToolpacks: row.customToolpacks,
+          customRbac: row.customRbac,
+          advancedViewFilters: row.advancedViewFilters,
           price,
         };
       })

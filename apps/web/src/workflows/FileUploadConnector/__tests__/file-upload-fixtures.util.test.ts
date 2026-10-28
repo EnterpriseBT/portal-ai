@@ -93,15 +93,18 @@ describe("file-upload-fixtures — POST_INTERPRET_REGIONS", () => {
 describe("file-upload-fixtures — SAMPLE_FILE", () => {
   test("is a File instance with a spreadsheet extension and MIME type", () => {
     expect(SAMPLE_FILE).toBeInstanceOf(File);
-    expect(SAMPLE_FILE.name).toMatch(/\.(xlsx|xls|ods|csv|tsv)$/i);
+    expect(SAMPLE_FILE.name).toMatch(/\.(xlsx|xls|csv|tsv)$/i);
     expect(SAMPLE_FILE.type).toBeTruthy();
   });
 });
 
 describe("file-upload-fixtures — SPREADSHEET_FILE_EXTENSIONS", () => {
-  test("covers the expected spreadsheet formats", () => {
-    expect(SPREADSHEET_FILE_EXTENSIONS).toEqual(
-      expect.arrayContaining([".xlsx", ".xls", ".ods", ".csv", ".tsv"])
+  // #615: exactly the API's UPLOAD_ALLOWED_EXTENSIONS default
+  // (apps/api/src/environment.ts). `.ods` was offered here but the API
+  // answers it with FILE_UPLOAD_PARSE_UNSUPPORTED.
+  test("offers exactly the formats the API accepts", () => {
+    expect([...SPREADSHEET_FILE_EXTENSIONS].sort()).toEqual(
+      [".csv", ".tsv", ".xls", ".xlsx"].sort()
     );
   });
 });
