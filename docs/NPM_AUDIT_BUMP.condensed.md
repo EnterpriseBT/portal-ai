@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#896](https://github.com/EnterpriseBT/portal-ai/issues/896) · Task · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** `npm audit` on `main` (`a89ab8df`) reports 30 findings: 5 critical, 8 high, 16 moderate, 1 low. All of them are dev or build-time: the Storybook dev servers, `ts-jest`'s `handlebars`, `concurrently`'s `shell-quote`, the marketing site's Astro/Vite chain, and the TanStack router generator's nested `zod`. None reaches the API runtime image, which Trivy gates anyway (#573). The fix should land before the accessibility epic (#791/#792), because that epic's tooling builds on Storybook. The change touches only the root lockfile and the dependency ranges in `packages/core`, `apps/web` and `apps/api`.
+**Why.** `npm audit` on `main` (`a89ab8df`) reports 30 findings: 5 critical, 8 high, 16 moderate, 1 low. All of them are dev or build-time: the Storybook dev servers, `ts-jest`'s `handlebars`, `concurrently`'s `shell-quote`, the marketing site's Astro/Vite chain, and the TanStack router generator's nested `zod`. None reaches the API runtime image, which Trivy gates anyway (#573). The fix should land before the accessibility epic (#791/#792), because that epic's tooling builds on Storybook. The change is the root lockfile and dependency ranges (`packages/core`, `apps/web`, `apps/api`, `apps/site`, and Prettier's range in every workspace), plus what the newer toolchain forced: 15 route files in `apps/web/src/routes/`, the regenerated route tree, and web's Jest setup.
 
 ## Current shape
 
@@ -29,11 +29,13 @@
 - Moderates and the low go in too if `npm audit fix` takes them non-breaking. Any it can't are listed on the PR rather than forced.
 - **Found during implementation.** Moving packages surfaced dependencies the code used but never declared, and these are now declared:
   - **`@storybook/react` `^8.6.19` in core and web.** About 96 story files import it, and it only resolved because npm placed it at the root.
-  - **`cookie` `^2.0.1` in `apps/site`.** Astro's built prerender bundle in `apps/site/dist` imports `cookie`. Once `astro` moved to the root, that import found the root's `cookie@0.7.2`, and the build failed on the missing `parseCookie` export.
+  - **`cookie` `^2.0.1` in `apps/site`.** Astro's built prerender bundle in `apps/site/dist` imports `cookie` bare, so it resolves from `apps/site`, not from inside `astro`. With astro installed at `apps/site/node_modules/astro`, its own `cookie@2` landed nested under it, and the bundle found the root's `cookie@0.7.2` instead and failed on the missing `parseCookie` export. The declared range tracks astro's own `cookie` range (`^2.0.1` in astro 7.3.8): an astro bump that moves it must move this too.
 - **The web test setup stubs `window.scrollTo`.** TanStack Router moved from 1.163 to 1.170 within its range and now calls `scrollTo` on load. jsdom logs "Not implemented" for it, which failed `HelpRoute.test.tsx`'s no-console-error assertion.
 - **Route ids are string literals.** The patched nested `zod` needs `@tanstack/router-generator` ≥ 1.167.6, which rejects `createFileRoute(ApplicationRoute.X)` ("expected route id to be a string literal"). It only logs the error and the build still exits 0, so `routeTree.gen.ts` silently stopped updating; the smoke walk found this. The 15 enum routes now pass the literal, which `createFileRoute` type-checks against the generated tree, so nothing is lost. The regenerated tree has the same routes, reordered by the new generator. `apps/web/.tanstack/` (the generator's scratch directory) is now gitignored.
 - **`astro` is pinned to `~7.3.8`.** 7.4 requires Node ≥ 22.23.4, past the CI runner's Node 22, and failed Static Checks. 7.3.8 needs ≥ 22.12 and already requires the patched `vite` ^8.3.1 and `devalue` ^5.9.4.
-- **Prettier is held at 3.8.1.** The fix's in-range updates pulled in 3.9, which reformats 55 source files. That's unrelated churn, so the formatter is pinned back.
+- **Prettier is held at 3.8.1** (`~3.8.1` in every manifest, so a regenerated lockfile can't drift). The fix's in-range updates pulled in 3.9, which reformats 55 source files. That's unrelated churn, so the formatter is pinned back.
+- **`@tanstack/react-router` floor `^1.170.46`**, the plugin's peer range; the regenerated tree and the `scrollTo` stub assume it.
+- **`application-route.guard.test.ts`** checks every `ApplicationRoute` value against the generated route paths (at type-check and at runtime), since literal route ids no longer tie the enum to the routes.
 
 ## Plan — 1 slice
 
@@ -42,6 +44,8 @@
 - `packages/core/package.json`, `apps/web/package.json`, `apps/api/package.json`
 - `apps/site/package.json`: the `astro` pin and the `cookie` declaration
 - `apps/web/src/routes/*.tsx` (15 route ids), `apps/web/src/routeTree.gen.ts` (regenerated), `apps/web/.gitignore`
+- `apps/web/src/__tests__/setup.ts` (`scrollTo` mock), `apps/web/src/__tests__/application-route.guard.test.ts`
+- every workspace `package.json`: Prettier `~3.8.1`
 
 **Steps:**
 1. Run `npm audit fix` with full network access; container counts under-report.
