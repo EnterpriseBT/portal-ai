@@ -27,7 +27,7 @@
         "--storage-state",
         "packages/e2e/.auth/app-dev/storageState.json",
         "--allowed-origins",
-        "https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://portalsai-staging.us.auth0.com;https://basemaps.cartocdn.com;https://tile.openstreetmap.org;https://apis.google.com;https://accounts.google.com;https://www.googleapis.com",
+        "https://app-dev.portalsai.io;https://api-dev.portalsai.io;https://portalai-dev-uploads.s3.us-east-1.amazonaws.com;https://portalsai-staging.us.auth0.com;https://basemaps.cartocdn.com;https://tile.openstreetmap.org;https://apis.google.com;https://accounts.google.com;https://www.googleapis.com",
         "--output-dir",
         "packages/e2e/test-results/app-dev"
       ]
