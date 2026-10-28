@@ -206,3 +206,31 @@ Four findings can't be closed by editing prose alone: the unscanned and unsigned
 7. the drift report.
 
 Each slice is one commit, gated by its pinning or guard tests.
+
+## Drift report (status at the end of implementation)
+
+Every **C** row above is **fixed** unless the table says otherwise; the **S** rows are resolved as listed. Commits on PR #913, in slice order: `b7cbe98b` security/residency docs + Helm, `5782b8d1` runbooks + charter + reclassification, `0ccad6f9` agent/tool contract + G1/G3, `9fbf65d2` site-config + pricing, `f574c711` site copy + Help, `dc49f643` workflow copy + toolpack contract, `6c44bf17` READMEs + CLAUDE.md + mirror, then the G2 guard.
+
+| Surface (§) | Status | Notes |
+|---|---|---|
+| §1 `DEPLOYMENT_SECURITY_REVIEW.md` | fixed | §1 rebuilt from code: **six** Anthropic callers (the survey found five; `visualize_d3` codegen is the sixth), four of them sending record or sample values; every server and browser egress row. §2 follows; §4 gains in-transit and image-provenance rows; new §5 application-level controls. Baseline: us-east-1, #397 IAM, cache resolved (#872), pin scan resolved (#665, prod 2026-10-26: no cross-org reads). Postgres TLS recorded as **not enforced** by the templates rather than claimed. |
+| §1 `SUPPLY_CHAIN.md` | fixed | Two images; the web image is a known exception until **#909**. |
+| §1 Helm chart | fixed | `STRIPE_*` example removed (verified: `helm template` in residency mode renders none); header, `deployMode`, Egress and verification sections. CARTO egress until **#910**. |
+| §1 `ENTERPRISE_SSO.runbook.md` | fixed / **resolved: needs a decision** | The claim match is exact (no `sub`-prefix convention). Sourcing the claim needs an Auth0 Action, which #873's tenants don't run, so enterprise invite-gating in SaaS is effectively unavailable until someone accepts that Action as an exception. Recorded in the runbook; not filed. |
+| §1 `PROD_DEPLOY` / `PROD_PROVISIONING` runbooks | fixed | Also found: since #580 the web reads the Google picker config at runtime, so the `{DEV,PROD}_VITE_GOOGLE_*` secrets the deploy workflows still pass are **dead**; the runbooks say so (removing them from the workflows is a cleanup, not done here). |
+| §1 `CLI_OPERATIONS_CHARTER.md` | fixed | Finding (a) resolved; 8 commands indexed; the coverage table was already stale (18 rows vs 14 counted) and is recounted: 67 ops, 95.1%. |
+| §1 `DEPLOYED_ENV_CONFIG.md`, `DB_RESET.md` | fixed | Now `.condensed.md`; `deploy-parity.test.ts`'s historical-doc check recognises all six suffixes instead of a by-name list. |
+| §2 mirror schemas | fixed | G1 found **18** tools, not the audit's 10: also `tvm`, `irr`, `xnpv`, `xirr`, `depreciation`, `bond_math`, `portfolio_metrics` and the curated-view filter. G1 passes with an empty exemption list. |
+| §2 descriptions, prompt | fixed | `geocodingAvailable` + `stationWritable` for gis gate the GIS section; G3 pin corrected. |
+| §2 `bulk_geocode_records` "metered" (S) | resolved: says expensive | |
+| §3 site copy, pricing, terms, privacy | fixed | Data export claim removed (**#912**). Read-write claim (S) reworded to what ships. |
+| §3 glossary / FAQ / getting-started / routes | fixed | Six new glossary terms, four new FAQs. Invitations are **link-based** (copied, shown once), not emailed — the copy says so. |
+| §4 toolpack guide + dialog | fixed | Signing contract change is **#911**. The mock server verifies nothing until its secret is set; only the demo toolpack skips the catalog paths, and the guide says so. |
+| §4 dialog helper text (S) | fixed | |
+| §4 samples | fixed, **deviates from spec** | The obsolete "Parser config" lines were removed rather than translated into region-schema terms (no screen uses those names, and a wrong translation is worse than none). XLSX edited in place and re-read with ExcelJS. |
+| §4 record required-field wording (S) | resolved: intended | Documented in `record-field-serialization.util.ts`. |
+| §4 transform caption (S) | fixed | |
+| §5 READMEs, `LOCAL_DEVELOPMENT.md` | fixed | The audit's spreadsheet-parsing `/ui` finding was wrong (`/ui` really is empty); that README only lost dead links. |
+| §5 `CLAUDE.md` | fixed | |
+| §5 `.github/copilot-instructions.md` | removed | `lint:review-chain` no longer checks it. |
+| Guards | added | G1 schema parity (api), G2 role framing over durable `docs/` (api), G3 prompt pin. |

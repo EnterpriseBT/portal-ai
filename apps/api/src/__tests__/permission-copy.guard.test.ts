@@ -28,6 +28,9 @@ export const ROLE_FRAMED: RegExp[] = [
   /\b(is|are) not (an |the )?(organization'?s? )?owner\b/i,
   /\bask (an|your|their) admin\b/i,
   /\badmin-(only|curated)\b/i,
+  // #615: "calls them as the registering org admin" — a caller described by
+  // role rather than by the permission it holds.
+  /\bas the (registering )?(org(anization)? )?admin\b/i,
   /\b(INSUFFICIENT_ROLE|BILLING_NOT_OWNER|ORGANIZATION_NOT_OWNER|AUDIT_LOG_NOT_AUTHORIZED)\b/,
 ];
 
@@ -111,5 +114,59 @@ describe("API copy names permissions, not roles (#711)", () => {
     ]) {
       expect([ok, roleFramedLines(ok)]).toEqual([ok, []]);
     }
+  });
+});
+
+// #615: the durable docs (runbooks, the toolpack contract, the security
+// review) are read by customers and operators too, and drifted into role
+// framing the source guard couldn't see ("calls them as the registering org
+// admin"). Phase docs are point-in-time records and are swept, so they're
+// exempt, like `lint:doc-pointers` exempts them.
+const repoRoot = join(apiSrc, "..", "..", "..");
+const PHASE_DOC = /\.(discovery|spec|plan|smoke|adversarial|condensed)\.md$/;
+
+/** Exact, justified exceptions in the durable docs: rules *about* roles.
+ *  Shrink-only. */
+const DOCS_ALLOWED: Array<{ file: string; text: string }> = [];
+
+describe("durable docs name permissions, not roles (#615)", () => {
+  const docs = readdirSync(join(repoRoot, "docs"))
+    .filter((name) => name.endsWith(".md") && !PHASE_DOC.test(name))
+    .map((name) => ({
+      path: `docs/${name}`,
+      source: readFileSync(join(repoRoot, "docs", name), "utf8"),
+    }));
+
+  it("scans the durable docs and skips phase docs", () => {
+    const paths = docs.map((d) => d.path);
+    expect(paths).toContain("docs/CUSTOM_TOOLPACK_INTEGRATION.md");
+    expect(paths).toContain("docs/DEPLOYMENT_SECURITY_REVIEW.md");
+    expect(paths.some((p) => PHASE_DOC.test(p))).toBe(false);
+  });
+
+  it("no role-framed phrasing outside the allowlist", () => {
+    const offenders = docs.flatMap((d) =>
+      roleFramedLines(d.source)
+        .filter(
+          (line) =>
+            !DOCS_ALLOWED.some(
+              (a) => a.file === d.path && line.includes(a.text)
+            )
+        )
+        .map((line) => `${d.path}: ${line}`)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("every allowlisted rule still exists (the list only shrinks)", () => {
+    for (const a of DOCS_ALLOWED) {
+      expect(docs.find((d) => d.path === a.file)?.source).toContain(a.text);
+    }
+  });
+
+  it("catches the phrasing the toolpack guide used", () => {
+    const line =
+      "Portal.ai calls them as the registering org admin, signing every request";
+    expect(roleFramedLines(line)).toEqual([line]);
   });
 });
