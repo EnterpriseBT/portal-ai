@@ -5,7 +5,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 
 /** The methods whose bodies routes read. No GET, HEAD, OPTIONS or DELETE
  *  route reads one, so a body there is ignored, not refused. */
-const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
+export const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
 /** Cap on the media type echoed in the refusal, so the response and its log
  *  line can't scale with a caller-controlled header (#745). */

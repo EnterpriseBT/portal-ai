@@ -183,7 +183,7 @@ organizationRouter.patch(
         );
       }
 
-      const { defaultStationId } = req.body as {
+      const { defaultStationId } = (req.body ?? {}) as {
         defaultStationId?: string | null;
       };
 

@@ -15,6 +15,7 @@ import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { jsonBodyOnly } from "./middleware/json-body-only.middleware.js";
 import { rejectNul } from "./middleware/reject-nul.middleware.js";
+import { emptyBodyAsObject } from "./middleware/empty-body.middleware.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import {
@@ -92,6 +93,9 @@ app.use(jsonBodyOnly);
 // #805: Postgres can't store U+0000, so a NUL in a body, param or query
 // failed at the database as a route's 500. Refuse it here with one typed 400.
 app.use(rejectNul);
+// #897: Express 5 leaves a bodiless write's `req.body` undefined; keep the
+// `{}` routes have always validated.
+app.use(emptyBodyAsObject);
 
 app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);
