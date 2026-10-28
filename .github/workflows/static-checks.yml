@@ -72,13 +72,16 @@ jobs:
         run: npm run build
 
       # Web's build regenerates the route tree and fails on a route file the
-      # generator rejects (#899). This catches the other half: a tree the
-      # build changed but nobody committed. On a turbo cache hit the build
-      # didn't regenerate it, and the committed tree is the one that passed.
+      # generator rejects (#899). This catches the other half: a tree, or a
+      # route file's id, the generator changes but nobody committed. It runs
+      # the generator itself rather than trusting the build's run, because a
+      # turbo cache hit replays a build that exited 0 without regenerating:
+      # a re-run of a red check would otherwise pass on the same stale tree.
       - name: Route tree committed
         run: |
-          git diff --exit-code -- apps/web/src/routeTree.gen.ts || {
-            echo "::error file=apps/web/src/routeTree.gen.ts::The route tree is out of date. Run 'npm run build --workspace @portalai/web' and commit apps/web/src/routeTree.gen.ts."
+          npm run generate:routes --workspace @portalai/web
+          git diff --exit-code -- apps/web/src/routeTree.gen.ts apps/web/src/routes || {
+            echo "::error file=apps/web/src/routeTree.gen.ts::The route tree or a route id is out of date. Run 'npm run build --workspace @portalai/web' and commit apps/web/src/routeTree.gen.ts and apps/web/src/routes."
             exit 1
           }
 

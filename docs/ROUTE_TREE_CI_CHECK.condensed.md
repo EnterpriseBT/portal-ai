@@ -25,8 +25,9 @@
 - **Chosen: (b) + (a).** Prototyped on this branch: a route with a non-literal id exits 1 with `Error transforming route file …`, and a clean tree regenerates byte-identical.
   - `apps/web/scripts/generate-routes.mjs` runs the generator with the same options as `vite.config.ts`, so both produce the same tree. Those options move into one exported constant (`scripts/router-options.mjs`) both import, so they can't drift.
   - Web's `build` becomes `node scripts/generate-routes.mjs && tsc && vite build`: a local build fails too, not only CI, and `tsc` checks the fresh tree.
-  - Static Checks adds `git diff --exit-code -- apps/web/src/routeTree.gen.ts` after Build, so a regenerated-but-uncommitted tree fails with a message saying to commit it. On a turbo cache hit the script doesn't run, which is fine: a hit means the inputs, committed tree included, already passed.
-  - `@tanstack/router-generator` is declared in the root `package.json` next to the plugin (same range as the plugin's own dependency), since the script imports it directly.
+  - Static Checks adds a step after Build that runs the generator itself, then `git diff --exit-code` over `routeTree.gen.ts` **and `src/routes`**, failing with a message saying to commit them. It runs the generator rather than trusting the build's run, because a turbo cache hit replays a build that exited 0 without regenerating, so re-running a red check would pass on the same stale tree (code review). `src/routes` is diffed too because the generator also silently rewrites a route file whose literal id doesn't match its path (checked: `/tags-wrong` went back to `/tags`).
+  - The script takes both the generator and `getConfig` **through `@tanstack/router-plugin`**, nothing declared separately. The plugin pins its generator exactly, so a separate root range could drift to another version; and the plugin's `getConfig` parses its plugin-only options too (code review).
+  - The generator still also runs inside `vite build` (this plugin version has no switch to turn it off). It's well under a second, so the duplicate run is accepted.
 - The dev server keeps logging and carrying on. Failing a running dev server on a half-typed route file would be worse; the build catches it.
 
 ## Plan — 1 slice
@@ -34,7 +35,7 @@
 **Files:**
 - `apps/web/scripts/generate-routes.mjs` (new)
 - `apps/web/scripts/router-options.mjs` + `.d.mts` (new; the shared plugin options, typed like `render-config.mjs`), `apps/web/vite.config.ts`
-- `apps/web/package.json` (`build`, plus a `generate:routes` script), `package.json` + `package-lock.json` (declare the generator)
+- `apps/web/package.json` (`build`, plus a `generate:routes` script)
 - `.github/workflows/static-checks.yml` (diff step)
 - `CLAUDE.md` + `.github/copilot-instructions.md` (Routing: the build regenerates the tree and fails on a rejected route; commit the tree)
 
