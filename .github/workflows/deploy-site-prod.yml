@@ -10,10 +10,9 @@ name: Deploy Site (prod)
 #   2. It runs in the `prod` GitHub Environment, whose required reviewers
 #      are the human gate on a public deploy.
 #
-# The prod API does not exist yet (#83). Until the `PROD_SITE_CONFIG_URL`
-# repository variable is set, the job exits cleanly with a notice rather
-# than building against a nonexistent origin — a fixture build must never
-# reach production.
+# While the `PROD_SITE_CONFIG_URL` repository variable is unset, the job
+# exits cleanly with a notice rather than building without a live
+# configuration source — a fixture build must never reach production.
 #
 # `PROD_AWS_ROLE_ARN` / `PROD_HOSTED_ZONE_ID` must be REPOSITORY secrets,
 # not environment secrets: they are read here, in the caller, while the
@@ -69,7 +68,7 @@ jobs:
         id: ready
         run: |
           if [ -z "${{ vars.PROD_SITE_CONFIG_URL }}" ]; then
-            echo "::notice::PROD_SITE_CONFIG_URL is unset (the prod API lands with #83). Skipping."
+            echo "::notice::PROD_SITE_CONFIG_URL is unset. Skipping."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           elif [ -z "${{ steps.ref.outputs.ref }}" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"

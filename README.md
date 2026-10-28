@@ -23,12 +23,13 @@ packages/
   cli-env/              → CLI environment-access layer (env registry, AWS/Auth0 auth)
   devops-cli/           → `portalops` — infrastructure operator CLI
   admin-cli/            → `portalai` — customer-app-data operator CLI
-  e2e/                  → Playwright harness for agent-guided UI smoke walks
+  e2e/                  → Playwright harness: CI specs, post-deploy login check, agent browser sessions
+  demo-toolpack/        → Deployable reference custom toolpack (AWS Lambda) used by the demo org
 ```
 
 ### UI smoke walks & agent browser sessions
 
-An in-container Claude session can drive a real browser against the running dev stack (navigate, click, screenshot, read console/network) to walk a ticket's smoke checklist or troubleshoot the live UI — via the Playwright MCP server (`.mcp.json`) and the `@portalai/e2e` harness. One-time setup (test-user auth → reusable session, seeded fixture org) and usage are in [`packages/e2e/README.md`](packages/e2e/README.md); the `/smoke-walk` skill runs a checklist and produces a per-step evidence report. Automated specs + CI are a deferred tier (#304).
+An in-container Claude session can drive a real browser against the running dev stack (navigate, click, screenshot, read console/network) to walk a ticket's smoke checklist or troubleshoot the live UI — via the Playwright MCP server (`.mcp.json`) and the `@portalai/e2e` harness. One-time setup (test-user auth → reusable session, seeded fixture org) and usage are in [`packages/e2e/README.md`](packages/e2e/README.md); the `/smoke-walk` skill runs a checklist and produces a per-step evidence report. Automated specs run in CI on every push (`E2E Tests`, `.github/workflows/e2e-test.yml`), and each deploy ends with a `verify-login` check (#489).
 
 ## Getting Started
 
@@ -36,7 +37,9 @@ An in-container Claude session can drive a real browser against the running dev 
 
 - Node.js 22, at least 22.23.4 (`engines.node`; `npm install` refuses an older one)
 - npm 10+
-- PostgreSQL (for API)
+- PostgreSQL with PostGIS, and Redis, for the API
+
+The devcontainer (`.devcontainer/`) provides all of these, with Postgres and Redis on the compose network; see [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md). Without it, run them yourself.
 
 ### Setup
 
@@ -57,8 +60,10 @@ For the local inner-loop — Stripe webhook forwarding, the mock toolpack server
 
 Copy `.env.example` to `.env` in each app directory:
 
-- `apps/web/.env` — Auth0 client config (`VITE_AUTH0_*`)
-- `apps/api/.env` — Auth0 API config, database URL, CORS settings
+- `apps/web/.env` — Auth0 client config (`VITE_AUTH0_*`) and the other `VITE_*` build values
+- `apps/api/.env` — Auth0 API config, database and Redis URLs, CORS settings, provider keys
+- `packages/admin-cli/.env` / `packages/devops-cli/.env` — `DATABASE_URL` (and `AUTH0_*` for `portalai login`) for `--env local`; each CLI auto-loads its own (#632)
+- `packages/e2e/.env` — the browser harness's test identity (see its README)
 
 `apps/site` needs none: with `SITE_CONFIG_URL` unset it builds against a
 committed fixture, so `npm run build` works offline. Point it at a running
@@ -90,7 +95,7 @@ aws login                                                          # deployed en
 
 npx portalops vars list --env app-dev          # cloud config (secrets masked)
 npx portalops db psql --env app-dev            # psql through the SSM tunnel
-npx portalops db reset --env local             # local DB reset (needs DATABASE_URL in your shell env)
+npx portalops db reset --env local             # local DB reset (DATABASE_URL from packages/devops-cli/.env)
 ```
 
 `--env` is always required (no default). Prefer a bare `portalops`? `alias portalops="npx portalops"` or `npm link` inside `packages/devops-cli`.
@@ -127,13 +132,15 @@ Route 53
 
 ### CI/CD Pipeline
 
-Merging to `main` triggers `.github/workflows/deploy-dev.yml`:
+Merging to `main` triggers `.github/workflows/deploy-dev.yml`. The test suites already passed on the PR, so a merge doesn't re-run them; a manual `workflow_dispatch` does (#427):
 
-1. **Test** — runs unit and integration tests
-2. **Deploy infra** — deploys all CloudFormation stacks (no-op if unchanged)
-3. **Deploy frontend** — builds web app with `VITE_*` env vars, syncs to S3, invalidates CloudFront
-4. **Deploy backend** — builds ARM64 Docker image, pushes to ECR, runs migrations, runs seed, updates ECS service
-5. **Tag** — creates a `dev-YYYYMMDDHHMMSS-<sha>` git tag
+1. **Deploy infra** — deploys the CloudFormation stacks below (no-op if unchanged)
+2. **Deploy frontend** — builds the web app with its `VITE_*` values, syncs to S3, invalidates CloudFront
+3. **Deploy backend** — builds the API image, Trivy-gates it, pushes it with an SBOM and provenance, signs it with cosign (`docs/SUPPLY_CHAIN.md`), runs migrations then the seed as one-off ECS tasks, and updates the ECS service; also pushes the residency web image
+4. **Tag** — creates a `dev-YYYYMMDDHHMMSS-<sha>` git tag
+5. **Verify login** — signs in to app-dev as its QA owner (#489)
+
+The marketing site deploys separately (`deploy-site-dev.yml`). Production deploys run from a published GitHub release — see [`docs/PROD_DEPLOY.runbook.md`](docs/PROD_DEPLOY.runbook.md).
 
 ### CloudFormation Stacks
 
@@ -141,24 +148,29 @@ Merging to `main` triggers `.github/workflows/deploy-dev.yml`:
 |-------|----------|---------|
 | `portalai-dev-network` | `network.yml` | VPC, subnets, NAT gateway |
 | `portalai-dev-dns-certs` | `dns-certs.yml` | ACM wildcard certificate |
+| `portalai-dns-email` | `dns-email.yml` | Mail DNS records for the domain |
 | `portalai-dev-database` | `database.yml` | RDS PostgreSQL |
-| `portalai-dev-cache` | `cache.yml` | ElastiCache Redis |
+| `portalai-dev-cache` | `cache.yml` | ElastiCache Redis (encrypted at rest and in transit, #852) |
+| `portalai-dev-bastion` | `bastion.yml` | SSM-only bastion for `portalops db tunnel` |
 | `portalai-dev-frontend` | `frontend.yml` | S3 bucket, CloudFront, DNS |
+| `portalai-dev-site` | `site.yml` | Marketing site bucket, CloudFront, DNS |
 | `portalai-dev-backend` | `backend.yml` | ECR, ECS cluster/service, ALB, DNS |
+| `portalai-demo-toolpack` | `demo-toolpack.yml` | The demo org's reference custom toolpack (Lambda) |
+
+`iam.yml` (the `portalai-iam` stack: scoped deploy roles, operator roles, the MFA-gated break-glass group, #397) is applied by an administrator, not by CI — see [`docs/AWS_CLI_OPS.md`](docs/AWS_CLI_OPS.md).
 
 ### GitHub Secrets Required
 
 | Secret | Description |
 |--------|-------------|
-| `AWS_ROLE_ARN` | OIDC IAM role for GitHub Actions |
+| `AWS_ROLE_ARN` | OIDC IAM role for GitHub Actions (the scoped dev deploy role) |
 | `DEV_HOSTED_ZONE_ID` | Route 53 hosted zone ID |
-| `DEV_SECRET_ARN_DATABASE_URL` | Secrets Manager ARN (full, with suffix) |
-| `DEV_SECRET_ARN_ENCRYPTION_KEY` | Secrets Manager ARN |
-| `DEV_SECRET_ARN_ANTHROPIC_API_KEY` | Secrets Manager ARN |
-| `DEV_SECRET_ARN_TAVILY_API_KEY` | Secrets Manager ARN |
-| `DEV_VITE_AUTH0_DOMAIN` | Auth0 tenant domain |
-| `DEV_VITE_AUTH0_CLIENT_ID` | Auth0 SPA client ID |
-| `DEV_VITE_AUTH0_AUDIENCE` | Auth0 API audience |
+| `DEV_SECRET_ARN_*` | Secrets Manager ARNs (full, with suffix) for `DATABASE_URL`, `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `GEOCODING_API_KEY`, `GOOGLE_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_CLIENT_SECRET`, `OAUTH_STATE_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `GITHUB_DISPATCH_TOKEN` |
+| `DEV_VITE_AUTH0_DOMAIN` / `_CLIENT_ID` / `_AUDIENCE` | Auth0 SPA config baked into the web build |
+| `DEV_VITE_AUTH0_QA_CONNECTION` | The QA sign-in's Auth0 Database connection (#489) |
+| `TURBO_TOKEN`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY` | Turborepo remote cache (with the `TURBO_TEAM` variable, #454) |
+
+The `DEV_VITE_GOOGLE_*` secrets are still passed but no longer read: since #580 the Google picker's config comes from the API at runtime.
 
 ### Verifying a Deploy
 
@@ -176,5 +188,6 @@ git tag -l "dev-*"
 
 ### Detailed Docs
 
-- [`docs/DEV_DEPLOYMENT.spec.md`](docs/DEV_DEPLOYMENT.spec.md) — Full architecture specification
-- [`docs/DEV_DEPLOYMENT.implementation.md`](docs/DEV_DEPLOYMENT.implementation.md) — Step-by-step implementation plan
+- [`docs/PROD_DEPLOY.runbook.md`](docs/PROD_DEPLOY.runbook.md) and [`docs/PROD_PROVISIONING.runbook.md`](docs/PROD_PROVISIONING.runbook.md) — production releases and environment setup
+- [`docs/SUPPLY_CHAIN.md`](docs/SUPPLY_CHAIN.md) — image scanning, attestation and signing
+- [`docs/DEPLOYMENT_SECURITY_REVIEW.md`](docs/DEPLOYMENT_SECURITY_REVIEW.md) — the per-deployment security review, with the SaaS baseline

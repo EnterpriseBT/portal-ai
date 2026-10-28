@@ -29,7 +29,7 @@ SITE_CONFIG_URL=http://localhost:3001/api/public/site-config \
 | `SITE_CONFIG_URL` | *(unset → fixture mode)* | The public snapshot endpoint. Set in every deploy. |
 | `SITE_URL` | `https://site-dev.portalsai.io` | Canonical origin for canonicals, OG tags, sitemap. |
 | `SITE_APP_URL` | `localhost:3000` in `astro dev`, else `https://app-dev.portalsai.io` | Where sign-in/sign-up/pricing CTAs point — the web app matching this site's env. Every deploy sets it explicitly. |
-| `GITHUB_SHA` | `local` | Stamped into `<meta name="portal:build">`. |
+| `GITHUB_SHA` (or `BUILD_SHA`) | `local` | Stamped into `<meta name="portal:build">`; `BUILD_SHA` is the fallback for builds outside GitHub Actions. |
 | `SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL` | `qa@portalsai.io` | Contact addresses baked into the footer, contact, privacy and terms pages (#369). |
 | `SECURITY_EMAIL` | `qa@portalsai.io` | The vulnerability-report address: `/.well-known/security.txt`'s `Contact:` and `/security/#disclosure` (#613). |
 
@@ -151,5 +151,5 @@ GitHub Environment's required reviewers.
   shares render correctly today; a designed card should replace it before
   launch. `verify-pages.mjs` fails the build if the referenced image is
   missing from the output.
-- Prod deploys exit early until the `PROD_SITE_CONFIG_URL` repository
-  variable is set (the prod API is #83).
+- Prod deploys exit early, with a notice, while the `PROD_SITE_CONFIG_URL`
+  repository variable is unset: a fixture build must never reach production.

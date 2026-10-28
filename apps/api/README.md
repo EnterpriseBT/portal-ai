@@ -15,8 +15,9 @@ Express API server for the Portals AI application with Auth0 JWT authentication.
 
 ### Prerequisites
 
-- Node.js (v18+)
-- npm or pnpm
+- Node.js 22, at least 22.23.4 (the root `engines` field)
+- npm 10+
+- PostgreSQL with PostGIS, and Redis (the devcontainer provides both)
 
 ### Environment Variables
 
@@ -88,7 +89,7 @@ recipes, failure modes), see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`.
 npm run dev
 ```
 
-The server will start on `http://localhost:3000` (or the port specified in `.env`).
+The server will start on `http://localhost:3001` (`PORT` in `.env`).
 
 ### API Documentation
 
@@ -175,12 +176,13 @@ The Swagger documentation will automatically include your new routes!
 
 ### Health
 
-- `GET /health` - Health check endpoint
+- `GET /api/health` - Liveness: version, sha and timestamp
+- `GET /api/health/ready` - Readiness: the database and Redis are reachable
 
 ### Swagger Docs
 
-- `GET /docs` - Swagger UI
-- `GET /docs/spec` - OpenAPI spec in JSON format
+- `GET /api/docs` - Swagger UI
+- `GET /api/docs/spec` - OpenAPI spec in JSON format
 
 ### Protected (requires JWT)
 
@@ -188,38 +190,39 @@ The Swagger documentation will automatically include your new routes!
 
 ### Layout Plans (spreadsheet parsing)
 
-Plan-driven interpretation + commit for uploaded/linked spreadsheets. See [`docs/SPREADSHEET_PARSING.backend.spec.md`](../../docs/SPREADSHEET_PARSING.backend.spec.md) for the full spec.
+Plan-driven interpretation + commit for uploaded/linked spreadsheets. The full contract is in Swagger (`/api/docs`).
 
 - `POST /api/connector-instances/:connectorInstanceId/layout-plan/interpret` — run `interpret()` against an inline workbook + region hints; persists the resulting `LayoutPlan` as the current revision and supersedes any prior.
 - `GET /api/connector-instances/:connectorInstanceId/layout-plan[?include=interpretationTrace]` — fetch the current plan. `interpretationTrace` is stripped unless the caller opts in.
+- `GET /api/connector-instances/:connectorInstanceId/layout-plan/edit-context` — what the region editor needs to edit an existing plan.
 - `PATCH /api/connector-instances/:connectorInstanceId/layout-plan/:planId` — shallow-merge a partial `LayoutPlan` onto the stored plan; re-validated through `LayoutPlanSchema` before persistence.
-- `POST /api/connector-instances/:connectorInstanceId/layout-plan/:planId/commit` — runs `replay(plan, workbook)`, gates on drift + blocker warnings, materializes one `ConnectorEntity` per distinct `targetEntityDefinitionId`, reconciles `FieldMapping` rows across regions (deduped by `ColumnDefinition`), writes `entity_records`. Returns `{ connectorEntityIds, recordCounts }`.
+- `POST /api/connector-instances/:connectorInstanceId/layout-plan/:planId/commit` — runs `replay(plan, workbook)`, gates on drift + blocker warnings, materializes one `ConnectorEntity` per distinct `targetEntityDefinitionId`, reconciles `FieldMapping` rows across regions (deduped by `ColumnDefinition`), writes `entity_records`. It runs as a `layout_plan_commit` job: the route answers `202 { jobId, status: "pending" }`, and the result arrives on the job's SSE stream.
   - 409 `LAYOUT_PLAN_BLOCKER_WARNINGS` — plan has regions with blocker-severity warnings; body carries `details.warnings`.
   - 409 `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` / `_BLOCKER` / `_HALT` — replay detected drift; body carries `details.drift: DriftReport`.
 
-The legacy `POST /api/uploads/*` flow is retained for the simple-layout fast path and scheduled for retirement per [`docs/FILE_UPLOAD_DEPRECATION.plan.md`](../../docs/FILE_UPLOAD_DEPRECATION.plan.md).
+- `POST /api/layout-plans/interpret` / `POST /api/layout-plans/commit` — the same pair for a draft whose workbook is a file-upload session rather than a saved connector instance (the upload and cloud-spreadsheet workflows); commit enqueues a job and answers `202 { jobId }`.
 
 ## Project Structure
 
 ```
 src/
-├── config/           # Configuration files
-│   └── swagger.config.ts
-├── middleware/       # Express middleware
-│   ├── auth.middleware.ts
-│   └── logger.middleware.ts
-├── routes/           # API routes
-│   ├── health.router.ts
-│   ├── protected.router.ts
-│   └── swagger.router.ts
-├── scripts/          # Utility scripts
-│   └── generate-swagger.ts
+├── adapters/         # Connector adapters (sandbox, Google Sheets, Excel, REST API)
+├── config/           # Deploy mode, SSO, Swagger configuration
+├── constants/        # ApiCode and other constants
+├── db/               # Drizzle schema, repositories, client, seeds
+├── demo/             # The demo org's dataset and seeding
+├── middleware/       # Express middleware (auth, request guards, logging)
+├── prompts/          # The portal agent's system prompt
+├── queues/           # BullMQ queues, the jobs worker and its processors
+├── routes/           # API routes (one *.router.ts per area)
+├── scripts/          # db-migrate/db-upgrade entrypoints, mock toolpack server, Swagger generation
+├── services/         # Business logic (static-method classes)
+├── tools/            # The agent's built-in tools
 ├── types/            # TypeScript type definitions
 ├── utils/            # Utility functions
-│   └── logger.util.ts
-├── app.ts           # Express app configuration
-├── environment.ts   # Environment variables
-└── index.ts         # Server entry point
+├── app.ts            # Express app configuration
+├── environment.ts    # Environment variables
+└── index.ts          # Server entry point
 ```
 
 ## Database Schema Workflow
@@ -342,6 +345,8 @@ npm run db:push        # pushes schema directly (dev convenience)
 - `npm run db:push` — Push schema directly (dev only)
 - `npm run db:studio` — Open Drizzle Studio GUI
 - `npm run db:seed` — Seed the database
+- `npm run db:upgrade` — Deploy-time upgrade: migrations + the idempotent seed as one advisory-locked operation (#581)
+- `npm run db:reset` — Reset the local database
 
 ### Operator CLI (`portalops`)
 
@@ -352,10 +357,15 @@ Operator tasks against any environment go through **`portalops`** — the TypeSc
 
 Run it from the repo root as `npx portalops …` (build once with `npx turbo run build --filter=@portalai/devops-cli`; `aws login` first for deployed envs).
 
-Two command groups:
+Command groups (full list in `COMMANDS.md`):
 
-- **`db`** — SSM tunnel to RDS through the bastion, `psql` (interactive or one-shot), the infra reset (`er__*` drop + truncate; never production), `db:seed:ci` as an ECS one-off task.
+- **`db`** — SSM tunnel to RDS through the bastion, `psql` (interactive or one-shot), `url`, the infra reset (`er__*` drop + truncate; never production), `seed`, `reset-seed`, and `upgrade` (migrations + seed under one advisory lock) as ECS one-off tasks.
 - **`vars`** — manage every Secrets Manager secret and SSM parameter the API task definition consumes (see `infra/cloudformation/backend.yml`).
+- **`cache`** — `status`: each cache's encryption (#852).
+- **`service`** — `scale`: the API task count (refuses 0 while jobs are active).
+- **`jobs`** — `status` and `redispatch` (re-queue live jobs missing from Redis).
+- **`tier`** — `apply` the tier catalog; `create` / `update` / `description` for custom tiers.
+- **`local`** — `provision`: one-shot local setup after a reset.
 
 `--env <name>` is **required** on every command (there is no default environment). The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled. AWS credentials must have `ssm:StartSession` on the bastion instance for `db` commands and the relevant `secretsmanager:*` / `ssm:*` permissions for `vars` commands. The bastion is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
 
@@ -396,11 +406,15 @@ Path prefix: `portalai/<env>/`. Each entry is referenced by a `SecretArn*` Cloud
 |---------|-------------|---------|
 | `DATABASE_URL` | `database-url` | Postgres connection string for the RDS instance (user, password, host, db, sslmode). |
 | `ENCRYPTION_KEY` | `encryption-key` | Base64-encoded 32-byte key used to encrypt OAuth tokens and other sensitive fields at rest. |
-| `ANTHROPIC_API_KEY` | `anthropic-api-key` | API key for Claude (Anthropic) calls used by `interpret()`. |
+| `ANTHROPIC_API_KEY` | `anthropic-api-key` | API key for Claude (Anthropic): the portal agent, chart code generation, spreadsheet interpret and the REST/filter suggesters (see `docs/DEPLOYMENT_SECURITY_REVIEW.md` §1). |
 | `TAVILY_API_KEY` | `tavily-api-key` | API key for Tavily search-augmented retrieval. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | `google-oauth-client-secret` | OAuth2 client secret for the google-sheets connector. |
 | `MICROSOFT_OAUTH_CLIENT_SECRET` | `microsoft-oauth-client-secret` | OAuth2 client secret for the microsoft-excel connector (Azure app registration). |
 | `OAUTH_STATE_SECRET` | `oauth-state-secret` | HMAC key used to sign the short-lived `state` token binding an OAuth callback to its requester. Distinct from `ENCRYPTION_KEY` (signing ≠ encryption). |
+| `GEOCODING_API_KEY` | `geocoding-api-key` | Mapbox key for the geocode tools; absent = those tools aren't built. |
+| `STRIPE_SECRET_KEY` | `stripe-secret-key` | Stripe API key (billing, `tier apply`). |
+| `STRIPE_WEBHOOK_SECRET` | `stripe-webhook-secret` | Verifies Stripe webhook signatures. |
+| `GITHUB_DISPATCH_TOKEN` | `github-dispatch-token` | Triggers the marketing site rebuild after a tier change (`repository_dispatch`). |
 
 ##### 2. SSM Parameter Store — non-sensitive config, mutable via `vars set`
 
@@ -409,6 +423,8 @@ Path prefix: `/portalai/<env>/`. Referenced directly by ARN in the task definiti
 | Env var | Parameter name | Purpose |
 |---------|----------------|---------|
 | `GOOGLE_OAUTH_CLIENT_ID` | `google-oauth-client-id` | OAuth2 client id for the google-sheets connector. |
+| `GOOGLE_PICKER_API_KEY` | `google-picker-api-key` | Browser API key for the Google file picker, served to the web app by `/api/connector-config` (#580). |
+| `GOOGLE_CLOUD_PROJECT_NUMBER` | `google-cloud-project-number` | The picker's `setAppId`, served the same way. |
 | `MICROSOFT_OAUTH_CLIENT_ID` | `microsoft-oauth-client-id` | OAuth2 client id for the microsoft-excel connector. |
 | `MICROSOFT_OAUTH_TENANT` | `microsoft-oauth-tenant` | Azure tenant id (or `common` for multi-tenant + personal MSAs). Single-tenant deployments override with their tenant id. |
 | `AUTH0_DOMAIN` | `auth0-domain` | Auth0 tenant domain used to validate JWTs. |
@@ -424,6 +440,7 @@ These are baked into the task definition's `Environment` block at deploy time. C
 |---------|--------|---------|
 | `PORT` | literal `"3001"` | Container port the API listens on. |
 | `NODE_ENV` | literal `production` | Standard Node mode flag. |
+| `NODE_OPTIONS` | `--max-old-space-size` from the `NodeHeapByMemory` map | Heap ceiling sized to the task's memory. |
 | `LOG_LEVEL` | literal `info` | Pino log level. |
 | `LOG_FORMAT` | literal `json` | Forces JSON log output for CloudWatch ingestion. |
 | `BUILD_VERSION` | `!Ref BuildVersion` | Build version label (defaults to `dev`); supplied by deploy pipeline. |
@@ -431,9 +448,12 @@ These are baked into the task definition's `Environment` block at deploy time. C
 | `UPLOAD_S3_BUCKET` | `!Ref UploadBucket` | Bucket created by this stack for streaming workbook uploads. |
 | `UPLOAD_S3_REGION` | `!Ref AWS::Region` | Region of the upload bucket. |
 | `UPLOAD_S3_PREFIX` | literal `uploads` | Key prefix under which streaming uploads are written. |
+| `PUBLIC_API_BASE_URL` | `https://<subdomain>.portalsai.io` | Where webhook toolpacks call back (staged reads/writes). |
+| `WEB_APP_URL` | `!Ref FrontendOrigin` | The web origin invite links are built on (#889). |
 | `GOOGLE_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/google-sheets/callback` | Public redirect URI registered in the Google OAuth app. |
 | `MICROSOFT_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/microsoft-excel/callback` | Public redirect URI registered in the Azure app. |
-| `REDIS_URL` | `redis://${ImportedEndpoint}:${ImportedPort}` | Resolves the Redis endpoint exported by the shared infra stack. |
+| `REDIS_URL` | `rediss://${Endpoint}:${Port}` from the `<env>-RedisTls*` exports | TLS to the encrypted cache; there is no plaintext cache since #872. |
+| `DB_MASTER_SECRET_ARN` | the database stack's `<env>-DbMasterSecretArn` export | The app resolves the DB password from it per connection, absorbing RDS rotation (#500). |
 
 ##### 4. GitHub Actions repo secrets — consumed by the deploy workflow
 
@@ -450,9 +470,14 @@ Set under **Settings → Secrets and variables → Actions** in the GitHub repo.
 | `DEV_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/google-oauth-client-secret`. |
 | `DEV_SECRET_ARN_MICROSOFT_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/microsoft-oauth-client-secret`. |
 | `DEV_SECRET_ARN_OAUTH_STATE_SECRET` | Full ARN of `portalai/dev/oauth-state-secret`. |
+| `DEV_SECRET_ARN_GEOCODING_API_KEY` | Full ARN of `portalai/dev/geocoding-api-key`. |
+| `DEV_SECRET_ARN_STRIPE_SECRET_KEY` | Full ARN of `portalai/dev/stripe-secret-key`. |
+| `DEV_SECRET_ARN_STRIPE_WEBHOOK_SECRET` | Full ARN of `portalai/dev/stripe-webhook-secret`. |
+| `DEV_SECRET_ARN_GITHUB_DISPATCH_TOKEN` | Full ARN of `portalai/dev/github-dispatch-token`. |
 | `DEV_VITE_AUTH0_DOMAIN` | Frontend build-time Auth0 tenant domain. |
 | `DEV_VITE_AUTH0_CLIENT_ID` | Frontend build-time Auth0 SPA client id. |
 | `DEV_VITE_AUTH0_AUDIENCE` | Frontend build-time Auth0 API audience. |
+| `DEV_VITE_AUTH0_QA_CONNECTION` | The QA sign-in's Auth0 connection (#489). |
 
 Each `DEV_SECRET_ARN_*` secret holds the **full** ARN (including the random suffix) of the matching Secrets Manager entry — partial ARNs fail with `ResourceNotFoundException` at task startup. Retrieve an ARN with:
 
