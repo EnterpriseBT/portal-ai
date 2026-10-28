@@ -39,8 +39,8 @@
 
 1. `docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL= -t portalai-web:smoke .`, then `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.64.1 image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 portalai-web:smoke`. Expected: exit 0, no findings.
 2. `docker run --rm -p 8089:8080 -e AUTH_PROVIDER=auth0 portalai-web:smoke`; `curl -s localhost:8089/config.js` returns `window.__RUNTIME_CONFIG__ = …`, and `curl -s -o /dev/null -w '%{http_code}' localhost:8089/` returns `200`.
-3. After merge, the `deploy-dev` run shows both web scan steps green **before** `Build and push web image`, and a `Sign web image` step.
-4. `cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/EnterpriseBT/portal-ai' <web ECR>:dev-<sha>` succeeds (needs AWS ECR read). `docker buildx imagetools inspect` shows SBOM and provenance attestations for **both** platforms.
+3. After merge, the `deploy-dev` run shows `Gate API image (linux/arm64)`, `Gate web image (linux/amd64)` and `Gate web image (linux/arm64)` green (each runs the `image-gate` action's build + Trivy scan) **before** the matching `Build and push … (+ SBOM & provenance)` step, then `Sign image` and `Sign web image (cosign keyless)`. `deploy-infra` applies the ECR lifecycle change: `aws ecr get-lifecycle-policy --repository-name portalai-web-dev` shows `countNumber: 60`.
+4. `cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/EnterpriseBT/portal-ai' <web ECR>:dev-<sha>` succeeds (needs AWS ECR read). `docker buildx imagetools inspect <web ECR>:dev-<sha> --format '{{ json .SBOM }}'` returns an SBOM for **both** `linux/amd64` and `linux/arm64`, and `--format '{{ json .Provenance }}'` likewise.
 5. Negative check (optional, local only): build from the old Dockerfile (without `apk upgrade`) and run step 1's scan. It exits 1 with the Alpine 3.21.3 findings, so the gate bites.
 
 ## Out of scope
