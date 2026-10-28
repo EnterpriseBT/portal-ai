@@ -191,6 +191,7 @@ export const RegisterToolpackDialogUI: React.FC<
   const handleSubmit = () => {
     setTouched({
       name: true,
+      description: true,
       schemaUrl: true,
       runtimeUrl: true,
       authHeaders: true,
@@ -226,9 +227,10 @@ export const RegisterToolpackDialogUI: React.FC<
             sx={{ lineHeight: 1.4, fontWeight: 400 }}
           >
             Connect your own webhook server so the assistant can call its tools
-            during portal sessions. Portals AI fetches your tool catalog once at
-            registration, then HMAC-signs every outbound call so your server can
-            verify the request came from us.
+            during portal sessions. Portals AI fetches your tool catalog at
+            registration (and again whenever you refresh it), and HMAC-signs
+            every outbound call so your server can verify the request came from
+            us.
           </Typography>
         </Stack>
       }
@@ -267,7 +269,7 @@ export const RegisterToolpackDialogUI: React.FC<
           error={touched.name && !!errors.name}
           helperText={
             (touched.name && fieldError("name")) ||
-            "Lowercase letters, digits, underscores; up to 63 chars."
+            "Starts with a letter; lowercase letters, digits, underscores; up to 63 chars."
           }
           slotProps={{
             htmlInput: { "aria-invalid": touched.name && !!errors.name },
@@ -279,7 +281,15 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
           placeholder="External customer intelligence calls."
+          error={touched.description && !!errors.description}
+          helperText={touched.description && errors.description}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.description && !!errors.description,
+            },
+          }}
           fullWidth
           multiline
           rows={2}
@@ -315,7 +325,7 @@ export const RegisterToolpackDialogUI: React.FC<
           helperText={
             touched.runtimeUrl && fieldError("endpoints.runtime")
               ? fieldError("endpoints.runtime")
-              : "POST endpoint invoked per tool call with `{tool, input}`."
+              : "POST endpoint invoked per tool call with `{tool, input}` (plus `records`, `source` or `output` for tools that take data)."
           }
           slotProps={{
             htmlInput: {
@@ -343,7 +353,7 @@ export const RegisterToolpackDialogUI: React.FC<
             error={touched.authHeaders && !!errors.authHeaders}
             helperText={
               (touched.authHeaders && errors.authHeaders) ||
-              "One header per line in `KEY: value` format. Stored redacted."
+              "One header per line in `KEY: value` format. Stored encrypted and never shown again."
             }
             fullWidth
             multiline
@@ -549,7 +559,13 @@ app.use(express.json({
   verify: (req: any, _res, buf) => { req.rawBody = buf; },
 }));
 
+// Registration fetches /schema and /metadata signed with a secret you only
+// receive in the registration response, so those two can't be verified yet.
+// They serve your tool catalog, not customer data; verify everything else.
+const CATALOG_PATHS = new Set(["/schema", "/metadata"]);
+
 app.use((req, res, next) => {
+  if (req.method === "GET" && CATALOG_PATHS.has(req.path)) return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -585,8 +601,15 @@ from flask import Flask, request, abort, jsonify
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
+# Registration fetches /schema and /metadata signed with a secret you only
+# receive in the registration response, so those two can't be verified yet.
+# They serve your tool catalog, not customer data; verify everything else.
+CATALOG_PATHS = {"/schema", "/metadata"}
+
 @app.before_request
 def verify_signature():
+    if request.method == "GET" and request.path in CATALOG_PATHS:
+        return None
     ts  = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
     sig = request.headers.get("X-Portalai-Signature", "")
@@ -619,8 +642,20 @@ var SIGNING_SECRET = Environment.GetEnvironmentVariable(
 
 var app = WebApplication.Create();
 
+// Registration fetches /schema and /metadata signed with a secret you only
+// receive in the registration response, so those two can't be verified yet.
+// They serve your tool catalog, not customer data; verify everything else.
+var catalogPaths = new HashSet<string> { "/schema", "/metadata" };
+
 app.Use(async (ctx, next) =>
 {
+    if (HttpMethods.IsGet(ctx.Request.Method) &&
+        catalogPaths.Contains(ctx.Request.Path.Value ?? ""))
+    {
+        await next();
+        return;
+    }
+
     var ts  = ctx.Request.Headers["X-Portalai-Timestamp"].ToString();
     var id  = ctx.Request.Headers["X-Portalai-Webhook-Id"].ToString();
     var sig = ctx.Request.Headers["X-Portalai-Signature"].ToString();

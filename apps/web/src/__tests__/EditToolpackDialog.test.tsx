@@ -115,6 +115,22 @@ describe("EditToolpackDialogUI", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // #615 / #801: an over-long description is a visible field error, not a
+  // silently disabled save.
+  it("shows the description's length limit as a field error and blocks save", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    const description = screen.getByLabelText(/Description/);
+    fireEvent.change(description, { target: { value: "x".repeat(2001) } });
+    fireEvent.blur(description);
+    await waitFor(() =>
+      expect(description.getAttribute("aria-invalid")).toBe("true")
+    );
+    expect(screen.getByText(/2000/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("invokes onRefresh when the Refresh schema button is clicked", () => {
     const onRefresh = jest.fn();
     render(<EditToolpackDialogUI {...defaultProps} onRefresh={onRefresh} />);

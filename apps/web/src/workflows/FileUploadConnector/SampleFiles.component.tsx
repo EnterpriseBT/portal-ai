@@ -20,7 +20,7 @@ const SAMPLE_FILES: SampleFile[] = [
   {
     label: "supported_layouts.csv",
     description:
-      "Every region-config permutation (orientation × headerAxis × role pattern) in one CSV",
+      "Every supported layout — single-axis static and dynamic, pivot, crosstab, and hybrid crosstab — in one CSV",
     href: "/samples/supported_layouts.csv",
     downloadName: "supported_layouts.csv",
     icon: <DescriptionOutlinedIcon fontSize="small" color="action" />,
@@ -28,7 +28,7 @@ const SAMPLE_FILES: SampleFile[] = [
   {
     label: "supported_layouts.xlsx",
     description:
-      "Same permutation matrix, one permutation per sheet — easier to draw against",
+      "The same layouts, one per sheet — easier to draw regions against",
     href: "/samples/supported_layouts.xlsx",
     downloadName: "supported_layouts.xlsx",
     icon: <TableChartOutlinedIcon fontSize="small" color="action" />,

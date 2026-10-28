@@ -17,10 +17,11 @@ import {
   PROPOSED_REGIONS,
 } from "../../../modules/RegionEditor/stories/utils/region-editor-fixtures.util";
 
+// Mirrors the API's `UPLOAD_ALLOWED_EXTENSIONS` default
+// (apps/api/src/environment.ts); offering more only earns a parse refusal.
 export const SPREADSHEET_FILE_EXTENSIONS = [
   ".xlsx",
   ".xls",
-  ".ods",
   ".csv",
   ".tsv",
 ] as const;

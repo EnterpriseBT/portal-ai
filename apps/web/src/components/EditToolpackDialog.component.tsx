@@ -177,6 +177,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
   const handleSubmit = () => {
     setTouched({
       name: true,
+      description: true,
       schemaUrl: true,
       runtimeUrl: true,
       authHeaders: true,
@@ -268,6 +269,15 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
+          error={touched.description && !!fieldError("description")}
+          helperText={touched.description && fieldError("description")}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.description && !!fieldError("description"),
+            },
+          }}
           fullWidth
           multiline
           rows={2}
