@@ -1,4 +1,3 @@
-import { jest } from "@jest/globals";
 import "@testing-library/jest-dom";
 import { configure } from "@testing-library/react";
 import { TextEncoder, TextDecoder } from "util";
@@ -74,9 +73,9 @@ global.ResizeObserver = class ResizeObserver {
 
 // jsdom doesn't implement window.scrollTo; it logs "Not implemented" through
 // console.error. TanStack Router calls it on load from 1.170 on (#896), which
-// tripped tests that assert a render logs no errors. A mock rather than a
-// no-op, so a test can still assert whether a scroll happened.
-window.scrollTo = jest.fn() as unknown as typeof window.scrollTo;
+// tripped tests that assert a render logs no errors. Tests that care about
+// scrolling spy on it themselves.
+window.scrollTo = (() => {}) as typeof window.scrollTo;
 
 // jsdom does not implement PointerEvent — testing-library's fireEvent
 // silently falls back to a plain Event and drops clientX/Y/pointerId. Code
