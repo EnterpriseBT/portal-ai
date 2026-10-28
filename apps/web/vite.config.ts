@@ -6,6 +6,7 @@ import svgr from "vite-plugin-svgr";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 import { resolveBuildVersion } from "./src/utils/build-version.util";
+import { ROUTER_OPTIONS } from "./scripts/router-options.mjs";
 
 /**
  * Dev-only plugin that serves catalog packages from source.
@@ -108,10 +109,7 @@ export default defineConfig({
       },
       include: "**/*.svg",
     }) as PluginOption,
-    tanstackRouter({
-      target: "react",
-      autoCodeSplitting: true,
-    }) as PluginOption,
+    tanstackRouter(ROUTER_OPTIONS) as PluginOption,
     react() as PluginOption,
   ],
   // maplibre-gl v6's tile worker is an ES module (`new Worker(url, {type:

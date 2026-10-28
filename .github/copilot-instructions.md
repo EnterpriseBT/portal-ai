@@ -97,7 +97,7 @@ Layered: Zod schema (`CoreObjectSchema.extend`) → model class (`BaseModelClass
 
 ## Routing (apps/web)
 
-TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `createFileRoute`.
+TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `createFileRoute` with a string-literal route id (the generator rejects anything else; web's `build` fails on it, #899), and commit `routeTree.gen.ts` with the route change (Static Checks fails on an uncommitted tree).
 
 **Addressable sections (#365).** A view linked to from elsewhere makes its sections addressable via `?tab=` / `?category=` / `#<surface>-entry-<slug>`, following Help (`utils/routes.util.ts`): one sanitizer (`normalizeHelpSearch`) shared by the route's `validateSearch` and the view; fail open on anything unrecognized; read `useRouterState({select: s => s.location.search})`, not `useSearch` (which needs a route match); `to` is a string literal, not the `ApplicationRoute` enum, wherever typed `search` is passed, with `MuiLink component="span"` inside a router `Link`; destinations push, filters replace; anchor slugs come from `contentEntrySlug` in `@portalai/core/content`; anchor-reachable accordions are controlled, never `defaultExpanded`. Settings (#284) is the older read-once shape and stays that way. User-typed search text never enters the URL.
 

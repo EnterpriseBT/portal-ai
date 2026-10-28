@@ -573,7 +573,7 @@ Concrete repositories extend `ListOptions` with `include?: string[]` and overrid
 
 ## Routing (apps/web)
 
-TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree auto-generates on save. Create routes with `createFileRoute`, protect them by nesting under `_authorized`.
+TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree auto-generates on save. Create routes with `createFileRoute`, protect them by nesting under `_authorized`. **The route id is a string literal** (`createFileRoute("/views")`, never an `ApplicationRoute` member or a constant): the generator rejects anything else. The dev server only logs that rejection and the tree silently stops updating, so web's `build` regenerates the tree first through `scripts/generate-routes.mjs`, which fails on it (#899). **Commit `routeTree.gen.ts`** with the route change: Static Checks fails when the build changed the tree.
 
 ### Addressable sections (`?tab=` / `?category=` / `#…-entry-<slug>`)
 

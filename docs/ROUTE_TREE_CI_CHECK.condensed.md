@@ -23,7 +23,7 @@
   - (b) Run the generator directly (`new Generator({ config: getConfig(opts, root), root }).run()`), where its error propagates and exits 1. Catches every rejected route, locally and in CI.
   - (c) Make the Vite build fail on the plugin's error, e.g. by wrapping the plugin or watching `console.error`. Depends on plugin internals that change between versions.
 - **Chosen: (b) + (a).** Prototyped on this branch: a route with a non-literal id exits 1 with `Error transforming route file …`, and a clean tree regenerates byte-identical.
-  - `apps/web/scripts/generate-routes.mjs` runs the generator with the same options as `vite.config.ts`, so both produce the same tree. Those options move into one exported constant both import, so they can't drift.
+  - `apps/web/scripts/generate-routes.mjs` runs the generator with the same options as `vite.config.ts`, so both produce the same tree. Those options move into one exported constant (`scripts/router-options.mjs`) both import, so they can't drift.
   - Web's `build` becomes `node scripts/generate-routes.mjs && tsc && vite build`: a local build fails too, not only CI, and `tsc` checks the fresh tree.
   - Static Checks adds `git diff --exit-code -- apps/web/src/routeTree.gen.ts` after Build, so a regenerated-but-uncommitted tree fails with a message saying to commit it. On a turbo cache hit the script doesn't run, which is fine: a hit means the inputs, committed tree included, already passed.
   - `@tanstack/router-generator` is declared in the root `package.json` next to the plugin (same range as the plugin's own dependency), since the script imports it directly.
@@ -33,7 +33,7 @@
 
 **Files:**
 - `apps/web/scripts/generate-routes.mjs` (new)
-- `apps/web/router.config.mjs` (new; the shared plugin options), `apps/web/vite.config.ts`
+- `apps/web/scripts/router-options.mjs` + `.d.mts` (new; the shared plugin options, typed like `render-config.mjs`), `apps/web/vite.config.ts`
 - `apps/web/package.json` (`build`, plus a `generate:routes` script), `package.json` + `package-lock.json` (declare the generator)
 - `.github/workflows/static-checks.yml` (diff step)
 - `CLAUDE.md` + `.github/copilot-instructions.md` (Routing: the build regenerates the tree and fails on a rejected route; commit the tree)
