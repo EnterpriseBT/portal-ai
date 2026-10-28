@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { createLogger } from "../utils/logger.util.js";
 import { Auth0Service } from "../services/auth0.service.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -9,6 +8,8 @@ import {
   Auth0UserProfileSchema,
 } from "@portalai/core/contracts";
 import { usersRepo } from "../db/repositories/users.repository.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "profile" });
 

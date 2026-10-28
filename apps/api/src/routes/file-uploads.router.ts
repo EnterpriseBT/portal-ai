@@ -1,5 +1,4 @@
 import { NextFunction, Response, Router } from "express";
-import type { Request } from "../types/request.js";
 
 import {
   FileUploadConfirmRequestBodySchema,
@@ -20,6 +19,8 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FileUploadAccessService } from "../services/file-upload-access.service.js";
 import { FileUploadSessionService } from "../services/file-upload-session.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
+
+import type { Request } from "../types/request.js";
 
 export const fileUploadsRouter = Router();
 

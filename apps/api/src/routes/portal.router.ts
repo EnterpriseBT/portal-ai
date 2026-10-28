@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { eq, and, type SQL } from "drizzle-orm";
 
 import {
@@ -26,6 +25,8 @@ import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { PortalService } from "../services/portal.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal" });
 

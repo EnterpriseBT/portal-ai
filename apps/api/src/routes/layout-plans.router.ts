@@ -1,5 +1,4 @@
 import { NextFunction, Response, Router } from "express";
-import type { Request } from "../types/request.js";
 
 import {
   LayoutPlanCommitDraftRequestBodySchema,
@@ -25,6 +24,8 @@ import { PermissionService } from "../services/permission.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { interpretFailure } from "../utils/interpret-error.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "layout-plans" });
 

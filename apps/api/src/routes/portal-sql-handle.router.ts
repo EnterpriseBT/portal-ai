@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * HTTP surface for the reads-track query handle (#85 Phase 3 slice 1).
  *
@@ -13,7 +14,6 @@
  */
 
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

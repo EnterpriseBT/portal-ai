@@ -37,9 +37,9 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[_-]/g, "");
 }
 
-/** A query key is sensitive if any of its `qs` segments is: `token`,
- *  `token[]`, `token[0]`, `auth[token]` (Express's extended parser folds the
- *  bracket forms into objects/arrays that still authenticate). */
+/** A query key is sensitive if any of its bracket segments is: `token`,
+ *  `token[]`, `token[0]`, `auth[token]`. Express 5's `simple` parser keeps
+ *  these as flat keys (#897); a URL can still carry them. */
 function isSensitiveKey(key: string): boolean {
   return key
     .split(/[[\]]/)
@@ -85,9 +85,13 @@ export function redactUrl(url: string | undefined): string | undefined {
 export function redactQuery<T>(query: T): T {
   if (!query || typeof query !== "object") return query;
   if (Array.isArray(query)) return query.map((v) => redactQuery(v)) as T;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
-    out[key] = isSensitiveKey(key) ? REDACTED : redactQuery(value);
-  }
-  return out as T;
+  // `fromEntries` defines own properties, so a `?__proto__=` key (which the
+  // `simple` parser keeps as an own key) stays a key instead of setting the
+  // copy's prototype (#897).
+  return Object.fromEntries(
+    Object.entries(query as Record<string, unknown>).map(([key, value]) => [
+      key,
+      isSensitiveKey(key) ? REDACTED : redactQuery(value),
+    ])
+  ) as T;
 }

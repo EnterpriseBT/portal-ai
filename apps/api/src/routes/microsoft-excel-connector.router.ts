@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Microsoft 365 Excel connector — OAuth2 dance routes (Phase A).
  *
@@ -9,7 +10,6 @@
  */
 
 import { Router, type Response, type NextFunction } from "express";
-import type { Request } from "../types/request.js";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";

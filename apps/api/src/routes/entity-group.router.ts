@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import {
   eq,
   and,
@@ -39,6 +38,8 @@ import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { entityGroupMemberRouter } from "./entity-group-member.router.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "entity-group" });
 

@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Public site router (#311) — the API's only deliberately-anonymous DATA
  * surface, mounted at `/api/public` ahead of `protectedRouter` so the
@@ -18,7 +19,6 @@
  */
 
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 
 import {
   PublicSiteConfigResponseSchema,

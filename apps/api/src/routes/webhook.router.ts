@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import express from "express";
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "../services/http.service.js";
@@ -14,6 +13,8 @@ import { MarketplaceService } from "../services/marketplace.service.js";
 import MessageValidator from "sns-validator";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { isSaas } from "../config/deploy-mode.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "webhook-router" });
 

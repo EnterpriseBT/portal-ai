@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Entity Records router.
  *
@@ -6,7 +7,6 @@
  */
 
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
 import { resolveColumns } from "../utils/resolve-columns.util.js";

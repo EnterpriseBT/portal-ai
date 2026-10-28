@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -16,6 +15,8 @@ import { PortalAccessService } from "../services/portal-access.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import type { OrgRole } from "@portalai/core/models";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal-events" });
 

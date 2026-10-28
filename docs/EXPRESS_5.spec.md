@@ -67,8 +67,7 @@ export function redactQuery<T>(query: T): T
 export const emptyBodyAsObject = (req: Request, _res: Response, next: NextFunction): void
 ```
 
-- For `POST`/`PUT`/`PATCH` with `req.body === undefined`, it sets `req.body = {}`. Every other method, and any defined body, passes through untouched.
-- It reuses `jsonBodyOnly`'s `BODY_METHODS`, now exported from `json-body-only.middleware.ts`.
+- For any request with `req.body === undefined`, it sets `req.body = {}`; a defined body passes through untouched. It covers every method, as Express 4 did: code review found `DELETE /organization/:id` parses its body too.
 - It's mounted in `app.ts` directly **after `rejectNul`**. By then `jsonBodyOnly` has refused any non-JSON body with content (415), so only a genuinely bodiless write is normalized, and `rejectNul` still sees the raw `undefined`.
 - The webhook router (mounted earlier with its own parsers) is unaffected.
 - The doc comment states the contract: "Express 4 gave routes `{}` for a bodiless write; Express 5 gives `undefined`. Routes `safeParse(req.body)`, so this keeps an empty-schema write a success (#897)."
@@ -101,18 +100,11 @@ export const documentedOperations: (spec: unknown) => Set<string> // unchanged
 - **The header comment** replaces "Express 4 coupling" with the recorder's single requirement: imported first. The floors (`> 180` / `> 80` GETs, `> 100`) stay.
 - **No internals.** No reads of `_router.stack`, `layer.regexp`, `fast_slash` or `keys`.
 
-### Error handler — `apps/api/src/app.ts:118`
-The first statement after `const log = …` is:
-
-```ts
-if (res.headersSent) {
-  log.warn({ err, route: redactUrl(req.originalUrl) }, "Error after response headers were sent");
-  return next(err);
-}
-```
-
-- The handler's signature gains `next` (it's currently `_next`).
-- The existing `REQUEST_ABANDONED` branch keeps its `res.destroyed` check. This early return makes its own `headersSent` check redundant, but harmless.
+### Error handler — `apps/api/src/app.ts`
+- The handler is exported as `apiErrorHandler`, so a test can mount it on a bare app.
+- After the `REQUEST_ABANDONED` branch, which keeps a client disconnect quiet, it checks `res.headersSent`. If headers are already sent, it logs a warn and calls `res.socket.destroySoon()`.
+  - `destroySoon` flushes what was already written and closes without the chunked terminator, so the client gets the partial response and sees it as incomplete.
+  - It doesn't call `next(err)`. Express's default handler would `console.error` the raw stack, past pino's #540 sanitizing (code review).
 
 ### `URIError` → 400 — `app.ts:181`
 The behavior is unchanged: a malformed `%` in a route param answers `400 REQUEST_URL_INVALID_ENCODING`. If router 2 surfaces the decode failure differently (no `status`, or a different error class), the check widens to match it. The test pins the response, not the error's shape.
@@ -152,7 +144,7 @@ All commands run from `apps/api`: `npm run test:unit -- --testPathPattern <patte
 ### `emptyBodyAsObject` (`__tests__/middleware/empty-body.middleware.test.ts`, new)
 - POST, PUT and PATCH with `undefined` body → `{}`.
 - POST with a parsed body → untouched.
-- GET and DELETE with `undefined` → stays `undefined`.
+- GET and DELETE with `undefined` → `{}` too (every method).
 - **Via supertest on a bare `express()`** with the real stack (`express.json` → `jsonBodyOnly` → `rejectNul` → `emptyBodyAsObject`):
   - a bodiless `Content-Length: 0` POST reaches the handler with `{}`;
   - a form-encoded body still gets the 415.
@@ -208,7 +200,7 @@ The full unit suite and `npm run test:integration` (sharded in CI) run on Expres
 ## Files touched
 - `apps/api/package.json`, `package-lock.json`
 - `apps/api/src/app.ts`: parser comment, mount `emptyBodyAsObject`, error-handler guard
-- `apps/api/src/middleware/empty-body.middleware.ts` (new); `apps/api/src/middleware/json-body-only.middleware.ts`: export `BODY_METHODS`
+- `apps/api/src/middleware/empty-body.middleware.ts` (new); `apps/api/src/middleware/json-body-only.middleware.ts`: comment corrected (DELETE `/organization/:id` reads its body)
 - `apps/api/src/utils/redact-url.util.ts`
 - `apps/api/src/routes/organization.router.ts`
 - `apps/api/src/types/express.d.ts` (only if the v5 types require it)

@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -20,6 +19,8 @@ import { PermissionService } from "../services/permission.service.js";
 import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
 import { JobControlService } from "../services/job-control.service.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "jobs" });
 

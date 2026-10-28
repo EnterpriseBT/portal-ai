@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { EntityTagModelFactory } from "@portalai/core/models";
@@ -23,6 +22,8 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "entity-tag" });
 

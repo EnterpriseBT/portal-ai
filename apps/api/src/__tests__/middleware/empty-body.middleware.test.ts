@@ -27,17 +27,17 @@ const run = (method: string, body: unknown): unknown => {
 };
 
 describe("emptyBodyAsObject", () => {
-  it.each(["POST", "PUT", "PATCH"])("gives a bodiless %s `{}`", (method) => {
-    expect(run(method, undefined)).toEqual({});
-  });
+  // Every method, as Express 4 did: DELETE /organization/:id reads its body.
+  it.each(["POST", "PUT", "PATCH", "DELETE", "GET"])(
+    "gives a bodiless %s `{}`",
+    (method) => {
+      expect(run(method, undefined)).toEqual({});
+    }
+  );
 
   it("leaves a parsed body untouched", () => {
     const body = { name: "x" };
     expect(run("POST", body)).toBe(body);
-  });
-
-  it.each(["GET", "DELETE"])("leaves a bodiless %s undefined", (method) => {
-    expect(run(method, undefined)).toBeUndefined();
   });
 
   describe("in the app's body stack", () => {

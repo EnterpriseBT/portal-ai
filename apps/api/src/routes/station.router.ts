@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { eq, ilike, and, inArray, type SQL } from "drizzle-orm";
 
 import { StationModelFactory } from "@portalai/core/models";
@@ -29,6 +28,8 @@ import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "station" });
 

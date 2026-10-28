@@ -132,21 +132,9 @@ export const apiErrorHandler = (
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   const log = req.log ?? logger;
-
-  // #897: an error after headers were sent (an SSE route failing mid-stream;
-  // Express 5 forwards async rejections here) can't get a JSON body: writing
-  // one throws ERR_HTTP_HEADERS_SENT inside this handler. Hand it to Express's
-  // default handler, which closes the connection.
-  if (res.headersSent) {
-    log.warn(
-      { err, route: redactUrl(req.originalUrl) },
-      "Error after response headers were sent"
-    );
-    return next(err);
-  }
 
   // #698: a query the request instrumentation cancelled surfaces as a raw
   // `57014`; map it to its typed error first. An abandoned request (the client
@@ -162,6 +150,24 @@ export const apiErrorHandler = (
     );
     if (res.destroyed || res.headersSent) return;
     return HttpService.error(res, err);
+  }
+
+  // #897: an error after headers were sent (an SSE route failing mid-stream;
+  // Express 5 forwards async rejections here) can't get a JSON body: writing
+  // one throws ERR_HTTP_HEADERS_SENT inside this handler. Close the
+  // connection here rather than via `next(err)`, whose default handler would
+  // also print the raw stack to stderr, past pino's sanitizing.
+  // `destroySoon` flushes what was already written, then closes without the
+  // chunked terminator, so the client gets the partial response and still
+  // sees it as cut off, never as complete.
+  if (res.headersSent) {
+    log.warn(
+      { err, route: redactUrl(req.originalUrl) },
+      "Error after response headers were sent"
+    );
+    if (res.socket) res.socket.destroySoon();
+    else res.destroy();
+    return;
   }
 
   // #698/#705: expected load-shedding (503 MAP_TILE_BUSY, 429

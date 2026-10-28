@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import {
   eq,
   and,
@@ -48,6 +47,8 @@ import { EntityDataDeleteService } from "../services/entity-data-delete.service.
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-entity" });
 

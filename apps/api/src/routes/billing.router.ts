@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Billing router (#176) — the self-serve subscription surface, mounted on
  * the protected router at `/billing`.
@@ -7,7 +8,6 @@
  */
 
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApplicationService } from "../services/application.service.js";
 import { BillingService } from "../services/billing.service.js";

@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Vector-tile HTTP surface for persisted map blocks/pins (#316, slice 6).
  *
@@ -19,7 +20,6 @@
  */
 
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

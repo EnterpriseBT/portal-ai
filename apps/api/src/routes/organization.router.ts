@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { z } from "zod";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -42,6 +41,8 @@ import { OrganizationDeleteService } from "../services/organization-delete.servi
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "organization" });
 
@@ -184,7 +185,7 @@ organizationRouter.patch(
         );
       }
 
-      const { defaultStationId } = (req.body ?? {}) as {
+      const { defaultStationId } = req.body as {
         defaultStationId?: string | null;
       };
 

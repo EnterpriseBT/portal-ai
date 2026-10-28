@@ -1,5 +1,4 @@
 import { Router, Response, NextFunction } from "express";
-import type { Request } from "../types/request.js";
 import { sql } from "drizzle-orm";
 import {
   HealthGetResponse,
@@ -12,6 +11,8 @@ import { environment } from "../environment.js";
 import { db } from "../db/index.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { withTimeout } from "../utils/timeout.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "health" });
 

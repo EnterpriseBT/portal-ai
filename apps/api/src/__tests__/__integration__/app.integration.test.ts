@@ -196,9 +196,10 @@ describe("App Integration", () => {
   // Express 5 forwards async rejections here) must not write a JSON body on
   // top of them, which throws ERR_HTTP_HEADERS_SENT inside the handler.
   describe("Errors after headers are sent", () => {
-    it("ends the response without writing an error body", async () => {
+    it("closes the connection without writing an error body", async () => {
       const { apiErrorHandler } = await import("../../app.js");
       const express = (await import("express")).default;
+      const http = await import("node:http");
       const bare = express();
       bare.get(
         "/stream",
@@ -209,8 +210,9 @@ describe("App Integration", () => {
         }
       );
       bare.use(apiErrorHandler);
-      // Whatever leaves the handler: the original error if it stood aside,
-      // or the ERR_HTTP_HEADERS_SENT it threw by writing anyway.
+      // Anything that leaves the handler: an ERR_HTTP_HEADERS_SENT it threw by
+      // writing anyway, or an error handed on to Express's default handler
+      // (which would print the raw stack to stderr). Neither should happen.
       const escaped: Error[] = [];
       bare.use(
         (err: Error, _req: Request, _res: Response, next: NextFunction) => {
@@ -219,19 +221,36 @@ describe("App Integration", () => {
         }
       );
 
-      const res = await request(bare)
-        .get("/stream")
-        .buffer(true)
-        .parse((r, done) => {
-          let text = "";
-          r.on("data", (chunk: Buffer) => (text += chunk.toString()));
-          r.on("end", () => done(null, text));
-          r.on("error", () => done(null, text));
+      const server = bare.listen(0);
+      const { port } = server.address() as { port: number };
+      const { status, text, complete } = await new Promise<{
+        status: number;
+        text: string;
+        complete: boolean;
+      }>((resolve) => {
+        let status = 0;
+        let text = "";
+        let complete = true;
+        const done = () => resolve({ status, text, complete });
+        // The handler destroys the socket, so the client sees the partial
+        // stream end in a reset ("socket hang up") rather than a clean end.
+        const req = http.get({ port, path: "/stream" }, (res) => {
+          status = res.statusCode ?? 0;
+          res.on("data", (chunk: Buffer) => (text += chunk.toString()));
+          const settle = () => {
+            complete = res.complete;
+            done();
+          };
+          res.on("error", settle);
+          res.on("close", settle);
         });
+        req.on("error", done);
+      }).finally(() => server.close());
 
-      expect(res.status).toBe(200);
-      expect(res.body).toBe("data: first\n\n");
-      expect(escaped.map((e) => e.message)).toEqual(["failed mid-stream"]);
+      expect(status).toBe(200);
+      expect(text).toBe("data: first\n\n");
+      expect(complete).toBe(false);
+      expect(escaped).toEqual([]);
     });
   });
 
