@@ -434,10 +434,10 @@ jobs:
       # Keyless signing (GitHub OIDC → Fulcio) of the pushed digest, so the
       # signature is tag-independent. id-token: write is already granted above.
       - name: Sign image (cosign keyless)
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: ${{ steps.ecr.outputs.uri }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        uses: ./.github/actions/cosign-sign
+        with:
+          image: ${{ steps.ecr.outputs.uri }}
+          digest: ${{ steps.build.outputs.digest }}
 
       # Residency web image (#566). See deploy-dev.yml for the rationale —
       # additive to the SaaS S3/CloudFront web deploy; pulled by the L2 Helm
@@ -500,10 +500,10 @@ jobs:
           sbom: true
 
       - name: Sign web image (cosign keyless)
-        env:
-          DIGEST: ${{ steps.web-build.outputs.digest }}
-          IMAGE: ${{ steps.web-ecr.outputs.uri }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        uses: ./.github/actions/cosign-sign
+        with:
+          image: ${{ steps.web-ecr.outputs.uri }}
+          digest: ${{ steps.web-build.outputs.digest }}
 
       - name: Get ECS configuration
         id: ecs
