@@ -41,19 +41,22 @@ permissions:
 jobs:
   npm-audit:
     name: npm audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Not the `./.github/actions/setup` composite: that runs `npm ci`, which an
       # audit does not need. Node is only here to run the summary formatter.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           check-latest: true
+          # No install here, so nothing for setup-node v5+'s automatic npm
+          # cache to speed up (#904).
+          package-manager-cache: false
 
       - name: Run npm audit
         shell: bash

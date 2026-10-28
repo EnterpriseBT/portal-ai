@@ -22,27 +22,40 @@ runs:
     # Workspace links are relative symlinks, so the tree is valid at any
     # checkout path. The `v2` retires entries saved before the clean-tree
     # save below existed; bump it to invalidate every entry.
+    # The runner image (e.g. `ubuntu26`) is part of the key: native addons are
+    # built against the image's libraries, so a reviewed `runs-on` move must
+    # miss rather than restore a tree built on the old OS (#904).
+    - name: Runner image
+      id: image
+      shell: bash
+      run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
     - name: Restore node_modules
       id: modules
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: |
           node_modules
           apps/*/node_modules
           packages/*/node_modules
-        key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json', 'apps/*/package.json', 'packages/*/package.json') }}
+        key: node-modules-v2-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json', 'apps/*/package.json', 'packages/*/package.json') }}
 
     # npm's download cache only matters on a miss, where it saves `npm ci`
     # fetching every tarball from the registry (in parallel, across every job
     # that missed). On a hit it would be a wasted restore.
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
         # The newest release of the major, not the runner's cached one: a
         # cached 22.23.3 fell below astro's floor while 22.23.4 was out (#900).
         check-latest: true
         cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'npm' || '' }}
+        # setup-node v5+ turns npm caching on by itself when package.json
+        # declares `packageManager` (ours does), which would restore npm's
+        # download cache even on a node_modules hit. The `cache` line above
+        # is the whole policy (#857, #904).
+        package-manager-cache: false
 
     - name: Install dependencies
       if: steps.modules.outputs.cache-hit != 'true'
@@ -56,7 +69,7 @@ runs:
     # only log a warning.
     - name: Save node_modules
       if: steps.modules.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: |
           node_modules

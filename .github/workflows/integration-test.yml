@@ -62,7 +62,7 @@ jobs:
   # (`npm run lint:integration-skip`).
   changes:
     name: "Integration Tests: changes"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # actions: read lets the skip decision read this workflow's run history.
     permissions:
       contents: read
@@ -71,7 +71,7 @@ jobs:
       run: ${{ steps.changes.outputs.run }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Need the pushed range available locally to diff it below.
           fetch-depth: 0
@@ -89,7 +89,7 @@ jobs:
     name: "Integration Tests: plan"
     needs: [changes]
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     outputs:
@@ -98,7 +98,7 @@ jobs:
       capped: ${{ steps.plan.outputs.capped }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: |
             scripts
@@ -113,7 +113,7 @@ jobs:
     name: Integration Tests (shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
     needs: [changes, plan]
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -124,7 +124,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Start test services
         run: docker compose up -d postgres-test redis --wait
@@ -145,7 +145,7 @@ jobs:
 
       - name: Upload the shard's Jest report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-jest-${{ matrix.index }}
           path: apps/api/jest-integration-report.json
@@ -170,13 +170,13 @@ jobs:
     name: Integration Tests
     needs: [changes, plan, shard]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: |
             scripts
@@ -185,7 +185,7 @@ jobs:
 
       - name: Download the shards' Jest reports
         if: needs.changes.outputs.run == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: integration-jest-*
           path: reports

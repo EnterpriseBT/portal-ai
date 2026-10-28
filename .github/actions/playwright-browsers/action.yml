@@ -4,17 +4,20 @@ description: "Installs the Chromium build @portalai/e2e's pinned @playwright/tes
 runs:
   using: "composite"
   steps:
-    # Keyed on the pinned @playwright/test version: a bump re-installs.
+    # Keyed on the pinned @playwright/test version and the runner image
+    # (#904): a bump or an OS move re-installs.
     - name: Playwright version
       id: pw
       shell: bash
-      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
 
     - name: Restore Playwright browsers
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.os }}-${{ steps.pw.outputs.version }}
 
     - name: Install Chromium
       shell: bash

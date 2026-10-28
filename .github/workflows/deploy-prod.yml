@@ -78,17 +78,17 @@ jobs:
   # ── Infrastructure ────────────────────────────────────────
   deploy-infra:
     needs: [unit-test, integration-test, static-checks]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: prod
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -260,7 +260,7 @@ jobs:
   # ── Frontend ──────────────────────────────────────────────
   deploy-frontend:
     needs: deploy-infra
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: prod
     permissions:
       id-token: write
@@ -271,13 +271,13 @@ jobs:
       invalidation_id: ${{ steps.invalidate.outputs.id }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -352,17 +352,17 @@ jobs:
   # ── Backend ───────────────────────────────────────────────
   deploy-backend:
     needs: deploy-infra
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: prod
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -380,10 +380,10 @@ jobs:
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.2
@@ -393,7 +393,7 @@ jobs:
       # step below reuses this builder's cache (same job), so it does not
       # recompile; it re-exports the same layers with SBOM + provenance.
       - name: Build image (load, no push) for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/api/Dockerfile
@@ -425,7 +425,7 @@ jobs:
       # unanswerable after the fact. The release tag and the sha are enough.
       - name: Build and push Docker image (+ SBOM & provenance)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/api/Dockerfile
@@ -459,7 +459,7 @@ jobs:
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
       - name: Build and push web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
@@ -637,7 +637,7 @@ jobs:
     # Plain `needs` success, like deploy-frontend: nothing upstream here is
     # deliberately skipped, so dev's `!cancelled()` override isn't needed.
     needs: [deploy-frontend, deploy-backend]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: prod
     timeout-minutes: 15
     permissions:
@@ -645,7 +645,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -662,7 +662,7 @@ jobs:
         run: npm run build -- --filter=@portalai/e2e^...
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
