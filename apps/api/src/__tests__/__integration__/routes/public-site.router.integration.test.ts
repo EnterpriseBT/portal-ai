@@ -201,9 +201,11 @@ describe("GET /api/public/site-config (#311)", () => {
       (t: { slug: string }) => t.slug === pricedSlug
     );
     expect(Object.keys(priced).sort()).toEqual([
+      "advancedViewFilters",
       "builtinToolpacks",
       "credits",
       "cta",
+      "customRbac",
       "customToolpacks",
       "description",
       "displayName",
@@ -212,6 +214,9 @@ describe("GET /api/public/site-config (#311)", () => {
       "slug",
     ]);
     expect(priced.price).toEqual(PRICE);
+    // #615: the plan-feature flags reach the public snapshot (DB defaults).
+    expect(priced.customRbac).toBe(false);
+    expect(priced.advancedViewFilters).toBe(false);
     expect(priced.credits).toEqual({ metered: 500, expensive: 20 });
     // The org id must appear nowhere in the serialized response.
     expect(JSON.stringify(res.body)).not.toContain(orgA);

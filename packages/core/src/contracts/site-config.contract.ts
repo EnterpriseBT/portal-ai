@@ -42,6 +42,12 @@ export const PublicSiteTierSchema = z.strictObject({
    *  `@portalai/core/registries` at build time. */
   builtinToolpacks: z.array(z.string()),
   customToolpacks: z.boolean(),
+  /** Custom roles and policies (`tiers.custom_rbac`, #622). The pricing page
+   *  lists it on the cards that carry it (#615). */
+  customRbac: z.boolean(),
+  /** Advanced (SQL) curated-view filters (`tiers.advanced_view_filters`,
+   *  #644). Listed on the cards that carry it (#615). */
+  advancedViewFilters: z.boolean(),
   /** null ⇔ the tier has no Stripe price (the bespoke contact card). An
    *  unresolvable non-null price is a 503 upstream, never a null here —
    *  the split rule that keeps a Stripe outage from being published as a

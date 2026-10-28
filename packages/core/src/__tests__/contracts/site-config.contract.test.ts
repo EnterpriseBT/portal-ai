@@ -21,6 +21,8 @@ const validTier = {
   credits: { metered: null, expensive: 1_000_000 },
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
+  customRbac: false,
+  advancedViewFilters: true,
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
 };
 
@@ -33,8 +35,21 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
   it("parses a full snapshot", () => {
     const parsed = PublicSiteConfigResponseSchema.parse(validSnapshot);
     expect(parsed.tiers[0].slug).toBe("pro");
+    expect(parsed.tiers[0].customRbac).toBe(false);
+    expect(parsed.tiers[0].advancedViewFilters).toBe(true);
     expect(parsed.generatedAt).toBeTruthy();
   });
+
+  // #615: the pricing page lists these plan features, so a snapshot without
+  // them can't describe a tier.
+  it.each(["customRbac", "advancedViewFilters"])(
+    "rejects a tier missing %s",
+    (field) => {
+      const tier: Record<string, unknown> = { ...validTier };
+      delete tier[field];
+      expect(PublicSiteTierSchema.safeParse(tier).success).toBe(false);
+    }
+  );
 
   // #369: contact addresses left this contract. They are env-derived at build
   // time now — SSM is the single write path — so the API no longer tells the

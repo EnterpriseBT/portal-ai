@@ -24,6 +24,8 @@ const tier = (over: Record<string, unknown> = {}) => ({
   credits: { metered: 5000, expensive: 200 },
   builtinToolpacks: ["data_query"],
   customToolpacks: false,
+  customRbac: false,
+  advancedViewFilters: false,
   price: { unitAmount: 2900, currency: "usd", interval: "month" },
   ...over,
 });

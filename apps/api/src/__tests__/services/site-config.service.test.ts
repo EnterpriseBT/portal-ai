@@ -50,6 +50,8 @@ const publicRow = (over: Record<string, unknown> = {}) => ({
   expensiveUnitsPerPeriod: 20,
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: false,
+  customRbac: false,
+  advancedViewFilters: false,
   stripePriceId: null,
   visibleToOrganizationId: null,
   ...over,
@@ -77,6 +79,8 @@ it("assembles { tiers, generatedAt } from public rows", async () => {
       meteredUnitsPerPeriod: null,
       expensiveUnitsPerPeriod: 1_000_000,
       customToolpacks: true,
+      customRbac: true,
+      advancedViewFilters: true,
       stripePriceId: "price_pro",
       description: "For teams.",
     }),
@@ -97,8 +101,13 @@ it("assembles { tiers, generatedAt } from public rows", async () => {
     credits: { metered: null, expensive: 1_000_000 },
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: true,
+    customRbac: true,
+    advancedViewFilters: true,
     price: PRICE,
   });
+  // #615: the flags come from the row, not a default.
+  expect(snapshot.tiers[0].customRbac).toBe(false);
+  expect(snapshot.tiers[0].advancedViewFilters).toBe(false);
 });
 
 // ── case 2 — null stripePriceId is a LEGITIMATE amountless tier ──────
