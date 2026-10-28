@@ -89,11 +89,12 @@
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "^8.6.15",
-    "@storybook/addon-interactions": "^8.6.15",
-    "@storybook/blocks": "^8.6.14",
-    "@storybook/react-vite": "^8.6.15",
-    "@storybook/test": "^8.6.15",
+    "@storybook/addon-essentials": "^8.6.19",
+    "@storybook/addon-interactions": "^8.6.19",
+    "@storybook/blocks": "^8.6.19",
+    "@storybook/react": "^8.6.19",
+    "@storybook/react-vite": "^8.6.19",
+    "@storybook/test": "^8.6.19",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.6.1",
@@ -115,11 +116,11 @@
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
     "sass": "^1.97.3",
-    "storybook": "^8.6.15",
+    "storybook": "^8.6.19",
     "ts-jest": "^29.4.6",
     "ttf2woff2": "^8.0.1",
     "typescript": "^5.7.2",
-    "vite": "^6.4.3",
+    "vite": "^6.4.5",
     "vite-plugin-svgr": "^4.5.0"
   },
   "dependencies": {

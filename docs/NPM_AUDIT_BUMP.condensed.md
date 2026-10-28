@@ -27,13 +27,18 @@
 - **Chosen: (b).** With (a) alone, a later regenerated lockfile can silently drop back to the vulnerable versions; a floor in `package.json` records the security minimum where review sees it. Transitive packages stay governed by the lockfile only. Their parents' ranges already admit the fixes, and `overrides` stay sticky long after the parent catches up (the reason #545 kept them out).
 - No major upgrades. Storybook 10, Vite 8 in web/core and `concurrently` 10 are out of scope (see below).
 - Moderates and the low go in too if `npm audit fix` takes them non-breaking. Any it can't are listed on the PR rather than forced.
+- **Found during implementation.** Moving packages surfaced dependencies the code used but never declared, and these are now declared:
+  - **`@storybook/react` `^8.6.19` in core and web.** About 96 story files import it, and it only resolved because npm placed it at the root.
+  - **`cookie` `^2.0.1` in `apps/site`.** Astro's built prerender bundle in `apps/site/dist` imports `cookie`. Once `astro` moved to the root, that import found the root's `cookie@0.7.2`, and the build failed on the missing `parseCookie` export.
+- **The web test setup stubs `window.scrollTo`.** TanStack Router moved from 1.163 to 1.170 within its range and now calls `scrollTo` on load. jsdom logs "Not implemented" for it, which failed `HelpRoute.test.tsx`'s no-console-error assertion.
+- **Prettier is held at 3.8.1.** The fix's in-range updates pulled in 3.9, which reformats 55 source files. That's unrelated churn, so the formatter is pinned back.
 
 ## Plan — 1 slice
 
 **Files:**
 - `package.json`, `package-lock.json`
 - `packages/core/package.json`, `apps/web/package.json`, `apps/api/package.json`
-- `apps/site/package.json`, only if `astro`'s floor must move to pull in the patched vite, sharp and devalue
+- `apps/site/package.json`: the `astro` floor and the `cookie` declaration
 
 **Steps:**
 1. Run `npm audit fix` with full network access; container counts under-report.
@@ -58,6 +63,9 @@ Commit: `chore: bump npm-audit critical/high dependencies (#896)`
 6. After merge: Deploy Dev's Trivy gate passes and `deploy-dev` stays green.
 
 ## Out of scope
+
+- **`qs` (moderate, API runtime).** Express 4 pins `qs` to 6.14.x and 6.15.x, both inside the advisory range, so no in-range fix exists. Forcing one with an `overrides` entry would run Express on a `qs` it doesn't declare. Moving to Express 5 fixes it; that's tracked in #897.
+- **`esbuild` via `drizzle-kit`, and `uuid` via `exceljs` (moderate).** Only major upgrades fix them.
 
 - **Major upgrades:**
   - Storybook 10 (the a11y epic's tooling may want it; that's #792's call).
