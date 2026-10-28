@@ -40,14 +40,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What is Portals AI and what can I do with it?",
     answer:
-      "Portals AI is a workspace for connecting your data sources, normalizing them into a shared vocabulary, and asking questions about them in chat-style sessions called portals. You can pull in data from CSVs, databases, and other tools, define how their fields relate, and then explore or analyze the combined data through portals.",
+      "Portals AI is a workspace for connecting your data sources, normalizing them into a shared vocabulary, and asking questions about them in chat-style sessions called portals. You can pull in data from CSV and Excel files, Google Sheets, Excel on OneDrive, and REST APIs, define how their fields relate, and then explore or analyze the combined data through portals.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Connector Instance", "Station", "Portal"],
   },
   {
     question: "How do I connect my first data source?",
     answer:
-      "Open the Connectors page, switch to the Catalog tab, and pick a connector definition (for example, CSV). Configure it with your file or credentials — that creates a connector instance you can use across stations.",
+      "Open the Connectors page, switch to the Catalog tab, and pick a connector definition (for example, File Upload for CSV and Excel files). Configure it with your file or credentials — that creates a connector instance you can use across stations.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Connector Definition", "Connector Instance"],
   },
@@ -67,7 +67,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      'From a station, click "New Portal" to open a chat session. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later.',
+      'From a station, click "Open Portal" to open a chat session. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later.',
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -113,7 +113,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What's the difference between a connector and an entity?",
     answer:
-      "A connector instance is the live link to a source (your CSV file, your database). A connector entity is one specific data object exposed through that connection — a single sheet, table, or collection. One connector instance often surfaces several connector entities.",
+      "A connector instance is the live link to a source (your uploaded file, your Google Sheet, your REST API). A connector entity is one specific data object exposed through that connection — a single sheet, table, or collection. One connector instance often surfaces several connector entities.",
     category: FAQCategory.Data,
     relatedGlossaryTerms: ["Connector Instance", "Connector Entity"],
   },
@@ -202,11 +202,40 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Organization,
   },
 
+  {
+    question: "How do I invite someone to my organization?",
+    answer:
+      "Open Settings → Members and invite them by email, choosing their role. You'll get an invitation link — copy it and send it to them; it's shown only once and expires after 7 days. They join when they sign in with that email. The Members tab appears for anyone with permission to invite members.",
+    category: FAQCategory.Organization,
+    relatedGlossaryTerms: ["Invitation", "Role"],
+  },
+  {
+    question: "How do I control who can see and change things?",
+    answer:
+      "Two ways. Share an individual station, pinned result, or curated view from its Share action — read-only or read & write for stations and pins, read-only for views. Or, on a plan with custom roles, use Settings → Access to build policies, bundle them into roles, and grant them to members or groups. The server checks every request against the same rules, so hiding something in the app and refusing it are the same decision.",
+    category: FAQCategory.Organization,
+    relatedGlossaryTerms: ["Share", "Policy", "Role", "Group"],
+  },
+  {
+    question: "Why is an action missing or greyed out for me?",
+    answer:
+      "Each button reflects what you can do with that specific object. If you don't have permission, the action is hidden — ask for access to that object. If your plan doesn't include it, it points you to Settings → Subscription & Billing. If something temporary blocks it, like a sync or import still running, it's disabled and the tooltip says why; it comes back when the job finishes.",
+    category: FAQCategory.Organization,
+    relatedGlossaryTerms: ["Capabilities", "Data Lock", "Plan Entitlement"],
+  },
+  {
+    question: "Where can I see who changed what?",
+    answer:
+      "Settings → Activity lists the organization's security-relevant actions — sign-ins, invitations, member and role changes, shares, and policy edits — with who did each one and when. It's visible to anyone with permission to read the audit log, and entries are kept for about 24 months.",
+    category: FAQCategory.Organization,
+    relatedGlossaryTerms: ["Activity Log"],
+  },
+
   // Analytics & Portals
   {
     question: "What are tool packs?",
     answer:
-      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, and entity management. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station.",
+      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Your plan decides which ones are available. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Tool Pack", "Station", "Portal"],
   },
@@ -300,7 +329,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     question:
       "Why does the assistant say my data is incomplete while an import is running?",
     answer:
-      "Because it is, for now. While a background job is importing or syncing a connector instance, that data is still arriving and the records it owns are read-only — syncing, editing fields, and deleting are paused until the job finishes, and the station's detail page says so while it runs. Ask again once the job reaches a terminal state and the answer will reflect the full data. Checking for a running job is worth doing before you trust a number that looks off.",
+      "Because it is, for now. While a background job is importing or syncing a connector instance, that data is still arriving and the records it owns are read-only — syncing, editing fields, and deleting are paused until the job finishes, and the connector's page (and each affected entity's page) says so while it runs. Ask again once the job reaches a terminal state and the answer will reflect the full data. Checking for a running job is worth doing before you trust a number that looks off.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Job Status", "Portal", "Connector Instance"],
   },

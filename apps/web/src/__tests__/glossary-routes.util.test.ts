@@ -32,6 +32,24 @@ describe("GLOSSARY_PAGE_ROUTES", () => {
     );
   });
 
+  // #615: Sync is started from the connector page, and the access-model
+  // terms link to Settings, where their tabs live.
+  it("#615: links Sync to Connectors and the access terms to Settings", () => {
+    expect(GLOSSARY_PAGE_ROUTES.Sync).toBe(ApplicationRoute.Connectors);
+    for (const term of [
+      "Policy",
+      "Role",
+      "Group",
+      "Invitation",
+      "Activity Log",
+    ]) {
+      expect(GLOSSARY_PAGE_ROUTES[term]).toBe(ApplicationRoute.Settings);
+    }
+    expect(GLOSSARY_PAGE_ROUTES["Advanced Filter"]).toBe(
+      ApplicationRoute.CuratedViews
+    );
+  });
+
   it("maps every route to an in-app path, never an absolute URL", () => {
     for (const route of Object.values(GLOSSARY_PAGE_ROUTES)) {
       expect(route!.startsWith("/")).toBe(true);

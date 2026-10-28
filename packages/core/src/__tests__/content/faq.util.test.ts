@@ -381,3 +381,31 @@ describe("FAQ_ENTRIES describe access by permission (#711)", () => {
     }
   );
 });
+
+// #615: FAQ answers are published on the marketing site too.
+describe("FAQ_ENTRIES match the shipped product (#615)", () => {
+  const answers = FAQ_ENTRIES.map((e) => e.answer).join("\n");
+
+  it("names no database source, no data export, and the real portal button", () => {
+    expect(answers).not.toMatch(/\bdatabase/i);
+    expect(answers).not.toMatch(/\bexport\b/i);
+    expect(answers).not.toContain("New Portal");
+  });
+
+  it.each([
+    "How do I invite someone to my organization?",
+    "How do I control who can see and change things?",
+    "Why is an action missing or greyed out for me?",
+    "Where can I see who changed what?",
+  ])("answers %s", (question) => {
+    expect(FAQ_ENTRIES.some((e) => e.question === question)).toBe(true);
+  });
+
+  it("only links glossary terms that exist", () => {
+    const terms = new Set(GLOSSARY_ENTRIES.map((e) => e.term));
+    const missing = FAQ_ENTRIES.flatMap(
+      (e) => e.relatedGlossaryTerms ?? []
+    ).filter((t) => !terms.has(t));
+    expect(missing).toEqual([]);
+  });
+});

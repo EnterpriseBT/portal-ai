@@ -45,7 +45,7 @@ export const USE_CASES: UseCase[] = [
       {
         step: "Connect each system once",
         detail:
-          "Upload the spreadsheet, connect the database, point at the REST API. Each connector instance keeps syncing on its own cadence.",
+          "Upload the spreadsheet, connect the Google Sheet, point at the REST API. Re-sync any of them when its source changes.",
       },
       {
         step: "Map the fields onto one vocabulary",
@@ -82,7 +82,7 @@ export const USE_CASES: UseCase[] = [
       {
         step: "Start with what you already have",
         detail:
-          "A CSV export is enough to begin. Add the database later; the vocabulary you define carries over.",
+          "A CSV export is enough to begin. Connect the live source later; the vocabulary you define carries over.",
       },
       {
         step: "Ask the question you'd have asked a person",
