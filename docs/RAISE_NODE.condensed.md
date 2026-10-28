@@ -30,12 +30,12 @@ Current releases (nodejs.org, 2026-10-28): 22.23.4 (Jod, maintenance LTS), 24.22
   - `deploy-dev.yml` demo-toolpack step: Node 20 → `"22"` with `check-latest: true`. Its `npm ci` installs the whole monorepo lockfile, which needs 22.
   - `infra/cloudformation/demo-toolpack.yml`: `nodejs20.x` → `nodejs22.x`. The handler has no dependencies, and 20 is end of life. It deploys with deploy-infra on the next push to main.
   - `Dockerfile` (devcontainer): `node:latest` → `node:22`, so local runs the same major as CI and the images. A newer local Node is how #896's failure passed locally.
-  - Root `engines.node`: `>=22.23.4`, the tree's real floor once astro moves. Workspace CLIs keep their own `>=20`, which describes the package itself.
+  - Root `engines.node`: `>=22.23.4`, the tree's real floor once astro moves, and the workspace CLIs match it: they only install through this lockfile. npm only warns on `engines`, so a dependency-free root `preinstall` refuses an older Node with a message, which also catches a devcontainer rebuilt on a stale cached `node:22`.
   - `apps/site/package.json`: `astro` `~7.3.8` → `^7.4.3`; `npm install`, then `npm audit` with no new site findings.
 
 ## Plan — 1 slice
 
-**Files:** `.github/actions/setup/action.yml`, `.github/workflows/npm-audit.yml`, `.github/workflows/deploy-dev.yml`, `infra/cloudformation/demo-toolpack.yml`, `Dockerfile`, `package.json`, `apps/site/package.json`, `package-lock.json`. (Neither `README.md` nor `docs/LOCAL_DEVELOPMENT.md` names a Node version, so there's no doc drift to fix.)
+**Files:** `.github/actions/setup/action.yml`, `.github/workflows/npm-audit.yml`, `.github/workflows/deploy-dev.yml`, `infra/cloudformation/demo-toolpack.yml`, `Dockerfile`, `package.json`, `apps/site/package.json`, `package-lock.json`. `README.md` (prerequisites said Node v18+), the five workspace CLIs' `engines` (`>=20`), and a root `preinstall` that refuses a Node below `engines.node`, since npm only warns on `engines` (code review).
 
 **Tests:**
 - `npm run build --workspace @portalai/site` and `npm run type-check --workspace @portalai/site` on astro 7.4.
@@ -54,4 +54,3 @@ Current releases (nodejs.org, 2026-10-28): 22.23.4 (Jod, maintenance LTS), 24.22
 
 - **Node 24 LTS.** A runtime major change for the API image deserves its own full ticket, ahead of 22's end of life (April 2027).
 - **Pinning image digests** for `node:22-alpine`: the Trivy gate (#573) covers the shipped image.
-- **Workspace CLI `engines`** (`>=20`): they describe each package, not the monorepo install.

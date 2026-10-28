@@ -137,8 +137,8 @@ jobs:
       - name: Set up Node (demo-toolpack bundle)
         uses: actions/setup-node@v4
         with:
-          # 22, not the Lambda's old 20: the `npm ci` below installs the whole
-          # monorepo lockfile, which needs the root `engines` floor (#900).
+          # 22, not 20: the `npm ci` below installs the whole monorepo, whose
+          # root preinstall refuses a Node below `engines.node` (#900).
           node-version: "22"
           check-latest: true
           cache: npm

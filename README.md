@@ -34,7 +34,7 @@ An in-container Claude session can drive a real browser against the running dev 
 
 ### Prerequisites
 
-- Node.js v18+
+- Node.js 22, at least 22.23.4 (`engines.node`; `npm install` refuses an older one)
 - npm 10+
 - PostgreSQL (for API)
 

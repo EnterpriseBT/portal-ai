@@ -26,6 +26,7 @@
 		"test:e2e": "turbo run test:e2e",
 		"test:watch": "turbo run test:watch",
 		"test:coverage": "turbo run test:coverage",
+		"preinstall": "node -e \"const want=require('./package.json').engines.node;const w=want.replace('>=','').split('.').map(Number),h=process.versions.node.split('.').map(Number);const i=[0,1,2].find(k=>h[k]!==w[k]);if(i!==undefined&&h[i]<w[i]){console.error('Node '+process.version+' is below engines.node '+want+' (#900). Install the newest Node 22; for the devcontainer, rebuild it pulling node:22.');process.exit(1)}\"",
 		"prepare": "test -f .husky/install.mjs && node .husky/install.mjs || true"
 	},
 	"devDependencies": {
