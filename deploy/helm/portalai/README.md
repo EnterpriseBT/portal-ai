@@ -173,7 +173,9 @@ residency operator most often needs to know about:
 
 - Complete `docs/DEPLOYMENT_SECURITY_REVIEW.md` with the customer before the
   install ships.
-- Verify the **API image** before mirroring it: it is Trivy-gated,
-  SBOM-attested and cosign-signed (`docs/SUPPLY_CHAIN.md` → "Verifying a
-  published image"). The **web image** carries no scan, attestation or
-  signature yet (#909); record it as an accepted exception in the review.
+- Verify both images (`image.api`, `image.web`) before mirroring them: each
+  is Trivy-gated, SBOM-attested and cosign-signed, the web image for both of
+  its platforms (`docs/SUPPLY_CHAIN.md` → "Verifying a published image").
+  The web image's scan covers its OS packages and node, not the nginx binary
+  itself (installed from nginx.org's repository, outside Trivy's Alpine
+  data); record that in the review.

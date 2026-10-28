@@ -140,17 +140,22 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Sub "portalai-api-${Environment}"
+      # ECR counts every manifest as an image: a gated push writes the index,
+      # each platform's manifest, its SBOM + provenance attestation manifests
+      # and the cosign signature (about 6 for the multi-arch web image). A
+      # count of 10 expired the children and signatures of still-tagged
+      # releases within two deploys; 60 keeps about 10 deploys intact (#909).
       LifecyclePolicy:
         LifecyclePolicyText: |
           {
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Keep last 10 images",
+                "description": "Keep the last 60 manifests (about 10 deploys)",
                 "selection": {
                   "tagStatus": "any",
                   "countType": "imageCountMoreThan",
-                  "countNumber": 10
+                  "countNumber": 60
                 },
                 "action": { "type": "expire" }
               }
@@ -168,17 +173,22 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Sub "portalai-web-${Environment}"
+      # ECR counts every manifest as an image: a gated push writes the index,
+      # each platform's manifest, its SBOM + provenance attestation manifests
+      # and the cosign signature (about 6 for the multi-arch web image). A
+      # count of 10 expired the children and signatures of still-tagged
+      # releases within two deploys; 60 keeps about 10 deploys intact (#909).
       LifecyclePolicy:
         LifecyclePolicyText: |
           {
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Keep last 10 images",
+                "description": "Keep the last 60 manifests (about 10 deploys)",
                 "selection": {
                   "tagStatus": "any",
                   "countType": "imageCountMoreThan",
-                  "countNumber": 10
+                  "countNumber": 60
                 },
                 "action": { "type": "expire" }
               }

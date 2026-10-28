@@ -136,7 +136,7 @@ Merging to `main` triggers `.github/workflows/deploy-dev.yml`. The test suites a
 
 1. **Deploy infra** — deploys the CloudFormation stacks below (no-op if unchanged)
 2. **Deploy frontend** — builds the web app with its `VITE_*` values, syncs to S3, invalidates CloudFront
-3. **Deploy backend** — builds the API image, Trivy-gates it, pushes it with an SBOM and provenance, signs it with cosign (`docs/SUPPLY_CHAIN.md`), runs migrations then the seed as one-off ECS tasks, and updates the ECS service; also pushes the residency web image
+3. **Deploy backend** — builds the API image, Trivy-gates it, pushes it with an SBOM and provenance, signs it with cosign (`docs/SUPPLY_CHAIN.md`), runs migrations then the seed as one-off ECS tasks, and updates the ECS service; also gates, attests, signs and pushes the residency web image (both platforms)
 4. **Tag** — creates a `dev-YYYYMMDDHHMMSS-<sha>` git tag
 5. **Verify login** — signs in to app-dev as its QA owner (#489)
 
