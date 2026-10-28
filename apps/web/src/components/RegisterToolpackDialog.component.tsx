@@ -559,13 +559,12 @@ app.use(express.json({
   verify: (req: any, _res, buf) => { req.rawBody = buf; },
 }));
 
-// Registration fetches /schema and /metadata signed with a secret you only
-// receive in the registration response, so those two can't be verified yet.
-// They serve your tool catalog, not customer data; verify everything else.
-const CATALOG_PATHS = new Set(["/schema", "/metadata"]);
-
+// Portals AI only GETs your server to fetch the tool catalog (schema and
+// metadata, at whatever paths you registered). The registration-time fetch
+// is signed with a secret you only receive in the registration response,
+// so it can't be verified. Let GETs through; verify every POST.
 app.use((req, res, next) => {
-  if (req.method === "GET" && CATALOG_PATHS.has(req.path)) return next();
+  if (req.method === "GET") return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -601,14 +600,13 @@ from flask import Flask, request, abort, jsonify
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
-# Registration fetches /schema and /metadata signed with a secret you only
-# receive in the registration response, so those two can't be verified yet.
-# They serve your tool catalog, not customer data; verify everything else.
-CATALOG_PATHS = {"/schema", "/metadata"}
-
+# Portals AI only GETs your server to fetch the tool catalog (schema and
+# metadata, at whatever paths you registered). The registration-time fetch
+# is signed with a secret you only receive in the registration response,
+# so it can't be verified. Let GETs through; verify every POST.
 @app.before_request
 def verify_signature():
-    if request.method == "GET" and request.path in CATALOG_PATHS:
+    if request.method == "GET":
         return None
     ts  = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
@@ -642,15 +640,13 @@ var SIGNING_SECRET = Environment.GetEnvironmentVariable(
 
 var app = WebApplication.Create();
 
-// Registration fetches /schema and /metadata signed with a secret you only
-// receive in the registration response, so those two can't be verified yet.
-// They serve your tool catalog, not customer data; verify everything else.
-var catalogPaths = new HashSet<string> { "/schema", "/metadata" };
-
+// Portals AI only GETs your server to fetch the tool catalog (schema and
+// metadata, at whatever paths you registered). The registration-time fetch
+// is signed with a secret you only receive in the registration response,
+// so it can't be verified. Let GETs through; verify every POST.
 app.Use(async (ctx, next) =>
 {
-    if (HttpMethods.IsGet(ctx.Request.Method) &&
-        catalogPaths.Contains(ctx.Request.Path.Value ?? ""))
+    if (HttpMethods.IsGet(ctx.Request.Method))
     {
         await next();
         return;

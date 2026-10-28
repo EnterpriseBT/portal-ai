@@ -48,8 +48,8 @@ Portals AI generates the signing secret **at registration** and signs the regist
 
 The rule, as `packages/demo-toolpack` implements it (the local `mock-toolpack-server.ts` sidesteps the problem differently: it verifies nothing until you set `MOCK_TOOLPACK_SIGNING_SECRET`, which you can only do after registering):
 
-- **Let `GET /schema` and `GET /metadata` through without verification.** They serve your tool catalog, not customer data. (Once the secret is stored you *can* verify them on a refresh, but the next re-registration would fail, so most servers don't.)
-- **Verify everything else**, above all `POST /runtime` and anything that receives records.
+- **Let `GET` requests through without verification.** Portals AI only ever sends your server a `GET` to fetch the tool catalog — the schema and metadata endpoints, at whatever URLs you registered — and the catalog is not customer data. Don't verify a schema refresh either: a server that does can't be registered again (a re-registration signs with a new secret it doesn't have yet).
+- **Verify every `POST`**: the runtime endpoint, which receives tool input and records.
 
 [#911](https://github.com/EnterpriseBT/portal-ai/issues/911) tracks letting the registration fetches be verified too.
 
@@ -82,11 +82,9 @@ app.use(
   })
 );
 
-// The registration-time catalog fetches can't be verified (see above).
-const CATALOG_PATHS = new Set(["/schema", "/metadata"]);
-
+// Catalog fetches (GET) can't be verified at registration (see above).
 app.use((req, res, next) => {
-  if (req.method === "GET" && CATALOG_PATHS.has(req.path)) return next();
+  if (req.method === "GET") return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -124,12 +122,10 @@ from flask import Flask, request, abort
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
-# The registration-time catalog fetches can't be verified (see above).
-CATALOG_PATHS = {"/schema", "/metadata"}
-
+# Catalog fetches (GET) can't be verified at registration (see above).
 @app.before_request
 def verify_signature():
-    if request.method == "GET" and request.path in CATALOG_PATHS:
+    if request.method == "GET":
         return None
     ts = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
@@ -168,12 +164,10 @@ import (
 
 var signingSecret = []byte(os.Getenv("TOOLPACK_SIGNING_SECRET"))
 
-// The registration-time catalog fetches can't be verified (see above).
-var catalogPaths = map[string]bool{"/schema": true, "/metadata": true}
-
+// Catalog fetches (GET) can't be verified at registration (see above).
 func verifySignature(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if r.Method == http.MethodGet && catalogPaths[r.URL.Path] {
+        if r.Method == http.MethodGet {
             next.ServeHTTP(w, r)
             return
         }
@@ -520,7 +514,7 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 
 Before going live, confirm your toolpack server:
 
-- [ ] Verifies all three signing headers on `/runtime` (and every request other than the registration-time `/schema` and `/metadata` fetches).
+- [ ] Verifies all three signing headers on every `POST` (the runtime endpoint); lets the catalog `GET`s through.
 - [ ] Hashes the **raw** body, not re-serialized JSON.
 - [ ] Uses a constant-time comparison (`hmac.compare_digest`, `crypto.timingSafeEqual`, `hmac.Equal`).
 - [ ] Enforces the 300-second replay window.

@@ -945,11 +945,11 @@ describe("PortalService", () => {
     // #615: the GIS section names geocode tools only when they're built,
     // which takes GEOCODING_API_KEY; bulk_geocode_records also needs writes.
     it.each([
-      ["set", "gis-key", true],
-      ["unset", "", false],
+      ["set", "gis-key", true, true],
+      ["unset", "", false, undefined],
     ])(
-      "reports geocodingAvailable from GEOCODING_API_KEY (%s) and resolves writability for gis",
-      async (_label, key, expected) => {
+      "reports geocodingAvailable from GEOCODING_API_KEY (%s), resolving writability only when bulk geocoding could exist",
+      async (_label, key, expected, writable) => {
         const { buildStationContext } =
           await import("../../services/portal.service.js");
         const { environment } = await import("../../environment.js");
@@ -973,7 +973,7 @@ describe("PortalService", () => {
           });
 
           expect(ctx.geocodingAvailable).toBe(expected);
-          expect(ctx.stationWritable).toBe(true);
+          expect(ctx.stationWritable).toBe(writable);
         } finally {
           environment.GEOCODING_API_KEY = previous;
         }

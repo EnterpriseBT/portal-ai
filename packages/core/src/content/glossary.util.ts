@@ -314,7 +314,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Signing Secret",
     category: GlossaryCategory.Analytics,
     definition:
-      "A per-toolpack HMAC secret (`whsec_*` prefix, 32 random bytes) used to sign every outbound webhook call. Generated server-side at registration and shown to you exactly once — copy it into your toolpack server's environment immediately. The secret is encrypted at rest; subsequent reads only confirm presence, never plaintext. To re-view a secret, rotate it from the toolpack's edit dialog: a fresh value is generated, the old one is invalidated immediately, and the new plaintext is shown once.\n\nEvery outbound call carries three headers:\n\n```\nX-Portalai-Timestamp: <unix-seconds>\nX-Portalai-Webhook-Id: <uuid>\nX-Portalai-Signature: v1=<hex>\n```\n\nThe signature is `HMAC-SHA256` over the string `<timestamp>.<webhook-id>.<body>` (empty body for GETs). Your server should reject requests where the timestamp is more than 300 seconds old (replay window) or where the recomputed signature doesn't match using a constant-time comparison.\n\nOne exception: the schema and metadata fetches made *during registration* are signed with the new secret before you've received it, so your server can't verify those two. Accept them unverified (they read your tool catalog, not customer data), and verify everything else, including later schema refreshes.",
+      "A per-toolpack HMAC secret (`whsec_*` prefix, 32 random bytes) used to sign every outbound webhook call. Generated server-side at registration and shown to you exactly once — copy it into your toolpack server's environment immediately. The secret is encrypted at rest; subsequent reads only confirm presence, never plaintext. To re-view a secret, rotate it from the toolpack's edit dialog: a fresh value is generated, the old one is invalidated immediately, and the new plaintext is shown once.\n\nEvery outbound call carries three headers:\n\n```\nX-Portalai-Timestamp: <unix-seconds>\nX-Portalai-Webhook-Id: <uuid>\nX-Portalai-Signature: v1=<hex>\n```\n\nThe signature is `HMAC-SHA256` over the string `<timestamp>.<webhook-id>.<body>` (empty body for GETs). Your server should reject requests where the timestamp is more than 300 seconds old (replay window) or where the recomputed signature doesn't match using a constant-time comparison.\n\nOne exception: the schema and metadata fetches (`GET`s) made *during registration* are signed with the new secret before you've received it, so your server can't verify them. Let `GET`s through unverified (they read your tool catalog, not customer data; verifying a later refresh would break the next registration) and verify every `POST` to your runtime endpoint.",
     example:
       "Register a toolpack, copy the displayed `whsec_...` secret into your server's environment (e.g. `TOOLPACK_SIGNING_SECRET`), and verify every incoming request before processing — recompute the HMAC over `<ts>.<id>.<rawBody>` and compare with `crypto.timingSafeEqual` (Node) / `hmac.compare_digest` (Python) / `hmac.Equal` (Go).",
     relatedTerms: ["Custom Toolpack", "Tool Pack"],
@@ -485,7 +485,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Capabilities",
     category: GlossaryCategory.Organization,
     definition:
-      "What you can do with a particular object — read, write, delete, and for shareable objects share — worked out by the server from your roles, groups, policies, and shares. The app uses them to decide which actions to show: an action you aren't permitted is hidden, one your plan doesn't include points to billing, and one blocked by something temporary (like a running job) is disabled with the reason.",
+      "What you can do with a particular object — read, write, delete, and for shareable objects share — worked out by the server from your roles, groups, policies, and shares. The app uses them to decide which actions to show: an action you aren't permitted is usually hidden, except a page's main action you could be given access to (like Create on a list page), which shows disabled with a note saying what access it needs; one your plan doesn't include points to billing; and one blocked by something temporary (like a running job) is disabled with the reason.",
     example:
       "A station shared with you read-only shows no Edit or Delete, because your capabilities on it are read only.",
     relatedTerms: ["Share", "Policy", "Role", "Data Lock"],
@@ -512,7 +512,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "SSO",
     category: GlossaryCategory.Organization,
     definition:
-      "Single sign-on: signing in through your organization's own identity provider (for example Okta or Microsoft Entra ID) instead of a Google account. Available on Enterprise, set up with the Portals AI team; members still need an invitation to join.",
+      "Single sign-on: signing in through your organization's own identity provider (for example Okta or Microsoft Entra ID) instead of a Google account. Set up with the Portals AI team for organizations that need it; members still need an invitation to join.",
     example:
       "With SSO set up, your team signs in with their company accounts and you manage access in your own identity provider.",
     relatedTerms: ["Organization", "Invitation"],

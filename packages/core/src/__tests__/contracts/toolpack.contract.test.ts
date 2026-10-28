@@ -189,6 +189,16 @@ describe("UpdateToolpackBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  // #615: null clears the description (an empty string is still refused).
+  it("accepts null as a description clear, and still refuses an empty string", () => {
+    expect(
+      UpdateToolpackBodySchema.safeParse({ description: null }).success
+    ).toBe(true);
+    expect(
+      UpdateToolpackBodySchema.safeParse({ description: "" }).success
+    ).toBe(false);
+  });
+
   // Case 72
   it("accepts a partial subset", () => {
     expect(

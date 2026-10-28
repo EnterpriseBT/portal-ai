@@ -67,7 +67,9 @@ function buildPatch(
     patch.name = current.name.trim();
   }
   if (current.description.trim() !== initial.description.trim()) {
-    patch.description = current.description.trim() || undefined;
+    // An emptied field clears it: `null`, because JSON drops `undefined` and
+    // the PATCH would silently change nothing (#615).
+    patch.description = current.description.trim() || null;
   }
   const endpointsChanged =
     current.schemaUrl.trim() !== initial.schemaUrl.trim() ||

@@ -64,6 +64,25 @@ describe("fetchSiteConfig", () => {
     });
   });
 
+  // #615: the prod site deploy can run against an API that predates the
+  // plan-feature flags (both deploys start on the same release), so a tier
+  // without them builds, reading them as false.
+  it("builds against an API that predates the plan-feature flags", async () => {
+    const older: Record<string, unknown> = tier();
+    delete older.customRbac;
+    delete older.advancedViewFilters;
+    const fetchImpl = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse({ success: true, payload: payload({ tiers: [older] }) })
+      );
+
+    const { config } = await fetchSiteConfig(URL_, fetchImpl);
+
+    expect(config.tiers[0].customRbac).toBe(false);
+    expect(config.tiers[0].advancedViewFilters).toBe(false);
+  });
+
   // ── case 2 — a non-200 fails the build ─────────────────────────────
 
   it("throws on a non-200, naming the endpoint", async () => {

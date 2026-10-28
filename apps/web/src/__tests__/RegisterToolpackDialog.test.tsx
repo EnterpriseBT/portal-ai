@@ -320,9 +320,9 @@ describe("RegisterToolpackDialogUI", () => {
     expect(snippet.textContent).not.toContain("hmac.compare_digest");
   });
 
-  // #615: registration signs /schema and /metadata with a secret the server
-  // doesn't have yet, so a snippet that verified every path made registration
-  // impossible. Each one lets the two catalog paths through.
+  // #615: registration signs the catalog GETs with a secret the server
+  // doesn't have yet, so a snippet that verified every request made
+  // registration impossible. Each one lets GETs through and verifies POSTs.
   it("lets the registration-time catalog fetches through in every snippet", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     fireEvent.click(
@@ -335,9 +335,13 @@ describe("RegisterToolpackDialogUI", () => {
       fireEvent.click(
         screen.getByTestId(`register-toolpack-verify-snippets-tab-${tab}`)
       );
-      expect(snippet.textContent).toContain('"/schema"');
-      expect(snippet.textContent).toContain('"/metadata"');
+      // Skipped by method, not by path: the catalog URLs are whatever the
+      // user registered, so a path list would miss a prefixed one.
       expect(snippet.textContent).toMatch(/registration/i);
+      expect(snippet.textContent).toMatch(
+        /Let GETs through; verify every POST/
+      );
+      expect(snippet.textContent).not.toContain('"/schema"');
     }
   });
 

@@ -1072,10 +1072,18 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   ) {
     lines.push("## Read-only connectors");
     lines.push("");
+    // #615: name bulk_geocode_records only when the session would otherwise
+    // have it (gis + geocoding), never a tool it could not have had anyway.
+    const withheld =
+      stationContext.effectiveToolPacks.includes("gis") &&
+      stationContext.geocodingAvailable === true
+        ? "the entity create, update and delete tools, " +
+          "`transform_entity_records` and `bulk_geocode_records` are"
+        : "the entity create, update and delete tools and " +
+          "`transform_entity_records` are";
     lines.push(
       "No connector this station reaches, attached directly or through its " +
-        "views, allows writes, so the entity create, update and delete " +
-        "tools, `transform_entity_records` and `bulk_geocode_records` are " +
+        `views, allows writes, so ${withheld} ` +
         "not available in this session. If the user asks to " +
         "create or change entities, field mappings or records, say that, " +
         "and that they can enable writes on a connector or attach a " +

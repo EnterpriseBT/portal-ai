@@ -76,6 +76,19 @@ describe("EditToolpackDialogUI", () => {
     expect(onSubmit).toHaveBeenCalledWith({ name: "renamed_pack" });
   });
 
+  // #615: clearing the description used to send `undefined`, which JSON
+  // drops, so the save reported success and changed nothing.
+  it("sends null when the description is cleared", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Description/), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ description: null });
+  });
+
   it("submits the endpoints object when any endpoint URL changes", async () => {
     const onSubmit = jest.fn();
     render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);

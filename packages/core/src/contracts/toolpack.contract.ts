@@ -145,7 +145,8 @@ export type RegisterToolpackBody = z.infer<typeof RegisterToolpackBodySchema>;
 export const UpdateToolpackBodySchema = z
   .object({
     name: z.string().regex(TOOLPACK_SLUG_REGEX).optional(),
-    description: descriptionField().min(1).optional(),
+    /** `null` clears it (#615); an empty string is refused. */
+    description: descriptionField().min(1).nullable().optional(),
     endpoints: ToolpackEndpointsSchema.optional(),
     authHeaders: z.record(z.string(), z.string()).optional(),
   })

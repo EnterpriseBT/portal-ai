@@ -350,6 +350,20 @@ describe("Toolpacks Router", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
+    // #615: null clears the description; before, a cleared field sent
+    // `undefined`, JSON dropped it, and the PATCH changed nothing.
+    it("clears the description when it's sent as null", async () => {
+      const id = await registerSeed();
+      await request(app)
+        .patch(`/api/toolpacks/${id}`)
+        .send({ description: "to be cleared" });
+      const res = await request(app)
+        .patch(`/api/toolpacks/${id}`)
+        .send({ description: null });
+      expect(res.status).toBe(200);
+      expect(res.body.payload.toolpack.description).toBeNull();
+    });
+
     // Case 98
     it("re-fetches schema when endpoints change", async () => {
       const id = await registerSeed();

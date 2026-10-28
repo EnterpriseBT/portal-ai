@@ -219,7 +219,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Why is an action missing or greyed out for me?",
     answer:
-      "Each button reflects what you can do with that specific object. If you don't have permission, the action is hidden — ask for access to that object. If your plan doesn't include it, it points you to Settings → Subscription & Billing. If something temporary blocks it, like a sync or import still running, it's disabled and the tooltip says why; it comes back when the job finishes.",
+      "Each button reflects what you can do with that specific object. If you don't have permission, the action is usually hidden — ask for access to that object. A page's main action, like Create on a list page, stays visible but disabled, and its tooltip says what access you need. If your plan doesn't include it, it points you to Settings → Subscription & Billing. If something temporary blocks it, like a sync or import still running, it's disabled and the tooltip says why; it comes back when the job finishes.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Capabilities", "Data Lock", "Plan Entitlement"],
   },
@@ -291,7 +291,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Can I show my data on a map?",
     answer:
-      "Yes, if your data has location. When a source carries geographic shapes (for example an ArcGIS parcel layer) they're imported as a geometry column; latitude/longitude number columns work too. If your data has only text addresses, the assistant can geocode them into map points — one address on the fly, or a whole column as a background job (a repeated address is cached and free). Then just ask — “show all vacant parcels on a map, colored by zoning” — and the assistant renders an interactive map you can pan, zoom, and click to inspect. Spatial questions like distances and areas are answered directly from your data as well. Mapping is part of the GIS tool pack, available on the Pro and Enterprise plans; add it to a station like any other tool pack.",
+      "Yes, if your data has location. When a source carries geographic shapes (for example an ArcGIS parcel layer) they're imported as a geometry column; latitude/longitude number columns work too. If your data has only text addresses, the assistant can geocode them into map points — one address on the fly, or a whole column as a background job (a repeated address is cached and free). Then just ask — “show all vacant parcels on a map, colored by zoning” — and the assistant renders an interactive map you can pan, zoom, and click to inspect. Spatial questions like distances and areas are answered directly from your data as well. Mapping is part of the GIS tool pack, available on the plans that include it (see Pricing); add it to a station like any other tool pack.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: [
       "Map Visualization",

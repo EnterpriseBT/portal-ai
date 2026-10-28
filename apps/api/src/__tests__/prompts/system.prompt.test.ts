@@ -813,8 +813,20 @@ describe("buildSystemPrompt — read-only connectors (#824)", () => {
     expect(section(prompt)).toMatch(/not a plan limit/i);
     expect(section(prompt)).not.toMatch(/Subscription & Billing/);
     // #615: the write gate withholds every write tool, not only the
-    // create/update/delete ones.
+    // create/update/delete ones — but only tools the session could have.
     expect(section(prompt)).toContain("transform_entity_records");
+    expect(section(prompt)).not.toContain("bulk_geocode_records");
+  });
+
+  it("names bulk_geocode_records among the withheld tools only when gis and geocoding are on (#615)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management", "gis"],
+        connectorInstances: [instance(false)],
+        stationWritable: false,
+        geocodingAvailable: true,
+      })
+    );
     expect(section(prompt)).toContain("bulk_geocode_records");
   });
 

@@ -22,7 +22,7 @@ import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
-import { environment } from "../environment.js";
+import { geocodingTools } from "../utils/geocoding-tools.util.js";
 import { AnalyticsService } from "./analytics.service.js";
 import type { EntitySchema } from "./analytics.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
@@ -1373,21 +1373,21 @@ export async function buildStationContext(args: {
     entityManagementAvailable
       ? await loadConnectorInstanceContexts(station.id)
       : undefined;
-  // #824: the same resolution the write gate uses, so the prompt says writes
-  // are off exactly when the gate withheld the write tools. GIS needs it too:
-  // bulk_geocode_records is a write tool (#615).
+  // #615: the rule buildAnalyticsTools builds the geocode tools by, so the
+  // GIS section never offers a tool the session lacks. A prompt is always
+  // for a portal session.
   const gisAvailable = effectiveToolPacks.includes("gis");
+  const geocoding = geocodingTools({ gis: gisAvailable, inPortal: true });
+  const geocodingAvailable = gisAvailable ? geocoding.geocode : undefined;
+  // #824: the same resolution the write gate uses, so the prompt says writes
+  // are off exactly when the gate withheld the write tools. Only needed when
+  // a write tool could exist: entity management, or bulk geocoding (#615).
   const stationWritable =
-    entityManagementAvailable || gisAvailable
+    entityManagementAvailable || geocoding.bulkGeocode
       ? (await resolveStationCapabilities(station.id)).some(
           (c) => c.capabilities.write
         )
       : undefined;
-  // #615: the same condition buildAnalyticsTools uses to build the geocode
-  // tools, so the GIS section never offers a tool the session lacks.
-  const geocodingAvailable = gisAvailable
-    ? Boolean(environment.GEOCODING_API_KEY)
-    : undefined;
   const organizationTimezone = await loadOrganizationTimezone(organizationId);
 
   // #599: the roster shows the caller's granted curated views (view key is the

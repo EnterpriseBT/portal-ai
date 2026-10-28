@@ -40,14 +40,26 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
     expect(parsed.generatedAt).toBeTruthy();
   });
 
-  // #615: the pricing page lists these plan features, so a snapshot without
-  // them can't describe a tier.
-  it.each(["customRbac", "advancedViewFilters"])(
-    "rejects a tier missing %s",
+  // #615: the prod site build can read an API deployed before these fields
+  // existed (both deploys start on the same release event), so an absent
+  // flag reads as false rather than failing the build.
+  it.each(["customRbac", "advancedViewFilters"] as const)(
+    "reads a tier missing %s as false",
     (field) => {
       const tier: Record<string, unknown> = { ...validTier };
       delete tier[field];
-      expect(PublicSiteTierSchema.safeParse(tier).success).toBe(false);
+      const parsed = PublicSiteTierSchema.safeParse(tier);
+      expect(parsed.success).toBe(true);
+      expect(parsed.success && parsed.data[field]).toBe(false);
+    }
+  );
+
+  it.each(["customRbac", "advancedViewFilters"])(
+    "rejects a non-boolean %s",
+    (field) => {
+      expect(
+        PublicSiteTierSchema.safeParse({ ...validTier, [field]: "yes" }).success
+      ).toBe(false);
     }
   );
 
