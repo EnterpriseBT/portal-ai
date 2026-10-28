@@ -44,7 +44,7 @@
 - `packages/core/package.json`, `apps/web/package.json`, `apps/api/package.json`
 - `apps/site/package.json`: the `astro` pin and the `cookie` declaration
 - `apps/web/src/routes/*.tsx` (15 route ids), `apps/web/src/routeTree.gen.ts` (regenerated), `apps/web/.gitignore`
-- `apps/web/src/__tests__/setup.ts` (`scrollTo` mock), `apps/web/src/__tests__/application-route.guard.test.ts`
+- `apps/web/src/__tests__/setup.ts` (`scrollTo` stub), `apps/web/src/__tests__/application-route.guard.test.ts`
 - every workspace `package.json`: Prettier `~3.8.1`
 
 **Steps:**
