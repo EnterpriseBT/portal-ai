@@ -56,9 +56,13 @@ RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 # serving container, matching the chart's securityContext.runAsNonRoot.
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
-# nodejs (no npm) so the dependency-free render-config.mjs runs at startup.
+# Patch the base layer's OS packages to the latest in its Alpine release, then
+# add nodejs (no npm) so the dependency-free render-config.mjs runs at startup.
+# The deploy-time Trivy gate (#909, the API image's #573 gate) scans the whole
+# image for fixable CRITICAL/HIGH CVEs; the pinned base tag ships stale
+# packages (60 such findings before this upgrade, 0 after).
 USER root
-RUN apk add --no-cache nodejs
+RUN apk upgrade --no-cache && apk add --no-cache nodejs
 USER nginx
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf

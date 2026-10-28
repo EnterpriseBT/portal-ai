@@ -458,7 +458,62 @@ jobs:
             --output text)
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push web image
+      # Supply-chain gate for the web image (#909), the same as the API's
+      # (#573): the image is multi-arch and customers pull either platform,
+      # so each one is built, loaded and scanned before anything is pushed
+      # (buildx's load exporter takes one platform at a time). The push below
+      # reuses this builder's cache and adds the SBOM + provenance; the
+      # signature covers the multi-arch index digest.
+      - name: Build web image (amd64, load, no push) for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: portalai-web-scan:amd64-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
+            BUILD_SHA=${{ github.sha }}
+            VITE_API_BASE_URL=
+
+      - name: Scan web image (amd64) (gate — fail on fixable CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: portalai-web-scan:amd64-${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Build web image (arm64, load, no push) for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: portalai-web-scan:arm64-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
+            BUILD_SHA=${{ github.sha }}
+            VITE_API_BASE_URL=
+
+      - name: Scan web image (arm64) (gate — fail on fixable CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: portalai-web-scan:arm64-${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Build and push web image (+ SBOM & provenance)
+        id: web-build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -470,7 +525,14 @@ jobs:
             BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
             BUILD_SHA=${{ github.sha }}
             VITE_API_BASE_URL=
-          provenance: false
+          provenance: mode=max
+          sbom: true
+
+      - name: Sign web image (cosign keyless)
+        env:
+          DIGEST: ${{ steps.web-build.outputs.digest }}
+          IMAGE: ${{ steps.web-ecr.outputs.uri }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - name: Get ECS configuration
         id: ecs
