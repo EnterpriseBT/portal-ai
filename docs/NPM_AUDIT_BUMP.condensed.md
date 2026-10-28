@@ -80,3 +80,5 @@ Commit: `chore: bump npm-audit critical/high dependencies (#896)`
   - `concurrently` 10.
 - **Enabling GitHub secret scanning or Dependabot alerts on the repo.** That's a settings change, worth its own ticket.
 - **The scheduled audit workflow (#545)** stays informational and non-gating.
+- **A CI check for a stale route tree** (the generator only logs its errors): #899.
+- **Raising Node in CI, devcontainer and `engines`**, which lets the `astro` pin go: #900.
