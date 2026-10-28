@@ -9,104 +9,49 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ViewsRouteImport } from './routes/views'
-import { Route as ToolpacksRouteImport } from './routes/toolpacks'
-import { Route as TagsRouteImport } from './routes/tags'
-import { Route as StationsRouteImport } from './routes/stations'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as PortalResultsRouteImport } from './routes/portal-results'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as JobsRouteImport } from './routes/jobs'
-import { Route as HelpRouteImport } from './routes/help'
-import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
-import { Route as EntitiesRouteImport } from './routes/entities'
-import { Route as ConnectorsRouteImport } from './routes/connectors'
-import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ViewsIndexRouteImport } from './routes/views.index'
-import { Route as ToolpacksIndexRouteImport } from './routes/toolpacks.index'
-import { Route as TagsIndexRouteImport } from './routes/tags.index'
-import { Route as StationsIndexRouteImport } from './routes/stations.index'
-import { Route as PortalResultsIndexRouteImport } from './routes/portal-results.index'
-import { Route as JobsIndexRouteImport } from './routes/jobs.index'
-import { Route as HelpIndexRouteImport } from './routes/help.index'
-import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.index'
-import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
-import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
+import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
+import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as EntitiesRouteImport } from './routes/entities'
+import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
+import { Route as HelpRouteImport } from './routes/help'
+import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PortalResultsRouteImport } from './routes/portal-results'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as StationsRouteImport } from './routes/stations'
+import { Route as TagsRouteImport } from './routes/tags'
+import { Route as ToolpacksRouteImport } from './routes/toolpacks'
+import { Route as ViewsRouteImport } from './routes/views'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
-import { Route as ViewsViewIdRouteImport } from './routes/views.$viewId'
-import { Route as StationsStationIdRouteImport } from './routes/stations.$stationId'
-import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
-import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
-import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
-import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
-import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
-import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
-import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
-import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
+import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
+import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
+import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
+import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
+import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.index'
+import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
+import { Route as HelpIndexRouteImport } from './routes/help.index'
+import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
+import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
+import { Route as PortalResultsIndexRouteImport } from './routes/portal-results.index'
+import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
+import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
+import { Route as StationsIndexRouteImport } from './routes/stations.index'
+import { Route as StationsStationIdRouteImport } from './routes/stations.$stationId'
+import { Route as TagsIndexRouteImport } from './routes/tags.index'
+import { Route as ToolpacksIndexRouteImport } from './routes/toolpacks.index'
+import { Route as ViewsIndexRouteImport } from './routes/views.index'
+import { Route as ViewsViewIdRouteImport } from './routes/views.$viewId'
 import { Route as ConnectorsConnectorInstanceIdIndexRouteImport } from './routes/connectors.$connectorInstanceId.index'
-import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
+import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
 import { Route as ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport } from './routes/connectors.$connectorInstanceId.layout-plan.edit'
+import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 
-const ViewsRoute = ViewsRouteImport.update({
-  id: '/views',
-  path: '/views',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ToolpacksRoute = ToolpacksRouteImport.update({
-  id: '/toolpacks',
-  path: '/toolpacks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TagsRoute = TagsRouteImport.update({
-  id: '/tags',
-  path: '/tags',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StationsRoute = StationsRouteImport.update({
-  id: '/stations',
-  path: '/stations',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PortalResultsRoute = PortalResultsRouteImport.update({
-  id: '/portal-results',
-  path: '/portal-results',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JobsRoute = JobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HelpRoute = HelpRouteImport.update({
-  id: '/help',
-  path: '/help',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EntityGroupsRoute = EntityGroupsRouteImport.update({
-  id: '/entity-groups',
-  path: '/entity-groups',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EntitiesRoute = EntitiesRouteImport.update({
-  id: '/entities',
-  path: '/entities',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConnectorsRoute = ConnectorsRouteImport.update({
-  id: '/connectors',
-  path: '/connectors',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ColumnDefinitionsRoute = ColumnDefinitionsRouteImport.update({
@@ -114,107 +59,81 @@ const ColumnDefinitionsRoute = ColumnDefinitionsRouteImport.update({
   path: '/column-definitions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ConnectorsRoute = ConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ViewsIndexRoute = ViewsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ViewsRoute,
+const EntitiesRoute = EntitiesRouteImport.update({
+  id: '/entities',
+  path: '/entities',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ToolpacksRoute,
+const EntityGroupsRoute = EntityGroupsRouteImport.update({
+  id: '/entity-groups',
+  path: '/entity-groups',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const TagsIndexRoute = TagsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => TagsRoute,
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const StationsIndexRoute = StationsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => StationsRoute,
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const PortalResultsIndexRoute = PortalResultsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => PortalResultsRoute,
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const JobsIndexRoute = JobsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => JobsRoute,
+const PortalResultsRoute = PortalResultsRouteImport.update({
+  id: '/portal-results',
+  path: '/portal-results',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const HelpIndexRoute = HelpIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => HelpRoute,
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const EntityGroupsIndexRoute = EntityGroupsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => EntityGroupsRoute,
+const StationsRoute = StationsRouteImport.update({
+  id: '/stations',
+  path: '/stations',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const EntitiesIndexRoute = EntitiesIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => EntitiesRoute,
+const TagsRoute = TagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ConnectorsRoute,
+const ToolpacksRoute = ToolpacksRouteImport.update({
+  id: '/toolpacks',
+  path: '/toolpacks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ViewsRoute = ViewsRouteImport.update({
+  id: '/views',
+  path: '/views',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ColumnDefinitionsRoute,
 } as any)
-const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
-  id: '/$viewId',
-  path: '/$viewId',
-  getParentRoute: () => ViewsRoute,
-} as any)
-const StationsStationIdRoute = StationsStationIdRouteImport.update({
-  id: '/$stationId',
-  path: '/$stationId',
-  getParentRoute: () => StationsRoute,
-} as any)
-const PortalsPortalIdRoute = PortalsPortalIdRouteImport.update({
-  id: '/portals/$portalId',
-  path: '/portals/$portalId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PortalResultsPortalResultIdRoute =
-  PortalResultsPortalResultIdRouteImport.update({
-    id: '/$portalResultId',
-    path: '/$portalResultId',
-    getParentRoute: () => PortalResultsRoute,
+const ColumnDefinitionsColumnDefinitionIdRoute =
+  ColumnDefinitionsColumnDefinitionIdRouteImport.update({
+    id: '/$columnDefinitionId',
+    path: '/$columnDefinitionId',
+    getParentRoute: () => ColumnDefinitionsRoute,
   } as any)
-const JobsJobIdRoute = JobsJobIdRouteImport.update({
-  id: '/$jobId',
-  path: '/$jobId',
-  getParentRoute: () => JobsRoute,
-} as any)
-const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
-  id: '/invitations/accept',
-  path: '/invitations/accept',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EntityGroupsEntityGroupIdRoute =
-  EntityGroupsEntityGroupIdRouteImport.update({
-    id: '/$entityGroupId',
-    path: '/$entityGroupId',
-    getParentRoute: () => EntityGroupsRoute,
-  } as any)
-const EntitiesEntityIdRoute = EntitiesEntityIdRouteImport.update({
-  id: '/$entityId',
-  path: '/$entityId',
-  getParentRoute: () => EntitiesRoute,
+const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ConnectorsRoute,
 } as any)
 const ConnectorsConnectorInstanceIdRoute =
   ConnectorsConnectorInstanceIdRouteImport.update({
@@ -222,16 +141,92 @@ const ConnectorsConnectorInstanceIdRoute =
     path: '/$connectorInstanceId',
     getParentRoute: () => ConnectorsRoute,
   } as any)
-const ColumnDefinitionsColumnDefinitionIdRoute =
-  ColumnDefinitionsColumnDefinitionIdRouteImport.update({
-    id: '/$columnDefinitionId',
-    path: '/$columnDefinitionId',
-    getParentRoute: () => ColumnDefinitionsRoute,
-  } as any)
-const EntitiesEntityIdIndexRoute = EntitiesEntityIdIndexRouteImport.update({
+const EntitiesIndexRoute = EntitiesIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => EntitiesEntityIdRoute,
+  getParentRoute: () => EntitiesRoute,
+} as any)
+const EntitiesEntityIdRoute = EntitiesEntityIdRouteImport.update({
+  id: '/$entityId',
+  path: '/$entityId',
+  getParentRoute: () => EntitiesRoute,
+} as any)
+const EntityGroupsIndexRoute = EntityGroupsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EntityGroupsRoute,
+} as any)
+const EntityGroupsEntityGroupIdRoute =
+  EntityGroupsEntityGroupIdRouteImport.update({
+    id: '/$entityGroupId',
+    path: '/$entityGroupId',
+    getParentRoute: () => EntityGroupsRoute,
+  } as any)
+const HelpIndexRoute = HelpIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => HelpRoute,
+} as any)
+const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
+  id: '/invitations/accept',
+  path: '/invitations/accept',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JobsIndexRoute = JobsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => JobsRoute,
+} as any)
+const JobsJobIdRoute = JobsJobIdRouteImport.update({
+  id: '/$jobId',
+  path: '/$jobId',
+  getParentRoute: () => JobsRoute,
+} as any)
+const PortalResultsIndexRoute = PortalResultsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalResultsRoute,
+} as any)
+const PortalResultsPortalResultIdRoute =
+  PortalResultsPortalResultIdRouteImport.update({
+    id: '/$portalResultId',
+    path: '/$portalResultId',
+    getParentRoute: () => PortalResultsRoute,
+  } as any)
+const PortalsPortalIdRoute = PortalsPortalIdRouteImport.update({
+  id: '/portals/$portalId',
+  path: '/portals/$portalId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StationsIndexRoute = StationsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StationsRoute,
+} as any)
+const StationsStationIdRoute = StationsStationIdRouteImport.update({
+  id: '/$stationId',
+  path: '/$stationId',
+  getParentRoute: () => StationsRoute,
+} as any)
+const TagsIndexRoute = TagsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TagsRoute,
+} as any)
+const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ToolpacksRoute,
+} as any)
+const ViewsIndexRoute = ViewsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ViewsRoute,
+} as any)
+const ViewsViewIdRoute = ViewsViewIdRouteImport.update({
+  id: '/$viewId',
+  path: '/$viewId',
+  getParentRoute: () => ViewsRoute,
 } as any)
 const ConnectorsConnectorInstanceIdIndexRoute =
   ConnectorsConnectorInstanceIdIndexRouteImport.update({
@@ -239,17 +234,22 @@ const ConnectorsConnectorInstanceIdIndexRoute =
     path: '/',
     getParentRoute: () => ConnectorsConnectorInstanceIdRoute,
   } as any)
-const EntitiesEntityIdRecordsRecordIdRoute =
-  EntitiesEntityIdRecordsRecordIdRouteImport.update({
-    id: '/records/$recordId',
-    path: '/records/$recordId',
-    getParentRoute: () => EntitiesEntityIdRoute,
-  } as any)
+const EntitiesEntityIdIndexRoute = EntitiesEntityIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EntitiesEntityIdRoute,
+} as any)
 const ConnectorsConnectorInstanceIdLayoutPlanEditRoute =
   ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport.update({
     id: '/layout-plan/edit',
     path: '/layout-plan/edit',
     getParentRoute: () => ConnectorsConnectorInstanceIdRoute,
+  } as any)
+const EntitiesEntityIdRecordsRecordIdRoute =
+  EntitiesEntityIdRecordsRecordIdRouteImport.update({
+    id: '/records/$recordId',
+    path: '/records/$recordId',
+    getParentRoute: () => EntitiesEntityIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -497,88 +497,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/views': {
-      id: '/views'
-      path: '/views'
-      fullPath: '/views'
-      preLoaderRoute: typeof ViewsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/toolpacks': {
-      id: '/toolpacks'
-      path: '/toolpacks'
-      fullPath: '/toolpacks'
-      preLoaderRoute: typeof ToolpacksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/tags': {
-      id: '/tags'
-      path: '/tags'
-      fullPath: '/tags'
-      preLoaderRoute: typeof TagsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/stations': {
-      id: '/stations'
-      path: '/stations'
-      fullPath: '/stations'
-      preLoaderRoute: typeof StationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/portal-results': {
-      id: '/portal-results'
-      path: '/portal-results'
-      fullPath: '/portal-results'
-      preLoaderRoute: typeof PortalResultsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/jobs': {
-      id: '/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof JobsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/help': {
-      id: '/help'
-      path: '/help'
-      fullPath: '/help'
-      preLoaderRoute: typeof HelpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/entity-groups': {
-      id: '/entity-groups'
-      path: '/entity-groups'
-      fullPath: '/entity-groups'
-      preLoaderRoute: typeof EntityGroupsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/entities': {
-      id: '/entities'
-      path: '/entities'
-      fullPath: '/entities'
-      preLoaderRoute: typeof EntitiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/connectors': {
-      id: '/connectors'
-      path: '/connectors'
-      fullPath: '/connectors'
-      preLoaderRoute: typeof ConnectorsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/column-definitions': {
@@ -588,82 +511,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ColumnDefinitionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/connectors': {
+      id: '/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof ConnectorsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/views/': {
-      id: '/views/'
-      path: '/'
-      fullPath: '/views/'
-      preLoaderRoute: typeof ViewsIndexRouteImport
-      parentRoute: typeof ViewsRoute
+    '/entities': {
+      id: '/entities'
+      path: '/entities'
+      fullPath: '/entities'
+      preLoaderRoute: typeof EntitiesRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/toolpacks/': {
-      id: '/toolpacks/'
-      path: '/'
-      fullPath: '/toolpacks/'
-      preLoaderRoute: typeof ToolpacksIndexRouteImport
-      parentRoute: typeof ToolpacksRoute
+    '/entity-groups': {
+      id: '/entity-groups'
+      path: '/entity-groups'
+      fullPath: '/entity-groups'
+      preLoaderRoute: typeof EntityGroupsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/tags/': {
-      id: '/tags/'
-      path: '/'
-      fullPath: '/tags/'
-      preLoaderRoute: typeof TagsIndexRouteImport
-      parentRoute: typeof TagsRoute
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/stations/': {
-      id: '/stations/'
-      path: '/'
-      fullPath: '/stations/'
-      preLoaderRoute: typeof StationsIndexRouteImport
-      parentRoute: typeof StationsRoute
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/portal-results/': {
-      id: '/portal-results/'
-      path: '/'
-      fullPath: '/portal-results/'
-      preLoaderRoute: typeof PortalResultsIndexRouteImport
-      parentRoute: typeof PortalResultsRoute
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/jobs/': {
-      id: '/jobs/'
-      path: '/'
-      fullPath: '/jobs/'
-      preLoaderRoute: typeof JobsIndexRouteImport
-      parentRoute: typeof JobsRoute
+    '/portal-results': {
+      id: '/portal-results'
+      path: '/portal-results'
+      fullPath: '/portal-results'
+      preLoaderRoute: typeof PortalResultsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/help/': {
-      id: '/help/'
-      path: '/'
-      fullPath: '/help/'
-      preLoaderRoute: typeof HelpIndexRouteImport
-      parentRoute: typeof HelpRoute
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/entity-groups/': {
-      id: '/entity-groups/'
-      path: '/'
-      fullPath: '/entity-groups/'
-      preLoaderRoute: typeof EntityGroupsIndexRouteImport
-      parentRoute: typeof EntityGroupsRoute
+    '/stations': {
+      id: '/stations'
+      path: '/stations'
+      fullPath: '/stations'
+      preLoaderRoute: typeof StationsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/entities/': {
-      id: '/entities/'
-      path: '/'
-      fullPath: '/entities/'
-      preLoaderRoute: typeof EntitiesIndexRouteImport
-      parentRoute: typeof EntitiesRoute
+    '/tags': {
+      id: '/tags'
+      path: '/tags'
+      fullPath: '/tags'
+      preLoaderRoute: typeof TagsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/connectors/': {
-      id: '/connectors/'
-      path: '/'
-      fullPath: '/connectors/'
-      preLoaderRoute: typeof ConnectorsIndexRouteImport
-      parentRoute: typeof ConnectorsRoute
+    '/toolpacks': {
+      id: '/toolpacks'
+      path: '/toolpacks'
+      fullPath: '/toolpacks'
+      preLoaderRoute: typeof ToolpacksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/views': {
+      id: '/views'
+      path: '/views'
+      fullPath: '/views'
+      preLoaderRoute: typeof ViewsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/column-definitions/': {
       id: '/column-definitions/'
@@ -672,61 +602,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ColumnDefinitionsIndexRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
     }
-    '/views/$viewId': {
-      id: '/views/$viewId'
-      path: '/$viewId'
-      fullPath: '/views/$viewId'
-      preLoaderRoute: typeof ViewsViewIdRouteImport
-      parentRoute: typeof ViewsRoute
+    '/column-definitions/$columnDefinitionId': {
+      id: '/column-definitions/$columnDefinitionId'
+      path: '/$columnDefinitionId'
+      fullPath: '/column-definitions/$columnDefinitionId'
+      preLoaderRoute: typeof ColumnDefinitionsColumnDefinitionIdRouteImport
+      parentRoute: typeof ColumnDefinitionsRoute
     }
-    '/stations/$stationId': {
-      id: '/stations/$stationId'
-      path: '/$stationId'
-      fullPath: '/stations/$stationId'
-      preLoaderRoute: typeof StationsStationIdRouteImport
-      parentRoute: typeof StationsRoute
-    }
-    '/portals/$portalId': {
-      id: '/portals/$portalId'
-      path: '/portals/$portalId'
-      fullPath: '/portals/$portalId'
-      preLoaderRoute: typeof PortalsPortalIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/portal-results/$portalResultId': {
-      id: '/portal-results/$portalResultId'
-      path: '/$portalResultId'
-      fullPath: '/portal-results/$portalResultId'
-      preLoaderRoute: typeof PortalResultsPortalResultIdRouteImport
-      parentRoute: typeof PortalResultsRoute
-    }
-    '/jobs/$jobId': {
-      id: '/jobs/$jobId'
-      path: '/$jobId'
-      fullPath: '/jobs/$jobId'
-      preLoaderRoute: typeof JobsJobIdRouteImport
-      parentRoute: typeof JobsRoute
-    }
-    '/invitations/accept': {
-      id: '/invitations/accept'
-      path: '/invitations/accept'
-      fullPath: '/invitations/accept'
-      preLoaderRoute: typeof InvitationsAcceptRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/entity-groups/$entityGroupId': {
-      id: '/entity-groups/$entityGroupId'
-      path: '/$entityGroupId'
-      fullPath: '/entity-groups/$entityGroupId'
-      preLoaderRoute: typeof EntityGroupsEntityGroupIdRouteImport
-      parentRoute: typeof EntityGroupsRoute
-    }
-    '/entities/$entityId': {
-      id: '/entities/$entityId'
-      path: '/$entityId'
-      fullPath: '/entities/$entityId'
-      preLoaderRoute: typeof EntitiesEntityIdRouteImport
-      parentRoute: typeof EntitiesRoute
+    '/connectors/': {
+      id: '/connectors/'
+      path: '/'
+      fullPath: '/connectors/'
+      preLoaderRoute: typeof ConnectorsIndexRouteImport
+      parentRoute: typeof ConnectorsRoute
     }
     '/connectors/$connectorInstanceId': {
       id: '/connectors/$connectorInstanceId'
@@ -735,19 +623,124 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsConnectorInstanceIdRouteImport
       parentRoute: typeof ConnectorsRoute
     }
-    '/column-definitions/$columnDefinitionId': {
-      id: '/column-definitions/$columnDefinitionId'
-      path: '/$columnDefinitionId'
-      fullPath: '/column-definitions/$columnDefinitionId'
-      preLoaderRoute: typeof ColumnDefinitionsColumnDefinitionIdRouteImport
-      parentRoute: typeof ColumnDefinitionsRoute
-    }
-    '/entities/$entityId/': {
-      id: '/entities/$entityId/'
+    '/entities/': {
+      id: '/entities/'
       path: '/'
-      fullPath: '/entities/$entityId/'
-      preLoaderRoute: typeof EntitiesEntityIdIndexRouteImport
-      parentRoute: typeof EntitiesEntityIdRoute
+      fullPath: '/entities/'
+      preLoaderRoute: typeof EntitiesIndexRouteImport
+      parentRoute: typeof EntitiesRoute
+    }
+    '/entities/$entityId': {
+      id: '/entities/$entityId'
+      path: '/$entityId'
+      fullPath: '/entities/$entityId'
+      preLoaderRoute: typeof EntitiesEntityIdRouteImport
+      parentRoute: typeof EntitiesRoute
+    }
+    '/entity-groups/': {
+      id: '/entity-groups/'
+      path: '/'
+      fullPath: '/entity-groups/'
+      preLoaderRoute: typeof EntityGroupsIndexRouteImport
+      parentRoute: typeof EntityGroupsRoute
+    }
+    '/entity-groups/$entityGroupId': {
+      id: '/entity-groups/$entityGroupId'
+      path: '/$entityGroupId'
+      fullPath: '/entity-groups/$entityGroupId'
+      preLoaderRoute: typeof EntityGroupsEntityGroupIdRouteImport
+      parentRoute: typeof EntityGroupsRoute
+    }
+    '/help/': {
+      id: '/help/'
+      path: '/'
+      fullPath: '/help/'
+      preLoaderRoute: typeof HelpIndexRouteImport
+      parentRoute: typeof HelpRoute
+    }
+    '/invitations/accept': {
+      id: '/invitations/accept'
+      path: '/invitations/accept'
+      fullPath: '/invitations/accept'
+      preLoaderRoute: typeof InvitationsAcceptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jobs/': {
+      id: '/jobs/'
+      path: '/'
+      fullPath: '/jobs/'
+      preLoaderRoute: typeof JobsIndexRouteImport
+      parentRoute: typeof JobsRoute
+    }
+    '/jobs/$jobId': {
+      id: '/jobs/$jobId'
+      path: '/$jobId'
+      fullPath: '/jobs/$jobId'
+      preLoaderRoute: typeof JobsJobIdRouteImport
+      parentRoute: typeof JobsRoute
+    }
+    '/portal-results/': {
+      id: '/portal-results/'
+      path: '/'
+      fullPath: '/portal-results/'
+      preLoaderRoute: typeof PortalResultsIndexRouteImport
+      parentRoute: typeof PortalResultsRoute
+    }
+    '/portal-results/$portalResultId': {
+      id: '/portal-results/$portalResultId'
+      path: '/$portalResultId'
+      fullPath: '/portal-results/$portalResultId'
+      preLoaderRoute: typeof PortalResultsPortalResultIdRouteImport
+      parentRoute: typeof PortalResultsRoute
+    }
+    '/portals/$portalId': {
+      id: '/portals/$portalId'
+      path: '/portals/$portalId'
+      fullPath: '/portals/$portalId'
+      preLoaderRoute: typeof PortalsPortalIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stations/': {
+      id: '/stations/'
+      path: '/'
+      fullPath: '/stations/'
+      preLoaderRoute: typeof StationsIndexRouteImport
+      parentRoute: typeof StationsRoute
+    }
+    '/stations/$stationId': {
+      id: '/stations/$stationId'
+      path: '/$stationId'
+      fullPath: '/stations/$stationId'
+      preLoaderRoute: typeof StationsStationIdRouteImport
+      parentRoute: typeof StationsRoute
+    }
+    '/tags/': {
+      id: '/tags/'
+      path: '/'
+      fullPath: '/tags/'
+      preLoaderRoute: typeof TagsIndexRouteImport
+      parentRoute: typeof TagsRoute
+    }
+    '/toolpacks/': {
+      id: '/toolpacks/'
+      path: '/'
+      fullPath: '/toolpacks/'
+      preLoaderRoute: typeof ToolpacksIndexRouteImport
+      parentRoute: typeof ToolpacksRoute
+    }
+    '/views/': {
+      id: '/views/'
+      path: '/'
+      fullPath: '/views/'
+      preLoaderRoute: typeof ViewsIndexRouteImport
+      parentRoute: typeof ViewsRoute
+    }
+    '/views/$viewId': {
+      id: '/views/$viewId'
+      path: '/$viewId'
+      fullPath: '/views/$viewId'
+      preLoaderRoute: typeof ViewsViewIdRouteImport
+      parentRoute: typeof ViewsRoute
     }
     '/connectors/$connectorInstanceId/': {
       id: '/connectors/$connectorInstanceId/'
@@ -756,11 +749,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsConnectorInstanceIdIndexRouteImport
       parentRoute: typeof ConnectorsConnectorInstanceIdRoute
     }
-    '/entities/$entityId/records/$recordId': {
-      id: '/entities/$entityId/records/$recordId'
-      path: '/records/$recordId'
-      fullPath: '/entities/$entityId/records/$recordId'
-      preLoaderRoute: typeof EntitiesEntityIdRecordsRecordIdRouteImport
+    '/entities/$entityId/': {
+      id: '/entities/$entityId/'
+      path: '/'
+      fullPath: '/entities/$entityId/'
+      preLoaderRoute: typeof EntitiesEntityIdIndexRouteImport
       parentRoute: typeof EntitiesEntityIdRoute
     }
     '/connectors/$connectorInstanceId/layout-plan/edit': {
@@ -769,6 +762,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/connectors/$connectorInstanceId/layout-plan/edit'
       preLoaderRoute: typeof ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport
       parentRoute: typeof ConnectorsConnectorInstanceIdRoute
+    }
+    '/entities/$entityId/records/$recordId': {
+      id: '/entities/$entityId/records/$recordId'
+      path: '/records/$recordId'
+      fullPath: '/entities/$entityId/records/$recordId'
+      preLoaderRoute: typeof EntitiesEntityIdRecordsRecordIdRouteImport
+      parentRoute: typeof EntitiesEntityIdRoute
     }
   }
 }

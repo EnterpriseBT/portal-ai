@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PublicLayout } from "../layouts/Public.layout";
 import { LoginView } from "../views/Login.view";
-import { ApplicationRoute } from "../utils/routes.util";
 
-export const Route = createFileRoute(ApplicationRoute.Login)({
+export const Route = createFileRoute("/login")({
   component: RouteComponent,
 });
 

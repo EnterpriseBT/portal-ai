@@ -2,13 +2,9 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 import { Authorized } from "../components/Authorized.component";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
-import {
-  ApplicationRoute,
-  normalizeHelpSearch,
-  type HelpSearch,
-} from "../utils/routes.util";
+import { normalizeHelpSearch, type HelpSearch } from "../utils/routes.util";
 
-export const Route = createFileRoute(ApplicationRoute.Help)({
+export const Route = createFileRoute("/help")({
   component: RouteComponent,
   /**
    * `?tab=` + `?category=` make a Help section linkable (#365, epic #364).

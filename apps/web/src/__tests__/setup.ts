@@ -71,6 +71,12 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
+// jsdom doesn't implement window.scrollTo; it logs "Not implemented" through
+// console.error. TanStack Router calls it on load from 1.170 on (#896), which
+// tripped tests that assert a render logs no errors. Tests that care about
+// scrolling spy on it themselves.
+window.scrollTo = (() => {}) as typeof window.scrollTo;
+
 // jsdom does not implement PointerEvent — testing-library's fireEvent
 // silently falls back to a plain Event and drops clientX/Y/pointerId. Code
 // that reads those off a synthetic onPointerDown/Move/Up event would then

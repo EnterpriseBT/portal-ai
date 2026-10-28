@@ -30,7 +30,7 @@
     "@mui/material": "^7.3.7",
     "@portalai/core": "*",
     "@tanstack/react-query": "^5.59.0",
-    "@tanstack/react-router": "^1.77.0",
+    "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-virtual": "^3.13.24",
     "d3": "7.9.0",
     "highlight.js": "^11.11.1",
@@ -46,11 +46,12 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "^8.6.15",
-    "@storybook/addon-interactions": "^8.6.15",
-    "@storybook/blocks": "^8.6.15",
-    "@storybook/react-vite": "^8.6.15",
-    "@storybook/test": "^8.6.15",
+    "@storybook/addon-essentials": "^8.6.19",
+    "@storybook/addon-interactions": "^8.6.19",
+    "@storybook/blocks": "^8.6.19",
+    "@storybook/react": "^8.6.19",
+    "@storybook/react-vite": "^8.6.19",
+    "@storybook/test": "^8.6.19",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.6.1",
@@ -67,11 +68,11 @@
     "globals": "^14.0.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "prettier": "^3.4.2",
-    "storybook": "^8.6.15",
+    "prettier": "~3.8.1",
+    "storybook": "^8.6.19",
     "ts-jest": "^29.4.6",
     "typescript": "^5.7.2",
-    "vite": "^6.4.3",
+    "vite": "^6.4.5",
     "vite-plugin-svgr": "^4.5.0"
   }
 }
