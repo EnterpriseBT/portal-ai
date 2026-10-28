@@ -49,12 +49,13 @@ import {
   RestApiInstanceConfigSchema,
 } from "@portalai/core/models";
 
-import { app } from "../../app.js";
-import { swaggerSpec } from "../../config/swagger.config.js";
+// Imported before the app so its route recorder sees every registration (#897).
 import {
   documentedOperations,
   registeredRoutes,
 } from "./express-route-inventory.util.js";
+import { app } from "../../app.js";
+import { swaggerSpec } from "../../config/swagger.config.js";
 
 const REQUIRED_SCHEMA_NAMES = [
   "LayoutPlan",
@@ -648,8 +649,8 @@ describe("swagger spec — document completeness (#420)", () => {
     const documented = documentedOperations(swaggerSpec);
 
     it("enumerates the routing table at all", () => {
-      // Guards the guard: the enumerator reads Express 4 internals, so an
-      // upgrade that moves them yields an empty set — and every assertion
+      // Guards the guard: the enumerator records registrations, so if it loads
+      // after the app (#897) it yields an empty set — and every assertion
       // below would pass vacuously at the moment it stopped working.
       expect(registered.size).toBeGreaterThan(100);
     });
