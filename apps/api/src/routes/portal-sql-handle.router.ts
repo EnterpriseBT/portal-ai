@@ -12,7 +12,8 @@
  *     EventSource client can connect without setting headers.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

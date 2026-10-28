@@ -8,12 +8,8 @@
  * google-sheets pattern.
  */
 
-import {
-  Router,
-  type Request,
-  type Response,
-  type NextFunction,
-} from "express";
+import { Router, type Response, type NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";

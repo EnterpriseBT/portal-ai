@@ -17,7 +17,8 @@
  * fetches this once per build and bakes the values into static HTML.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import {
   PublicSiteConfigResponseSchema,

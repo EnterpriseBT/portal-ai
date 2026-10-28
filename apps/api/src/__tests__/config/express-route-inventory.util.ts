@@ -132,68 +132,6 @@ export const registeredRoutes = (app: unknown): Set<string> => {
   return routes;
 };
 
-// ── Express 4 internals reader ─────────────────────────────────────────────
-// Kept only for the recorder's parity test while the API is on Express 4;
-// deleted with the Express 5 upgrade (#897 slice 5).
-
-type RouteLayer = {
-  regexp: RegExp & { fast_slash?: boolean };
-  keys?: Array<{ name: string }>;
-  route?: { path: string; methods: Record<string, boolean> };
-  handle?: { stack?: RouteLayer[] };
-};
-
-/**
- * A single path param inside a mount regexp. Written to match both `[^/]` (what
- * Express 4.21 emits) and `[^\/]`, so a future escaping change degrades to a
- * visible failure rather than a silent mis-parse.
- */
-const PARAM_GROUP = /\(\?:\\\/\(\[\^\\?\/\]\+\?\)\)/g;
-
-/** Recover a mount prefix (`/api/connector-entities/{connectorEntityId}`). */
-const mountPrefix = (layer: RouteLayer): string => {
-  if (layer.regexp.fast_slash) return "";
-  let paramIndex = 0;
-  return layer.regexp.source
-    .replace(/^\^/, "")
-    .replace(/\\\/\?\(\?=\\\/\|\$\)$/, "")
-    .replace(/\$$/, "")
-    .replace(
-      PARAM_GROUP,
-      () => `/{${layer.keys?.[paramIndex++]?.name ?? "param"}}`
-    )
-    .replace(/\\\//g, "/");
-};
-
-const collect = (
-  stack: RouteLayer[],
-  prefix: string,
-  out: Set<string>
-): void => {
-  for (const layer of stack) {
-    if (layer.route) {
-      const path =
-        (prefix + layer.route.path).replace(/:([A-Za-z0-9_]+)/g, "{$1}") || "/";
-      const normalized = path.replace(/\/$/, "") || "/";
-      for (const method of Object.keys(layer.route.methods)) {
-        if ((DOCUMENTED_METHODS as readonly string[]).includes(method)) {
-          out.add(`${method.toUpperCase()} ${normalized}`);
-        }
-      }
-    } else if (layer.handle?.stack) {
-      collect(layer.handle.stack, prefix + mountPrefix(layer), out);
-    }
-  }
-};
-
-/** The Express 4 internals reader's view of the app, for the parity test. */
-export const registeredRoutesFromInternals = (app: unknown): Set<string> => {
-  const stack = (app as { _router?: { stack?: RouteLayer[] } })._router?.stack;
-  const routes = new Set<string>();
-  if (stack) collect(stack, "", routes);
-  return routes;
-};
-
 /** Every operation the OpenAPI document declares, in the same form. */
 export const documentedOperations = (spec: unknown): Set<string> => {
   const paths =

@@ -4,7 +4,6 @@ import { describe, it, expect } from "@jest/globals";
 import {
   installRouteRecorder,
   registeredRoutes,
-  registeredRoutesFromInternals,
 } from "./express-route-inventory.util.js";
 import express from "express";
 
@@ -66,11 +65,12 @@ describe("registeredRoutes (#897: recorded at registration)", () => {
     expect(registeredRoutes({})).toEqual(new Set());
   });
 
-  // Slice 1 of #897 only: the recorder must see exactly what the Express 4
-  // internals reader saw before that reader is deleted with the upgrade.
-  it("matches the Express 4 internals reader on the real app", () => {
-    const recorded = registeredRoutes(app);
-    expect(recorded.size).toBeGreaterThan(180);
-    expect(recorded).toEqual(registeredRoutesFromInternals(app));
+  // `types/request.ts` types every route param as a string, which holds only
+  // while no route uses a path-to-regexp wildcard (`*splat`), whose value is
+  // an array (#897).
+  it("registers no wildcard routes on the real app", () => {
+    const routes = [...registeredRoutes(app)];
+    expect(routes.length).toBeGreaterThan(180);
+    expect(routes.filter((route) => route.includes("*"))).toEqual([]);
   });
 });

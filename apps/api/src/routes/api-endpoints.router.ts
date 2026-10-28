@@ -12,7 +12,8 @@
  * in-flight `connector_sync` job can't race a config change.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";

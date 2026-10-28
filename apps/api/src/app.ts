@@ -43,6 +43,11 @@ if (environment.TRUST_PROXY_HOPS > 0) {
   app.set("trust proxy", environment.TRUST_PROXY_HOPS);
 }
 
+// #897: Express 5's default `simple` query parser (Node's querystring), not
+// `extended` (qs). Keys stay flat (`?a[b]=c` arrives as `"a[b]"`) and a
+// repeated key yields an array; no route reads a nested query, and qs stays
+// out of every request's path. `redactQuery` handles the flat bracket form.
+
 // Register all connector adapters
 registerAdapters();
 

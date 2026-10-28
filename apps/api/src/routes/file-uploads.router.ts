@@ -1,4 +1,5 @@
-import { NextFunction, Request, Response, Router } from "express";
+import { NextFunction, Response, Router } from "express";
+import type { Request } from "../types/request.js";
 
 import {
   FileUploadConfirmRequestBodySchema,

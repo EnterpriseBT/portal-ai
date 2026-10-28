@@ -1,4 +1,5 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 import { createLogger } from "../utils/logger.util.js";
 import { Auth0Service } from "../services/auth0.service.js";
 import { HttpService, ApiError } from "../services/http.service.js";

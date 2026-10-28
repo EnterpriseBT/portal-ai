@@ -831,6 +831,8 @@ export class UserRepository {
 
 Routes should validate request parameters/body using middleware, and extend the express object for type safety.
 
+Route files import `Request` from `src/types/request.ts`, not from `express` (#897). Express 5's types widen every route param to `string | string[]` because a `*splat` wildcard yields an array; the API registers no wildcards, so that type keeps params as strings, and `express-route-inventory.util.test.ts` fails if a wildcard route is ever added. A bodiless POST/PUT/PATCH reaches its route with `req.body` as `{}` (`empty-body.middleware.ts`), and the query parser is Express 5's default `simple`, so query keys are flat strings.
+
 ```typescript
 // Define a typed request interface extending Express
 interface GetUserRequest extends Request {

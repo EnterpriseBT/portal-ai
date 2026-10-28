@@ -118,8 +118,13 @@ if (res.headersSent) {
 The behavior is unchanged: a malformed `%` in a route param answers `400 REQUEST_URL_INVALID_ENCODING`. If router 2 surfaces the decode failure differently (no `status`, or a different error class), the check widens to match it. The test pins the response, not the error's shape.
 
 ### Types
-- `src/types/express.d.ts` keeps its `declare global namespace Express` merge (`auth`, `rawBody`, `application`). It's adjusted only if `@types/express@5`'s `Request` shape requires it.
-- Handler returns that the v5 types reject are rewritten as statement-then-`return;`. No `as any`, no `@ts-expect-error`, no `eslint-disable`.
+- `src/types/express.d.ts` keeps its `declare global namespace Express` merge (`auth`, `rawBody`, `application`) unchanged.
+- **As found in slice 5:** `@types/express@5` didn't reject handler return types. It widened `ParamsDictionary` to `string | string[]`, because a path-to-regexp v8 `*splat` wildcard yields an array. That produced 311 errors across the route files (`req.params.x` passed where a `string` is expected, plus the `unknown` this cascades into). Declaration merging can't narrow that index signature, so:
+  - a new `src/types/request.ts` exports `Request = express.Request<Record<string, string>>`;
+  - the 39 route files import `Request` from it instead of `express`;
+  - middleware keeps Express's own `Request`, since it doesn't read params.
+- That makes the type true by construction: `express-route-inventory.util.test.ts` fails if any registered route contains a `*` wildcard. It replaces slice 1's one-off parity case.
+- No casts, no `@ts-expect-error`, no `eslint-disable`.
 
 No `ApiCode` additions, no schema or migration, and no OpenAPI change: no route's request or response shape changes.
 

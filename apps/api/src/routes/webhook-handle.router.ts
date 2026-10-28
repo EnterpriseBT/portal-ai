@@ -15,7 +15,8 @@
  * staged org. Single-target, org-scoped, short-TTL.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import { ApiError, HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

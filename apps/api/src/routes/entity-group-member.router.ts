@@ -1,4 +1,5 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 
 import { EntityGroupMemberModelFactory } from "@portalai/core/models";
 import {

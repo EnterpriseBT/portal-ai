@@ -5,7 +5,8 @@
  * Provides paginated record listing, count, bulk import, sync, and clear.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
 import { resolveColumns } from "../utils/resolve-columns.util.js";

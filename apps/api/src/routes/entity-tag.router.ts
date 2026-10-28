@@ -1,4 +1,5 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
+import type { Request } from "../types/request.js";
 import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { EntityTagModelFactory } from "@portalai/core/models";

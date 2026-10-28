@@ -235,6 +235,27 @@ describe("App Integration", () => {
     });
   });
 
+  // #897: Express 5 forwards a rejected async handler to the error handler.
+  // Under Express 4 the rejection escaped to process `unhandledRejection` and
+  // the request hung.
+  describe("Rejected async handlers", () => {
+    it("answers through the error handler", async () => {
+      const { apiErrorHandler } = await import("../../app.js");
+      const express = (await import("express")).default;
+      const { ApiError } = await import("../../services/http.service.js");
+      const bare = express();
+      bare.get("/reject", async () => {
+        throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
+      });
+      bare.use(apiErrorHandler);
+
+      const res = await request(bare).get("/reject").timeout(3000);
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    });
+  });
+
   // #775: express.json() skips other content types, leaving req.body empty,
   // so a strict route saw `{}` and dropped every key. Such a body is a 415.
   describe("Non-JSON bodies", () => {
