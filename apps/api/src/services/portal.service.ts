@@ -22,6 +22,7 @@ import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
+import { environment } from "../environment.js";
 import { AnalyticsService } from "./analytics.service.js";
 import type { EntitySchema } from "./analytics.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
@@ -1373,11 +1374,19 @@ export async function buildStationContext(args: {
       ? await loadConnectorInstanceContexts(station.id)
       : undefined;
   // #824: the same resolution the write gate uses, so the prompt says writes
-  // are off exactly when the gate withheld the write tools.
-  const stationWritable = entityManagementAvailable
-    ? (await resolveStationCapabilities(station.id)).some(
-        (c) => c.capabilities.write
-      )
+  // are off exactly when the gate withheld the write tools. GIS needs it too:
+  // bulk_geocode_records is a write tool (#615).
+  const gisAvailable = effectiveToolPacks.includes("gis");
+  const stationWritable =
+    entityManagementAvailable || gisAvailable
+      ? (await resolveStationCapabilities(station.id)).some(
+          (c) => c.capabilities.write
+        )
+      : undefined;
+  // #615: the same condition buildAnalyticsTools uses to build the geocode
+  // tools, so the GIS section never offers a tool the session lacks.
+  const geocodingAvailable = gisAvailable
+    ? Boolean(environment.GEOCODING_API_KEY)
     : undefined;
   const organizationTimezone = await loadOrganizationTimezone(organizationId);
 
@@ -1428,6 +1437,7 @@ export async function buildStationContext(args: {
     entityCapabilities,
     connectorInstances,
     stationWritable,
+    geocodingAvailable,
     // #674: attachment counts for the empty-station lines.
     attachments: await StationAttachmentService.countsForCaller(
       station.id,

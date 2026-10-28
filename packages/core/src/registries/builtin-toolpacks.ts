@@ -169,9 +169,14 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
     {
       name: "sql_query",
       description:
-        "Executes a SQL query against a specified database connection and returns the results as JSON.",
+        "Executes a SQL query over the station's data and returns the results. Small results come back inline; larger ones return a handle envelope ({queryHandle, rowCount, schema, samplePeek}) and the table lists at most 5,000 rows. Don't add a LIMIT for delivery. A long or expensive query runs as a background job after the user confirms: the first call is rejected with SQL_QUERY_COST_NOT_ACKNOWLEDGED, then retry with acknowledgeCost: true once they reply.",
       parameterSchema: objectSchema(
-        { sql: stringField("The SQL query to execute") },
+        {
+          sql: stringField("The SQL query to execute"),
+          acknowledgeCost: booleanField(
+            "Set true to run a long/expensive query as a background job. Only after the user has confirmed."
+          ),
+        },
         ["sql"]
       ),
       examples: [
@@ -343,7 +348,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
     {
       name: "bulk_geocode_records",
       description:
-        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Metered per uncached address — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies. Needs write permission on the entity.",
+        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Charged per uncached address against the plan's expensive allocation — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies. Needs write permission on the entity.",
       parameterSchema: objectSchema(
         {
           connectorEntityId: stringField(
@@ -356,7 +361,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
           acknowledgeCost: {
             type: "boolean",
             description:
-              "Set true ONLY after surfacing the metered cost to the user and receiving a reply.",
+              "Set true ONLY after surfacing the cost to the user and receiving a reply.",
           },
         },
         ["connectorEntityId", "sourceColumnKey", "targetColumnKey"]
@@ -515,7 +520,7 @@ const REGRESSION_PACK: BuiltinToolpackSpec = {
     {
       name: "logistic_regression",
       description:
-        "Binary logistic regression via IRLS over a dataset you provide. Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.",
+        "Binary logistic regression over a dataset you provide. Small datasets get the exact IRLS fit: coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5 and iteration count. A large query handle folds online via AdaGrad SGD and returns coefficients with prequential log-loss/accuracy; per-row probabilities are omitted at scale.",
       parameterSchema: objectSchema(
         {
           ...computeSourceFields(),
@@ -585,9 +590,8 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           pmt: numberField("Per-period payment"),
           pv: numberField("Present value"),
           fv: numberField("Future value"),
-          when: enumField(
-            ["end", "begin"],
-            "When in the period payments are made (default end)"
+          guess: numberField(
+            "Initial-guess rate for the solver (default 0.1). Only used for op = rate."
           ),
         },
         ["op"]
@@ -628,7 +632,6 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           cashFlows: numberArrayField(
             "Cash flow series. Must contain at least one positive and one negative value."
           ),
-          guess: numberField("Initial guess for the rate (default 0.1)"),
         },
         ["cashFlows"]
       ),
@@ -640,10 +643,19 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
       parameterSchema: objectSchema(
         {
           rate: numberField("Annualized discount rate"),
-          dates: stringArrayField("ISO dates aligned with cashFlows"),
-          cashFlows: numberArrayField("Cash flows aligned with dates"),
+          cashFlows: {
+            type: "array",
+            description: "Cash flows with explicit dates (at least 2)",
+            items: objectSchema(
+              {
+                date: stringField("ISO date (YYYY-MM-DD)"),
+                amount: numberField("Cash flow amount"),
+              },
+              ["date", "amount"]
+            ),
+          },
         },
-        ["rate", "dates", "cashFlows"]
+        ["rate", "cashFlows"]
       ),
     },
     {
@@ -652,11 +664,20 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
         "Internal rate of return over irregular-date cashflows (Excel XIRR semantics).",
       parameterSchema: objectSchema(
         {
-          dates: stringArrayField("ISO dates aligned with cashFlows"),
-          cashFlows: numberArrayField("Cash flows aligned with dates"),
+          cashFlows: {
+            type: "array",
+            description: "Cash flows with explicit dates (at least 2)",
+            items: objectSchema(
+              {
+                date: stringField("ISO date (YYYY-MM-DD)"),
+                amount: numberField("Cash flow amount"),
+              },
+              ["date", "amount"]
+            ),
+          },
           guess: numberField("Initial guess (default 0.1)"),
         },
-        ["dates", "cashFlows"]
+        ["cashFlows"]
       ),
     },
     {
@@ -673,6 +694,9 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           salvage: numberField("Salvage value"),
           life: integerField("Useful life in periods"),
           period: integerField("Optional single period to return"),
+          factor: numberField(
+            "Override factor for declining_balance / double_declining_balance (default 1 and 2)"
+          ),
         },
         ["method", "cost", "salvage", "life"]
       ),
@@ -723,6 +747,12 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           benchmarkQueryHandle: stringField(
             "Optional queryHandle for benchmark returns (enables beta/alpha/etc.)"
           ),
+          benchmarkRows: {
+            type: "array",
+            items: { type: "object" },
+            description:
+              "Inline benchmark rows (alternative to benchmarkQueryHandle)",
+          },
           benchmarkReturnColumn: stringField(
             "Return column within the benchmark rows. Required when a benchmark source is supplied."
           ),
@@ -751,15 +781,18 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
             "Which quantity to compute"
           ),
           face: numberField("Face value"),
-          coupon: numberField("Annual coupon rate (e.g. 0.05)"),
+          couponRate: numberField("Annual coupon rate (e.g. 0.05)"),
           maturity: numberField("Years to maturity"),
-          frequency: integerField("Coupon payments per year (1, 2, or 4)"),
+          frequency: integerField("Coupon payments per year (default 2)"),
           price: numberField("Clean price (required when solving for ytm)"),
           yield: numberField(
             "Yield (required when solving for price/duration/convexity)"
           ),
+          guess: numberField(
+            "Initial-guess yield for the YTM solver (default 0.05)"
+          ),
         },
-        ["op", "face", "coupon", "maturity", "frequency"]
+        ["op", "face", "couponRate", "maturity"]
       ),
     },
     {
@@ -847,9 +880,13 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
               type: "object",
               properties: {
                 connectorEntityId: stringField("Target connector entity"),
+                sourceId: stringField(
+                  "Optional source id; auto-generated if omitted"
+                ),
                 data: {
                   type: "object",
-                  description: "Record payload keyed by field name",
+                  description:
+                    "Record payload keyed by each field mapping's normalizedKey",
                 },
               },
               required: ["connectorEntityId", "data"],
@@ -884,10 +921,17 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
             items: {
               type: "object",
               properties: {
-                id: stringField("Record id"),
-                data: { type: "object" },
+                connectorEntityId: stringField(
+                  "The connector entity the record belongs to"
+                ),
+                entityRecordId: stringField("The record id to update"),
+                data: {
+                  type: "object",
+                  description:
+                    "Fields to change, keyed by each field mapping's normalizedKey",
+                },
               },
-              required: ["id", "data"],
+              required: ["connectorEntityId", "entityRecordId", "data"],
             },
           },
         },
@@ -898,9 +942,25 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       name: "entity_record_delete",
       description:
         "Soft-deletes one or more entity records. Accepts 1–100 items. Needs write permission on the record's entity, whoever created the record.",
-      parameterSchema: objectSchema({ ids: stringArrayField("Record ids") }, [
-        "ids",
-      ]),
+      parameterSchema: objectSchema(
+        {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                connectorEntityId: stringField(
+                  "The connector entity the record belongs to"
+                ),
+                entityRecordId: stringField("The record id to delete"),
+              },
+              required: ["connectorEntityId", "entityRecordId"],
+            },
+            description: "1–100 records to delete.",
+          },
+        },
+        ["items"]
+      ),
     },
     {
       name: "connector_entity_create",
@@ -914,10 +974,12 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
               type: "object",
               properties: {
                 connectorInstanceId: stringField("Target connector instance"),
+                key: stringField(
+                  "Unique key for the entity (lowercase letters, digits, underscores)"
+                ),
                 label: stringField("Entity label"),
-                refKey: stringField("Stable external reference key"),
               },
-              required: ["connectorInstanceId", "label"],
+              required: ["connectorInstanceId", "key", "label"],
             },
           },
         },
@@ -935,10 +997,10 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
             items: {
               type: "object",
               properties: {
-                id: stringField("Connector entity id"),
+                connectorEntityId: stringField("Connector entity id"),
                 label: stringField("New label"),
               },
-              required: ["id", "label"],
+              required: ["connectorEntityId", "label"],
             },
           },
         },
@@ -950,8 +1012,20 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       description:
         "Deletes one or more connector entities with their field mappings, tags, group memberships and curated views. Each entity is gone as soon as the call returns; its records are removed in the background by the job named in recordsJobId. Accepts 1–100 items. Needs delete permission on the entity and write permission on its connector instance.",
       parameterSchema: objectSchema(
-        { ids: stringArrayField("Connector entity ids") },
-        ["ids"]
+        {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                connectorEntityId: stringField("Connector entity id"),
+              },
+              required: ["connectorEntityId"],
+            },
+            description: "1–100 entities to delete.",
+          },
+        },
+        ["items"]
       ),
     },
     {
@@ -969,11 +1043,21 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
                 columnDefinitionId: stringField("Column definition"),
                 sourceField: stringField("Source field name"),
                 isPrimaryKey: booleanField("Mark as primary key"),
+                normalizedKey: stringField(
+                  "Key the mapped value is stored under (lowercase letters, digits, underscores)"
+                ),
+                required: booleanField("Whether the field is required"),
+                defaultValue: stringField(
+                  "Default fill value when the source value is missing"
+                ),
+                format: stringField("Per-source parse format"),
+                enumValues: stringArrayField("Allowed values"),
               },
               required: [
                 "connectorEntityId",
                 "columnDefinitionId",
                 "sourceField",
+                "normalizedKey",
               ],
             },
           },
@@ -992,11 +1076,20 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
             items: {
               type: "object",
               properties: {
-                id: stringField("Field mapping id"),
+                fieldMappingId: stringField("Field mapping id"),
                 sourceField: stringField("New source field name"),
                 isPrimaryKey: booleanField("Primary key flag"),
+                normalizedKey: stringField(
+                  "Key the mapped value is stored under (lowercase letters, digits, underscores)"
+                ),
+                required: booleanField("Whether the field is required"),
+                defaultValue: stringField(
+                  "Default fill value when the source value is missing"
+                ),
+                format: stringField("Per-source parse format"),
+                enumValues: stringArrayField("Allowed values"),
               },
-              required: ["id"],
+              required: ["fieldMappingId"],
             },
           },
         },
@@ -1008,8 +1101,20 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       description:
         "Deletes one or more field mappings and cascades to dependent group members. A mapping a curated view projects or filters on can't be deleted — the item fails with the reason; edit or delete the view first. Accepts 1–100 items. Needs write permission on the mapping's entity, whoever created the mapping.",
       parameterSchema: objectSchema(
-        { ids: stringArrayField("Field mapping ids") },
-        ["ids"]
+        {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                fieldMappingId: stringField("Field mapping id"),
+              },
+              required: ["fieldMappingId"],
+            },
+            description: "1–100 mappings to delete.",
+          },
+        },
+        ["items"]
       ),
     },
     {
@@ -1019,12 +1124,12 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       parameterSchema: objectSchema(
         {
           sourceConnectorEntityId: stringField(
-            "The source entity whose records are transformed (read-only; not locked)."
+            "The source entity whose records are transformed (read-only, and locked for the duration of the job)."
           ),
           expression: {
             type: "object",
             description:
-              'The per-record derivation. `kind: "sql"` carries a SQL projection in `value` whose aliases match target wide-columns; `kind: "tool"` carries a tool `ref` (+ optional `args`). Both carry a `writes[]` array mapping each derived value into a target wide-column.',
+              'The per-record derivation. `kind: "sql"` carries a SQL projection in `value` whose aliases each `writes[].valueFrom` names; `kind: "tool"` carries a tool `ref` (+ optional `args`). Both carry a `writes[]` array mapping each derived value into a target wide-column.',
           },
           keyField: stringField("Upsert key on the target's `source_id`."),
           batchSize: integerField(
@@ -1377,6 +1482,7 @@ const viewFilterField = (description: string) => ({
         "Each { field: <column key>, operator, value }, or a nested group",
     },
   },
+  required: ["combinator", "conditions"],
 });
 
 const curatedViewIdField = stringField(
@@ -1544,10 +1650,9 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
 // `tool-capability.model.ts`; the disposition rationale is in
 // `docs/TOOLPACK_TAXONOMY.spec.md` (the census + the D4 spike).
 //
-// NOTE: these declare the *current* behavior (no behavior change in child A).
-// The reduce-tier reclassification (10 → SQL, 3 → engine-pushdown) is child E;
-// `resultKind`-driven routing is child G. Until then capability is declared
-// metadata, read by nothing.
+// These drive behaviour: `ToolService` reads them for `alwaysAvailable`, the
+// station write gate (`writes`), the lock gate (`locks`), the cost gate
+// (`costHint`, `resultKind`) and `TOOL_AUTHORIZATION`.
 
 /** Pure-math: touches no backend, computes over inline params. */
 const pureMath = (resultKind: ResultKind = "scalar"): ToolCapability => ({
@@ -1791,9 +1896,6 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // statistics — describe_column / correlate / detect_outliers / aggregate
   // removed in #130 E2 (expressed directly in sql_query).
   //
-  // cluster (k-means) is bounded(100k) + onOverflow:error and costHint
-  // expensive (#130 E2b): the in-memory fit is the heavy reduce-tier op
-  // whose exact-unbounded upgrade is the mini-batch streaming variant (E3).
   // cluster: exact in-memory for small N; mini-batch k-means folds a large
   // handle online (#153). streaming, still cost-gated.
   cluster: streamingReduce("scalar", "expensive"),
@@ -1808,8 +1910,6 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // handle, the k×k solve + SE/t/p/CI run in-tool (per-row residuals omitted
   // on the pushdown path). Inline rows keep the full in-memory result.
   regression: enginePushdownReduce("scalar"),
-  // logistic_regression (IRLS) is bounded(100k) + onOverflow:error and
-  // costHint expensive (#130 E2b); the SGD streaming variant is E3.
   // logistic_regression: exact IRLS for small N; AdaGrad SGD folds a large
   // handle online (#153). streaming, still cost-gated.
   logistic_regression: streamingReduce("scalar", "expensive"),

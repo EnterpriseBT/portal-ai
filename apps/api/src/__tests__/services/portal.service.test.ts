@@ -942,6 +942,66 @@ describe("PortalService", () => {
       ]);
     });
 
+    // #615: the GIS section names geocode tools only when they're built,
+    // which takes GEOCODING_API_KEY; bulk_geocode_records also needs writes.
+    it.each([
+      ["set", "gis-key", true],
+      ["unset", "", false],
+    ])(
+      "reports geocodingAvailable from GEOCODING_API_KEY (%s) and resolves writability for gis",
+      async (_label, key, expected) => {
+        const { buildStationContext } =
+          await import("../../services/portal.service.js");
+        const { environment } = await import("../../environment.js");
+        const previous = environment.GEOCODING_API_KEY;
+        environment.GEOCODING_API_KEY = key;
+        try {
+          mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+          mockSplitBuiltinPacks.mockResolvedValueOnce({
+            effective: ["data_query", "gis"],
+            unentitled: [],
+            tier: "standard",
+          });
+          mockFindByStationId_toolpacks.mockResolvedValueOnce(
+            makeToolpackRows(["data_query", "gis"])
+          );
+
+          const ctx = await buildStationContext({
+            station: { id: STATION_ID, name: "Sales Station" },
+            organizationId: ORG_ID,
+            userId: USER_ID,
+          });
+
+          expect(ctx.geocodingAvailable).toBe(expected);
+          expect(ctx.stationWritable).toBe(true);
+        } finally {
+          environment.GEOCODING_API_KEY = previous;
+        }
+      }
+    );
+
+    it("leaves geocodingAvailable unset when gis isn't in the session", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockSplitBuiltinPacks.mockResolvedValueOnce({
+        effective: ["data_query"],
+        unentitled: [],
+        tier: "standard",
+      });
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.geocodingAvailable).toBeUndefined();
+    });
+
     it("skips connector + capability loading when entity_management is configured but unentitled", async () => {
       // The pack's tools don't exist, so the work that only feeds them is
       // wasted — and surfacing connectorInstances would imply a capability

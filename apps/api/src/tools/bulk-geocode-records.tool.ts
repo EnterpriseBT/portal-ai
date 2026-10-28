@@ -35,7 +35,7 @@ const InputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Set true ONLY after surfacing the metered cost to the user and receiving a reply."
+      "Set true ONLY after surfacing the cost to the user and receiving a reply."
     ),
 });
 
@@ -98,7 +98,7 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
     "Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. The job runs " +
     "in the background: this tool returns immediately with a jobId and a live progress widget, and the " +
     "target entity is locked from edits until it completes.\n\n" +
-    "**Metered-cost confirmation gate.** Geocoding bills per uncached address. The first call is rejected " +
+    "**Cost confirmation gate.** Geocoding is charged per uncached address against the plan's expensive allocation. The first call is rejected " +
     "with an estimate; surface the cost to the user, and only after they reply retry with " +
     "`acknowledgeCost: true`. Cached addresses are free. Needs write permission on the entity.";
 
@@ -176,7 +176,7 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
             throw new ApiError(
               400,
               ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED,
-              "Bulk geocoding is metered per uncached address. Surface the cost to the user, then retry with acknowledgeCost: true AFTER they reply.",
+              "Bulk geocoding is charged per uncached address. Surface the cost to the user, then retry with acknowledgeCost: true AFTER they reply.",
               {
                 recommendation:
                   ApiCodeDefaultRecommendation[

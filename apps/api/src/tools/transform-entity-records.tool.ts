@@ -153,10 +153,10 @@ const InputSchema = z.object({
   sourceConnectorEntityId: z
     .string()
     .describe(
-      "Connector entity to scan; read-only during the job. Use the " +
-        "`connectorEntityId` listed next to the entity in `## Available " +
-        "Data`, or query `SELECT id FROM _meta_entities WHERE key = '<entity_key>'`. " +
-        "Do NOT ask the user — the value is in your context."
+      "Connector entity to scan; read-only and locked during the job. Get " +
+        "its id from `station_context` (the prompt's `## Available Data` " +
+        "lists keys, not ids), or query `SELECT id FROM _meta_entities WHERE key = '<entity_key>'`. " +
+        "Do NOT ask the user for it."
     ),
   expression: ExpressionSchema,
   keyField: z
@@ -233,13 +233,15 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
   slug = "transform_entity_records";
   name = "Transform Entity Records";
   description =
-    "Run a per-record transform across a source entity and upsert the results into a target entity. " +
+    "Run a per-record transform across a source entity and upsert the results into one or more target entities. " +
     "Use this for high-cardinality writes (≥100 records) where calling `entity_record_create` " +
     "in a loop would exhaust the agent's context. The job runs asynchronously: this tool returns " +
     "immediately with a jobId and an ETA, the user sees a live progress widget, and the chat is " +
     "locked from new input until the job completes. " +
-    "Express the per-record derivation as a SQL projection in `expression.value` whose aliases match " +
-    "target wide-column names (e.g. `ST_Area(geometry::geography) / 4047 AS c_acreage`).\n\n" +
+    "Express the per-record derivation as a SQL projection in `expression.value` " +
+    "(e.g. `ST_Area(geometry::geography) / 4047 AS acreage`), and land each alias with a " +
+    "`writes[]` entry: the target wide-column in `column`, the alias in " +
+    '`valueFrom: { kind: "sql_alias", alias }`.\n\n' +
     "**Expensive-tool confirmation gate.** When `expression.kind === 'tool'` and the tool declared " +
     '`costHint: "expensive"`, the API rejects the first call with ' +
     "`BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`. You MUST ask the user to confirm and WAIT for their next " +

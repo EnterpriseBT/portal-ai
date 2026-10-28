@@ -94,6 +94,10 @@ export interface StationContext {
    *  `resolveStationCapabilities` the write gate uses, so the prompt says
    *  writes are off exactly when the gate withheld the write tools. */
   stationWritable?: boolean;
+  /** #615: whether `GEOCODING_API_KEY` is configured — the same condition
+   *  `buildAnalyticsTools` uses to construct `geocode` / `bulk_geocode_records`.
+   *  The GIS section names those tools only when they exist in this session. */
+  geocodingAvailable?: boolean;
   /** IANA timezone for the org owning this portal. Always present;
    *  resolved at session start and falls back to "UTC" if the stored
    *  value isn't a recognized IANA name. The system prompt names it so
@@ -159,6 +163,48 @@ function sqlAuthoringAvailable(ctx: StationContext): boolean {
     ctx.effectiveToolPacks.includes("data_query") ||
     ctx.effectiveToolPacks.includes("visualize")
   );
+}
+
+/**
+ * The GIS section's address-to-geometry paragraph (#615). It names only the
+ * geocoding tools this session actually has: both need `GEOCODING_API_KEY`,
+ * and `bulk_geocode_records` writes, so the station write gate withholds it
+ * when no connector the station reaches allows writes.
+ */
+function geocodingGuidance(ctx: StationContext): string[] {
+  const neverFabricate =
+    "**Never fabricate coordinates** — if geocoding returns a typed error " +
+    "(provider down, address unresolved), relay it; do not guess a location.";
+  if (ctx.geocodingAvailable !== true) {
+    return [
+      "When the rows carry **addresses but no coordinates**, they can't be " +
+        "geocoded in this session: no geocoding tool is available. Map only " +
+        "rows that already carry geometry or coordinates, and tell the user " +
+        "the rest have none. " +
+        neverFabricate,
+    ];
+  }
+  const single =
+    "**`geocode`** for a single address (→ `{lat, lng}`, a repeat is " +
+    "cache-served and free)";
+  if (ctx.stationWritable === false) {
+    return [
+      "When the rows carry **addresses but no coordinates**, turn them into " +
+        `geometry before mapping with ${single}. Geocoding a whole column ` +
+        "isn't available here, because no connector this station reaches " +
+        "allows writes. " +
+        neverFabricate,
+    ];
+  }
+  return [
+    "When the rows carry **addresses but no coordinates**, turn them into " +
+      `geometry before mapping: ${single}, or **\`bulk_geocode_records\`** to ` +
+      "geocode a whole entity column into a GeoJSON Point column as a " +
+      "background job. `bulk_geocode_records` is **expensive** — the first " +
+      "call is rejected with a cost; surface it to the user and only retry " +
+      "with `acknowledgeCost: true` after they reply. " +
+      neverFabricate,
+  ];
 }
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -273,7 +319,7 @@ export const PACK_PROMPT_SECTIONS: Record<
     blocks: ["maps"],
     interpretiveTools: [],
     markers: ["map geospatial data", "### Mapping", "visualize_map"],
-    render: () => {
+    render: (ctx) => {
       const lines: string[] = [];
       lines.push("### Mapping");
       lines.push("");
@@ -312,18 +358,7 @@ export const PACK_PROMPT_SECTIONS: Record<
           "per-kind default."
       );
       lines.push("");
-      lines.push(
-        "When the rows carry **addresses but no coordinates**, turn them into " +
-          "geometry before mapping: **`geocode`** for a single address " +
-          "(→ `{lat, lng}`, a repeat is cache-served and free), or " +
-          "**`bulk_geocode_records`** to geocode a whole entity column into a " +
-          "GeoJSON Point column as a background job. `bulk_geocode_records` is " +
-          "**metered** — the first call is rejected with a cost; surface it to " +
-          "the user and only retry with `acknowledgeCost: true` after they " +
-          "reply. **Never fabricate coordinates** — if geocoding returns a " +
-          "typed error (provider down, address unresolved), relay it; do not " +
-          "guess a location."
-      );
+      lines.push(...geocodingGuidance(ctx));
       lines.push("");
       return lines;
     },
@@ -428,7 +463,7 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("");
       lines.push(
         "Each field mapping has a `normalizedKey` — this is the key used by " +
-          "the entity_record_* tools' `normalizedData` payload. The matching " +
+          "the entity_record_* tools' `data` payload. The matching " +
           "wide-table column is named `c_<normalizedKey>`; SELECT it directly " +
           "from the entity table."
       );
@@ -528,7 +563,8 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("");
       lines.push(
         "You can manage the organization's access model — permission policies, " +
-          "roles, groups, member assignments, and station/pin sharing — with the " +
+          "roles, groups, member assignments, and sharing of stations, pins and " +
+          "curated views — with the " +
           "rbac_management tools. These act on the caller's own authority: a " +
           "change you cannot make in the app you cannot make here. If a tool " +
           "returns a permission error, relay it plainly and do not retry — the " +
@@ -1039,7 +1075,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push(
       "No connector this station reaches, attached directly or through its " +
         "views, allows writes, so the entity create, update and delete " +
-        "tools are not available in this session. If the user asks to " +
+        "tools, `transform_entity_records` and `bulk_geocode_records` are " +
+        "not available in this session. If the user asks to " +
         "create or change entities, field mappings or records, say that, " +
         "and that they can enable writes on a connector or attach a " +
         "write-enabled one to this station. It is not a plan limit: don't " +
