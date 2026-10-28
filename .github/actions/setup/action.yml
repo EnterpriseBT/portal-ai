@@ -39,6 +39,9 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
+        # The newest release of the major, not the runner's cached one: a
+        # cached 22.23.3 fell below astro's floor while 22.23.4 was out (#900).
+        check-latest: true
         cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'npm' || '' }}
 
     - name: Install dependencies

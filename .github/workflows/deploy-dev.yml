@@ -137,7 +137,10 @@ jobs:
       - name: Set up Node (demo-toolpack bundle)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: the `npm ci` below installs the whole monorepo, whose
+          # root preinstall refuses a Node below `engines.node` (#900).
+          node-version: "22"
+          check-latest: true
           cache: npm
 
       - name: Deploy demo custom-toolpack stack (shared across demo envs)

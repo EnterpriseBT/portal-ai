@@ -1,4 +1,4 @@
-FROM node:latest AS dev
+FROM node:22 AS dev
 
 # Install git, git autocomplete, ngrok CLI, and AWS CLI v2
 RUN apt-get update && apt-get install -y \

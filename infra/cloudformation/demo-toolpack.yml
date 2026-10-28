@@ -57,7 +57,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: portalai-demo-toolpack
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Handler: index.handler
       Role: !GetAtt FunctionRole.Arn
       Timeout: 30

@@ -12,8 +12,8 @@
  * result is fresh."
  *
  * SHA-256 is provided by Web Crypto (`globalThis.crypto.subtle`),
- * which is available in browsers and in Node 18+ (the project's
- * minimum runtime). No native dependency.
+ * which is available in browsers and in Node 18+ (well below the
+ * project's `engines.node` floor). No native dependency.
  */
 import type {
   ApiAuthConfig,
