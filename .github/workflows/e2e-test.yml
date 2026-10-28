@@ -25,7 +25,7 @@ concurrency:
 jobs:
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       # The CI sign-in user (local/dev Auth0 tenant) and the connection the
@@ -79,7 +79,7 @@ jobs:
 
       - name: Checkout
         if: steps.creds.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         if: steps.creds.outputs.run == 'true'
@@ -109,7 +109,7 @@ jobs:
       # public, and the session files under .auth/ hold refresh tokens.
       - name: Upload artifacts
         if: failure() && steps.creds.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-${{ github.run_id }}
           path: |

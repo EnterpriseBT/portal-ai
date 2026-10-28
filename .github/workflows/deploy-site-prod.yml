@@ -36,13 +36,13 @@ concurrency:
 jobs:
   # ── Gate: is prod wired up, and what do we build? ─────────────────
   resolve:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
       ready: ${{ steps.ready.outputs.ready }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve the ref to build
         id: ref

@@ -85,14 +85,14 @@ env:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: ${{ inputs.gh-environment }}
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout ${{ inputs.build-ref }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.build-ref }}
 
@@ -100,7 +100,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.aws-role-arn }}
           aws-region: ${{ env.AWS_REGION }}

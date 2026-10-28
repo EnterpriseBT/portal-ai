@@ -63,16 +63,16 @@ jobs:
       always()
       && !contains(needs.*.result, 'failure')
       && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -135,7 +135,7 @@ jobs:
       # placeholder. The signing-secret allow-list is NOT set here — it is
       # populated post-registration (see packages/demo-toolpack/README.md).
       - name: Set up Node (demo-toolpack bundle)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           # 22, not 20: the `npm ci` below installs the whole monorepo, whose
           # root preinstall refuses a Node below `engines.node` (#900).
@@ -280,7 +280,7 @@ jobs:
     # with a failing suite, deploy-infra would be *skipped* rather than failed,
     # and that form would happily deploy anyway.
     if: ${{ !cancelled() && needs.deploy-infra.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
       contents: read
@@ -290,13 +290,13 @@ jobs:
       invalidation_id: ${{ steps.invalidate.outputs.id }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -385,16 +385,16 @@ jobs:
     # with a failing suite, deploy-infra would be *skipped* rather than failed,
     # and that form would happily deploy anyway.
     if: ${{ !cancelled() && needs.deploy-infra.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -412,10 +412,10 @@ jobs:
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.2
@@ -425,7 +425,7 @@ jobs:
       # step below reuses this builder's cache (same job), so it does not
       # recompile; it re-exports the same layers with SBOM + provenance.
       - name: Build image (load, no push) for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/api/Dockerfile
@@ -455,7 +455,7 @@ jobs:
 
       - name: Build and push Docker image (+ SBOM & provenance)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/api/Dockerfile
@@ -493,7 +493,7 @@ jobs:
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
       - name: Build and push web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
@@ -630,12 +630,12 @@ jobs:
       ${{ !cancelled()
       && needs.deploy-frontend.result == 'success'
       && needs.deploy-backend.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Create deploy tag
         run: |
@@ -658,14 +658,14 @@ jobs:
       ${{ !cancelled()
       && needs.deploy-frontend.result == 'success'
       && needs.deploy-backend.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       id-token: write
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -682,7 +682,7 @@ jobs:
         run: npm run build -- --filter=@portalai/e2e^...
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

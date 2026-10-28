@@ -37,10 +37,10 @@ env:
 jobs:
   refresh:
     name: Refresh integration durations
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
 

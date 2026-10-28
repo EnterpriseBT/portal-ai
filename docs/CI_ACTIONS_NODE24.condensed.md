@@ -19,7 +19,7 @@
 ## Decision — current majors, setup-node's auto-cache off, runner pinned to `ubuntu-26.04`
 
 - **Action versions.** Use the latest major of each: checkout v7, setup-node v7, cache (and restore/save) v6, upload-artifact v7, download-artifact v8, configure-aws-credentials v6, build-push v7, setup-buildx v4, setup-qemu v4, setup-helm v5. The release notes list these breaking changes, and none needs an input change from us except setup-node:
-  - **setup-node v5+ caches automatically** whenever `package.json` has `packageManager`, which ours does. That would restore npm's download cache in every job, including cache hits, undoing #857's miss-only choice. Set `package-manager-cache: false` on all three setup-node uses; the explicit `cache:` input keeps working.
+  - **setup-node v5+ caches automatically** whenever `package.json` has `packageManager`, which ours does. That would restore npm's download cache in every job, including cache hits, undoing #857's miss-only choice. Set `package-manager-cache: false` in the shared setup action and `npm-audit.yml` (which installs nothing). deploy-dev's demo-toolpack step sets `cache: npm` explicitly, so the automatic cache never applies to it.
   - **download-artifact v5** changed the path for a single artifact downloaded by ID. We download by `pattern`, so this doesn't apply. **v8** turns a hash mismatch into an error (it used to warn), which is the behavior we want for the shard reports.
   - The rest only switch the runtime to Node 24 (runner ≥ 2.327.1, which hosted runners have) or update dependencies; cache v6 is an ESM migration with the same inputs and outputs.
   - Majors only (`@v7`), not SHA pins: that matches the repo today. SHA pinning is a separate supply-chain decision.

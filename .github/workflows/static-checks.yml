@@ -54,11 +54,11 @@ concurrency:
 jobs:
   static-checks:
     name: Static Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -96,7 +96,7 @@ jobs:
       # `helm install` (the EKS smoke). Pinned to the same helm version the
       # devcontainer installs so local and CI renders match.
       - name: Install helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: v3.19.0
 
