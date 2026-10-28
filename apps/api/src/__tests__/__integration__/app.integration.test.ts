@@ -192,6 +192,49 @@ describe("App Integration", () => {
     );
   });
 
+  // #897: an error after headers were sent (an SSE route failing mid-stream;
+  // Express 5 forwards async rejections here) must not write a JSON body on
+  // top of them, which throws ERR_HTTP_HEADERS_SENT inside the handler.
+  describe("Errors after headers are sent", () => {
+    it("ends the response without writing an error body", async () => {
+      const { apiErrorHandler } = await import("../../app.js");
+      const express = (await import("express")).default;
+      const bare = express();
+      bare.get(
+        "/stream",
+        (_req: Request, res: Response, next: NextFunction) => {
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          res.write("data: first\n\n");
+          next(new Error("failed mid-stream"));
+        }
+      );
+      bare.use(apiErrorHandler);
+      // Whatever leaves the handler: the original error if it stood aside,
+      // or the ERR_HTTP_HEADERS_SENT it threw by writing anyway.
+      const escaped: Error[] = [];
+      bare.use(
+        (err: Error, _req: Request, _res: Response, next: NextFunction) => {
+          escaped.push(err);
+          next(err);
+        }
+      );
+
+      const res = await request(bare)
+        .get("/stream")
+        .buffer(true)
+        .parse((r, done) => {
+          let text = "";
+          r.on("data", (chunk: Buffer) => (text += chunk.toString()));
+          r.on("end", () => done(null, text));
+          r.on("error", () => done(null, text));
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toBe("data: first\n\n");
+      expect(escaped.map((e) => e.message)).toEqual(["failed mid-stream"]);
+    });
+  });
+
   // #775: express.json() skips other content types, leaving req.body empty,
   // so a strict route saw `{}` and dropped every key. Such a body is a 415.
   describe("Non-JSON bodies", () => {

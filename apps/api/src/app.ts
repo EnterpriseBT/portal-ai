@@ -119,8 +119,29 @@ app.use("/api/public", publicSiteRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+/**
+ * The API's error handler, exported so a test can mount it on a bare app
+ * (#897). Mounted last, below.
+ */
+export const apiErrorHandler = (
+  err: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   const log = req.log ?? logger;
+
+  // #897: an error after headers were sent (an SSE route failing mid-stream;
+  // Express 5 forwards async rejections here) can't get a JSON body: writing
+  // one throws ERR_HTTP_HEADERS_SENT inside this handler. Hand it to Express's
+  // default handler, which closes the connection.
+  if (res.headersSent) {
+    log.warn(
+      { err, route: redactUrl(req.originalUrl) },
+      "Error after response headers were sent"
+    );
+    return next(err);
+  }
 
   // #698: a query the request instrumentation cancelled surfaces as a raw
   // `57014`; map it to its typed error first. An abandoned request (the client
@@ -247,4 +268,6 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     message: INTERNAL_ERROR_MESSAGE,
     code: "UNKNOWN",
   });
-});
+};
+
+app.use(apiErrorHandler);
