@@ -29,6 +29,8 @@
  *   - rule 2: a workflow_call site passes every secret the callee declares
  *   - rule 6: the integration shard var is in test:integration's task hash
  *     (#857), so one shard can never restore another shard's cached result
+ *   - rule 7: every job pins its runner image, never a floating `*-latest`
+ *     label (#904)
  *
  * Usage: npm run lint:ci-cache [-- --self-test]
  */
@@ -355,6 +357,28 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
     }
   }
 
+  // Rule 7 — every job pins its runner image (#904).
+  //
+  // `ubuntu-latest` moves to a new OS on GitHub's schedule, not ours: the
+  // toolchain every job (and the deploy's aws CLI, zip, buildx) depends on
+  // changes with no commit to review, and each migration warns on every job.
+  // A pinned image makes the next move a one-line, reviewed change.
+  for (const { file, doc } of workflows) {
+    for (const [id, job] of Object.entries(doc?.jobs ?? {})) {
+      const labels = [job?.["runs-on"]].flat().filter((l) => typeof l === "string");
+      const floating = labels.filter((l) => /-latest$/.test(l));
+      if (floating.length) {
+        violations.push({
+          rule: 7,
+          file,
+          message:
+            `job "${id}" runs on ${floating.join(", ")}. Pin the image ` +
+            `(e.g. ubuntu-26.04) so an OS move is a reviewed change.`,
+        });
+      }
+    }
+  }
+
   return violations;
 }
 
@@ -390,7 +414,7 @@ ${concurrency}
 jobs:
   static-checks:
     name: ${jobName}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Lint
         run: npm run lint
@@ -407,7 +431,7 @@ ${concurrency}
 jobs:
   test-unit:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Run unit tests
         run: npm run test:unit
@@ -427,7 +451,7 @@ on:
 ${env}
 jobs:
   work:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Do it
         run: ${command}
@@ -442,7 +466,7 @@ on:
         required: false
 jobs:
   work:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - run: echo hi
 `;
@@ -469,7 +493,7 @@ name: Shards
 on: push
 jobs:
   shard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - run: npm run test:integration
         env:
@@ -492,12 +516,12 @@ ${cleanConcurrency("integration-test")}
 jobs:
   changes:
     name: "Integration Tests: changes"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps: [{ run: "true" }]
   plan:
     name: "Integration Tests: plan"
     needs: [changes]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps: [{ run: "true" }]
   shard:
     name: "${shardName}"
@@ -505,17 +529,42 @@ jobs:
     strategy:
       matrix:
         index: [1, 2]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps: [{ run: "true" }]
   summary:
     name: "${summaryName}"
     needs: ${summaryNeeds}
     if: ${summaryIf}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps: [{ run: "true" }]
 `;
 
+const pinnedRunner = (runsOn) => `
+name: Some
+on: push
+jobs:
+  build:
+    runs-on: ${runsOn}
+    steps:
+      - run: echo ok
+`;
+
 const FIXTURES = [
+  {
+    name: "rule 7 — a job on a floating ubuntu-latest label",
+    files: { "some.yml": pinnedRunner("ubuntu-latest") },
+    expectRule: 7,
+  },
+  {
+    name: "rule 7 — a floating label inside a runs-on list",
+    files: { "some.yml": pinnedRunner("[self-hosted, ubuntu-latest]") },
+    expectRule: 7,
+  },
+  {
+    name: "rule 7 — a pinned image",
+    files: { "some.yml": pinnedRunner("ubuntu-26.04") },
+    expectRule: null,
+  },
   {
     name: "rule 1 — runs turbo with no credentials",
     files: { "some.yml": runsTurbo() },

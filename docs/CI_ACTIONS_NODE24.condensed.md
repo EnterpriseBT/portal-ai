@@ -23,7 +23,7 @@
   - **download-artifact v5** changed the path for a single artifact downloaded by ID. We download by `pattern`, so this doesn't apply. **v8** turns a hash mismatch into an error (it used to warn), which is the behavior we want for the shard reports.
   - The rest only switch the runtime to Node 24 (runner ≥ 2.327.1, which hosted runners have) or update dependencies; cache v6 is an ESM migration with the same inputs and outputs.
   - Majors only (`@v7`), not SHA pins: that matches the repo today. SHA pinning is a separate supply-chain decision.
-- **Runner label.** Options: keep `ubuntu-latest` (it follows GitHub's schedule, warns during each migration, and moves the node_modules cache key and the toolchain under us without a commit), or pin an image. **Chosen: pin `ubuntu-26.04`.** Our jobs already run there and passed today, so pinning changes nothing now, removes the warning, and makes the next OS move a reviewed one-line change.
+- **Runner label.** Options: keep `ubuntu-latest` (it follows GitHub's schedule, warns during each migration, and changes the toolchain under us without a commit; the cache keys didn't even include the image, so jobs restored trees built on the previous OS), or pin an image. **Chosen: pin `ubuntu-26.04`.** Our jobs already run there and passed today, so pinning changes nothing now, removes the warning, and makes the next OS move a reviewed one-line change. The runner image (`ImageOS`) joins the node_modules and Playwright cache keys so that move misses cleanly, and `lint:ci-cache` gains rule 7, failing any job on a `*-latest` label (code review).
 - `lint:ci-cache` keeps passing: no job names, required checks or concurrency literals change.
 
 ## Plan — 1 slice
@@ -32,7 +32,7 @@
 
 **Tests:**
 - `npm run lint:ci-cache`. The `.github/` YAML stays parseable: the checker reads every workflow.
-- No more Node 20 or `ubuntu-latest` references: `grep -rn "@v4\b\|ubuntu-latest" .github` lists only actions already current (`amazon-ecr-login@v2` and the like).
+- No `ubuntu-latest` left: `lint:ci-cache` rule 7 enforces it. No Node 20 actions left: CI's annotations show no "Node.js 20 is deprecated" warning.
 - CI on the branch runs every workflow except the deploys.
 
 ## Smoke (manual, against your dev stack)
