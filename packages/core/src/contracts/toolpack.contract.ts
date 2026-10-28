@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 
-import { descriptionField } from "./text-limits.contract.js";
+import { descriptionField, tooLongMessage } from "./text-limits.contract.js";
 
 import { withCapabilities } from "./capabilities.contract.js";
 
@@ -130,10 +130,32 @@ export type ToolpackGetResponsePayload = z.infer<
 
 // ── Register / Update / Refresh / Delete ─────────────────────────────
 
+/** A toolpack name's longest form: `TOOLPACK_SLUG_REGEX` allows 63. */
+export const TOOLPACK_NAME_MAX_LENGTH = 63;
+
+/**
+ * A toolpack name is a slug (its tools are namespaced by it), so it is
+ * stricter than `nameField()`. Checked in this order so the first message,
+ * the one a dialog shows, is the most useful: missing, too long, then the
+ * pattern. Without messages Zod printed the raw regex (#914).
+ */
+export const toolpackNameField = () =>
+  z
+    .string()
+    .min(1, "Name is required")
+    .max(
+      TOOLPACK_NAME_MAX_LENGTH,
+      tooLongMessage("Name", TOOLPACK_NAME_MAX_LENGTH)
+    )
+    .regex(
+      TOOLPACK_SLUG_REGEX,
+      "Name must start with a lowercase letter and use only lowercase letters, digits and underscores"
+    );
+
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const RegisterToolpackBodySchema = z
   .object({
-    name: z.string().regex(TOOLPACK_SLUG_REGEX),
+    name: toolpackNameField(),
     description: descriptionField().min(1).optional(),
     endpoints: ToolpackEndpointsSchema,
     authHeaders: z.record(z.string(), z.string()).optional(),
@@ -144,7 +166,7 @@ export type RegisterToolpackBody = z.infer<typeof RegisterToolpackBodySchema>;
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const UpdateToolpackBodySchema = z
   .object({
-    name: z.string().regex(TOOLPACK_SLUG_REGEX).optional(),
+    name: toolpackNameField().optional(),
     /** `null` clears it (#615); an empty string is refused. */
     description: descriptionField().min(1).nullable().optional(),
     endpoints: ToolpackEndpointsSchema.optional(),
