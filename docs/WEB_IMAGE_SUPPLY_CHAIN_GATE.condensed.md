@@ -45,6 +45,6 @@
 
 ## Out of scope
 
-- Bumping the nginx base image off 1.27 (it's EOL upstream). That's a runtime change with its own smoke; the gate will flag it when a fixable CVE lands.
+- Bumping the nginx base image off 1.27 (it's EOL upstream). That's a runtime change with its own smoke, tracked in #918. The gate **won't** flag nginx CVEs: nginx comes from nginx.org's apk repo, outside Trivy's Alpine advisory data (found in code review).
 - Enforcing signatures at pull time (admission control) — the same open item as #573.
 - PR-time image builds; images are still built only at deploy.

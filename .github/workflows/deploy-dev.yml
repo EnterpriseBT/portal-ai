@@ -421,37 +421,32 @@ jobs:
         uses: sigstore/cosign-installer@v4.1.2
 
       # Supply-chain gate (#573): build the image locally, scan it, and only
-      # push + sign if it passes — a failing image never reaches ECR. The push
-      # step below reuses this builder's cache (same job), so it does not
-      # recompile; it re-exports the same layers with SBOM + provenance.
-      - name: Build image (load, no push) for scanning
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/api/Dockerfile
-          platforms: linux/arm64
-          load: true
-          push: false
-          tags: ${{ steps.ecr.outputs.uri }}:dev-${{ github.sha }}
-          build-args: |
-            BUILD_VERSION=dev-${{ github.sha }}
-            BUILD_SHA=${{ github.sha }}
+      # push + sign if it passes — a failing image never reaches ECR. The gate's
+      # policy lives in .github/actions/image-gate. The push step below uses
+      # the same build args and reuses this builder's cache, so it publishes
+      # the layers that were scanned, with SBOM + provenance. The runtime image
+      # carries only what it needs (see apps/api/Dockerfile), so the scan
+      # surface is the app + patched OS.
+      - name: API image build args
+        id: api-args
+        env:
+          BUILD_VERSION: dev-${{ github.sha }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "value<<ARGS"
+            echo "BUILD_VERSION=$BUILD_VERSION"
+            echo "BUILD_SHA=$BUILD_SHA"
+            echo "ARGS"
+          } >> "$GITHUB_OUTPUT"
 
-      # Gate: fail the deploy on any fixable CRITICAL/HIGH vuln in the whole
-      # image (OS + language packages) before anything is pushed. The runtime
-      # image carries only what it needs — no npm/esbuild/drizzle-kit tooling
-      # (see apps/api/Dockerfile) — so the scan surface is the app + patched OS.
-      # Unfixed + MEDIUM/LOW are reported, not blocking. Patch SLA:
-      # Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
-      - name: Scan image (gate — fail on fixable CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Gate API image (linux/arm64)
+        uses: ./.github/actions/image-gate
         with:
-          image-ref: ${{ steps.ecr.outputs.uri }}:dev-${{ github.sha }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+          dockerfile: apps/api/Dockerfile
+          platform: linux/arm64
+          tag: portalai-api-scan:arm64-${{ github.sha }}
+          build-args: ${{ steps.api-args.outputs.value }}
 
       - name: Build and push Docker image (+ SBOM & provenance)
         id: build
@@ -464,9 +459,7 @@ jobs:
           tags: |
             ${{ steps.ecr.outputs.uri }}:dev-${{ github.sha }}
             ${{ steps.ecr.outputs.uri }}:latest
-          build-args: |
-            BUILD_VERSION=dev-${{ github.sha }}
-            BUILD_SHA=${{ github.sha }}
+          build-args: ${{ steps.api-args.outputs.value }}
           provenance: mode=max
           sbom: true
 
@@ -492,59 +485,40 @@ jobs:
             --output text)
           echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
 
-      # Supply-chain gate for the web image (#909), the same as the API's
-      # (#573): the image is multi-arch and customers pull either platform,
-      # so each one is built, loaded and scanned before anything is pushed
-      # (buildx's load exporter takes one platform at a time). The push below
-      # reuses this builder's cache and adds the SBOM + provenance; the
+      # Supply-chain gate for the web image (#909), the same as the API's: the
+      # image is multi-arch and customers pull either platform, so each one
+      # is gated before anything is pushed. The push reuses this builder's
+      # cache with the same build args and adds the SBOM + provenance; the
       # signature covers the multi-arch index digest.
-      - name: Build web image (amd64, load, no push) for scanning
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: portalai-web-scan:amd64-${{ github.sha }}
-          build-args: |
-            BUILD_VERSION=dev-${{ github.sha }}
-            BUILD_SHA=${{ github.sha }}
-            VITE_API_BASE_URL=
+      - name: Web image build args
+        id: web-args
+        env:
+          BUILD_VERSION: dev-${{ github.sha }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "value<<ARGS"
+            echo "BUILD_VERSION=$BUILD_VERSION"
+            echo "BUILD_SHA=$BUILD_SHA"
+            echo "VITE_API_BASE_URL="
+            echo "ARGS"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Scan web image (amd64) (gate — fail on fixable CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Gate web image (linux/amd64)
+        uses: ./.github/actions/image-gate
         with:
-          image-ref: portalai-web-scan:amd64-${{ github.sha }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+          dockerfile: apps/web/Dockerfile
+          platform: linux/amd64
+          tag: portalai-web-scan:amd64-${{ github.sha }}
+          build-args: ${{ steps.web-args.outputs.value }}
 
-      - name: Build web image (arm64, load, no push) for scanning
-        uses: docker/build-push-action@v7
+      - name: Gate web image (linux/arm64)
+        uses: ./.github/actions/image-gate
         with:
-          context: .
-          file: apps/web/Dockerfile
-          platforms: linux/arm64
-          load: true
-          push: false
-          tags: portalai-web-scan:arm64-${{ github.sha }}
-          build-args: |
-            BUILD_VERSION=dev-${{ github.sha }}
-            BUILD_SHA=${{ github.sha }}
-            VITE_API_BASE_URL=
-
-      - name: Scan web image (arm64) (gate — fail on fixable CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: portalai-web-scan:arm64-${{ github.sha }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+          dockerfile: apps/web/Dockerfile
+          platform: linux/arm64
+          tag: portalai-web-scan:arm64-${{ github.sha }}
+          build-args: ${{ steps.web-args.outputs.value }}
 
       - name: Build and push web image (+ SBOM & provenance)
         id: web-build
@@ -557,10 +531,7 @@ jobs:
           tags: |
             ${{ steps.web-ecr.outputs.uri }}:dev-${{ github.sha }}
             ${{ steps.web-ecr.outputs.uri }}:latest
-          build-args: |
-            BUILD_VERSION=dev-${{ github.sha }}
-            BUILD_SHA=${{ github.sha }}
-            VITE_API_BASE_URL=
+          build-args: ${{ steps.web-args.outputs.value }}
           provenance: mode=max
           sbom: true
 

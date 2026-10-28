@@ -1,0 +1,54 @@
+name: "Image supply-chain gate"
+description: "Builds one platform of an image, loads it locally and Trivy-scans it, failing on any fixable CRITICAL/HIGH vulnerability before anything is pushed (#573, #909)"
+
+# The gate's policy (severity, ignore-unfixed, Trivy version) lives here and
+# only here, so every image and every platform in both deploy workflows is
+# held to the same bar. Call it once per platform an image ships, then push
+# with the SAME dockerfile and build-args: the push reuses this builder's
+# cache, so it publishes the layers that were scanned. A multi-arch image is
+# scanned per platform because buildx's load exporter takes one at a time.
+#
+# Requires an earlier docker/setup-buildx-action (and setup-qemu-action for a
+# non-native platform) in the calling job.
+
+inputs:
+  dockerfile:
+    description: "Path to the Dockerfile, relative to the repository root"
+    required: true
+  platform:
+    description: "One platform, e.g. linux/arm64"
+    required: true
+  tag:
+    description: "Local tag for the loaded scan image"
+    required: true
+  build-args:
+    description: "Newline-separated build args; must equal the push build's"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build (load, no push) for scanning
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platform }}
+        load: true
+        push: false
+        tags: ${{ inputs.tag }}
+        build-args: ${{ inputs.build-args }}
+
+    # Fail on any fixable CRITICAL/HIGH in the whole image (OS + language
+    # packages). Unfixed + MEDIUM/LOW are reported, not blocking. Patch SLA:
+    # Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
+    - name: Scan (gate — fail on fixable CRITICAL/HIGH)
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        image-ref: ${{ inputs.tag }}
+        scanners: vuln
+        severity: CRITICAL,HIGH
+        ignore-unfixed: true
+        exit-code: "1"
+        format: table

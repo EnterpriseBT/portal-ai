@@ -54,7 +54,11 @@ RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 # --- Runtime stage (nginx, non-root) ---
 # nginx-unprivileged listens on 8080 and runs as uid 101 — no root in the
 # serving container, matching the chart's securityContext.runAsNonRoot.
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+# Pinned by digest (the multi-arch index), not just the tag: the deploy
+# workflows gate each platform in separate builds before the push build, and
+# a tag that moved between them would push layers the scan never saw (#909).
+# Bump the tag and the digest together.
+FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS runtime
 
 # Patch the base layer's OS packages to the latest in its Alpine release, then
 # add nodejs (no npm) so the dependency-free render-config.mjs runs at startup.

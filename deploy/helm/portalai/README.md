@@ -176,3 +176,6 @@ residency operator most often needs to know about:
 - Verify both images (`image.api`, `image.web`) before mirroring them: each
   is Trivy-gated, SBOM-attested and cosign-signed, the web image for both of
   its platforms (`docs/SUPPLY_CHAIN.md` → "Verifying a published image").
+  The web image's scan covers its OS packages and node, not the nginx binary
+  itself (installed from nginx.org's repository, outside Trivy's Alpine
+  data); record that in the review.

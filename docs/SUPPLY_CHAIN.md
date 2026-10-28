@@ -25,6 +25,10 @@ Both images are built only at deploy time (dev: push to `main` / manual dispatch
 
    The web image's runtime stage (`apps/web/Dockerfile`, `nginx-unprivileged` + `nodejs` for the config renderer) runs `apk upgrade` too. The pinned base tag ships stale Alpine packages: 60 fixable CRITICAL/HIGH findings before the upgrade, 0 after (#909).
 
+   **What the web scan can't see: nginx itself.** `nginx-unprivileged` installs nginx from nginx.org's own apk repository, which Trivy's Alpine advisory data doesn't cover, so an nginx CVE never fails the gate. Server-binary vulnerabilities are handled by keeping the image on a supported nginx line (#918), not by this scan.
+
+   **Scanned = pushed.** Each platform is built in its own step before the push build, so the push must produce the same layers: the build args come from one step output shared by every build of an image, the builds share one builder's cache in one job, and the web base image is pinned by digest so a moving tag can't change the runtime layer in between.
+
 3. **Push + attest** — the image is pushed to ECR with a **CycloneDX/SPDX SBOM** (`sbom: true`) and **SLSA build provenance** (`provenance: mode=max`) attached as OCI attestation manifests.
 4. **Sign** — the pushed **digest** is signed with **cosign keyless** (GitHub Actions OIDC → Fulcio; no long-lived keys). Signing the digest (not the tag) makes the signature immutable. For the multi-arch web image that digest is the image index, so one signature covers both platforms.
 
@@ -61,12 +65,17 @@ cosign verify \
 # List the attestation manifests attached to the image
 docker buildx imagetools inspect <ECR_URI>:<tag>
 
-# Pull the SBOM
-cosign download sbom <ECR_URI>:<tag>
+# Print the SBOM (buildx stores it as an attestation inside the image index,
+# so `cosign download sbom` won't find it). For the multi-arch web image the
+# result is a map keyed by platform.
+docker buildx imagetools inspect <ECR_URI>:<tag> --format '{{ json .SBOM }}'
+
+# Print the SLSA provenance the same way
+docker buildx imagetools inspect <ECR_URI>:<tag> --format '{{ json .Provenance }}'
 ```
 
 ## Changing the policy
 
-- **Severity threshold / ignore-unfixed** live in the `Scan image` step and the two `Scan web image (…)` steps of both deploy workflows — change them in all six.
+- **Severity threshold / ignore-unfixed / Trivy version** live in one place, the composite action `.github/actions/image-gate`, which both deploy workflows call for every image and platform.
 - **Signing identity** is the GitHub workflow's OIDC identity; the `--certificate-identity-regexp` above must match the repo. If the repo or workflow path changes, update the verify command here.
 - Enforcing signatures **at pull time** (ECS/admission control rejecting unsigned images) is not yet in place — see #573's out-of-scope notes.
