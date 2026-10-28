@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * HTTP surface for the reads-track query handle (#85 Phase 3 slice 1).
  *
@@ -12,7 +13,7 @@
  *     EventSource client can connect without setting headers.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

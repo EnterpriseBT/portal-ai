@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * RBAC object grants + sharing (#621) — the `/api/grants` surface. Share a
  * station/pin with a member or the team (`POST`), list who it's shared with
@@ -6,7 +7,7 @@
  * intakes + validates + shapes the response.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";

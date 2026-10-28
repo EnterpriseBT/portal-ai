@@ -3,8 +3,8 @@ import type { Request, Response, NextFunction } from "express";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
-/** The methods whose bodies routes read. No GET, HEAD, OPTIONS or DELETE
- *  route reads one, so a body there is ignored, not refused. */
+/** The methods whose non-JSON bodies are refused. A body on any other method
+ *  is ignored, not refused (DELETE `/organization/:id` reads a JSON one). */
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
 /** Cap on the media type echoed in the refusal, so the response and its log

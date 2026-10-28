@@ -95,7 +95,16 @@ async function start() {
     process.exit(1);
   }
 
-  const server = app.listen(environment.PORT, () => {
+  // #897: Express 5 hands the server's 'error' event (EADDRINUSE, EACCES) to
+  // this callback; Express 4 let it crash the process. Exit either way.
+  const server = app.listen(environment.PORT, (err?: Error) => {
+    if (err) {
+      logger.fatal(
+        { err, port: environment.PORT },
+        "API server failed to bind"
+      );
+      process.exit(1);
+    }
     logger.info(
       {
         port: environment.PORT,

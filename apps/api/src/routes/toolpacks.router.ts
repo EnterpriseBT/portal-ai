@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import {
   BUILTIN_TOOLPACKS,
@@ -44,6 +44,8 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
 import { stationToolpacks } from "../db/schema/index.js";
 import { generateSigningSecret } from "../utils/webhook-signing.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "toolpacks" });
 

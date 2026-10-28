@@ -1,7 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
 
-import { app } from "../../app.js";
+// Imported before the app so its route recorder sees every registration (#897).
 import { registeredRoutes } from "./express-route-inventory.util.js";
+import { app } from "../../app.js";
 import { ROUTE_AUTHORIZATION } from "./route-authorization.map.js";
 
 /**

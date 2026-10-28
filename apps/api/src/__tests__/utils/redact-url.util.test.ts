@@ -90,6 +90,40 @@ describe("redactQuery (#728)", () => {
     });
   });
 
+  // #897: Express 5's default `simple` parser leaves bracket forms as flat
+  // keys (`auth[token]`), where `qs` folded them into nested objects.
+  it("redacts flat bracket keys whose segments are sensitive", () => {
+    expect(
+      redactQuery({
+        "auth[token]": "S",
+        "token[]": "S2",
+        "token[0]": "S3",
+        "filter[page]": "2",
+      })
+    ).toEqual({
+      "auth[token]": "[REDACTED]",
+      "token[]": "[REDACTED]",
+      "token[0]": "[REDACTED]",
+      "filter[page]": "2",
+    });
+  });
+
+  // #897: the `simple` parser keeps `__proto__` as an own key; the redacted
+  // copy must too, not take it as its prototype.
+  it("keeps a __proto__ key as a key", () => {
+    const query = Object.create(null) as Record<string, unknown>;
+    query["__proto__"] = ["a", "b"];
+    query.token = "S";
+    const out = redactQuery(query) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+    expect(Object.keys(out)).toEqual(["__proto__", "token"]);
+    expect(Object.getOwnPropertyDescriptor(out, "__proto__")?.value).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(out.token).toBe("[REDACTED]");
+  });
+
   it("passes non-objects through", () => {
     expect(redactQuery(undefined)).toBeUndefined();
     expect(redactQuery("token=S")).toBe("token=S");

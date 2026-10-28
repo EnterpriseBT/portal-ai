@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { eq, and, ilike, type SQL } from "drizzle-orm";
 
 import {
@@ -30,6 +30,8 @@ import { SystemUtilities } from "../utils/system.util.js";
 import { setDbCancelPolicy } from "../utils/request-context.util.js";
 import { DateFactory } from "@portalai/core/utils";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal-results" });
 

@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import {
   ConnectorConfigResponseSchema,
@@ -9,6 +9,8 @@ import { ConnectorConfigService } from "../services/connector-config.service.js"
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-config" });
 

@@ -1,10 +1,11 @@
+import type { Request } from "../types/request.js";
 /**
  * Custom RBAC group authoring (#622) — the `/api/groups` surface: CRUD +
  * group-centric membership. All authorization (entitlement + capability + the
  * bundle boundary + member validation) lives in {@link GroupService}.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";

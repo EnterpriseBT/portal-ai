@@ -481,6 +481,22 @@ describe("Organization Router", () => {
     });
   });
 
+  describe("PATCH /api/organization/:id", () => {
+    // #897: Express 5 leaves a bodiless write's body undefined; the handler
+    // used to destructure it directly. A bodiless PATCH must behave as `{}`.
+    it("treats a bodiless PATCH as an empty body", async () => {
+      const owner = createOwner();
+      const result = await provisionTestOrg(owner);
+
+      const res = await request(app)
+        .patch(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .set("Content-Length", "0");
+      expect(res.status).toBe(200);
+      expect(res.body.payload.organization.defaultStationId).toBeNull();
+    });
+  });
+
   describe("DELETE /api/organization/:id (#197)", () => {
     it("returns 401 without a token (case 12)", async () => {
       const res = await request(app)

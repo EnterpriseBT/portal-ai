@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import {
   eq,
   and,
@@ -63,6 +63,8 @@ import jsonata from "jsonata";
 import { truncateForPrompt } from "../adapters/rest-api/jsonata-suggest.prompt.js";
 import { getJsonataSuggester } from "../adapters/rest-api/jsonata-suggest.haiku.js";
 import { JsonataSuggestError } from "../adapters/rest-api/jsonata-suggest.types.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-instance" });
 

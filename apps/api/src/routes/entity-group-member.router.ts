@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import { EntityGroupMemberModelFactory } from "@portalai/core/models";
 import {
@@ -17,6 +17,8 @@ import { DbService } from "../services/db.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "entity-group-member" });
 

@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Third-party webhook handle access (#124) — the remote-transport surface for
  * the shared scaling substrate. A `streaming` custom tool is handed a scoped,
@@ -15,7 +16,7 @@
  * staged org. Single-target, org-scoped, short-TTL.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import { ApiError, HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

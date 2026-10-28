@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "../services/http.service.js";
@@ -15,6 +15,8 @@ import type {
   JobSnapshotEvent,
   JobUpdateEvent,
 } from "@portalai/core/contracts";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "job-events" });
 

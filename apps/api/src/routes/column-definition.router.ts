@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import {
   eq,
   and,
@@ -38,6 +38,8 @@ import { ColumnDefinitionValidationService } from "../services/column-definition
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+
+import type { Request } from "../types/request.js";
 
 /** #316: bounded sample of offending sourceIds surfaced on a failed conversion. */
 const GEOMETRY_CONVERSION_SAMPLE_CAP = 20;

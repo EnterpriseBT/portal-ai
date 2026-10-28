@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Microsoft 365 Excel connector — OAuth2 dance routes (Phase A).
  *
@@ -8,12 +9,7 @@
  * google-sheets pattern.
  */
 
-import {
-  Router,
-  type Request,
-  type Response,
-  type NextFunction,
-} from "express";
+import { Router, type Response, type NextFunction } from "express";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";

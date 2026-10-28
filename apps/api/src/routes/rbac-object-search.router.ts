@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * The instance-object picker source (#622) — `GET /api/rbac/objects`. Returns
  * visibility-scoped `{ id, label }` candidates of a `resourceType` for the
@@ -5,7 +6,7 @@
  * rest of the authoring surface (entitlement + `member.role.assign`).
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { RbacObjectSearchService } from "../services/rbac-object-search.service.js";

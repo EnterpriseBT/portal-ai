@@ -1,3 +1,4 @@
+import type { Request } from "../types/request.js";
 /**
  * Public site router (#311) — the API's only deliberately-anonymous DATA
  * surface, mounted at `/api/public` ahead of `protectedRouter` so the
@@ -17,7 +18,7 @@
  * fetches this once per build and bakes the values into static HTML.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 
 import {
   PublicSiteConfigResponseSchema,

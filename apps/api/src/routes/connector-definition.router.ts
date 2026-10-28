@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -14,6 +14,8 @@ import {
   type ConnectorDefinitionListRequestQuery,
 } from "@portalai/core/contracts";
 import { invalidPayload } from "../utils/zod-issue.util.js";
+
+import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-definition" });
 

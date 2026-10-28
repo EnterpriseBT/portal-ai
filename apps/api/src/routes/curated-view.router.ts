@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { StationViewModelFactory } from "@portalai/core/models";
 import {
   CuratedViewListRequestQuerySchema,
@@ -33,6 +33,8 @@ import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { CuratedViewService } from "../services/curated-view.service.js";
 import { CuratedViewFilterSqlService } from "../services/curated-view-filter-sql.service.js";
+
+import type { Request } from "../types/request.js";
 
 export const curatedViewRouter = Router();
 

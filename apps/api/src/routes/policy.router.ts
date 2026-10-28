@@ -1,10 +1,11 @@
+import type { Request } from "../types/request.js";
 /**
  * Custom RBAC policy authoring (#622) — the `/api/policies` surface. Thin
  * intake/validate/shape; all authorization (entitlement + capability + the
  * statement boundary) and system-immutability live in {@link PolicyService}.
  */
 
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";

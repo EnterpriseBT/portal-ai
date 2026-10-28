@@ -192,6 +192,89 @@ describe("App Integration", () => {
     );
   });
 
+  // #897: an error after headers were sent (an SSE route failing mid-stream;
+  // Express 5 forwards async rejections here) must not write a JSON body on
+  // top of them, which throws ERR_HTTP_HEADERS_SENT inside the handler.
+  describe("Errors after headers are sent", () => {
+    it("closes the connection without writing an error body", async () => {
+      const { apiErrorHandler } = await import("../../app.js");
+      const express = (await import("express")).default;
+      const http = await import("node:http");
+      const bare = express();
+      bare.get(
+        "/stream",
+        (_req: Request, res: Response, next: NextFunction) => {
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          res.write("data: first\n\n");
+          next(new Error("failed mid-stream"));
+        }
+      );
+      bare.use(apiErrorHandler);
+      // Anything that leaves the handler: an ERR_HTTP_HEADERS_SENT it threw by
+      // writing anyway, or an error handed on to Express's default handler
+      // (which would print the raw stack to stderr). Neither should happen.
+      const escaped: Error[] = [];
+      bare.use(
+        (err: Error, _req: Request, _res: Response, next: NextFunction) => {
+          escaped.push(err);
+          next(err);
+        }
+      );
+
+      const server = bare.listen(0);
+      const { port } = server.address() as { port: number };
+      const { status, text, complete } = await new Promise<{
+        status: number;
+        text: string;
+        complete: boolean;
+      }>((resolve) => {
+        let status = 0;
+        let text = "";
+        let complete = true;
+        const done = () => resolve({ status, text, complete });
+        // The handler destroys the socket, so the client sees the partial
+        // stream end in a reset ("socket hang up") rather than a clean end.
+        const req = http.get({ port, path: "/stream" }, (res) => {
+          status = res.statusCode ?? 0;
+          res.on("data", (chunk: Buffer) => (text += chunk.toString()));
+          const settle = () => {
+            complete = res.complete;
+            done();
+          };
+          res.on("error", settle);
+          res.on("close", settle);
+        });
+        req.on("error", done);
+      }).finally(() => server.close());
+
+      expect(status).toBe(200);
+      expect(text).toBe("data: first\n\n");
+      expect(complete).toBe(false);
+      expect(escaped).toEqual([]);
+    });
+  });
+
+  // #897: Express 5 forwards a rejected async handler to the error handler.
+  // Under Express 4 the rejection escaped to process `unhandledRejection` and
+  // the request hung.
+  describe("Rejected async handlers", () => {
+    it("answers through the error handler", async () => {
+      const { apiErrorHandler } = await import("../../app.js");
+      const express = (await import("express")).default;
+      const { ApiError } = await import("../../services/http.service.js");
+      const bare = express();
+      bare.get("/reject", async () => {
+        throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
+      });
+      bare.use(apiErrorHandler);
+
+      const res = await request(bare).get("/reject").timeout(3000);
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+    });
+  });
+
   // #775: express.json() skips other content types, leaving req.body empty,
   // so a strict route saw `{}` and dropped every key. Such a body is a 415.
   describe("Non-JSON bodies", () => {

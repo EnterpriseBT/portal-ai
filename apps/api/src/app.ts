@@ -15,6 +15,7 @@ import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { jsonBodyOnly } from "./middleware/json-body-only.middleware.js";
 import { rejectNul } from "./middleware/reject-nul.middleware.js";
+import { emptyBodyAsObject } from "./middleware/empty-body.middleware.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import {
@@ -41,6 +42,11 @@ export const app = express();
 if (environment.TRUST_PROXY_HOPS > 0) {
   app.set("trust proxy", environment.TRUST_PROXY_HOPS);
 }
+
+// #897: Express 5's default `simple` query parser (Node's querystring), not
+// `extended` (qs). Keys stay flat (`?a[b]=c` arrives as `"a[b]"`) and a
+// repeated key yields an array; no route reads a nested query, and qs stays
+// out of every request's path. `redactQuery` handles the flat bracket form.
 
 // Register all connector adapters
 registerAdapters();
@@ -92,6 +98,9 @@ app.use(jsonBodyOnly);
 // #805: Postgres can't store U+0000, so a NUL in a body, param or query
 // failed at the database as a route's 500. Refuse it here with one typed 400.
 app.use(rejectNul);
+// #897: Express 5 leaves a bodiless write's `req.body` undefined; keep the
+// `{}` routes have always validated.
+app.use(emptyBodyAsObject);
 
 app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);
@@ -115,7 +124,16 @@ app.use("/api/public", publicSiteRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+/**
+ * The API's error handler, exported so a test can mount it on a bare app
+ * (#897). Mounted last, below.
+ */
+export const apiErrorHandler = (
+  err: Error,
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
   const log = req.log ?? logger;
 
   // #698: a query the request instrumentation cancelled surfaces as a raw
@@ -132,6 +150,24 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     );
     if (res.destroyed || res.headersSent) return;
     return HttpService.error(res, err);
+  }
+
+  // #897: an error after headers were sent (an SSE route failing mid-stream;
+  // Express 5 forwards async rejections here) can't get a JSON body: writing
+  // one throws ERR_HTTP_HEADERS_SENT inside this handler. Close the
+  // connection here rather than via `next(err)`, whose default handler would
+  // also print the raw stack to stderr, past pino's sanitizing.
+  // `destroySoon` flushes what was already written, then closes without the
+  // chunked terminator, so the client gets the partial response and still
+  // sees it as cut off, never as complete.
+  if (res.headersSent) {
+    log.warn(
+      { err, route: redactUrl(req.originalUrl) },
+      "Error after response headers were sent"
+    );
+    if (res.socket) res.socket.destroySoon();
+    else res.destroy();
+    return;
   }
 
   // #698/#705: expected load-shedding (503 MAP_TILE_BUSY, 429
@@ -243,4 +279,6 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     message: INTERNAL_ERROR_MESSAGE,
     code: "UNKNOWN",
   });
-});
+};
+
+app.use(apiErrorHandler);
