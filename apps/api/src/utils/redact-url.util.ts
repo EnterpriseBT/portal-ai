@@ -77,17 +77,17 @@ export function redactUrl(url: string | undefined): string | undefined {
 /**
  * #728: the parsed query object (Express's `req.query`, which the request
  * serializer emits alongside `url`) with every sensitive parameter's value
- * replaced, at any depth (`qs` nests `auth[token]` as `{ auth: { token } }`).
- * Non-object input passes through.
+ * replaced. Both parsers' shapes are covered: a key is checked segment by
+ * segment, so Express 5's default parser's flat `auth[token]` is redacted
+ * (#897), and nested objects are still walked, so `qs`'s
+ * `{ auth: { token } }` is too. Non-object input passes through.
  */
 export function redactQuery<T>(query: T): T {
   if (!query || typeof query !== "object") return query;
   if (Array.isArray(query)) return query.map((v) => redactQuery(v)) as T;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
-    out[key] = SENSITIVE_NAMES.has(normalizeName(key))
-      ? REDACTED
-      : redactQuery(value);
+    out[key] = isSensitiveKey(key) ? REDACTED : redactQuery(value);
   }
   return out as T;
 }

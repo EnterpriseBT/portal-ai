@@ -90,6 +90,24 @@ describe("redactQuery (#728)", () => {
     });
   });
 
+  // #897: Express 5's default `simple` parser leaves bracket forms as flat
+  // keys (`auth[token]`), where `qs` folded them into nested objects.
+  it("redacts flat bracket keys whose segments are sensitive", () => {
+    expect(
+      redactQuery({
+        "auth[token]": "S",
+        "token[]": "S2",
+        "token[0]": "S3",
+        "filter[page]": "2",
+      })
+    ).toEqual({
+      "auth[token]": "[REDACTED]",
+      "token[]": "[REDACTED]",
+      "token[0]": "[REDACTED]",
+      "filter[page]": "2",
+    });
+  });
+
   it("passes non-objects through", () => {
     expect(redactQuery(undefined)).toBeUndefined();
     expect(redactQuery("token=S")).toBe("token=S");
