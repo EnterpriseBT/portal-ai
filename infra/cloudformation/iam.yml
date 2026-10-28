@@ -599,6 +599,10 @@ Resources:
               - lambda:PublishVersion
               - lambda:ListVersionsByFunction
               - lambda:TagResource
+              # The demo-toolpack stack's Function URL: CFN reads it back after
+              # any update to the function, and its absence rolled back the
+              # first real update since the stack was created (#900).
+              - lambda:GetFunctionUrlConfig
             Resource:
               - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:portalai-*"
           - Sid: SsmConfig
