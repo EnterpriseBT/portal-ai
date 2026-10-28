@@ -16,7 +16,7 @@ One published release fires two workflows off the same event:
 
 | Workflow | Deploys | Notes |
 |---|---|---|
-| `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image (Trivy-gated, attested and signed — `docs/SUPPLY_CHAIN.md`), the residency web image (not yet gated, #909), then `verify-login` signs in to prod as its QA owner (#489) |
+| `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image (Trivy-gated, attested and signed — `docs/SUPPLY_CHAIN.md`), the residency web image (gated the same way, #909), then `verify-login` signs in to prod as its QA owner (#489) |
 | `deploy-site-prod.yml` | `www.portalsai.io` **and the bare `portalsai.io`** | gated on the `PROD_SITE_CONFIG_URL` variable — see § *Activating www.portalsai.io*. The apex is an alias on the same distribution and 301s to `www` (#404) |
 
 Both run in the **`prod` GitHub Environment**, so both pause for approval.
