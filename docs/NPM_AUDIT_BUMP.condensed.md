@@ -31,6 +31,8 @@
   - **`@storybook/react` `^8.6.19` in core and web.** About 96 story files import it, and it only resolved because npm placed it at the root.
   - **`cookie` `^2.0.1` in `apps/site`.** Astro's built prerender bundle in `apps/site/dist` imports `cookie`. Once `astro` moved to the root, that import found the root's `cookie@0.7.2`, and the build failed on the missing `parseCookie` export.
 - **The web test setup stubs `window.scrollTo`.** TanStack Router moved from 1.163 to 1.170 within its range and now calls `scrollTo` on load. jsdom logs "Not implemented" for it, which failed `HelpRoute.test.tsx`'s no-console-error assertion.
+- **Route ids are string literals.** The patched nested `zod` needs `@tanstack/router-generator` ≥ 1.167.6, which rejects `createFileRoute(ApplicationRoute.X)` ("expected route id to be a string literal"). It only logs the error and the build still exits 0, so `routeTree.gen.ts` silently stopped updating; the smoke walk found this. The 15 enum routes now pass the literal, which `createFileRoute` type-checks against the generated tree, so nothing is lost. The regenerated tree has the same routes, reordered by the new generator. `apps/web/.tanstack/` (the generator's scratch directory) is now gitignored.
+- **`astro` is pinned to `~7.3.8`.** 7.4 requires Node ≥ 22.23.4, past the CI runner's Node 22, and failed Static Checks. 7.3.8 needs ≥ 22.12 and already requires the patched `vite` ^8.3.1 and `devalue` ^5.9.4.
 - **Prettier is held at 3.8.1.** The fix's in-range updates pulled in 3.9, which reformats 55 source files. That's unrelated churn, so the formatter is pinned back.
 
 ## Plan — 1 slice
@@ -38,7 +40,8 @@
 **Files:**
 - `package.json`, `package-lock.json`
 - `packages/core/package.json`, `apps/web/package.json`, `apps/api/package.json`
-- `apps/site/package.json`: the `astro` floor and the `cookie` declaration
+- `apps/site/package.json`: the `astro` pin and the `cookie` declaration
+- `apps/web/src/routes/*.tsx` (15 route ids), `apps/web/src/routeTree.gen.ts` (regenerated), `apps/web/.gitignore`
 
 **Steps:**
 1. Run `npm audit fix` with full network access; container counts under-report.

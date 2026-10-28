@@ -3,7 +3,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AcceptInvitationView } from "../views/AcceptInvitation.view";
 import { Authorized } from "../components/Authorized.component";
 import { PublicLayout } from "../layouts/Public.layout";
-import { ApplicationRoute } from "../utils/routes.util";
 
 /**
  * Invitee-facing accept landing (#585). `<Authorized>`-wrapped, so a logged-out
@@ -17,7 +16,7 @@ import { ApplicationRoute } from "../utils/routes.util";
  * personal org before the accept POST binds the invited one. Nothing here
  * reads the caller's org until the accept has run.
  */
-export const Route = createFileRoute(ApplicationRoute.AcceptInvitation)({
+export const Route = createFileRoute("/invitations/accept")({
   component: AcceptInvitationRoute,
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : undefined,

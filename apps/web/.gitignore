@@ -31,3 +31,6 @@ storybook-static
 
 # TanStack Router generated files
 src/routes/routeTree.gen.ts
+
+# TanStack Router generator scratch space (newer router-generator versions)
+.tanstack/

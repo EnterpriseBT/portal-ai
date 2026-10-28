@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SettingsView } from "../views/Settings.view";
 import { Authorized } from "../components/Authorized.component";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
-import { ApplicationRoute, SettingsTab } from "../utils/routes.util";
+import { SettingsTab } from "../utils/routes.util";
 
-export const Route = createFileRoute(ApplicationRoute.Settings)({
+export const Route = createFileRoute("/settings")({
   component: SettingsRoute,
   /**
    * `?tab=` makes the billing tab linkable from the entitlement
