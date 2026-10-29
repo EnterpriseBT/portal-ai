@@ -21,7 +21,7 @@ import {
 } from "../services/microsoft-auth.service.js";
 import { MicrosoftExcelConnectorService } from "../services/microsoft-excel-connector.service.js";
 import { MicrosoftGraphError } from "../services/microsoft-graph.service.js";
-import { renderOAuthCallbackHtml } from "../utils/oauth-callback-html.util.js";
+import { sendOAuthCallbackPage } from "../utils/oauth-callback-html.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "microsoft-excel-connector" });
@@ -162,12 +162,11 @@ microsoftExcelConnectorPublicRouter.get(
         { connectorInstanceId: result.connectorInstanceId },
         "microsoft-excel OAuth callback completed"
       );
-      const page = renderOAuthCallbackHtml({
+      return sendOAuthCallbackPage(res, {
         slug: "microsoft-excel",
         connectorInstanceId: result.connectorInstanceId,
         accountInfo: result.accountInfo,
       });
-      return res.status(200).type("html").set(page.headers).send(page.html);
     } catch (err) {
       return next(mapMicrosoftAuthError(err));
     }

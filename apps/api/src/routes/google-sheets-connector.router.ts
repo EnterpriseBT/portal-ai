@@ -25,7 +25,7 @@ import {
   GoogleAuthService,
 } from "../services/google-auth.service.js";
 import { GoogleSheetsConnectorService } from "../services/google-sheets-connector.service.js";
-import { renderOAuthCallbackHtml } from "../utils/oauth-callback-html.util.js";
+import { sendOAuthCallbackPage } from "../utils/oauth-callback-html.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "google-sheets-connector" });
@@ -191,12 +191,11 @@ googleSheetsConnectorPublicRouter.get(
         { connectorInstanceId: result.connectorInstanceId },
         "Google Sheets OAuth callback completed"
       );
-      const page = renderOAuthCallbackHtml({
+      return sendOAuthCallbackPage(res, {
         slug: "google-sheets",
         connectorInstanceId: result.connectorInstanceId,
         accountInfo: result.accountInfo,
       });
-      return res.status(200).type("html").set(page.headers).send(page.html);
     } catch (err) {
       return next(err);
     }
