@@ -21,7 +21,7 @@ import { ApiCode } from "../../../constants/api-codes.constants.js";
 
 // Read before environment.ts loads. 65 attempts against a 30/min window
 // guarantee a 429 even if a minute boundary splits the flood.
-process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN = "30";
+process.env.PUBLIC_SSO_RATE_LIMIT_PER_MIN = "30";
 process.env.SSO_ENTERPRISE_CONNECTIONS = JSON.stringify([
   { connection: "acme-okta", domains: ["acme.com"] },
 ]);

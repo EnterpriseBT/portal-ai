@@ -80,7 +80,7 @@ export const publicSsoRouter = Router();
 publicSsoRouter.post(
   "/sso-discovery",
   publicRateLimit(
-    environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN,
+    environment.PUBLIC_SSO_RATE_LIMIT_PER_MIN,
     ApiCode.SSO_DISCOVERY_RATE_LIMITED,
     "sso"
   ),

@@ -19,14 +19,13 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "public-rate-limit" });
 
-/** Per-IP fixed-window limiter. `limitPerMinute` comes from
- *  `environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN` at the mount site. Each
- *  public router passes its own `bucket` (and refusal `code`), so one
- *  route's traffic never spends another's window (#916). */
+/** Per-IP fixed-window limiter. Every public route names its own refusal
+ *  `code` and counter `bucket` (required, so a new route can't silently
+ *  share another's window or code, #916), and its own per-minute limit. */
 export function publicRateLimit(
   limitPerMinute: number,
-  code: ApiCode = ApiCode.SITE_CONFIG_RATE_LIMITED,
-  bucket = "site"
+  code: ApiCode,
+  bucket: string
 ) {
   return async (
     req: Request,

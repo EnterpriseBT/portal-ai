@@ -59,9 +59,11 @@ async function start() {
     // #916: same fail-fast for SSO_ENTERPRISE_CONNECTIONS. A malformed value
     // refuses to boot, since a silently ignored typo would ungate an
     // enterprise connection.
-    const enterpriseConnections = SsoConfig.enterpriseConnections();
+    // SaaS only: residency ignores the setting, so a leftover value
+    // mustn't stop a residency install.
     logger.info({ deployMode }, "Deploy mode resolved");
     if (!isResidency()) {
+      const enterpriseConnections = SsoConfig.enterpriseConnections();
       logger.info(
         { enterpriseConnections: [...enterpriseConnections] },
         "Enterprise SSO connections resolved"

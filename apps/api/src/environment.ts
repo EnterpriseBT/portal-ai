@@ -169,6 +169,13 @@ export const environment = {
     process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN || "60",
     10
   ),
+  // #916: per-IP cap on the anonymous "Sign in with SSO" discovery lookup,
+  // tuned apart from site-config: it bounds probing which email domains have
+  // SSO. Not lower than 60, since a whole office can sign in behind one NAT IP.
+  PUBLIC_SSO_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.PUBLIC_SSO_RATE_LIMIT_PER_MIN || "60",
+    10
+  ),
   // Per-user fixed-window cap on the authenticated API (#574), keyed by the
   // Auth0 subject. Map tiles don't count here; they have their own bucket
   // below. Anything near the ceiling is a runaway client or abuse. Fail-open

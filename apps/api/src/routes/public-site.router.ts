@@ -40,7 +40,9 @@ export const publicSiteRouter = Router();
 // mounted at `/api/public`, so a router-level limiter would also count the
 // other public routes mounted there (#916's SSO discovery) in this window.
 const siteRateLimit = publicRateLimit(
-  environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN
+  environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN,
+  ApiCode.SITE_CONFIG_RATE_LIMITED,
+  "site"
 );
 
 /**

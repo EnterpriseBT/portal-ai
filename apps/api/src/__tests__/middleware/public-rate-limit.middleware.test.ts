@@ -41,7 +41,11 @@ it("calls next() with no error while under the limit, keyed by IP", async () => 
   mockIncrement.mockResolvedValue(3);
   const next = jest.fn();
 
-  await publicRateLimit(60)(req, res, next);
+  await publicRateLimit(60, ApiCode.SITE_CONFIG_RATE_LIMITED, "site")(
+    req,
+    res,
+    next
+  );
 
   expect(mockIncrement).toHaveBeenCalledWith(
     "public-site:203.0.113.7",
@@ -56,7 +60,11 @@ it("denies 429 SITE_CONFIG_RATE_LIMITED when the window count exceeds the limit"
   mockIncrement.mockResolvedValue(61);
   const next = jest.fn();
 
-  await publicRateLimit(60)(req, res, next);
+  await publicRateLimit(60, ApiCode.SITE_CONFIG_RATE_LIMITED, "site")(
+    req,
+    res,
+    next
+  );
 
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err).toBeInstanceOf(ApiError);
@@ -70,7 +78,11 @@ it("fails open (passes the request) when the Redis counter errors", async () => 
   mockIncrement.mockRejectedValue(new Error("redis down"));
   const next = jest.fn();
 
-  await publicRateLimit(60)(req, res, next);
+  await publicRateLimit(60, ApiCode.SITE_CONFIG_RATE_LIMITED, "site")(
+    req,
+    res,
+    next
+  );
 
   expect(next).toHaveBeenCalledWith();
 });
@@ -81,11 +93,32 @@ it("carries details.retryAfterSeconds on a refusal (the error handler sets Retry
   mockIncrement.mockResolvedValue(61);
   const next = jest.fn();
 
-  await publicRateLimit(60)(req, res, next);
+  await publicRateLimit(60, ApiCode.SITE_CONFIG_RATE_LIMITED, "site")(
+    req,
+    res,
+    next
+  );
 
   const countedAt = mockIncrement.mock.calls[0][1];
   expect(mockSecondsLeft).toHaveBeenCalledWith(60_000, countedAt);
   const err = next.mock.calls[0][0] as InstanceType<typeof ApiError>;
   expect(err.details).toEqual({ retryAfterSeconds: 17 });
   expect(err.message).toBe("Too many requests. Try again in 17 seconds.");
+});
+
+// ── case 5 — each route counts in its own bucket with its own code (#916) ─
+
+it("keys the window by bucket and refuses with that route's code", async () => {
+  mockIncrement.mockResolvedValue(61);
+  const next = jest.fn();
+
+  await publicRateLimit(60, ApiCode.SSO_DISCOVERY_RATE_LIMITED, "sso")(
+    req,
+    res,
+    next
+  );
+
+  expect(mockIncrement.mock.calls[0][0]).toBe("public-sso:203.0.113.7");
+  const err = next.mock.calls[0][0] as { code: string };
+  expect(err.code).toBe(ApiCode.SSO_DISCOVERY_RATE_LIMITED);
 });

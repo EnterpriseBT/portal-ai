@@ -43,6 +43,12 @@ interface EnterpriseConnection {
   domains: string[];
 }
 
+/** The last successful parse of `SSO_ENTERPRISE_CONNECTIONS`, by raw value. */
+let parsedConnectionsCache: {
+  raw: string;
+  parsed: EnterpriseConnection[];
+} | null = null;
+
 export interface IssuerConfig {
   /** The exact `iss` claim value to trust (Auth0 carries a trailing slash). */
   issuer: string;
@@ -170,6 +176,20 @@ export class SsoConfig {
   private static parseEnterpriseConnections(): EnterpriseConnection[] {
     const raw = environment.SSO_ENTERPRISE_CONNECTIONS?.trim();
     if (!raw || raw === "none") return [];
+    // The value is fixed for the process, but this runs per request (and on
+    // the anonymous discovery lookup), so reuse the last parse of the same
+    // string. Keyed on the string, so a test that changes it still re-parses.
+    if (parsedConnectionsCache?.raw === raw) {
+      return parsedConnectionsCache.parsed;
+    }
+    const parsed = SsoConfig.parseEnterpriseConnectionsJson(raw);
+    parsedConnectionsCache = { raw, parsed };
+    return parsed;
+  }
+
+  private static parseEnterpriseConnectionsJson(
+    raw: string
+  ): EnterpriseConnection[] {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
