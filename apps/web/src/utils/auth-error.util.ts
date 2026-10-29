@@ -18,8 +18,9 @@ export const handleAuthError = (): void => {
   }
 };
 
-/** #916: registered by the root route, the first place with the router, so
- *  a refusal can send the caller to `/not-invited`. A no-op until then. */
+/** #916: registered by `router.ts` when it loads, so a refusal can send the
+ *  caller to `/not-invited`. A no-op until then (as in tests that never load
+ *  the router). */
 export const registerNotInvitedHandler = (fn: NotInvitedFn): void => {
   notInvitedFn = fn;
 };
