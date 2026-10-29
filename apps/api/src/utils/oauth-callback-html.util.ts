@@ -7,6 +7,16 @@
  * connectorInstanceId, accountInfo }` to `window.opener` and closes itself;
  * the popup hook (`useOAuthPopupAuthorize`) is the only consumer.
  *
+ * **Every callback outcome answers with the page (#924).** A denied consent,
+ * a bad or expired `state` and a failed exchange answer through
+ * `sendOAuthCallbackFailurePage`, which posts `{ type: "<slug>-failed", code,
+ * message }` instead. Through the JSON error handler the popup showed the
+ * error envelope and the opener heard nothing, so the dialog sat
+ * "connecting" until the hook's 5-minute timeout. The message is always
+ * server-authored: the callback is unauthenticated and anyone can craft its
+ * URL, so a provider's `error_description` is never echoed, and a 500 shows
+ * `INTERNAL_ERROR_MESSAGE` as it would through `HttpService.error` (#687).
+ *
  * **The message targets the web app's origin** (`WEB_APP_URL`), never `*`
  * (#922). The opener is whatever window holds the reference when consent
  * finishes, which need not be the app any more (the user may have navigated
@@ -30,14 +40,27 @@ import { createHash } from "node:crypto";
 
 import type { Response } from "express";
 
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 import type { PublicAccountInfo } from "@portalai/core/contracts";
 
+import type { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
+import { ApiError } from "../services/http.service.js";
+import { createLogger } from "./logger.util.js";
+
+const logger = createLogger({ module: "oauth-callback" });
+
+export type OAuthCallbackOutcome =
+  | {
+      kind: "authorized";
+      connectorInstanceId: string;
+      accountInfo: PublicAccountInfo;
+    }
+  | { kind: "failed"; code: string; message: string };
 
 export interface RenderOAuthCallbackHtmlInput {
   slug: string;
-  connectorInstanceId: string;
-  accountInfo: PublicAccountInfo;
+  outcome: OAuthCallbackOutcome;
   /** The origin `postMessage` targets: the web app's. */
   targetOrigin: string;
 }
@@ -67,14 +90,13 @@ function scriptLiteral(value: unknown): string {
 
 export function renderOAuthCallbackHtml({
   slug,
-  connectorInstanceId,
-  accountInfo,
+  outcome,
   targetOrigin,
 }: RenderOAuthCallbackHtmlInput): OAuthCallbackPage {
   if (!slug) {
     throw new Error("renderOAuthCallbackHtml: slug is required");
   }
-  if (!connectorInstanceId) {
+  if (outcome.kind === "authorized" && !outcome.connectorInstanceId) {
     throw new Error("renderOAuthCallbackHtml: connectorInstanceId is required");
   }
   if (!targetOrigin || targetOrigin === "*") {
@@ -82,11 +104,15 @@ export function renderOAuthCallbackHtml({
       "renderOAuthCallbackHtml: a specific targetOrigin is required"
     );
   }
-  const payload = scriptLiteral({
-    type: `${slug}-authorized`,
-    connectorInstanceId,
-    accountInfo,
-  });
+  const payload = scriptLiteral(
+    outcome.kind === "authorized"
+      ? {
+          type: `${slug}-authorized`,
+          connectorInstanceId: outcome.connectorInstanceId,
+          accountInfo: outcome.accountInfo,
+        }
+      : { type: `${slug}-failed`, code: outcome.code, message: outcome.message }
+  );
   const script = `
 (function () {
   var payload = ${payload};
@@ -97,11 +123,17 @@ export function renderOAuthCallbackHtml({
 })();
 `;
   const scriptHash = createHash("sha256").update(script).digest("base64");
+  const body =
+    outcome.kind === "authorized"
+      ? `<p>Connected. You can close this window.</p>
+<p data-testid="connector-instance-id" hidden>${escapeHtml(outcome.connectorInstanceId)}</p>`
+      : `<p>Authorization failed. ${escapeHtml(outcome.message)}</p>
+<p>You can close this window.</p>`;
+  const title = outcome.kind === "authorized" ? "Connected" : "Not connected";
   const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Connected</title></head>
+<html><head><meta charset="utf-8"><title>${title}</title></head>
 <body><script>${script}</script>
-<p>Connected. You can close this window.</p>
-<p data-testid="connector-instance-id" hidden>${escapeHtml(connectorInstanceId)}</p>
+${body}
 </body></html>`;
   return {
     html,
@@ -119,14 +151,80 @@ export function renderOAuthCallbackHtml({
   };
 }
 
+function webAppOrigin(): string {
+  return new URL(environment.WEB_APP_URL).origin;
+}
+
 /** Answers an OAuth `/callback` with the page and its headers. */
 export function sendOAuthCallbackPage(
   res: Response,
-  input: Omit<RenderOAuthCallbackHtmlInput, "targetOrigin">
+  input: {
+    slug: string;
+    connectorInstanceId: string;
+    accountInfo: PublicAccountInfo;
+  }
 ): Response {
   const page = renderOAuthCallbackHtml({
-    ...input,
-    targetOrigin: new URL(environment.WEB_APP_URL).origin,
+    slug: input.slug,
+    outcome: {
+      kind: "authorized",
+      connectorInstanceId: input.connectorInstanceId,
+      accountInfo: input.accountInfo,
+    },
+    targetOrigin: webAppOrigin(),
   });
   return res.status(200).type("html").set(page.headers).send(page.html);
+}
+
+/**
+ * Answers a failed OAuth `/callback` with the page, at the error's status.
+ * The error never reaches the JSON error handler, so it's logged here.
+ */
+export function sendOAuthCallbackFailurePage(
+  res: Response,
+  input: { slug: string; error: ApiError }
+): Response {
+  const { slug, error } = input;
+  const status = error.status ?? 500;
+  const internal = status === 500;
+  const log = { slug, status, code: error.code, err: error };
+  if (status >= 500) logger.error(log, "OAuth callback failed");
+  else logger.warn(log, "OAuth callback refused");
+  const page = renderOAuthCallbackHtml({
+    slug,
+    outcome: {
+      kind: "failed",
+      code: error.code,
+      message: internal ? INTERNAL_ERROR_MESSAGE : error.message,
+    },
+    targetOrigin: webAppOrigin(),
+  });
+  return res.status(status).type("html").set(page.headers).send(page.html);
+}
+
+/**
+ * The refusal for a provider's `?error=` redirect. `access_denied` is the
+ * user cancelling or declining consent; anything else is the provider's own
+ * failure. Neither echoes the provider's text (see the module comment).
+ */
+export function oauthProviderError(
+  providerError: string,
+  codes: {
+    provider: string;
+    accessDenied: ApiCode;
+    providerError: ApiCode;
+  }
+): ApiError {
+  if (providerError === "access_denied") {
+    return new ApiError(
+      400,
+      codes.accessDenied,
+      "Authorization was cancelled."
+    );
+  }
+  return new ApiError(
+    400,
+    codes.providerError,
+    `${codes.provider} couldn't complete the authorization. Please try again.`
+  );
 }

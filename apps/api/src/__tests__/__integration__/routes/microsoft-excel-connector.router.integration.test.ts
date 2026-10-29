@@ -318,6 +318,18 @@ describe("Microsoft Excel Connector Router — POST /authorize", () => {
   });
 });
 
+/** The `<slug>-failed` payload a callback failure page posts (#924). */
+function callbackFailure(
+  res: request.Response,
+  slug: string
+): { type: string; code: string; message: string } {
+  expect(res.headers["content-type"]).toMatch(/^text\/html/);
+  const script = res.text.match(/<script>([\s\S]*?)<\/script>/)![1];
+  const payload = JSON.parse(script.match(/var payload = (\{[\s\S]*?\});/)![1]);
+  expect(payload.type).toBe(`${slug}-failed`);
+  return payload;
+}
+
 describe("Microsoft Excel Connector Router — GET /callback", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
@@ -337,6 +349,57 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
     await connection.end();
   });
 
+  it("answers a declined consent with the failure page, not JSON (#924)", async () => {
+    const res = await request(app)
+      .get("/api/connectors/microsoft-excel/callback")
+      .query({ error: "access_denied", state: "anything" });
+
+    expect(res.status).toBe(400);
+    expect(callbackFailure(res, "microsoft-excel")).toEqual({
+      type: "microsoft-excel-failed",
+      code: ApiCode.MICROSOFT_OAUTH_ACCESS_DENIED,
+      message: "Authorization was cancelled.",
+    });
+    // The same headers as success: the script runs and the opener survives.
+    const script = res.text.match(/<script>([\s\S]*?)<\/script>/)![1];
+    const hash = createHash("sha256").update(script).digest("base64");
+    expect(res.headers["content-security-policy"]).toContain(
+      `script-src 'sha256-${hash}'`
+    );
+    expect(res.headers["cross-origin-opener-policy"]).toBe("unsafe-none");
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(exchangeCodeMock).not.toHaveBeenCalled();
+  });
+
+  it("answers another provider error without echoing its description (#924)", async () => {
+    const res = await request(app)
+      .get("/api/connectors/microsoft-excel/callback")
+      .query({
+        error: "server_error",
+        error_description: "<b>injected</b>",
+        state: "anything",
+      });
+
+    expect(res.status).toBe(400);
+    expect(callbackFailure(res, "microsoft-excel")).toMatchObject({
+      code: ApiCode.MICROSOFT_OAUTH_PROVIDER_ERROR,
+      message:
+        "Microsoft couldn't complete the authorization. Please try again.",
+    });
+    expect(res.text).not.toContain("injected");
+  });
+
+  it("answers a missing code with the failure page (#924)", async () => {
+    const res = await request(app)
+      .get("/api/connectors/microsoft-excel/callback")
+      .query({ state: "anything" });
+
+    expect(res.status).toBe(400);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.MICROSOFT_OAUTH_INVALID_STATE
+    );
+  });
+
   it("returns 400 MICROSOFT_OAUTH_INVALID_STATE when state is malformed", async () => {
     await insertMicrosoftExcelDefinition(db as ReturnType<typeof drizzle>);
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
@@ -346,7 +409,9 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "abc", state: "junk" });
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe(ApiCode.MICROSOFT_OAUTH_INVALID_STATE);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.MICROSOFT_OAUTH_INVALID_STATE
+    );
     expect(exchangeCodeMock).not.toHaveBeenCalled();
   });
 
@@ -367,7 +432,9 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "abc", state: expiredState });
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe(ApiCode.MICROSOFT_OAUTH_INVALID_STATE);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.MICROSOFT_OAUTH_INVALID_STATE
+    );
   });
 
   it("refuses a new connection whose caller lost the create permission after authorize, and creates no row (#710)", async () => {
@@ -389,7 +456,9 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "good-code", state });
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.PERMISSION_DENIED
+    );
     // Refused before the code exchange: the provider issued no tokens.
     expect(exchangeCodeMock).not.toHaveBeenCalled();
     const rows = await (db as ReturnType<typeof drizzle>)
@@ -422,7 +491,9 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "good-code", state });
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe(ApiCode.MEMBERSHIP_NOT_FOUND);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.MEMBERSHIP_NOT_FOUND
+    );
     expect(exchangeCodeMock).not.toHaveBeenCalled();
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
@@ -645,7 +716,9 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "bad", state });
 
     expect(res.status).toBe(502);
-    expect(res.body.code).toBe(ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED);
+    expect(callbackFailure(res, "microsoft-excel").code).toBe(
+      ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED
+    );
 
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()

@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
 
 import { describe, it, expect } from "@jest/globals";
+import type { Response } from "express";
 
-import { renderOAuthCallbackHtml } from "../../utils/oauth-callback-html.util.js";
+import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
+import type { PublicAccountInfo } from "@portalai/core/contracts";
+
+import { ApiCode } from "../../constants/api-codes.constants.js";
+import { ApiError } from "../../services/http.service.js";
+import {
+  oauthProviderError,
+  renderOAuthCallbackHtml,
+  sendOAuthCallbackFailurePage,
+} from "../../utils/oauth-callback-html.util.js";
 
 function inlineScript(html: string): string {
   const match = html.match(/<script>([\s\S]*?)<\/script>/);
@@ -10,18 +20,35 @@ function inlineScript(html: string): string {
   return match[1];
 }
 
-describe("renderOAuthCallbackHtml", () => {
-  const accountInfo = {
-    identity: "alice@example.com",
-    metadata: {},
-  };
-  const targetOrigin = "https://app.example.com";
+function scriptPayload(html: string): Record<string, unknown> {
+  const match = inlineScript(html).match(/var payload = (\{[\s\S]*?\});/);
+  if (!match) throw new Error("no payload");
+  return JSON.parse(match[1]);
+}
 
+const accountInfo: PublicAccountInfo = {
+  identity: "alice@example.com",
+  metadata: {},
+};
+
+const targetOrigin = "https://app.example.com";
+
+function authorized(
+  connectorInstanceId: string,
+  info: PublicAccountInfo = accountInfo
+) {
+  return {
+    kind: "authorized" as const,
+    connectorInstanceId,
+    accountInfo: info,
+  };
+}
+
+describe("renderOAuthCallbackHtml", () => {
   it("embeds the slug-derived message type for google-sheets", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: "ci-1",
-      accountInfo,
+      outcome: authorized("ci-1"),
       targetOrigin,
     });
     expect(html).toContain('"type":"google-sheets-authorized"');
@@ -32,11 +59,10 @@ describe("renderOAuthCallbackHtml", () => {
   it("embeds the slug-derived message type for microsoft-excel", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "microsoft-excel",
-      connectorInstanceId: "ci-2",
-      accountInfo: {
+      outcome: authorized("ci-2", {
         identity: "bob@contoso.com",
         metadata: { tenantId: "t-1" },
-      },
+      }),
       targetOrigin,
     });
     expect(html).toContain('"type":"microsoft-excel-authorized"');
@@ -46,8 +72,7 @@ describe("renderOAuthCallbackHtml", () => {
   it("includes the connector-instance-id testid for assertions", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "microsoft-excel",
-      connectorInstanceId: "ci-42",
-      accountInfo,
+      outcome: authorized("ci-42"),
       targetOrigin,
     });
     expect(html).toMatch(/data-testid="connector-instance-id"[^>]*>ci-42</);
@@ -56,8 +81,7 @@ describe("renderOAuthCallbackHtml", () => {
   it("allows exactly its own inline script in the CSP, by hash (#922)", () => {
     const { html, headers } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: "ci-1",
-      accountInfo,
+      outcome: authorized("ci-1"),
       targetOrigin,
     });
     const hash = createHash("sha256")
@@ -71,8 +95,7 @@ describe("renderOAuthCallbackHtml", () => {
   it("keeps the opener reachable with COOP unsafe-none, uncached (#922)", () => {
     const { headers } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: "ci-1",
-      accountInfo,
+      outcome: authorized("ci-1"),
       targetOrigin,
     });
     expect(headers["Cross-Origin-Opener-Policy"]).toBe("unsafe-none");
@@ -82,8 +105,7 @@ describe("renderOAuthCallbackHtml", () => {
   it("posts to the web app's origin, never * (#922)", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: "ci-1",
-      accountInfo,
+      outcome: authorized("ci-1"),
       targetOrigin,
     });
     expect(inlineScript(html)).toContain(
@@ -92,8 +114,7 @@ describe("renderOAuthCallbackHtml", () => {
     expect(() =>
       renderOAuthCallbackHtml({
         slug: "google-sheets",
-        connectorInstanceId: "ci-1",
-        accountInfo,
+        outcome: authorized("ci-1"),
         targetOrigin: "*",
       })
     ).toThrow(/targetOrigin/);
@@ -102,8 +123,7 @@ describe("renderOAuthCallbackHtml", () => {
   it("HTML-escapes the connector instance id in the body", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: '</p><img src=x onerror="x">',
-      accountInfo,
+      outcome: authorized('</p><img src=x onerror="x">'),
       targetOrigin,
     });
     expect(html).not.toContain("<img");
@@ -113,11 +133,10 @@ describe("renderOAuthCallbackHtml", () => {
   it("escapes < so a profile field can't close the script element", () => {
     const { html } = renderOAuthCallbackHtml({
       slug: "google-sheets",
-      connectorInstanceId: "ci-1",
-      accountInfo: {
+      outcome: authorized("ci-1", {
         identity: "alice@example.com",
         metadata: { name: "</script><script>alert(1)</script>" },
-      },
+      }),
       targetOrigin,
     });
     const script = inlineScript(html);
@@ -135,8 +154,7 @@ describe("renderOAuthCallbackHtml", () => {
     expect(() =>
       renderOAuthCallbackHtml({
         slug: "",
-        connectorInstanceId: "ci-1",
-        accountInfo,
+        outcome: authorized("ci-1"),
         targetOrigin,
       })
     ).toThrow(/slug/);
@@ -146,10 +164,168 @@ describe("renderOAuthCallbackHtml", () => {
     expect(() =>
       renderOAuthCallbackHtml({
         slug: "google-sheets",
-        connectorInstanceId: "",
-        accountInfo,
+        outcome: authorized(""),
         targetOrigin,
       })
     ).toThrow(/connectorInstanceId/);
+  });
+});
+
+describe("renderOAuthCallbackHtml — failed outcome (#924)", () => {
+  const failed = {
+    kind: "failed" as const,
+    code: "GOOGLE_OAUTH_ACCESS_DENIED",
+    message: "Authorization was cancelled.",
+  };
+
+  it("posts <slug>-failed with the code and message", () => {
+    const { html } = renderOAuthCallbackHtml({
+      slug: "microsoft-excel",
+      outcome: failed,
+      targetOrigin,
+    });
+    expect(scriptPayload(html)).toEqual({
+      type: "microsoft-excel-failed",
+      code: "GOOGLE_OAUTH_ACCESS_DENIED",
+      message: "Authorization was cancelled.",
+    });
+    expect(html).toContain(
+      "Authorization failed. Authorization was cancelled."
+    );
+    expect(html).not.toContain("connector-instance-id");
+  });
+
+  it("keeps the same headers, with the CSP hash of the failure script", () => {
+    const { html, headers } = renderOAuthCallbackHtml({
+      slug: "google-sheets",
+      outcome: failed,
+      targetOrigin,
+    });
+    const hash = createHash("sha256")
+      .update(inlineScript(html))
+      .digest("base64");
+    expect(headers["Content-Security-Policy"]).toContain(
+      `script-src 'sha256-${hash}'`
+    );
+    expect(headers["Cross-Origin-Opener-Policy"]).toBe("unsafe-none");
+    expect(headers["Cache-Control"]).toBe("no-store");
+    expect(inlineScript(html)).toContain(
+      'postMessage(payload, "https://app.example.com")'
+    );
+  });
+
+  it("escapes the message in the body and the script", () => {
+    const { html } = renderOAuthCallbackHtml({
+      slug: "google-sheets",
+      outcome: { ...failed, message: "</script><img src=x>" },
+      targetOrigin,
+    });
+    expect(inlineScript(html)).not.toContain("<");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;/script&gt;&lt;img src=x&gt;");
+    expect(scriptPayload(html).message).toBe("</script><img src=x>");
+  });
+
+  it("still refuses a wildcard targetOrigin", () => {
+    expect(() =>
+      renderOAuthCallbackHtml({
+        slug: "google-sheets",
+        outcome: failed,
+        targetOrigin: "*",
+      })
+    ).toThrow(/targetOrigin/);
+  });
+});
+
+describe("oauthProviderError (#924)", () => {
+  const codes = {
+    provider: "Google",
+    accessDenied: ApiCode.GOOGLE_OAUTH_ACCESS_DENIED,
+    providerError: ApiCode.GOOGLE_OAUTH_PROVIDER_ERROR,
+  };
+
+  it("maps access_denied to a cancelled message", () => {
+    const err = oauthProviderError("access_denied", codes);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(400);
+    expect(err.code).toBe(ApiCode.GOOGLE_OAUTH_ACCESS_DENIED);
+    expect(err.message).toBe("Authorization was cancelled.");
+  });
+
+  it("maps any other error to the provider's failure, without echoing it", () => {
+    const err = oauthProviderError("<b>server_error</b>", codes);
+    expect(err.status).toBe(400);
+    expect(err.code).toBe(ApiCode.GOOGLE_OAUTH_PROVIDER_ERROR);
+    expect(err.message).toBe(
+      "Google couldn't complete the authorization. Please try again."
+    );
+  });
+});
+
+describe("sendOAuthCallbackFailurePage (#924)", () => {
+  function fakeResponse() {
+    const sent: {
+      status?: number;
+      type?: string;
+      headers?: object;
+      body?: string;
+    } = {};
+    const res = {
+      status(code: number) {
+        sent.status = code;
+        return res;
+      },
+      type(value: string) {
+        sent.type = value;
+        return res;
+      },
+      set(headers: object) {
+        sent.headers = headers;
+        return res;
+      },
+      send(body: string) {
+        sent.body = body;
+        return res;
+      },
+    };
+    return { res: res as unknown as Response, sent };
+  }
+
+  it("answers at the error's status with its message", () => {
+    const { res, sent } = fakeResponse();
+    sendOAuthCallbackFailurePage(res, {
+      slug: "google-sheets",
+      error: new ApiError(
+        502,
+        ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+        "bad code"
+      ),
+    });
+    expect(sent.status).toBe(502);
+    expect(sent.type).toBe("html");
+    expect(sent.headers).toHaveProperty("Cross-Origin-Opener-Policy");
+    expect(scriptPayload(sent.body!)).toEqual({
+      type: "google-sheets-failed",
+      code: ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+      message: "bad code",
+    });
+  });
+
+  it("keeps a 500's message out of the page, as HttpService.error does (#687)", () => {
+    const { res, sent } = fakeResponse();
+    sendOAuthCallbackFailurePage(res, {
+      slug: "google-sheets",
+      error: new ApiError(
+        500,
+        ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED,
+        "connect ECONNREFUSED 10.0.0.5:5432"
+      ),
+    });
+    expect(sent.status).toBe(500);
+    expect(sent.body).not.toContain("ECONNREFUSED");
+    expect(scriptPayload(sent.body!)).toMatchObject({
+      code: ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED,
+      message: INTERNAL_ERROR_MESSAGE,
+    });
   });
 });
