@@ -1,6 +1,11 @@
 import { QueryCache, QueryClient, MutationCache } from "@tanstack/react-query";
 
-import { ApiError, handleAuthError } from "./utils";
+import {
+  ApiError,
+  handleAuthError,
+  handleNotInvited,
+  SSO_PROVISIONING_NOT_INVITED,
+} from "./utils";
 import {
   isApiRateLimited,
   releaseJitterMs,
@@ -55,6 +60,12 @@ const onAuthError = (error: Error) => {
   if (error instanceof ApiError) {
     if (error.status === 401 || error.code === "ORGANIZATION_USER_NOT_FOUND") {
       handleAuthError();
+    }
+    // #916: an uninvited login through an invite-gated enterprise connection.
+    // Every API call answers it, so one handler sends the caller to the
+    // not-invited page rather than each view rendering a generic error.
+    if (error.code === SSO_PROVISIONING_NOT_INVITED) {
+      handleNotInvited();
     }
   }
 };

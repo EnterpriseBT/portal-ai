@@ -17,6 +17,7 @@ import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NotInvitedRouteImport } from './routes/not-invited'
 import { Route as PortalResultsRouteImport } from './routes/portal-results'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StationsRouteImport } from './routes/stations'
@@ -87,6 +88,11 @@ const JobsRoute = JobsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotInvitedRoute = NotInvitedRouteImport.update({
+  id: '/not-invited',
+  path: '/not-invited',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalResultsRoute = PortalResultsRouteImport.update({
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/help': typeof HelpRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
+  '/not-invited': typeof NotInvitedRoute
   '/portal-results': typeof PortalResultsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
@@ -296,6 +303,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/not-invited': typeof NotInvitedRoute
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
@@ -331,6 +339,7 @@ export interface FileRoutesById {
   '/help': typeof HelpRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
+  '/not-invited': typeof NotInvitedRoute
   '/portal-results': typeof PortalResultsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
@@ -374,6 +383,7 @@ export interface FileRouteTypes {
     | '/help'
     | '/jobs'
     | '/login'
+    | '/not-invited'
     | '/portal-results'
     | '/settings'
     | '/stations'
@@ -409,6 +419,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/not-invited'
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/entity-groups/$entityGroupId'
@@ -443,6 +454,7 @@ export interface FileRouteTypes {
     | '/help'
     | '/jobs'
     | '/login'
+    | '/not-invited'
     | '/portal-results'
     | '/settings'
     | '/stations'
@@ -485,6 +497,7 @@ export interface RootRouteChildren {
   HelpRoute: typeof HelpRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
+  NotInvitedRoute: typeof NotInvitedRoute
   PortalResultsRoute: typeof PortalResultsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
   StationsRoute: typeof StationsRouteWithChildren
@@ -551,6 +564,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/not-invited': {
+      id: '/not-invited'
+      path: '/not-invited'
+      fullPath: '/not-invited'
+      preLoaderRoute: typeof NotInvitedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal-results': {
@@ -954,6 +974,7 @@ const rootRouteChildren: RootRouteChildren = {
   HelpRoute: HelpRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
+  NotInvitedRoute: NotInvitedRoute,
   PortalResultsRoute: PortalResultsRouteWithChildren,
   SettingsRoute: SettingsRoute,
   StationsRoute: StationsRouteWithChildren,
