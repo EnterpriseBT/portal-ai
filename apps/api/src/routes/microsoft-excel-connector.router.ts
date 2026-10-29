@@ -21,7 +21,7 @@ import {
 } from "../services/microsoft-auth.service.js";
 import { MicrosoftExcelConnectorService } from "../services/microsoft-excel-connector.service.js";
 import { MicrosoftGraphError } from "../services/microsoft-graph.service.js";
-import { sendOAuthCallbackPage } from "../utils/oauth-callback-html.util.js";
+import { answerOAuthCallback } from "../utils/oauth-callback-html.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "microsoft-excel-connector" });
@@ -120,57 +120,73 @@ microsoftExcelConnectorRouter.post(
  *   get:
  *     tags: [Microsoft Excel Connector]
  *     summary: OAuth2 callback (Microsoft redirects here)
+ *     description: |
+ *       Every outcome answers with an HTML page that postMessages to the
+ *       popup's opener and closes the popup: `<slug>-authorized` on success,
+ *       `<slug>-failed` with `{ code, message }` on any failure, at the
+ *       failure's status (#924).
  *     parameters:
  *       - in: query
  *         name: code
- *         required: true
+ *         description: The authorization code. Absent when `error` is set.
  *         schema: { type: string }
  *       - in: query
  *         name: state
  *         required: true
  *         schema: { type: string }
+ *       - in: query
+ *         name: error
+ *         description: |
+ *           Set by Microsoft instead of `code` when authorization didn't complete;
+ *           `access_denied` means the user cancelled or declined consent.
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: OAuth completed; HTML response postMessages to opener
+ *         description: OAuth completed; the page posts `<slug>-authorized` to the opener
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
  *       400:
- *         description: Invalid or expired state
+ *         description: Consent declined (`MICROSOFT_OAUTH_ACCESS_DENIED`), another provider error (`MICROSOFT_OAUTH_PROVIDER_ERROR`), or an invalid or expired state; the page posts `<slug>-failed`
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
+ *       403:
+ *         description: The caller lost the permission to connect since authorize; the page posts `<slug>-failed`
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
+ *       500:
+ *         description: An unexpected failure; the page posts `<slug>-failed` with a generic message
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
  *       502:
- *         description: Microsoft rejected the code or userinfo lookup failed
+ *         description: Microsoft rejected the code or userinfo lookup failed; the page posts `<slug>-failed` with fixed copy, never the provider's response
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
+ *       503:
+ *         description: The database was too busy to admit the callback (`DB_ADMISSION_TIMEOUT`); the page posts `<slug>-failed`
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
  */
 microsoftExcelConnectorPublicRouter.get(
   "/callback",
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const code = typeof req.query.code === "string" ? req.query.code : "";
-      const state = typeof req.query.state === "string" ? req.query.state : "";
-      if (!code || !state) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.MICROSOFT_OAUTH_INVALID_STATE,
-            "code and state query parameters are required"
-          )
-        );
-      }
-
-      const result = await MicrosoftExcelConnectorService.handleCallback({
-        code,
-        state,
-      });
-
-      logger.info(
-        { connectorInstanceId: result.connectorInstanceId },
-        "microsoft-excel OAuth callback completed"
-      );
-      return sendOAuthCallbackPage(res, {
-        slug: "microsoft-excel",
-        connectorInstanceId: result.connectorInstanceId,
-        accountInfo: result.accountInfo,
-      });
-    } catch (err) {
-      return next(mapMicrosoftAuthError(err));
-    }
-  }
+  (req: Request, res: Response) =>
+    answerOAuthCallback(req, res, {
+      slug: "microsoft-excel",
+      provider: "Microsoft",
+      codes: {
+        accessDenied: ApiCode.MICROSOFT_OAUTH_ACCESS_DENIED,
+        providerError: ApiCode.MICROSOFT_OAUTH_PROVIDER_ERROR,
+        invalidState: ApiCode.MICROSOFT_OAUTH_INVALID_STATE,
+      },
+      handleCallback: (input) =>
+        MicrosoftExcelConnectorService.handleCallback(input),
+      mapError: mapMicrosoftAuthError,
+    })
 );
 
 /** Map upstream MicrosoftAuthError kinds to ApiError responses. */
