@@ -146,9 +146,10 @@ export class ApplicationService {
    * users; the lock is what lets the loser of a first-login race observe the
    * winner's committed org and no-op instead of provisioning a second one.
    *
-   * `resolveProfile` is lazy — invoked only when a user row must be created —
-   * so the request-path caller pays the Auth0 profile fetch only on a genuine
-   * first login, never on every request.
+   * `resolveProfile` is lazy — invoked only when a user row must be created,
+   * or (#916) when an existing user is about to be denied and their invites
+   * are re-checked — so the request-path caller pays the Auth0 profile fetch
+   * only on a genuine first login or a refusal, never on every request.
    *
    * This is the first-login *wrapper* (with a no-membership gate), NOT the
    * reusable provisioning core. A future in-UI "create another org" feature
@@ -230,8 +231,35 @@ export class ApplicationService {
       // No membership and no matched invitation: what happens next depends on
       // the mode the caller resolved.
       if (fallback === "deny") {
-        // SaaS enterprise-federated identity with no invite — invite-gated, so
-        // reject rather than provisioning a personal org (tenant isolation).
+        // #916: a denied first login still created the user row, so on any
+        // later login the invite branch above never ran. Re-check here, before
+        // refusing, so a user invited after a denied attempt gets in without
+        // the emailed link. A failed profile fetch denies anyway: refusing is
+        // the safe side, and the next request re-checks.
+        if (!profile) {
+          const recheck = await resolveProfile().catch(() => null);
+          if (recheck?.emailVerified && recheck.email) {
+            const joined = await SeatService.acceptPendingForEmail(
+              user,
+              recheck.email,
+              auditCtx ?? { sourceIp: null, userAgent: null }
+            );
+            if (joined) {
+              return {
+                user,
+                organization: joined.organization,
+                organizationUser: joined.organizationUser,
+                created: true,
+              };
+            }
+          }
+        }
+        // SaaS login through an invite-gated enterprise connection with no
+        // invite: reject rather than provisioning a personal org.
+        logger.info(
+          { userId: user.id },
+          "SSO provisioning denied: not invited"
+        );
         throw new ApiError(
           403,
           ApiCode.SSO_PROVISIONING_NOT_INVITED,
