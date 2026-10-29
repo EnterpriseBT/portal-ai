@@ -97,6 +97,13 @@ jobs:
       - name: Check no integration test file is over the duration ceiling
         run: npm run lint:integration-durations
 
+      # The nginx advisory parser (#918), self-tested against fixtures in
+      # nginx.org's page format. The weekly check is the only thing that sees
+      # nginx CVEs (the image gate can't), so a parser that silently matched
+      # nothing would read as "no advisories".
+      - name: Check the nginx advisory parser
+        run: npm run lint:nginx-advisories
+
       # Guards the review-chain merge gate against silent drift between the
       # surfaces that describe it (#634): CLAUDE.md's merge-gate section +
       # coverage matrix + PR checklist, the copilot mirror, and the two skills

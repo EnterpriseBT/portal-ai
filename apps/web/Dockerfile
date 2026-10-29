@@ -58,7 +58,12 @@ RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 # workflows gate each platform in separate builds before the push build, and
 # a tag that moved between them would push layers the scan never saw (#909).
 # Bump the tag and the digest together.
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS runtime
+# The stable line, not mainline, in its -slim variant: nginx with no dynamic
+# modules (geoip, image-filter, njs, xslt), none of which nginx.conf uses
+# (#918). nginx comes from nginx.org's repository, which the Trivy gate can't
+# see, so the tag names the exact version and scripts/nginx-advisories.mjs
+# checks it against nginx.org's security advisories every week.
+FROM nginxinc/nginx-unprivileged:1.30.6-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 AS runtime
 
 # Patch the base layer's OS packages to the latest in its Alpine release, then
 # add nodejs (no npm) so the dependency-free render-config.mjs runs at startup.

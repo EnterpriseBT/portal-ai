@@ -25,7 +25,10 @@ Both images are built only at deploy time (dev: push to `main` / manual dispatch
 
    The web image's runtime stage (`apps/web/Dockerfile`, `nginx-unprivileged` + `nodejs` for the config renderer) runs `apk upgrade` too. The pinned base tag ships stale Alpine packages: 60 fixable CRITICAL/HIGH findings before the upgrade, 0 after (#909).
 
-   **What the web scan can't see: nginx itself.** `nginx-unprivileged` installs nginx from nginx.org's own apk repository, which Trivy's Alpine advisory data doesn't cover, so an nginx CVE never fails the gate. Server-binary vulnerabilities are handled by keeping the image on a supported nginx line (#918), not by this scan.
+   **nginx itself is tracked outside the scan (#918).** `nginx-unprivileged` installs nginx from nginx.org's own apk repository, which Trivy's Alpine advisory data doesn't cover, so an nginx CVE never fails this gate. Three things cover that instead:
+   - **Supported line, small surface.** The image runs the current **stable** line in its `-alpine-slim` variant, which ships nginx with no dynamic modules (no geoip, image-filter, njs or xslt).
+   - **Exact pin.** The tag names the exact version (`1.30.6-alpine-slim`), and the image is pinned by digest.
+   - **Weekly advisory check.** `.github/workflows/nginx-advisories.yml` runs `scripts/nginx-advisories.mjs`. It checks that version against [nginx.org's security advisories](https://nginx.org/en/security_advisories.html) and the current stable release. When the pin is affected or stale, it opens or updates one issue, *nginx in the residency web image needs attention*, with each advisory, its fix version and its SLA (below). It comments when the findings change, since an edited body notifies nobody, and the first clean run closes the issue. A newer stable release only counts once its `-alpine-slim` image is published. The check fails closed: an unreadable pin or page, or an advisory whose affected versions it can't read, turns the run red and adds a comment saying so, leaving the last known advisory table in place. `npm run lint:nginx-advisories` self-tests the parser in Unit Tests.
 
    **Scanned = pushed.** Each platform is built in its own step before the push build, so the push must produce the same layers: the build args come from one step output shared by every build of an image, the builds share one builder's cache in one job, and the web base image is pinned by digest so a moving tag can't change the runtime layer in between.
 
@@ -45,6 +48,13 @@ Remediate vulnerabilities that the gate reports (fixable, in either image) withi
 | Medium / Low | Best-effort — next release |
 
 A fixable Critical/High blocks the deploy on arrival, so the practical floor is "fixed before the next deploy." Unfixed (no upstream patch) vulnerabilities are tracked but do not block; re-evaluate them when a fix ships.
+
+**nginx advisories** (the weekly check above, not the gate) use nginx.org's own ratings rather than CVSS:
+- **major:** **7 days**.
+- **medium / low / minor:** **30 days**. nginx rates memory-safety bugs such as buffer overflows *medium*, so these aren't left to best effort.
+- **none:** ignored. nginx.org uses it for issues it won't fix.
+
+The fix is a PR moving the web Dockerfile's runtime `FROM` to the fixed stable tag and its index digest, together. The deploy's gate then covers the rest of the image.
 
 ## Verifying a published image
 
