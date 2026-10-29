@@ -32,6 +32,17 @@ export type ProvisioningFallback = "personal_org" | "join_single_org" | "deny";
  *  ending alphanumeric, at most 128 characters. */
 const CONNECTION_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,126}[A-Za-z0-9])?$/;
 
+/** A lowercase hostname, as an email domain in `SSO_ENTERPRISE_CONNECTIONS`. */
+const EMAIL_DOMAIN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** One `SSO_ENTERPRISE_CONNECTIONS` entry (#916): an Auth0 enterprise
+ *  connection, invite-gated, and the email domains routed to it. */
+interface EnterpriseConnection {
+  connection: string;
+  domains: string[];
+}
+
 export interface IssuerConfig {
   /** The exact `iss` claim value to trust (Auth0 carries a trailing slash). */
   issuer: string;
@@ -116,28 +127,108 @@ export class SsoConfig {
 
   /**
    * The Auth0 enterprise connections whose logins are invite-gated (#916),
-   * from `SSO_ENTERPRISE_CONNECTIONS`: a comma-separated list of connection
-   * names. Unset, blank or exactly `none` means gating is off (`none` exists
-   * because SSM can't store an empty value). Throws on a malformed list, and
-   * boot calls this so a typo refuses to start rather than silently ungating.
+   * from `SSO_ENTERPRISE_CONNECTIONS`. Throws on a malformed value; boot calls
+   * this so a typo refuses to start rather than silently ungating.
    */
   static enterpriseConnections(): ReadonlySet<string> {
+    return new Set(
+      SsoConfig.parseEnterpriseConnections().map((e) => e.connection)
+    );
+  }
+
+  /** Email domain → enterprise connection (#916), for routing "Sign in with
+   *  SSO". Every domain belongs to exactly one connection. */
+  static enterpriseDomains(): ReadonlyMap<string, string> {
+    const domains = new Map<string, string>();
+    for (const entry of SsoConfig.parseEnterpriseConnections()) {
+      for (const domain of entry.domains) domains.set(domain, entry.connection);
+    }
+    return domains;
+  }
+
+  /**
+   * The enterprise connection a work email signs in through (#916), matched
+   * exactly on its lowercased domain (a subdomain must be listed itself), or
+   * null. Always null in residency, which signs in through its own issuer.
+   */
+  static connectionForEmail(email: string): string | null {
+    if (isResidency()) return null;
+    const at = email.lastIndexOf("@");
+    if (at < 0) return null;
+    const domain = email
+      .slice(at + 1)
+      .trim()
+      .toLowerCase();
+    return SsoConfig.enterpriseDomains().get(domain) ?? null;
+  }
+
+  /**
+   * Parses `SSO_ENTERPRISE_CONNECTIONS` (#916): a JSON array of
+   * `{ connection, domains }`. Unset, blank or exactly `none` means gating is
+   * off (`none` exists because SSM can't store an empty value).
+   */
+  private static parseEnterpriseConnections(): EnterpriseConnection[] {
     const raw = environment.SSO_ENTERPRISE_CONNECTIONS?.trim();
-    if (!raw || raw === "none") return new Set();
-    const names = raw.split(",").map((entry) => entry.trim());
-    names.forEach((name, i) => {
-      if (name === "none") {
+    if (!raw || raw === "none") return [];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(
+        `SSO_ENTERPRISE_CONNECTIONS is not valid JSON: ${(e as Error).message}`
+      );
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error(
+        "SSO_ENTERPRISE_CONNECTIONS must be a non-empty JSON array of { connection, domains }, or none"
+      );
+    }
+    const connections = new Set<string>();
+    const domains = new Set<string>();
+    return parsed.map((entry, i) => {
+      const at = `SSO_ENTERPRISE_CONNECTIONS[${i}]`;
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        throw new Error(`${at} must be an object`);
+      }
+      const unknown = Object.keys(entry).filter(
+        (key) => key !== "connection" && key !== "domains"
+      );
+      if (unknown.length > 0) {
+        throw new Error(`${at} has unknown key(s): ${unknown.join(", ")}`);
+      }
+      const { connection, domains: entryDomains } = entry as Record<
+        string,
+        unknown
+      >;
+      if (
+        typeof connection !== "string" ||
+        connection === "none" ||
+        !CONNECTION_NAME.test(connection)
+      ) {
         throw new Error(
-          `SSO_ENTERPRISE_CONNECTIONS[${i}]: "none" turns gating off and must be the whole value`
+          `${at}.connection ${JSON.stringify(connection)} is not a valid Auth0 connection name`
         );
       }
-      if (!CONNECTION_NAME.test(name)) {
-        throw new Error(
-          `SSO_ENTERPRISE_CONNECTIONS[${i}] "${name}" is not a valid Auth0 connection name`
-        );
+      if (connections.has(connection)) {
+        throw new Error(`${at}.connection "${connection}" is listed twice`);
       }
+      connections.add(connection);
+      if (!Array.isArray(entryDomains) || entryDomains.length === 0) {
+        throw new Error(`${at}.domains must be a non-empty array`);
+      }
+      entryDomains.forEach((domain, j) => {
+        if (typeof domain !== "string" || !EMAIL_DOMAIN.test(domain)) {
+          throw new Error(
+            `${at}.domains[${j}] ${JSON.stringify(domain)} is not a lowercase domain`
+          );
+        }
+        if (domains.has(domain)) {
+          throw new Error(`${at}.domains[${j}] "${domain}" is listed twice`);
+        }
+        domains.add(domain);
+      });
+      return { connection, domains: entryDomains as string[] };
     });
-    return new Set(names);
   }
 
   /**

@@ -16,9 +16,10 @@ export const environment = {
   // Enterprise SSO (#577) — saas-mode enterprise federation. SSO_ISSUERS: a
   // JSON array of { issuer, audience, alg? }; unset ⇒ derived from AUTH0_DOMAIN
   // + AUTH0_AUDIENCE (the SaaS default). SSO_ENTERPRISE_CONNECTIONS (#916): a
-  // comma-separated list of Auth0 connection names whose logins are
-  // invite-gated, matched against the token's `sub`; unset, blank or `none` ⇒
-  // gating off. Parsed (and validated at boot) by SsoConfig.
+  // JSON array of { connection, domains } — Auth0 enterprise connections
+  // whose logins are invite-gated (matched against the token's `sub`) and the
+  // email domains "Sign in with SSO" routes to them; unset, blank or `none` ⇒
+  // off. Parsed (and validated at boot) by SsoConfig.
   SSO_ISSUERS: process.env.SSO_ISSUERS,
   SSO_ENTERPRISE_CONNECTIONS: process.env.SSO_ENTERPRISE_CONNECTIONS,
   // Residency identity (#579) — the customer's own OIDC issuer URL + token

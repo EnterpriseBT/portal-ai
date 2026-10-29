@@ -56,7 +56,7 @@ async function start() {
     // clean boot refusal. Runs AFTER the deploy-mode guard so residency reports
     // its own config errors first.
     SsoConfig.issuers();
-    // #916: same fail-fast for SSO_ENTERPRISE_CONNECTIONS. A malformed list
+    // #916: same fail-fast for SSO_ENTERPRISE_CONNECTIONS. A malformed value
     // refuses to boot, since a silently ignored typo would ungate an
     // enterprise connection.
     const enterpriseConnections = SsoConfig.enterpriseConnections();

@@ -235,7 +235,9 @@ describe("getApplicationMetadata", () => {
   // provisioning gets the `deny` fallback, read from the token's `sub`.
   it("passes deny to provisioning for a listed enterprise connection", async () => {
     const previous = environment.SSO_ENTERPRISE_CONNECTIONS;
-    environment.SSO_ENTERPRISE_CONNECTIONS = "acme-okta";
+    environment.SSO_ENTERPRISE_CONNECTIONS = JSON.stringify([
+      { connection: "acme-okta", domains: ["acme.com"] },
+    ]);
     try {
       mockFindByAuth0Id.mockResolvedValue(null);
       mockEnsureProvisioned.mockRejectedValue(

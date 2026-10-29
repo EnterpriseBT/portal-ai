@@ -122,6 +122,11 @@ describe("SsoConfig.issuers — residency (#616)", () => {
   });
 });
 
+/** An SSO_ENTERPRISE_CONNECTIONS value (#916): JSON connections + domains. */
+const connections = (
+  ...entries: Array<{ connection: string; domains: string[] }>
+) => JSON.stringify(entries);
+
 describe("SsoConfig.enterpriseConnections (#916)", () => {
   it.each([
     ["unset", undefined],
@@ -133,35 +138,85 @@ describe("SsoConfig.enterpriseConnections (#916)", () => {
       SSO_ENTERPRISE_CONNECTIONS: value,
     });
     expect(SsoConfig.enterpriseConnections().size).toBe(0);
+    expect(SsoConfig.enterpriseDomains().size).toBe(0);
   });
 
-  it("parses and trims a comma-separated list", async () => {
+  it("parses connections and their domains", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: " acme-okta, globex ",
+      SSO_ENTERPRISE_CONNECTIONS: connections(
+        { connection: "acme-okta", domains: ["acme.com", "acme.co.uk"] },
+        { connection: "globex", domains: ["globex.io"] }
+      ),
     });
     expect([...SsoConfig.enterpriseConnections()]).toEqual([
       "acme-okta",
       "globex",
     ]);
+    expect([...SsoConfig.enterpriseDomains()]).toEqual([
+      ["acme.com", "acme-okta"],
+      ["acme.co.uk", "acme-okta"],
+      ["globex.io", "globex"],
+    ]);
   });
 
-  it("collapses duplicates", async () => {
+  it("is case-sensitive on connection names", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "acme,acme",
+      SSO_ENTERPRISE_CONNECTIONS: connections({
+        connection: "Acme",
+        domains: ["acme.com"],
+      }),
     });
-    expect([...SsoConfig.enterpriseConnections()]).toEqual(["acme"]);
+    expect(SsoConfig.enterpriseConnections().has("acme")).toBe(false);
   });
 
   it.each([
-    ["an empty entry", "a,,b"],
-    ["a trailing comma", "acme,"],
-    ["a pipe", "bad|name"],
-    ["a leading dash", "-lead"],
-    ["a trailing dash", "trail-"],
-    ["a name over 128 chars", "a".repeat(129)],
-    ["none mixed with names", "none,acme"],
+    ["malformed JSON", "[{"],
+    ["a non-array", JSON.stringify({ connection: "acme" })],
+    ["an empty array", "[]"],
+    ["a comma list", "acme-okta,globex"],
+    [
+      "an invalid connection name",
+      connections({ connection: "bad|name", domains: ["acme.com"] }),
+    ],
+    [
+      "a connection named none",
+      connections({ connection: "none", domains: ["acme.com"] }),
+    ],
+    [
+      "a name over 128 chars",
+      connections({ connection: "a".repeat(129), domains: ["acme.com"] }),
+    ],
+    ["empty domains", connections({ connection: "acme", domains: [] })],
+    [
+      "an invalid domain",
+      connections({ connection: "acme", domains: ["not a domain"] }),
+    ],
+    [
+      "an uppercase domain",
+      connections({ connection: "acme", domains: ["Acme.com"] }),
+    ],
+    [
+      "a domain listed twice",
+      connections(
+        { connection: "acme", domains: ["acme.com"] },
+        { connection: "globex", domains: ["acme.com"] }
+      ),
+    ],
+    [
+      "a connection listed twice",
+      connections(
+        { connection: "acme", domains: ["acme.com"] },
+        { connection: "acme", domains: ["acme.co.uk"] }
+      ),
+    ],
+    [
+      "an unknown key",
+      JSON.stringify([
+        { connection: "acme", domains: ["acme.com"], gated: true },
+      ]),
+    ],
   ])("throws on %s", async (_label, value) => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
@@ -171,21 +226,46 @@ describe("SsoConfig.enterpriseConnections (#916)", () => {
       /SSO_ENTERPRISE_CONNECTIONS/
     );
   });
+});
 
-  it("accepts a 128-char name", async () => {
+describe("SsoConfig.connectionForEmail (#916)", () => {
+  const ACME = connections({ connection: "acme-okta", domains: ["acme.com"] });
+
+  it("maps an email's domain to its connection, case-insensitively", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "a".repeat(128),
+      SSO_ENTERPRISE_CONNECTIONS: ACME,
     });
-    expect(SsoConfig.enterpriseConnections().size).toBe(1);
+    expect(SsoConfig.connectionForEmail("jo@acme.com")).toBe("acme-okta");
+    expect(SsoConfig.connectionForEmail("Jo@ACME.com")).toBe("acme-okta");
   });
 
-  it("is case-sensitive", async () => {
+  it("is null for an unlisted domain or a subdomain", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "Acme",
+      SSO_ENTERPRISE_CONNECTIONS: ACME,
     });
-    expect(SsoConfig.enterpriseConnections().has("acme")).toBe(false);
+    expect(SsoConfig.connectionForEmail("jo@globex.io")).toBeNull();
+    expect(SsoConfig.connectionForEmail("jo@eu.acme.com")).toBeNull();
+  });
+
+  it("is null for a string with no @", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      SSO_ENTERPRISE_CONNECTIONS: ACME,
+    });
+    expect(SsoConfig.connectionForEmail("acme.com")).toBeNull();
+  });
+
+  it("is null in residency", async () => {
+    const SsoConfig = await loadSsoConfig({
+      ...AUTH0,
+      DEPLOY_MODE: "residency",
+      OIDC_ISSUER: "https://idp.example.com/",
+      OIDC_AUDIENCE: "portalai",
+      SSO_ENTERPRISE_CONNECTIONS: ACME,
+    });
+    expect(SsoConfig.connectionForEmail("jo@acme.com")).toBeNull();
   });
 });
 
@@ -218,7 +298,10 @@ describe("SsoConfig.provisioningFallback", () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
       DEPLOY_MODE: "residency",
-      SSO_ENTERPRISE_CONNECTIONS: "acme-okta",
+      SSO_ENTERPRISE_CONNECTIONS: connections({
+        connection: "acme-okta",
+        domains: ["acme.com"],
+      }),
     });
     expect(SsoConfig.provisioningFallback({ sub: ACME })).toBe(
       "join_single_org"
@@ -228,7 +311,10 @@ describe("SsoConfig.provisioningFallback", () => {
   it("is deny in saas through a listed connection", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "globex,acme-okta",
+      SSO_ENTERPRISE_CONNECTIONS: connections(
+        { connection: "globex", domains: ["globex.io"] },
+        { connection: "acme-okta", domains: ["acme.com"] }
+      ),
     });
     expect(SsoConfig.provisioningFallback({ sub: ACME })).toBe("deny");
   });
@@ -236,7 +322,10 @@ describe("SsoConfig.provisioningFallback", () => {
   it("is personal_org in saas through an unlisted connection", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "globex",
+      SSO_ENTERPRISE_CONNECTIONS: connections({
+        connection: "globex",
+        domains: ["globex.io"],
+      }),
     });
     expect(SsoConfig.provisioningFallback({ sub: ACME })).toBe("personal_org");
   });
@@ -244,7 +333,10 @@ describe("SsoConfig.provisioningFallback", () => {
   it("is personal_org in saas for social and database logins", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "acme-okta",
+      SSO_ENTERPRISE_CONNECTIONS: connections({
+        connection: "acme-okta",
+        domains: ["acme.com"],
+      }),
     });
     expect(SsoConfig.provisioningFallback({ sub: "google-oauth2|1" })).toBe(
       "personal_org"
@@ -265,7 +357,10 @@ describe("SsoConfig.provisioningFallback", () => {
   it("is personal_org with no payload", async () => {
     const SsoConfig = await loadSsoConfig({
       ...AUTH0,
-      SSO_ENTERPRISE_CONNECTIONS: "acme-okta",
+      SSO_ENTERPRISE_CONNECTIONS: connections({
+        connection: "acme-okta",
+        domains: ["acme.com"],
+      }),
     });
     expect(SsoConfig.provisioningFallback(undefined)).toBe("personal_org");
   });
