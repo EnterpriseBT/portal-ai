@@ -333,9 +333,6 @@ jobs:
           VITE_SITE_URL: https://site-dev.portalsai.io
           VITE_SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
           VITE_SALES_EMAIL: ${{ steps.contact.outputs.sales }}
-          VITE_GOOGLE_PICKER_API_KEY: ${{ secrets.DEV_VITE_GOOGLE_PICKER_API_KEY }}
-          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_VITE_GOOGLE_OAUTH_CLIENT_ID }}
-          VITE_GOOGLE_CLOUD_PROJECT_NUMBER: ${{ secrets.DEV_VITE_GOOGLE_CLOUD_PROJECT_NUMBER }}
           # #489: the QA sign-in (/login?qa=1) pins this Auth0 connection;
           # unset, the build has no QA sign-in and verify-login goes red.
           VITE_AUTH0_QA_CONNECTION: ${{ secrets.DEV_VITE_AUTH0_QA_CONNECTION }}

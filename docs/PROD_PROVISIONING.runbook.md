@@ -166,7 +166,6 @@ The browser's file picker needs three of these values. Since #580 the web app re
 | `GOOGLE_PICKER_API_KEY` | the browser API key (restricted in GCP by referrer + API, not by secrecy) |
 | `GOOGLE_CLOUD_PROJECT_NUMBER` | the numeric prefix of the client id, passed to the picker as `setAppId` |
 
-The `PROD_VITE_GOOGLE_*` GitHub secrets that predate #580 are still passed by `deploy-prod.yml` but **no longer read** by the web build.
 
 `setAppId` is load-bearing: without it the picker creates no per-file grant and the first Sheets read fails with a **404** — not a 403 — which reads as a rejected scope and sends you hunting in the wrong place.
 
