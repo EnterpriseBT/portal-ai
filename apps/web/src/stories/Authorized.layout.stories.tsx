@@ -17,6 +17,7 @@ const mockAuth: NormalizedAuth = {
     withGoogle: () => {},
     withUniversal: () => {},
     withQaConnection: () => {},
+    withEnterpriseConnection: () => {},
   },
   logout: () => {},
 };

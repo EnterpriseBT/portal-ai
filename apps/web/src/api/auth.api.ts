@@ -1,5 +1,9 @@
-import type { Auth0UserProfileGetResponse } from "@portalai/core/contracts";
-import { useAuthQuery } from "../utils/api.util";
+import type {
+  Auth0UserProfileGetResponse,
+  SsoDiscoveryRequestBody,
+  SsoDiscoveryResponse,
+} from "@portalai/core/contracts";
+import { useAuthQuery, usePublicMutation } from "../utils/api.util";
 import { useAuth } from "../providers/Auth.provider";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -21,4 +25,11 @@ export const auth = {
       undefined,
       options
     ),
+
+  /** #916: which enterprise connection a work email signs in through, for
+   *  "Sign in with SSO". Anonymous: the caller is signed out. */
+  ssoDiscovery: () =>
+    usePublicMutation<SsoDiscoveryResponse, SsoDiscoveryRequestBody>({
+      url: "/api/public/sso-discovery",
+    }),
 };

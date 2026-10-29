@@ -135,6 +135,55 @@ function retryAfterSecondsOf(
 }
 
 /**
+ * Sends one API request and unwraps its JSON, mapping a non-2xx body to an
+ * `ApiError` (and a 429 to the tab-wide read pause, #747). `token` is null
+ * for an anonymous call (#916): no `Authorization` header is sent.
+ */
+async function sendApiRequest<T>(
+  url: string,
+  options: RequestInit,
+  token: string | null
+): Promise<T> {
+  const isRead = (options.method ?? "GET").toUpperCase() === "GET";
+  // FormData payloads must reach the server with the browser-generated
+  // multipart boundary intact — setting Content-Type here would strip it.
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> | undefined),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  if (!isFormData) {
+    headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+  }
+
+  const response = await fetch(resolveApiUrl(url), {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json()) as ApiErrorResponse;
+    const error = new ApiError(
+      body.message,
+      body.code,
+      response.status,
+      body.details
+    );
+    if (response.status === 429) {
+      error.retryAfterSeconds = retryAfterSecondsOf(response, body);
+    }
+    if (isRead && isApiRateLimited(error)) {
+      pauseApiReads(retryAfterMs(error));
+    }
+    throw error;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+/**
  * Hook that returns an authenticated fetch function.
  * Retrieves the access token from the auth seam (#607) and attaches it as a
  * Bearer token. The audience is resolved inside `getToken`, per provider.
@@ -161,42 +210,7 @@ export const useAuthFetch = () => {
         throw error;
       }
 
-      // FormData payloads must reach the server with the browser-generated
-      // multipart boundary intact — setting Content-Type here would strip it.
-      const isFormData =
-        typeof FormData !== "undefined" && options.body instanceof FormData;
-
-      const headers: Record<string, string> = {
-        ...(options.headers as Record<string, string> | undefined),
-        Authorization: `Bearer ${token}`,
-      };
-      if (!isFormData) {
-        headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
-      }
-
-      const response = await fetch(resolveApiUrl(url), {
-        ...options,
-        headers,
-      });
-
-      if (!response.ok) {
-        const body = (await response.json()) as ApiErrorResponse;
-        const error = new ApiError(
-          body.message,
-          body.code,
-          response.status,
-          body.details
-        );
-        if (response.status === 429) {
-          error.retryAfterSeconds = retryAfterSecondsOf(response, body);
-        }
-        if (isRead && isApiRateLimited(error)) {
-          pauseApiReads(retryAfterMs(error));
-        }
-        throw error;
-      }
-
-      return response.json() as Promise<T>;
+      return sendApiRequest<T>(url, options, token);
     },
     [getToken]
   );
@@ -368,19 +382,46 @@ function safeRequestKey<TVariables>(
  *   });
  *   remove();
  */
-export const useAuthMutation = <TData, TVariables>({
-  url,
-  body,
-  method = "POST",
-  options,
-  mutationOptions,
-  onPermissionDenied,
-  dedupeInFlight,
-  timeoutMs,
-}: AuthMutationConfig<TData, TVariables>) => {
+export const useAuthMutation = <TData, TVariables>(
+  config: AuthMutationConfig<TData, TVariables>
+) => {
+  const { fetchWithAuth } = useAuthFetch();
+  return useApiMutation(config, fetchWithAuth);
+};
+
+/** Fetches an API path without credentials (#916). */
+const fetchPublic = <T>(url: string, options: RequestInit = {}): Promise<T> =>
+  sendApiRequest<T>(url, options, null);
+
+/**
+ * #916: `useAuthMutation` for the API's anonymous `/api/public` routes, the
+ * only way to call one. It attaches no token, so a signed-out caller (the
+ * sign-in page) can use it, and it never calls `handleAuthError`. Unwrapping,
+ * `ApiError` mapping, the write timeout and in-flight dedupe are the same.
+ * There's no `onPermissionDenied`: an anonymous route has no object access.
+ */
+export const usePublicMutation = <TData, TVariables>(
+  config: Omit<AuthMutationConfig<TData, TVariables>, "onPermissionDenied">
+) => useApiMutation(config, fetchPublic);
+
+type ApiFetcher = <T>(url: string, options?: RequestInit) => Promise<T>;
+
+/** The body of `useAuthMutation` / `usePublicMutation`, over a fetcher. */
+const useApiMutation = <TData, TVariables>(
+  {
+    url,
+    body,
+    method = "POST",
+    options,
+    mutationOptions,
+    onPermissionDenied,
+    dedupeInFlight,
+    timeoutMs,
+  }: AuthMutationConfig<TData, TVariables>,
+  fetchWithAuth: ApiFetcher
+) => {
   const isRead = method.toUpperCase() === "GET";
   const dedupe = dedupeInFlight ?? !isRead;
-  const { fetchWithAuth } = useAuthFetch();
   const queryClient = useQueryClient();
 
   const mutation = useMutation<TData, ApiError, TVariables>({

@@ -80,6 +80,10 @@ export interface AuthLogin {
   /** #489: Auth0 login pinned to the build's QA connection. No-op when the
    *  build names none, and under residency OIDC. */
   withQaConnection: () => void;
+  /** #916: "Sign in with SSO". Auth0 login pinned to an enterprise
+   *  connection, with the work email as `login_hint`. No-op under residency
+   *  OIDC, which shows no SSO entry. */
+  withEnterpriseConnection: (connection: string, loginHint: string) => void;
 }
 
 export interface NormalizedAuth {
@@ -171,6 +175,16 @@ const Auth0AuthBridge: React.FC<{
             authorizationParams,
           });
         },
+        withEnterpriseConnection: (connection, loginHint) =>
+          void loginWithRedirect({
+            openUrl,
+            appState: auth0ReturnToAppState(),
+            authorizationParams: {
+              connection,
+              login_hint: loginHint,
+              redirect_uri: window.location.origin,
+            },
+          }),
       },
       logout: () =>
         logout({
@@ -227,6 +241,7 @@ const OidcAuthBridge: React.FC<{ children: React.ReactNode }> = ({
         withGoogle: () => void oidc.signinRedirect(),
         withUniversal: () => void oidc.signinRedirect(),
         withQaConnection: () => {},
+        withEnterpriseConnection: () => {},
       },
       logout: () => void oidc.signoutRedirect(),
     }),
