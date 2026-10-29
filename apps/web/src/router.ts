@@ -19,6 +19,9 @@ export const router = createRouter({
 // arrive before a handler exists. The client can't import the router itself:
 // this module already imports the client.
 registerNotInvitedHandler(() => {
+  // Every refused request raises this (a page load fires several); once the
+  // caller is on the page, a late one must not navigate again.
+  if (window.location.pathname === "/not-invited") return;
   void router.navigate({ to: "/not-invited", replace: true });
 });
 

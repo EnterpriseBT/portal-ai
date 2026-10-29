@@ -66,6 +66,23 @@ describe("SsoLoginFormUI (#916)", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  // #916 review: leaving an empty field for Back is not a blur; Back must
+  // not flash "Enter a valid email address" (the dialog rule, #789).
+  it("shows no field error when leaving an empty field for Back", async () => {
+    const user = userEvent.setup();
+    const { onBack } = renderForm();
+    const field = screen.getByLabelText(/work email/i);
+    await waitFor(() => expect(field).toHaveFocus());
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByText("Enter a valid email address")
+    ).not.toBeInTheDocument();
+    expect(field).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("explains an unconfigured domain", () => {
     renderForm({ notConfigured: true });
 

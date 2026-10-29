@@ -12,6 +12,7 @@ import {
   validateWithSchema,
   type FormErrors,
 } from "../utils/form-validation.util";
+import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 import type { ServerError } from "../utils/api.util";
 
 export interface SsoLoginFormUIProps {
@@ -107,31 +108,35 @@ export const SsoLoginFormUI: React.FC<SsoLoginFormUIProps> = ({
         autoFocus
         value={email}
         onChange={handleChange}
-        onBlur={handleBlur}
+        onBlur={blurUnlessDialogControl(handleBlur)}
         error={showError}
         helperText={showError && errors.email}
         slotProps={{ htmlInput: { "aria-invalid": showError } }}
       />
 
-      <Button
-        type="submit"
-        variant="contained"
-        size="large"
-        fullWidth
-        disabled={pending}
-        sx={{ textTransform: "none" }}
-      >
-        {pending ? "Continuing…" : "Continue"}
-      </Button>
-      <Button
-        type="button"
-        variant="text"
-        fullWidth
-        onClick={onBack}
-        sx={{ textTransform: "none" }}
-      >
-        Back
-      </Button>
+      {/* Marked like a dialog's action row, so leaving the field for Back
+          isn't a blur that flashes the empty-field error (#789's rule). */}
+      <Stack spacing={2} data-dialog-controls>
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          fullWidth
+          disabled={pending}
+          sx={{ textTransform: "none" }}
+        >
+          {pending ? "Continuing…" : "Continue"}
+        </Button>
+        <Button
+          type="button"
+          variant="text"
+          fullWidth
+          onClick={onBack}
+          sx={{ textTransform: "none" }}
+        >
+          Back
+        </Button>
+      </Stack>
     </Stack>
   );
 };

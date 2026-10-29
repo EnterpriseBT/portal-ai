@@ -26,4 +26,21 @@ describe("router not-invited redirect (#916)", () => {
       replace: true,
     });
   });
+
+  // #916 review: every refused request raises this; once the caller is on
+  // the page, a late one must not navigate again.
+  it("does nothing when already on /not-invited", () => {
+    const navigate = jest
+      .spyOn(router, "navigate")
+      .mockResolvedValue(undefined as never);
+    navigate.mockClear();
+    window.history.pushState({}, "", "/not-invited");
+
+    try {
+      handleNotInvited();
+      expect(navigate).not.toHaveBeenCalled();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
 });
