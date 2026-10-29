@@ -512,7 +512,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "SSO",
     category: GlossaryCategory.Organization,
     definition:
-      "Single sign-on: signing in through your organization's own identity provider (for example Okta or Microsoft Entra ID) instead of a Google account. Set up with the Portals AI team for organizations that need it; members still need an invitation to join.",
+      "Single sign-on: signing in through your organization's own identity provider (for example Okta or Microsoft Entra ID) instead of a Google account. Choose Sign in with SSO on the sign-in page and enter your work email. Set up with the Portals AI team for organizations that need it; members still need an invitation to join.",
     example:
       "With SSO set up, your team signs in with their company accounts and you manage access in your own identity provider.",
     relatedTerms: ["Organization", "Invitation"],

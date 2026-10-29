@@ -92,7 +92,7 @@ printf '%s' '<m2m client id>'            | portalops vars set AUTH0_CLI_CLIENT_I
 printf '%s' 'none'                       | portalops vars set SSO_ENTERPRISE_CONNECTIONS - --env $ENV $GUARD
 ```
 
-- [ ] ⚠️ **`SSO_ENTERPRISE_CONNECTIONS` must exist before the first deploy that reads it (#916).** The API task definition injects it from SSM, and **ECS won't start a task whose parameter is missing**. `none` means no enterprise connection is invite-gated. Invite-gating needs no Auth0 Action: the app reads the connection from the token's `sub`. To gate a customer's connection later, see `docs/ENTERPRISE_SSO.runbook.md` → SaaS enterprise connections.
+- [ ] ⚠️ **`SSO_ENTERPRISE_CONNECTIONS` must exist before the first deploy that reads it (#916).** The API task definition injects it from SSM, and **ECS won't start a task whose parameter is missing**. `none` means no enterprise connection is set up. The value is otherwise a JSON list of connections and their email domains. Invite-gating needs no Auth0 Action: the app reads the connection from the token's `sub`. To gate a customer's connection later, see `docs/ENTERPRISE_SSO.runbook.md` → SaaS enterprise connections.
 
 - [ ] The **SPA** client id, domain and audience also go into GitHub Actions secrets — `${PREFIX}_VITE_AUTH0_CLIENT_ID`, `${PREFIX}_VITE_AUTH0_DOMAIN`, `${PREFIX}_VITE_AUTH0_AUDIENCE` — plus `${PREFIX}_VITE_AUTH0_QA_CONNECTION`, the QA sign-in's Database connection name (#489, `docs/E2E_DEPLOYED_QA.runbook.md`). They are build-time inputs to the web bundle, not runtime config, which is why they are repo secrets rather than catalog keys.
 
