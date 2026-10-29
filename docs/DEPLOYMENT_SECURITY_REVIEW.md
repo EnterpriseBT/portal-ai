@@ -40,7 +40,7 @@ Every network call a deployment makes to a host outside its own boundary, server
 |---|---|---|---|---|
 | Map basemap tiles | **always** — hard-coded in `apps/web/src/modules/MapWidget/utils/map-config.util.ts`; no runtime override yet (**#910**) | The viewer's IP and map viewport; no records | CARTO, OpenStreetMap Foundation | `on` (until #910) |
 | Sign-in | `VITE_AUTH0_*` (SaaS) or the residency runtime OIDC config (#607) | The sign-in flow | Auth0 / customer IdP | `on` |
-| Google Picker | `VITE_GOOGLE_*`; only when a user connects Google Sheets | The picker session | Google | `on / drop` |
+| Google Picker | `GOOGLE_OAUTH_CLIENT_ID` + `GOOGLE_PICKER_API_KEY` + `GOOGLE_CLOUD_PROJECT_NUMBER`, served to the browser by `/api/connector-config` (#580), which serves none of them unless all three are set; only when a user connects Google Sheets | The picker session | Google | `on / drop` |
 
 > A residency install can withhold an entire toolpack (via tier entitlement) so its tools never appear, independent of the key. `apps/api/src/__tests__/subprocessor-egress-parity.test.ts` and `apps/web/src/__tests__/subprocessor-browser-egress.guard.test.ts` fail CI on an env var or browser host that isn't classified, so a new vector forces this table to be revisited.
 
