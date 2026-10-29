@@ -29,10 +29,12 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 ### SaaS (Auth0 tenant per env) — enterprise connections
 
 - Add the customer's IdP as an **Auth0 Enterprise Connection** (Okta/Entra/Ping via SAML or OIDC) in the tenant. Auth0 brokers it; the app keeps validating the same Auth0 issuer, so **no `SSO_ISSUERS` change is needed** for the SaaS path.
-- Federated users are **invitation-gated**: seat them first via the #584 invite flow. To make an unmatched federated login **deny** (rather than fall through to a personal org), set the enterprise-connection marker so the app can tell an enterprise login from a self-serve Google one:
-  - `SSO_ENTERPRISE_CLAIM` — the name of an access-token claim that only enterprise logins carry. The check is on that named claim alone (`SsoConfig.isEnterpriseFederated`, `apps/api/src/config/sso.config.ts`): presence, or exact equality with `_VALUE`. There is no prefix match, so a `sub`-prefix convention can't be used.
-  - `SSO_ENTERPRISE_CLAIM_VALUE` — optional; when set the claim must equal it, else presence alone marks it.
-  - **Where the claim comes from.** Auth0 puts no connection claim on an access token by default, and adding one takes a post-login Action. Since #873 the tenants run **no** post-login Action (`docs/PROD_PROVISIONING.runbook.md`, `docs/AUTH0_CLI_OPS.md`). Enabling this marker therefore means deliberately adding an Action that only sets this claim, and recording that change against #873's posture. Without it, leave both vars unset: an unmatched federated login then falls through to a personal org, as a self-serve login does.
+- Federated users are **invitation-gated** (#916): seat them first via the #584 invite flow. An uninvited login through a gated connection is refused with `403 SSO_PROVISIONING_NOT_INVITED` and lands on the web's **"You need an invitation"** page (`/not-invited`), instead of getting a personal org. **No Auth0 Action is involved**, so the tenants keep #873's no-Action posture.
+  - **How the app tells.** Auth0 builds an enterprise user id as `<strategy>|<connection>|<id>` (e.g. `samlp|acme-okta|jo@acme.com`), and that id is the access token's signed `sub`. `SsoConfig.connectionOf` (`apps/api/src/config/sso.config.ts`) reads the middle segment and gates it when it is listed in `SSO_ENTERPRISE_CONNECTIONS`. Social and database ids (`google-oauth2|…`, `auth0|…`) have no connection segment, so a self-serve login is never gated.
+  - **`SSO_ENTERPRISE_CONNECTIONS`** is a comma-separated list of Auth0 connection **names** (case-sensitive, Auth0's alphanumeric-and-dash rule). `none` turns gating off. Every deployed env stores the key, because SSM can't hold an empty value and the API task won't start while the parameter is missing. A malformed list stops the API at boot (`DEPLOY_MODE_CONFIG_INVALID`), so a typo is loud rather than silently ungating.
+  - **Before listing a connection, read one real user id from it.** After a test login through the connection, run `auth0 users search --query 'identities.connection:"<connection>"' --number 1` in that env's tenant and confirm the `user_id` reads `<strategy>|<connection>|…`. A strategy whose ids carry no connection segment can't be gated this way: it **fails open**, and its uninvited users get a personal org exactly as before. `samlp`, `oidc` and `okta` follow the three-part shape; confirm any other strategy (`waad`, `adfs`, `google-apps`) this way first.
+  - **To gate a connection:** `portalops vars set SSO_ENTERPRISE_CONNECTIONS <name>[,<name>…] --env <env>` with the env's guard flags (`--yes` on app-dev, `--yes --confirm-prod` on prod). Read the current value first and keep every existing name, since `set` replaces the list. The API reads the list at task start, so it takes effect on the next deploy or task restart.
+  - **Who is gated.** Only a user with **no membership** who signs in through a listed connection. Before refusing, the API checks once more for pending invitations to the user's verified email, so someone refused before they were invited gets in on their next request (or **Try again**) without the emailed link. A user who already got a personal org through the connection before it was listed keeps it. To move one into their real org, invite them there. The invitation can then be accepted from the emailed link, or the user can delete the personal org they own (org delete, #197), after which their next sign-in joins the invited org. `portalai org delete` works on app-dev but is refused on prod.
 - Leave `DEPLOY_MODE` unset (defaults `saas`). Google self-serve login is unchanged.
 
 ### Residency — customer OIDC or bundled issuer
@@ -51,7 +53,7 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 
 - `POST /api/webhooks/auth0/sync` → **404** (the route is gone).
 - A login still writes an `auth.login` audit row (Settings → Activity, which needs permission to view the audit log) — for a returning user too, deduped per login session.
-- SaaS: an invited enterprise user lands in the inviting org; an uninvited one is denied (403 `SSO_PROVISIONING_NOT_INVITED`). Residency: the first user owns the org, later users join as members.
+- SaaS: an invited enterprise user lands in the inviting org; an uninvited one is denied (403 `SSO_PROVISIONING_NOT_INVITED`) and sees "You need an invitation". A Google login, or a login through an unlisted connection, still gets a personal org. The API's boot log line `Enterprise SSO connections resolved` lists what is gated. Residency: the first user owns the org, later users join as members.
 
 ## Env reference
 
@@ -59,7 +61,7 @@ SSO is an **enterprise-tier capability**, operator-configured — there is no in
 |---|---|---|
 | `DEPLOY_MODE` | api | `saas` (default) or `residency` (owned by `config/deploy-mode.ts`) |
 | `SSO_ISSUERS` | api | **saas only** — JSON `[{issuer,audience,alg?}]` for enterprise federation; unset → derived from `AUTH0_*` |
-| `SSO_ENTERPRISE_CLAIM` / `_VALUE` | api | **saas only** — marks an enterprise-federated login for invite-gating |
+| `SSO_ENTERPRISE_CONNECTIONS` | api (SSM `sso-enterprise-connections`) | **saas only** — comma-separated Auth0 connection names whose logins are invite-gated (#916); `none` = off. Required in every deployed env |
 | `OIDC_ISSUER` / `OIDC_AUDIENCE` | api | **residency only** — the single customer issuer; boot guard requires both |
 | `OIDC_CLIENT_ID` | web | **residency only** — the customer IdP's client id for the browser sign-in, served in the runtime `config.js` (Helm `oidc.clientId`) |
 | web auth provider | web | runtime `config.js` `AUTH_PROVIDER` (`auth0` / `oidc`, #607) — not a build-time `VITE_*` |

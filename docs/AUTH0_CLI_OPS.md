@@ -101,6 +101,7 @@ Auth0 **roles/permissions are manageable here**, but the app does **not** enforc
 ## Gotchas
 
 - **Separate tenants per env, with a social-id nuance** — **tenant-scoped** ids are per-tenant and do not cross: application `client_id`s, role ids, connection ids, and **DB-connection** user ids (`auth0|…`). **But social-connection user ids** (`google-oauth2|…`, etc.) are the *provider's* account id — the **same string in every tenant** that person has logged into (verified: the same `google-oauth2|…` id resolves in both app-dev and local). So a social `user_id` is **not** a reliable "which tenant" signal; always `auth0 tenants use` the right tenant first and scope by the tenant, not the id.
+- **Enterprise user ids carry the connection name** — an enterprise connection's user id is `<strategy>|<connection>|<id>` (`samlp|acme-okta|…`). The API invite-gates on that middle segment (`SSO_ENTERPRISE_CONNECTIONS`, #916), so gating needs no post-login Action. `auth0 users search --query 'identities.connection:"<connection>"' --number 1` shows a real id to confirm the shape before a connection is listed (`docs/ENTERPRISE_SSO.runbook.md`).
 - **`auth0 login` ≠ `portalai login`** — different apps/tokens (see the callout above).
 - **`--json` has a banner** — strip the header line before parsing.
 - **`tenants use` is sticky** — it silently redirects *all* subsequent commands to that tenant; re-confirm with `auth0 tenants list` if unsure.

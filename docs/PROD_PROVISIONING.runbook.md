@@ -89,7 +89,10 @@ Each environment has its own tenant; `app-dev` is `portalsai-staging.us.auth0.co
 printf '%s' 'your-tenant.us.auth0.com'   | portalops vars set AUTH0_DOMAIN - --env $ENV $GUARD
 printf '%s' 'https://api.portalsai.io'   | portalops vars set AUTH0_AUDIENCE - --env $ENV $GUARD
 printf '%s' '<m2m client id>'            | portalops vars set AUTH0_CLI_CLIENT_ID - --env $ENV $GUARD
+printf '%s' 'none'                       | portalops vars set SSO_ENTERPRISE_CONNECTIONS - --env $ENV $GUARD
 ```
+
+- [ ] ⚠️ **`SSO_ENTERPRISE_CONNECTIONS` must exist before the first deploy that reads it (#916).** The API task definition injects it from SSM, and **ECS won't start a task whose parameter is missing**. `none` means no enterprise connection is invite-gated. Invite-gating needs no Auth0 Action: the app reads the connection from the token's `sub`. To gate a customer's connection later, see `docs/ENTERPRISE_SSO.runbook.md` → SaaS enterprise connections.
 
 - [ ] The **SPA** client id, domain and audience also go into GitHub Actions secrets — `${PREFIX}_VITE_AUTH0_CLIENT_ID`, `${PREFIX}_VITE_AUTH0_DOMAIN`, `${PREFIX}_VITE_AUTH0_AUDIENCE` — plus `${PREFIX}_VITE_AUTH0_QA_CONNECTION`, the QA sign-in's Database connection name (#489, `docs/E2E_DEPLOYED_QA.runbook.md`). They are build-time inputs to the web bundle, not runtime config, which is why they are repo secrets rather than catalog keys.
 
