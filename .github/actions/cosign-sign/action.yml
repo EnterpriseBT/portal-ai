@@ -1,0 +1,45 @@
+name: "Sign image (cosign keyless, with retry)"
+description: "Keyless-signs an image digest with cosign, retrying transient Sigstore failures"
+
+# Keyless signing (GitHub OIDC → Fulcio, logged in Rekor) of a pushed digest,
+# so the signature is tag-independent. The calling job needs
+# `id-token: write` and an earlier sigstore/cosign-installer step.
+#
+# Sigstore occasionally drops a request mid-stream ("stream error … received
+# from peer"). The first deploy after #909 failed that way after its images
+# were pushed, which stopped the job before the ECS update. Signing the same
+# digest again is harmless, so a bounded retry with backoff is safe; a
+# persistent failure still fails the deploy. Each attempt is capped at 120s
+# so a hung connection becomes a retry instead of stalling the job. A
+# permanent error (missing id-token, bad digest) also retries, costing about
+# 45s before the job fails; telling the two apart from cosign's text would
+# be brittle.
+
+inputs:
+  image:
+    description: "Image repository, without tag or digest"
+    required: true
+  digest:
+    description: "Digest to sign (for a multi-arch image, the index digest)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: cosign sign
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+      run: |
+        for attempt in 1 2 3; do
+          if timeout 120 cosign sign --yes "${IMAGE}@${DIGEST}"; then
+            exit 0
+          fi
+          echo "::warning::cosign sign failed (attempt ${attempt} of 3)"
+          if [ "${attempt}" -lt 3 ]; then
+            sleep $((attempt * 15))
+          fi
+        done
+        echo "::error::cosign sign failed after 3 attempts"
+        exit 1

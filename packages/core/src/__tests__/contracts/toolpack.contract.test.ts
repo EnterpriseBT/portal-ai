@@ -306,3 +306,47 @@ describe("ToolpackGetResponsePayloadSchema capabilities (#688)", () => {
     ).toBe(false);
   });
 });
+
+// #914: the name rule has readable messages; Zod's default printed the raw
+// regex ("Invalid string: must match pattern /^[a-z]…/") in the dialogs and
+// the API's 400.
+describe("toolpack name messages (#914)", () => {
+  const ENDPOINTS = {
+    schema: "https://example.com/schema",
+    runtime: "https://example.com/runtime",
+  };
+  const firstNameMessage = (
+    schema: typeof RegisterToolpackBodySchema | typeof UpdateToolpackBodySchema,
+    name: string
+  ) => {
+    const result = schema.safeParse({ name, endpoints: ENDPOINTS });
+    if (result.success) return null;
+    return result.error.issues.find((i) => i.path[0] === "name")?.message;
+  };
+
+  it.each([
+    ["register", RegisterToolpackBodySchema],
+    ["update", UpdateToolpackBodySchema],
+  ] as const)(
+    "%s: empty, invalid and too-long names read plainly",
+    (_l, schema) => {
+      expect(firstNameMessage(schema, "")).toBe("Name is required");
+      const pattern =
+        "Name must start with a lowercase letter and use only lowercase letters, digits and underscores";
+      expect(firstNameMessage(schema, "Bad Name")).toBe(pattern);
+      expect(firstNameMessage(schema, "9pack")).toBe(pattern);
+      expect(firstNameMessage(schema, "a".repeat(64))).toBe(
+        "Name must be 63 characters or fewer"
+      );
+      expect(firstNameMessage(schema, "customer_intel")).toBeNull();
+      expect(firstNameMessage(schema, "a".repeat(63))).toBeNull();
+    }
+  );
+
+  it("never surfaces the raw pattern", () => {
+    for (const name of ["", "Bad Name", "9pack", "a".repeat(64)]) {
+      const message = firstNameMessage(RegisterToolpackBodySchema, name) ?? "";
+      expect(message).not.toMatch(/Invalid string|\/\^/);
+    }
+  });
+});

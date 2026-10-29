@@ -30,7 +30,7 @@ Both images are built only at deploy time (dev: push to `main` / manual dispatch
    **Scanned = pushed.** Each platform is built in its own step before the push build, so the push must produce the same layers: the build args come from one step output shared by every build of an image, the builds share one builder's cache in one job, and the web base image is pinned by digest so a moving tag can't change the runtime layer in between.
 
 3. **Push + attest** — the image is pushed to ECR with a **CycloneDX/SPDX SBOM** (`sbom: true`) and **SLSA build provenance** (`provenance: mode=max`) attached as OCI attestation manifests.
-4. **Sign** — the pushed **digest** is signed with **cosign keyless** (GitHub Actions OIDC → Fulcio; no long-lived keys). Signing the digest (not the tag) makes the signature immutable. For the multi-arch web image that digest is the image index, so one signature covers both platforms.
+4. **Sign** — the pushed **digest** is signed with **cosign keyless** (GitHub Actions OIDC → Fulcio; no long-lived keys). Signing the digest (not the tag) makes the signature immutable. For the multi-arch web image that digest is the image index, so one signature covers both platforms. Signing runs through `.github/actions/cosign-sign`, which retries a failed sign up to 3 times with backoff: Sigstore occasionally drops a request mid-stream, and the first deploy after #909 failed that way between the push and the ECS update. Re-signing a digest is harmless.
 
 `npm audit` (`.github/workflows/npm-audit.yml`) remains a **non-gating** visibility check (#545) — the image scan is the gate.
 

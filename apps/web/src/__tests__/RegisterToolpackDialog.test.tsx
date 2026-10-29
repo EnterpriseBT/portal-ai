@@ -246,6 +246,25 @@ describe("RegisterToolpackDialogUI", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // #914: the Name field shows readable messages, never the raw regex.
+  it("shows 'Name is required' for an empty name and a plain pattern message for an invalid one", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const name = screen.getByLabelText(/Name/);
+    fireEvent.blur(name);
+    await waitFor(() => expect(name.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByText("Name is required")).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid string|must match pattern/)).toBeNull();
+
+    fireEvent.change(name, { target: { value: "Bad Name" } });
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Name must start with a lowercase letter and use only lowercase letters, digits and underscores"
+        )
+      ).toBeInTheDocument()
+    );
+  });
+
   it("calls onClose when Cancel is clicked", () => {
     const onClose = jest.fn();
     render(<RegisterToolpackDialogUI {...defaultProps} onClose={onClose} />);

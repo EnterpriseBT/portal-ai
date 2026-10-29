@@ -2,6 +2,9 @@ import {
   OrganizationToolpackModel,
   OrganizationToolpackModelFactory,
   OrganizationToolpackSchema,
+  TOOLPACK_SLUG_MAX_LENGTH,
+  TOOLPACK_SLUG_REGEX,
+  ToolpackToolDefinitionSchema,
 } from "../../models/organization-toolpack.model.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -154,5 +157,30 @@ describe("OrganizationToolpackSchema", () => {
     expect(typeof json.id).toBe("string");
     expect((json.id ?? "").length).toBeGreaterThan(0);
     expect(json.createdBy).toBe("user-2");
+  });
+});
+
+// #914: the slug rule reads in words wherever Zod reports it, including a
+// toolpack server's tool names (a registration's TOOLPACK_SCHEMA_INVALID).
+describe("toolpack slug rule (#914)", () => {
+  it("is generated from TOOLPACK_SLUG_MAX_LENGTH and keeps the original rule", () => {
+    expect(TOOLPACK_SLUG_MAX_LENGTH).toBe(63);
+    expect(TOOLPACK_SLUG_REGEX.source).toBe("^[a-z][a-z0-9_]{0,62}$");
+    expect(TOOLPACK_SLUG_REGEX.test("a".repeat(63))).toBe(true);
+    expect(TOOLPACK_SLUG_REGEX.test("a".repeat(64))).toBe(false);
+  });
+
+  it("explains an invalid tool name without printing the regex", () => {
+    const result = ToolpackToolDefinitionSchema.safeParse({
+      name: "LookupCompany",
+      description: "Look up a company.",
+      parameterSchema: { type: "object" },
+    });
+    expect(result.success).toBe(false);
+    const message = result.success ? "" : result.error.issues[0].message;
+    expect(message).toBe(
+      "Tool name must start with a lowercase letter and use only lowercase letters, digits and underscores (up to 63 characters)"
+    );
+    expect(message).not.toMatch(/Invalid string|\/\^/);
   });
 });
