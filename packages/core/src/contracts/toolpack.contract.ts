@@ -15,6 +15,7 @@ import { withCapabilities } from "./capabilities.contract.js";
 
 import {
   ToolpackEndpointsSchema,
+  TOOLPACK_SLUG_MAX_LENGTH,
   TOOLPACK_SLUG_REGEX,
 } from "../models/organization-toolpack.model.js";
 
@@ -130,8 +131,8 @@ export type ToolpackGetResponsePayload = z.infer<
 
 // ── Register / Update / Refresh / Delete ─────────────────────────────
 
-/** A toolpack name's longest form: `TOOLPACK_SLUG_REGEX` allows 63. */
-export const TOOLPACK_NAME_MAX_LENGTH = 63;
+/** A toolpack name's longest form: the slug rule's own bound (#914). */
+export const TOOLPACK_NAME_MAX_LENGTH = TOOLPACK_SLUG_MAX_LENGTH;
 
 /**
  * A toolpack name is a slug (its tools are namespaced by it), so it is

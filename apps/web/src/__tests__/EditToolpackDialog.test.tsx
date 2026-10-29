@@ -144,6 +144,26 @@ describe("EditToolpackDialogUI", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // #914: renaming to an invalid name shows the rule in words and blocks
+  // save; the update schema used to print the raw regex.
+  it("shows the name rule in words for an invalid rename and blocks save", async () => {
+    const onSubmit = jest.fn();
+    render(<EditToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    const name = screen.getByLabelText(/Name/);
+    fireEvent.change(name, { target: { value: "Bad Name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Name must start with a lowercase letter and use only lowercase letters, digits and underscores"
+        )
+      ).toBeInTheDocument()
+    );
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByText(/Invalid string|must match pattern/)).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("invokes onRefresh when the Refresh schema button is clicked", () => {
     const onRefresh = jest.fn();
     render(<EditToolpackDialogUI {...defaultProps} onRefresh={onRefresh} />);

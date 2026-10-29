@@ -22,8 +22,19 @@ import { ToolCapabilitySchema } from "./tool-capability.model.js";
 // ── Slug regex ──────────────────────────────────────────────────────
 //
 // Used for both pack names and tool names. Matches snake_case-style
-// identifiers up to 63 chars, leading lowercase letter required.
-export const TOOLPACK_SLUG_REGEX = /^[a-z][a-z0-9_]{0,62}$/;
+// identifiers up to TOOLPACK_SLUG_MAX_LENGTH chars, leading lowercase letter
+// required. The regex is built from the length so the two can't drift (#914).
+export const TOOLPACK_SLUG_MAX_LENGTH = 63;
+export const TOOLPACK_SLUG_REGEX = new RegExp(
+  `^[a-z][a-z0-9_]{0,${TOOLPACK_SLUG_MAX_LENGTH - 1}}$`
+);
+
+/** The slug rule in words, for a field named `field` (#914). Without a
+ *  message Zod printed the raw regex, which reached users in dialogs and in
+ *  a toolpack registration's TOOLPACK_SCHEMA_INVALID error. A message never
+ *  changes what parses, so stored rows read the same. */
+export const toolpackSlugMessage = (field: string): string =>
+  `${field} must start with a lowercase letter and use only lowercase letters, digits and underscores (up to ${TOOLPACK_SLUG_MAX_LENGTH} characters)`;
 
 // ── Endpoint shape ──────────────────────────────────────────────────
 
@@ -72,7 +83,7 @@ export type BulkDispatchMetadata = z.infer<typeof BulkDispatchMetadataSchema>;
 // ── Tool definition ─────────────────────────────────────────────────
 
 export const ToolpackToolDefinitionSchema = z.object({
-  name: z.string().regex(TOOLPACK_SLUG_REGEX),
+  name: z.string().regex(TOOLPACK_SLUG_REGEX, toolpackSlugMessage("Tool name")),
   description: z.string().min(1),
   parameterSchema: z.record(z.string(), z.unknown()),
   /** Optional bulk-dispatch eligibility — webhook schemas can declare
@@ -114,7 +125,7 @@ export type ToolpackMetadata = z.infer<typeof ToolpackMetadataSchema>;
 
 export const OrganizationToolpackSchema = CoreSchema.extend({
   organizationId: z.string(),
-  name: z.string().regex(TOOLPACK_SLUG_REGEX),
+  name: z.string().regex(TOOLPACK_SLUG_REGEX, toolpackSlugMessage("Name")),
   description: z.string().nullable(),
   endpoints: ToolpackEndpointsSchema,
   authHeaders: z.record(z.string(), z.string()).nullable(),

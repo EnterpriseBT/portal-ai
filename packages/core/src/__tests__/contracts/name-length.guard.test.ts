@@ -36,10 +36,6 @@ const EXEMPT: Record<string, string> = {
     "interpret hints (proposed labels, notes) are prompt input, never stored as an object's label",
   LayoutPlanInterpretDraftRequestBodySchema:
     "interpret hints are prompt input, and priorPlan is a stored plan (see the commit draft's plan); the commit bounds what becomes an object",
-  "RegisterToolpackBodySchema.name":
-    "TOOLPACK_SLUG_REGEX bounds it at 63 characters",
-  "UpdateToolpackBodySchema.name":
-    "TOOLPACK_SLUG_REGEX bounds it at 63 characters",
 };
 
 const isRequestBodyName = (name: string): boolean =>

@@ -9,7 +9,11 @@ description: "Keyless-signs an image digest with cosign, retrying transient Sigs
 # from peer"). The first deploy after #909 failed that way after its images
 # were pushed, which stopped the job before the ECS update. Signing the same
 # digest again is harmless, so a bounded retry with backoff is safe; a
-# persistent failure still fails the deploy.
+# persistent failure still fails the deploy. Each attempt is capped at 120s
+# so a hung connection becomes a retry instead of stalling the job. A
+# permanent error (missing id-token, bad digest) also retries, costing about
+# 45s before the job fails; telling the two apart from cosign's text would
+# be brittle.
 
 inputs:
   image:
@@ -29,7 +33,7 @@ runs:
         DIGEST: ${{ inputs.digest }}
       run: |
         for attempt in 1 2 3; do
-          if cosign sign --yes "${IMAGE}@${DIGEST}"; then
+          if timeout 120 cosign sign --yes "${IMAGE}@${DIGEST}"; then
             exit 0
           fi
           echo "::warning::cosign sign failed (attempt ${attempt} of 3)"
