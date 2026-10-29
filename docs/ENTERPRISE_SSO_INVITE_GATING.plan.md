@@ -175,6 +175,86 @@ The docs describe gating with no Auth0 Action.
 
 ---
 
+## Amendment (2026-10-29) — enterprise sign-in entry point
+
+Slices 1–5 and the review fixes have landed. These slices add the entry point that discovery Decision 5 and spec decisions 9–11 describe. Same loop: tests first, the smallest change, a focused run, then lint and type-check.
+
+## Slice 6 — `SsoConfig`: JSON grammar + `connectionForEmail`
+
+`SSO_ENTERPRISE_CONNECTIONS` becomes `[{connection, domains}]`, still gated by `sub`, and now also routed by email domain.
+
+**Files**
+
+- Edit:
+  - `apps/api/src/config/sso.config.ts`: rework `enterpriseConnections()` to parse JSON, and add `enterpriseDomains()` and `connectionForEmail()`.
+  - `apps/api/src/environment.ts`, `apps/api/.env.example`: comments and an example.
+- Tests:
+  - `apps/api/src/__tests__/config/sso.config.test.ts`: replace the comma-list cases with the spec's JSON-grammar cases.
+  - `metadata.middleware.test.ts`: switch the env value to JSON.
+
+**Steps**
+
+1. **Tests** (spec "Amendment tests", the sso.config bullet, ≈16). Run; they fail.
+2. **Implement** the parser and lookup. Keep `none`, unset and blank as off. Green.
+3. Boot check by hand: a malformed JSON value refuses to boot, and a valid value logs its connections.
+4. Lint and type-check.
+
+**Done when:** the sso.config and middleware suites are green, and app-dev's stored `none` is still valid (no operator action).
+
+## Slice 7 — `POST /api/public/sso-discovery`
+
+**Files**
+
+- New:
+  - `packages/core/src/contracts/sso-discovery.contract.ts`, plus its export;
+  - `apps/api/src/routes/public-sso.router.ts`;
+  - `apps/api/src/__tests__/__integration__/routes/public-sso.router.integration.test.ts`.
+- Edit:
+  - `app.ts` (the mount);
+  - `middleware/public-rate-limit.middleware.ts` (`code` and `bucket` parameters);
+  - `constants/api-codes.constants.ts`;
+  - `config/swagger.config.ts`;
+  - `__tests__/config/route-authorization.map.ts`.
+
+**Steps**
+
+1. **Tests** (spec "Amendment tests", the router bullet, ≈6), plus the route-authorization guard and core's `strict-request-bodies`. Run; they fail.
+2. **Implement** the contract, router, mount, rate-limit parameters, codes and swagger components. Rebuild core (`npm run build --workspace @portalai/core`) before running the API tests. Green.
+3. Run the existing `public-site.router.integration.test.ts` to confirm `site-config` keeps its own window. Then lint and type-check.
+
+**Done when:** the new and guard suites are green, and `/api/docs` shows the route.
+
+## Slice 8 — Web "Sign in with SSO"
+
+**Files**
+
+- New: `components/SsoLoginForm.component.tsx`, `__tests__/SsoLoginFormView.test.tsx`.
+- Edit:
+  - `utils/api.util.ts` (`usePublicMutation`);
+  - `api/auth.api.ts` (`ssoDiscovery`);
+  - `providers/Auth.provider.tsx` (`withEnterpriseConnection`, plus the OIDC no-op);
+  - `components/LoginForm.component.tsx` (link and mode);
+  - `__tests__/LoginForm.test.tsx`;
+  - a `usePublicMutation` test.
+
+**Steps**
+
+1. **Tests** (spec "Amendment tests", the web bullet, ≈12). Run; they fail.
+2. **Implement.** Green.
+3. Run the web guard suites (`guard|route`, `auth-consumers` and anything else that mocks `auth-error.util` or `Auth.provider`). Then lint, type-check, and a full root `npm run build`.
+
+**Done when:** the web suites and guards are green, and in local dev the SSO link sends a listed domain to Auth0 with `connection=<name>`.
+
+**Risk:** a test that mocks `useAuth().login` with a fixed object needs the new method; search for `withUniversal:` in the test and story mocks.
+
+## Slice 9 — Docs
+
+- `docs/ENTERPRISE_SSO.runbook.md`: the JSON grammar, domains, the sign-in flow, and the accepted exposure.
+- `docs/PROD_PROVISIONING.runbook.md`: `none` is unchanged; add a pointer to the JSON format.
+- `CLAUDE.md` → "API Calls & SDK Helpers": `usePublicMutation` as the only anonymous path.
+- `packages/core/src/content/glossary.util.ts` SSO entry: say how to sign in ("Sign in with SSO" and your work email). Then run core's `glossary.util.test.ts`.
+- Guards: `lint:doc-pointers`, plus the permission-copy guards for api and web.
+
 ## Sequence summary
 
 | # | Lands | Gate |
@@ -184,6 +264,10 @@ The docs describe gating with no Auth0 Action.
 | 3 | Catalog + `backend.yml`; **app-dev `none` set by the operator** | devops-cli parity; `vars describe` |
 | 4 | Web `/not-invited` route, view and redirect | web unit ≈7, permission-copy guard |
 | 5 | Runbooks | doc-pointers, permission-copy guard |
+| 6 | JSON grammar + `connectionForEmail` | api unit ≈16 |
+| 7 | `POST /api/public/sso-discovery` | api integration ≈6, route-auth + strict-body guards |
+| 8 | Web "Sign in with SSO" | web unit ≈12, guards, root build |
+| 9 | Runbook, CLAUDE.md, glossary | doc-pointers, glossary, permission-copy |
 
 ## Cross-slice notes
 

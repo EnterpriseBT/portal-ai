@@ -19,6 +19,9 @@ It builds on [`ENTERPRISE_SSO_INVITE_GATING.discovery.md`](./ENTERPRISE_SSO_INVI
 6. **A denied login keeps its user row** (confirmed in discovery).
 7. **The web not-invited state is a route, `/not-invited`.** The client's global error handler sends any `403 SSO_PROVISIONING_NOT_INVITED` there. It renders under `PublicLayout`, so no org-reading chrome mounts (the #881 rule).
 8. **Strategy names are not rejected.** Discovery suggested refusing entries like `auth0`. The spec drops that rule: matching only reads the middle segment of a three-segment `sub`, so a strategy name in the list can never match anything.
+9. **Amendment (2026-10-29): an enterprise sign-in entry point.** A deployed build's only sign-in button pins Google, so the sign-in page gains "Sign in with SSO". The user enters a work email, `POST /api/public/sso-discovery` maps its domain to a connection, and the web redirects to Auth0 with that `connection` pinned and the email as `login_hint`. Nothing changes in the Auth0 tenant (discovery Decision 5).
+10. **`SSO_ENTERPRISE_CONNECTIONS` is JSON** (amendment): `[{"connection":"acme-okta","domains":["acme.com"]}]`. Every listed connection is both routed (by email domain) and gated (by `sub`). `none` and unset still mean off. This supersedes the comma list in slice 1, which never shipped.
+11. **The anonymous lookup is accepted exposure.** It answers only `{ connection }` for a domain, never user or org data. It's rate-limited per IP with its own code, and the email travels in a body, not a URL.
 
 ## Scope
 
@@ -45,12 +48,13 @@ It builds on [`ENTERPRISE_SSO_INVITE_GATING.discovery.md`](./ENTERPRISE_SSO_INVI
 - **Add** `static enterpriseConnections(): ReadonlySet<string>`.
   - It reads `environment.SSO_ENTERPRISE_CONNECTIONS` on each call (no caching, matching the file's convention).
   - **Off:** unset, blank after trim, or exactly `none` returns an empty set.
-  - **Otherwise:** split on `,`, trim each entry, and require each entry to match `^[A-Za-z0-9](?:[A-Za-z0-9-]{0,126}[A-Za-z0-9])?$` (Auth0's connection-name rule).
-    - The match is case-sensitive.
-    - Duplicates collapse.
-    - An empty entry, such as `a,,b` or a trailing comma, throws.
-    - An invalid entry throws `Error("SSO_ENTERPRISE_CONNECTIONS[<i>] \"<entry>\" is not a valid Auth0 connection name")`.
-  - `none` combined with other entries (`none,acme`) throws, because `none` must be the whole value.
+  - **Otherwise** (amended), the value is JSON: a non-empty array of `{ connection: string, domains: string[] }`.
+    - `connection` must match `^[A-Za-z0-9](?:[A-Za-z0-9-]{0,126}[A-Za-z0-9])?$` (Auth0's connection-name rule). It is case-sensitive and must not be `none`.
+    - `domains` is a non-empty array of lowercase hostnames, each matching `^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`.
+    - A connection or a domain listed twice throws. Unknown keys throw.
+    - Malformed JSON, a non-array, an empty array or an invalid entry throws `Error("SSO_ENTERPRISE_CONNECTIONS…")`, naming the index and field.
+  - It returns the set of connection names. A new `static enterpriseDomains(): ReadonlyMap<string, string>` returns domain → connection, parsed the same way.
+- **Add** `static connectionForEmail(email: string): string | null`. Returns `null` in residency. Otherwise it lowercases the part after the last `@` and looks it up exactly in `enterpriseDomains()`, so `jo@ACME.com` matches `acme.com`, and a subdomain such as `eu.acme.com` doesn't match unless it's listed.
 - **Add** `static connectionOf(sub: unknown): string | null`.
   - It returns `sub.split("|")[1]` when `sub` is a string with three or more `|`-separated segments and that segment is non-empty. Otherwise it returns `null`.
   - `google-oauth2|1` and `auth0|abc` therefore return `null`, and `samlp|acme-okta|jo@acme.com` returns `acme-okta`.
@@ -114,6 +118,33 @@ Replace the two claim keys with `SSO_ENTERPRISE_CONNECTIONS: CUSTOMER_IDP`.
   - The copy names no role, to pass `permission-copy.guard`.
   - `NotInvitedView` wires `onSignOut` to `sdk.auth.logout()`'s `logout`. `onTryAgain` invalidates `queryKeys.organizations.root` and navigates to `/`. The next API call re-runs `ensureProvisioned`, which now accepts a newly arrived invite.
 
+### Enterprise sign-in entry point (amendment)
+
+- **`packages/core` contract** (`contracts/sso-discovery.contract.ts`, exported from `@portalai/core/contracts`):
+  - `SsoDiscoveryRequestBodySchema = z.object({ email: z.string().trim().email("Enter a valid email address").max(320) }).strict()`.
+  - `SsoDiscoveryResponseSchema = z.object({ connection: z.string().nullable() }).strict()`.
+- **`apps/api/src/routes/public-sso.router.ts`** (new), mounted in `app.ts` with `app.use("/api/public", publicSsoRouter)` ahead of `protectedRouter`, next to `publicSiteRouter`.
+  - It answers `POST /sso-discovery`.
+  - The body is `safeParse`d against the request schema; a failure answers `invalidPayload(ApiCode.SSO_DISCOVERY_INVALID_PAYLOAD, …)` (400).
+  - Success answers `200 { connection: SsoConfig.connectionForEmail(email) }`, with `Cache-Control: no-store`.
+  - It logs `{ matched: boolean }` only, never the email or domain.
+  - It carries an `@openapi` block that `$ref`s `SsoDiscoveryRequestBody` / `SsoDiscoveryResponse`, both registered in `swagger.config.ts`.
+  - It is classified in `route-authorization.map.ts` as anonymous with no lock, like `GET /api/public/site-config`.
+- **`middleware/public-rate-limit.middleware.ts`:** `publicRateLimit(limitPerMinute, code = ApiCode.SITE_CONFIG_RATE_LIMITED, bucket = "site")`. The bucket goes into the counter key, so the two public routes don't share a window. The SSO router uses `publicRateLimit(environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN, ApiCode.SSO_DISCOVERY_RATE_LIMITED, "sso")`.
+- **`ApiCode`:** add `SSO_DISCOVERY_INVALID_PAYLOAD` and `SSO_DISCOVERY_RATE_LIMITED`.
+- **Web SDK, anonymous calls (a new pattern):** `utils/api.util.ts` gains `usePublicMutation`, which matches `useAuthMutation` but attaches no token and never calls `handleAuthError`. It keeps the same response unwrapping, `ApiError` mapping, `WRITE_TIMEOUT_MS` bound and in-flight dedupe. `api/auth.api.ts` gains `ssoDiscovery: () => usePublicMutation<SsoDiscoveryResponse, SsoDiscoveryRequestBody>({ url: "/api/public/sso-discovery", method: "POST" })`. CLAUDE.md's "API Calls & SDK Helpers" lists the new helper as the only path for an anonymous call.
+- **`providers/Auth.provider.tsx`:** `login.withEnterpriseConnection(connection: string, loginHint: string)` calls `loginWithRedirect` with `authorizationParams: { connection, login_hint, redirect_uri }` and the same `appState` return-to. The OIDC (residency) provider's version is a no-op.
+- **`components/SsoLoginForm.component.tsx`** (new): `SsoLoginFormUI`, a pure component that holds its own field state. Its props are `{ onSubmit(email): void, onBack(): void, pending: boolean, notConfigured: boolean, serverError: ServerError | null }`.
+  - It renders a `<form>` with a "Work email" `TextField` (`type="email"`, `required`, auto-focused).
+  - It validates with `validateWithSchema(SsoDiscoveryRequestBodySchema, …)`, keeping `touched`/`errors` and setting `aria-invalid` and `helperText`. It calls `focusFirstInvalidField()` on an invalid submit.
+  - The buttons are **Continue** (submit, disabled while `pending`) and **Back** (`type="button"`).
+  - When `notConfigured`, it shows an `info` alert: "Single sign-on isn't set up for that email domain. Sign in with Google instead."
+  - It renders `<FormAlert serverError>` for a 429 or other failure.
+- **`components/LoginForm.component.tsx`:**
+  - `LoginFormUI` gains an optional `onClickSso` and renders a text **Sign in with SSO** link under the primary button when that prop is given. The container passes it only when the provider isn't OIDC.
+  - The container holds `mode: "default" | "sso"` and renders `SsoLoginFormUI` in SSO mode.
+  - On submit it calls `mutateAsync({ email })`. If a `connection` comes back, it calls `withEnterpriseConnection(connection, email)`; otherwise it sets `notConfigured`. Typing again clears `notConfigured`.
+
 ## Migration
 ## Seed
 
@@ -171,7 +202,28 @@ These need no new cases; the existing parity assertions must stay green with the
 - `NotInvitedPage` (route) test: renders under `PublicLayout` and mounts no `organizations.current` query.
 - `permission-copy.guard.test.ts` runs unchanged and must pass. **≈ 7**
 
-**Totals ≈ 36 cases.**
+### Amendment tests
+
+- `apps/api/src/__tests__/config/sso.config.test.ts`: the comma-list cases are replaced by JSON grammar cases:
+  - unset, blank and `none` are off;
+  - parses connections and domains;
+  - throws on bad JSON, a non-array, `[]`, a bad name, an empty `domains`, a bad or uppercase domain, a duplicate domain, a duplicate connection, and an unknown key;
+  - `connectionForEmail`: case-insensitive match, no subdomain match, no `@`, residency gives null. **≈ 16, replacing ≈ 12**
+- `apps/api/src/__tests__/__integration__/routes/public-sso.router.integration.test.ts` (new):
+  - a listed domain returns 200 `{ connection }`, unauthenticated;
+  - an unlisted domain returns `{ connection: null }`;
+  - a malformed email returns 400 `SSO_DISCOVERY_INVALID_PAYLOAD`;
+  - an unknown body key returns 400;
+  - over the per-minute limit returns 429 `SSO_DISCOVERY_RATE_LIMITED`, and `site-config` keeps its own window;
+  - `Cache-Control: no-store`. **≈ 6**
+- The route-authorization guard and `strict-request-bodies.test.ts` (core) run unchanged and must pass with the new route and schema.
+- Web:
+  - `SsoLoginFormView.test.tsx` (UI): renders the field auto-focused; Enter submits a valid email; an invalid email shows "Enter a valid email address" with `aria-invalid`; Back calls `onBack`; the `notConfigured` alert; the `FormAlert`; Continue is disabled while `pending`.
+  - `LoginForm.test.tsx`: the SSO link renders only when `onClickSso` is given.
+  - A container test with the SDK mocked: a match calls `withEnterpriseConnection(connection, email)`, and `null` shows the alert.
+  - `api.util` `usePublicMutation`: sends no `Authorization` header and doesn't call `handleAuthError` on 401. **≈ 12**
+
+**Totals ≈ 36 + ≈ 22 (amendment) ≈ 58 cases.**
 
 ## Acceptance criteria
 
@@ -184,6 +236,8 @@ These need no new cases; the existing parity assertions must stay green with the
 - [ ] Residency is unaffected.
 - [ ] `portalops vars describe --env app-dev` lists `SSO_ENTERPRISE_CONNECTIONS`, and app-dev deploys green with it set to `none`.
 - [ ] No Auth0 Action exists in any tenant, and the runbooks describe gating without one.
+- [ ] **(Amendment)** On a deployed build's sign-in page, **Sign in with SSO** plus a work email on a listed domain redirects to Auth0 with that connection pinned. An unlisted domain shows "Single sign-on isn't set up for that email domain. Sign in with Google instead." and stays on the form. A malformed email shows a field error after blur or submit. Residency doesn't show the link.
+- [ ] **(Amendment)** `POST /api/public/sso-discovery` needs no token, answers only `{ connection }`, and returns 429 `SSO_DISCOVERY_RATE_LIMITED` past the per-IP limit.
 
 ## Risks & rollback
 
@@ -210,6 +264,13 @@ These need no new cases; the existing parity assertions must stay green with the
 - **Web (new):** `views/NotInvited.view.tsx`, `routes/not-invited.tsx`, `__tests__/NotInvitedView.test.tsx`, `__tests__/NotInvitedPage.test.tsx`.
 - **Web (edit):** `utils/auth-error.util.ts`, `client.ts`, `routes/__root.tsx`, `utils/routes.util.ts`, `routeTree.gen.ts` (generated), `__tests__/client.test.ts`.
 - **Docs (edit):** `docs/ENTERPRISE_SSO.runbook.md`, `docs/PROD_PROVISIONING.runbook.md`, `docs/AUTH0_CLI_OPS.md`.
+- **Amendment:**
+  - **Core (new):** `packages/core/src/contracts/sso-discovery.contract.ts`, plus its export.
+  - **API (new):** `routes/public-sso.router.ts`, `__tests__/__integration__/routes/public-sso.router.integration.test.ts`.
+  - **API (edit):** `app.ts`, `middleware/public-rate-limit.middleware.ts`, `constants/api-codes.constants.ts`, `config/swagger.config.ts`, `__tests__/config/route-authorization.map.ts`, `config/sso.config.ts` (JSON grammar), `.env.example`, `environment.ts` comment.
+  - **Web (new):** `components/SsoLoginForm.component.tsx`, `__tests__/SsoLoginFormView.test.tsx`.
+  - **Web (edit):** `utils/api.util.ts`, `api/auth.api.ts`, `providers/Auth.provider.tsx`, `components/LoginForm.component.tsx`, `__tests__/LoginForm.test.tsx`.
+  - **Docs (edit):** `CLAUDE.md` (the anonymous SDK helper) and the SSO glossary entry (`packages/core/src/content/glossary.util.ts`).
 
 ## Next step
 

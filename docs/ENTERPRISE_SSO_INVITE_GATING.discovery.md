@@ -95,6 +95,25 @@ The whole thing runs under `SyncLockService.withProvisioningLock(auth0Sub)`. The
 
 **Lean: A.** It fixes the acceptance criterion with the narrowest change. The cost is one userinfo call, and only for a user who is about to be denied. B changes #584's documented behavior for self-serve users ("they accept via the token endpoint", `application.service.ts:199-201`), so it's its own ticket.
 
+### Decision 5 — enterprise sign-in entry point (amendment, 2026-10-29)
+
+The smoke scaffold found that a deployed build can't reach an enterprise connection. The only sign-in button pins `connection: "google-oauth2"` (`apps/web/src/providers/Auth.provider.tsx:152`). Auth0's own login page is reachable only from a dev-only button (`LoginForm.component.tsx`, `import.meta.env.DEV`). Without an entry point, the gate never runs outside local dev, so the issue was amended to include one.
+
+**A. Email → the app routes.** "Sign in with SSO" asks for a work email. An anonymous API lookup maps its domain to a connection from config, and the web calls `loginWithRedirect` with that `connection` pinned and the email as `login_hint`. Nothing in the Auth0 tenant changes, and the QA sign-in is untouched.
+
+**B. Auth0 Identifier First with Home Realm Discovery.** Domains live on each Auth0 connection, but the setting is tenant-wide and changes the QA sign-in flow that e2e and `verify-login` drive.
+
+**C. Auth0's login page with every connection as a button.** Every customer's IdP is visible to everyone, and the QA Database connection's password form shows too.
+
+| | A: app routes | B: identifier first | C: Auth0 buttons |
+|---|---|---|---|
+| Tenant-wide Auth0 change | No | Yes | Display flags |
+| QA / e2e sign-in affected | No | Yes | Password form shown |
+| Where the domains live | Our config | Auth0 connection | n/a |
+| Reveals a domain has SSO | Yes (rate-limited) | Yes (Auth0 behavior) | Shows every IdP |
+
+**Decision: A** (confirmed). The domain map joins the gating list as **one JSON value**, `SSO_ENTERPRISE_CONNECTIONS=[{"connection":"acme-okta","domains":["acme.com"]}]`, so every listed connection is both routed and gated. `none` still means off. The lookup is `POST /api/public/sso-discovery` with body `{ email }`, rate-limited per IP; it uses a body so the email never appears in a URL or access log. An unmatched domain is an inline error on the form. The exposure, a public answer to "does this domain have SSO", is accepted as standard for SSO discovery. No session or user data is involved.
+
 ## Tradeoff comparison
 
 | | D1: `sub` segment | D2: SSM env var | D3: remove claim vars | D4: deny-path re-check |
