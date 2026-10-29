@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 import type { Response } from "express";
 
 import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
@@ -8,6 +8,7 @@ import type { PublicAccountInfo } from "@portalai/core/contracts";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import type { Request } from "../../types/request.js";
 import {
   oauthProviderError,
   renderOAuthCallbackHtml,
@@ -263,7 +264,7 @@ describe("oauthProviderError (#924)", () => {
 });
 
 describe("sendOAuthCallbackFailurePage (#924)", () => {
-  function fakeResponse() {
+  function fakeExchange(opts: { destroyed?: boolean } = {}) {
     const sent: {
       status?: number;
       type?: string;
@@ -271,6 +272,8 @@ describe("sendOAuthCallbackFailurePage (#924)", () => {
       body?: string;
     } = {};
     const res = {
+      destroyed: opts.destroyed ?? false,
+      headersSent: false,
       status(code: number) {
         sent.status = code;
         return res;
@@ -288,33 +291,71 @@ describe("sendOAuthCallbackFailurePage (#924)", () => {
         return res;
       },
     };
-    return { res: res as unknown as Response, sent };
+    const log = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const req = {
+      log,
+      originalUrl: "/api/connectors/google-sheets/callback?code=c&state=s",
+    };
+    return {
+      req: req as unknown as Request,
+      res: res as unknown as Response,
+      sent,
+      log,
+    };
   }
 
-  it("answers at the error's status with its message", () => {
-    const { res, sent } = fakeResponse();
-    sendOAuthCallbackFailurePage(res, {
+  it("answers at the error's status with its message, logged on req.log", () => {
+    const { req, res, sent, log } = fakeExchange();
+    sendOAuthCallbackFailurePage(req, res, {
       slug: "google-sheets",
+      provider: "Google",
       error: new ApiError(
-        502,
-        ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
-        "bad code"
+        400,
+        ApiCode.GOOGLE_OAUTH_INVALID_STATE,
+        "OAuth state invalid"
       ),
     });
-    expect(sent.status).toBe(502);
+    expect(sent.status).toBe(400);
     expect(sent.type).toBe("html");
     expect(sent.headers).toHaveProperty("Cross-Origin-Opener-Policy");
     expect(scriptPayload(sent.body!)).toEqual({
       type: "google-sheets-failed",
-      code: ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
-      message: "bad code",
+      code: ApiCode.GOOGLE_OAUTH_INVALID_STATE,
+      message: "OAuth state invalid",
     });
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: ApiCode.GOOGLE_OAUTH_INVALID_STATE }),
+      "OAuth callback refused"
+    );
+    // The URL's code and state are redacted from the log line.
+    expect(JSON.stringify(log.warn.mock.calls)).not.toContain("code=c");
+  });
+
+  it("replaces a 502's provider response with fixed copy, keeping its code", () => {
+    const { req, res, sent, log } = fakeExchange();
+    sendOAuthCallbackFailurePage(req, res, {
+      slug: "google-sheets",
+      provider: "Google",
+      error: new ApiError(
+        502,
+        ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+        'Google token exchange failed (400): {"error":"invalid_grant"}'
+      ),
+    });
+    expect(sent.status).toBe(502);
+    expect(sent.body).not.toContain("invalid_grant");
+    expect(scriptPayload(sent.body!)).toMatchObject({
+      code: ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+      message: "Google couldn't complete the authorization. Please try again.",
+    });
+    expect(log.error).toHaveBeenCalled();
   });
 
   it("keeps a 500's message out of the page, as HttpService.error does (#687)", () => {
-    const { res, sent } = fakeResponse();
-    sendOAuthCallbackFailurePage(res, {
+    const { req, res, sent } = fakeExchange();
+    sendOAuthCallbackFailurePage(req, res, {
       slug: "google-sheets",
+      provider: "Google",
       error: new ApiError(
         500,
         ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED,
@@ -327,5 +368,21 @@ describe("sendOAuthCallbackFailurePage (#924)", () => {
       code: ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED,
       message: INTERNAL_ERROR_MESSAGE,
     });
+  });
+
+  it("logs an abandoned request at info and writes nothing to a gone client (#698)", () => {
+    const { req, res, sent, log } = fakeExchange({ destroyed: true });
+    sendOAuthCallbackFailurePage(req, res, {
+      slug: "microsoft-excel",
+      provider: "Microsoft",
+      error: new ApiError(
+        499,
+        ApiCode.REQUEST_ABANDONED,
+        "Client disconnected"
+      ),
+    });
+    expect(log.info).toHaveBeenCalled();
+    expect(log.error).not.toHaveBeenCalled();
+    expect(sent.body).toBeUndefined();
   });
 });

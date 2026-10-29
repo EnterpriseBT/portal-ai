@@ -716,9 +716,12 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .query({ code: "bad", state });
 
     expect(res.status).toBe(502);
-    expect(callbackFailure(res, "microsoft-excel").code).toBe(
-      ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED
-    );
+    // A 502 carries the provider's response body; the page shows fixed copy.
+    expect(callbackFailure(res, "microsoft-excel")).toMatchObject({
+      code: ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED,
+      message:
+        "Microsoft couldn't complete the authorization. Please try again.",
+    });
 
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()

@@ -25,11 +25,7 @@ import {
   GoogleAuthService,
 } from "../services/google-auth.service.js";
 import { GoogleSheetsConnectorService } from "../services/google-sheets-connector.service.js";
-import {
-  oauthProviderError,
-  sendOAuthCallbackFailurePage,
-  sendOAuthCallbackPage,
-} from "../utils/oauth-callback-html.util.js";
+import { answerOAuthCallback } from "../utils/oauth-callback-html.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "google-sheets-connector" });
@@ -188,64 +184,38 @@ googleSheetsConnectorRouter.post(
  *         content:
  *           text/html:
  *             schema: { type: string }
+ *       500:
+ *         description: An unexpected failure; the page posts `<slug>-failed` with a generic message
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
  *       502:
- *         description: Google rejected the code or userinfo lookup failed; the page posts `<slug>-failed`
+ *         description: Google rejected the code or userinfo lookup failed; the page posts `<slug>-failed` with fixed copy, never the provider's response
+ *         content:
+ *           text/html:
+ *             schema: { type: string }
+ *       503:
+ *         description: The database was too busy to admit the callback (`DB_ADMISSION_TIMEOUT`); the page posts `<slug>-failed`
  *         content:
  *           text/html:
  *             schema: { type: string }
  */
 googleSheetsConnectorPublicRouter.get(
   "/callback",
-  async (req: Request, res: Response) => {
-    try {
-      // #924: the provider redirects with `error` instead of `code` when the
-      // user cancels or consent fails; the popup still gets the page.
-      const providerError =
-        typeof req.query.error === "string" ? req.query.error : "";
-      if (providerError) {
-        return sendOAuthCallbackFailurePage(res, {
-          slug: "google-sheets",
-          error: oauthProviderError(providerError, {
-            provider: "Google",
-            accessDenied: ApiCode.GOOGLE_OAUTH_ACCESS_DENIED,
-            providerError: ApiCode.GOOGLE_OAUTH_PROVIDER_ERROR,
-          }),
-        });
-      }
-      const code = typeof req.query.code === "string" ? req.query.code : "";
-      const state = typeof req.query.state === "string" ? req.query.state : "";
-      if (!code || !state) {
-        return sendOAuthCallbackFailurePage(res, {
-          slug: "google-sheets",
-          error: new ApiError(
-            400,
-            ApiCode.GOOGLE_OAUTH_INVALID_STATE,
-            "code and state query parameters are required"
-          ),
-        });
-      }
-
-      const result = await GoogleSheetsConnectorService.handleCallback({
-        code,
-        state,
-      });
-
-      logger.info(
-        { connectorInstanceId: result.connectorInstanceId },
-        "Google Sheets OAuth callback completed"
-      );
-      return sendOAuthCallbackPage(res, {
-        slug: "google-sheets",
-        connectorInstanceId: result.connectorInstanceId,
-        accountInfo: result.accountInfo,
-      });
-    } catch (err) {
-      return sendOAuthCallbackFailurePage(res, {
-        slug: "google-sheets",
-        error: mapGoogleCallbackError(err),
-      });
-    }
-  }
+  (req: Request, res: Response) =>
+    answerOAuthCallback(req, res, {
+      slug: "google-sheets",
+      provider: "Google",
+      codes: {
+        accessDenied: ApiCode.GOOGLE_OAUTH_ACCESS_DENIED,
+        providerError: ApiCode.GOOGLE_OAUTH_PROVIDER_ERROR,
+        invalidState: ApiCode.GOOGLE_OAUTH_INVALID_STATE,
+      },
+      handleCallback: (input) =>
+        GoogleSheetsConnectorService.handleCallback(input),
+      mapError: (err) =>
+        mapGoogleAuthError(err, ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED),
+    })
 );
 
 /**
@@ -273,27 +243,13 @@ async function resolveOwnedInstance(
   return instance;
 }
 
-/**
- * The callback's refusal: an `ApiError` or `GoogleAuthError` maps as on every
- * other route, and anything else is the callback's own 500, not a list error.
- */
-function mapGoogleCallbackError(err: unknown): ApiError {
-  if (
-    err instanceof ApiError ||
-    err instanceof GoogleAuthError ||
-    (err as Error)?.name === "GoogleAuthError"
-  ) {
-    return mapGoogleAuthError(err);
-  }
-  return new ApiError(
-    500,
-    ApiCode.GOOGLE_OAUTH_AUTHORIZE_FAILED,
-    err instanceof Error ? err.message : "Unknown error"
-  );
-}
-
-/** Map upstream GoogleAuthError kinds to ApiError responses. */
-function mapGoogleAuthError(err: unknown): ApiError {
+/** Map upstream GoogleAuthError kinds to ApiError responses. Anything else
+ *  is a 500 under `fallbackCode`: the list routes' code by default, the
+ *  callback's own (`GOOGLE_OAUTH_AUTHORIZE_FAILED`) there. */
+function mapGoogleAuthError(
+  err: unknown,
+  fallbackCode: ApiCode = ApiCode.GOOGLE_SHEETS_LIST_FAILED
+): ApiError {
   if (err instanceof ApiError) return err;
   if (
     err instanceof GoogleAuthError ||
@@ -316,7 +272,7 @@ function mapGoogleAuthError(err: unknown): ApiError {
   }
   return new ApiError(
     500,
-    ApiCode.GOOGLE_SHEETS_LIST_FAILED,
+    fallbackCode,
     err instanceof Error ? err.message : "Unknown error"
   );
 }

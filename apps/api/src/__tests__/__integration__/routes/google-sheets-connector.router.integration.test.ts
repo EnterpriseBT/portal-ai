@@ -392,9 +392,11 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       .query({ code: "bad", state });
 
     expect(res.status).toBe(502);
-    expect(callbackFailure(res, "google-sheets").code).toBe(
-      ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED
-    );
+    // A 502 carries the provider's response body; the page shows fixed copy.
+    expect(callbackFailure(res, "google-sheets")).toMatchObject({
+      code: ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+      message: "Google couldn't complete the authorization. Please try again.",
+    });
 
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()

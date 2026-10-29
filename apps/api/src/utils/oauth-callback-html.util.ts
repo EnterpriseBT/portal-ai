@@ -3,7 +3,7 @@
  *
  * Every connector that authorizes via OAuth2 (`google-sheets`,
  * `microsoft-excel`, …) answers its `/callback` route through
- * `sendOAuthCallbackPage`. The page postMessages `{ type: "<slug>-authorized",
+ * `answerOAuthCallback`, which sends this page. The page postMessages `{ type: "<slug>-authorized",
  * connectorInstanceId, accountInfo }` to `window.opener` and closes itself;
  * the popup hook (`useOAuthPopupAuthorize`) is the only consumer.
  *
@@ -14,8 +14,9 @@
  * error envelope and the opener heard nothing, so the dialog sat
  * "connecting" until the hook's 5-minute timeout. The message is always
  * server-authored: the callback is unauthenticated and anyone can craft its
- * URL, so a provider's `error_description` is never echoed, and a 500 shows
- * `INTERNAL_ERROR_MESSAGE` as it would through `HttpService.error` (#687).
+ * URL, so a provider's `error_description` is never echoed, a 502's provider
+ * response body gets fixed copy, and a 500 shows `INTERNAL_ERROR_MESSAGE` as
+ * it would through `HttpService.error` (#687).
  *
  * **The message targets the web app's origin** (`WEB_APP_URL`), never `*`
  * (#922). The opener is whatever window holds the reference when consent
@@ -43,10 +44,13 @@ import type { Response } from "express";
 import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 import type { PublicAccountInfo } from "@portalai/core/contracts";
 
-import type { ApiCode } from "../constants/api-codes.constants.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
+import { toDbCancellationApiError } from "../db/request-cancellation.util.js";
 import { environment } from "../environment.js";
 import { ApiError } from "../services/http.service.js";
+import type { Request } from "../types/request.js";
 import { createLogger } from "./logger.util.js";
+import { redactUrl } from "./redact-url.util.js";
 
 const logger = createLogger({ module: "oauth-callback" });
 
@@ -176,26 +180,63 @@ export function sendOAuthCallbackPage(
   return res.status(200).type("html").set(page.headers).send(page.html);
 }
 
+/** What the page tells the user about a failure. Only server-authored text
+ *  reaches it: a 500's caught message stays in the log (#687), and a 502's
+ *  carries the provider's response body (`Google token exchange failed
+ *  (400): {...}`), so both get fixed copy and keep their code. */
+function failureMessage(error: ApiError, provider: string): string {
+  const status = error.status ?? 500;
+  if (status === 500) return INTERNAL_ERROR_MESSAGE;
+  if (status === 502) {
+    return `${provider} couldn't complete the authorization. Please try again.`;
+  }
+  return error.message;
+}
+
+export interface OAuthCallbackFailureInput {
+  slug: string;
+  /** The provider's display name, for the user-facing copy. */
+  provider: string;
+  error: ApiError;
+}
+
 /**
  * Answers a failed OAuth `/callback` with the page, at the error's status.
- * The error never reaches the JSON error handler, so it's logged here.
+ *
+ * This is the one error response the API sends itself rather than through
+ * `next(err)`: the global handler answers JSON, and the popup needs the page.
+ * So it does what that handler would for the request: logs through `req.log`
+ * (warn below 500, error at 500+, info for an abandoned request) and skips
+ * the write when the client is gone.
  */
 export function sendOAuthCallbackFailurePage(
+  req: Request,
   res: Response,
-  input: { slug: string; error: ApiError }
-): Response {
-  const { slug, error } = input;
+  { slug, provider, error }: OAuthCallbackFailureInput
+): Response | void {
+  const log = req.log ?? logger;
   const status = error.status ?? 500;
-  const internal = status === 500;
-  const log = { slug, status, code: error.code, err: error };
-  if (status >= 500) logger.error(log, "OAuth callback failed");
-  else logger.warn(log, "OAuth callback refused");
+  const fields = {
+    slug,
+    status,
+    code: error.code,
+    message: error.message,
+    route: redactUrl(req.originalUrl),
+  };
+  if (error.code === ApiCode.REQUEST_ABANDONED) {
+    log.info(fields, "OAuth callback abandoned by client");
+  } else if (status >= 500) {
+    log.error(fields, "OAuth callback failed");
+  } else {
+    log.warn(fields, "OAuth callback refused");
+  }
+  if (res.destroyed || res.headersSent) return;
   const page = renderOAuthCallbackHtml({
     slug,
     outcome: {
       kind: "failed",
       code: error.code,
-      message: internal ? INTERNAL_ERROR_MESSAGE : error.message,
+      message: failureMessage(error, provider),
     },
     targetOrigin: webAppOrigin(),
   });
@@ -227,4 +268,70 @@ export function oauthProviderError(
     codes.providerError,
     `${codes.provider} couldn't complete the authorization. Please try again.`
   );
+}
+
+export interface OAuthCallbackRoute {
+  slug: string;
+  /** The provider's display name, for the user-facing copy. */
+  provider: string;
+  codes: {
+    accessDenied: ApiCode;
+    providerError: ApiCode;
+    invalidState: ApiCode;
+  };
+  handleCallback(input: { code: string; state: string }): Promise<{
+    connectorInstanceId: string;
+    accountInfo: PublicAccountInfo;
+  }>;
+  /** Maps a connector's own errors to an `ApiError`. */
+  mapError(err: unknown): ApiError;
+}
+
+/**
+ * The whole `/callback` route for an OAuth connector: every outcome answers
+ * with the page. The provider's `?error=` (sent instead of `code` when the
+ * user cancels or consent fails) is read first; a missing `code`/`state` is
+ * the invalid-state refusal; anything `handleCallback` throws is mapped,
+ * DB cancellations first, as the global handler would (#698).
+ */
+export async function answerOAuthCallback(
+  req: Request,
+  res: Response,
+  route: OAuthCallbackRoute
+): Promise<Response | void> {
+  const { slug, provider, codes } = route;
+  const fail = (error: ApiError) =>
+    sendOAuthCallbackFailurePage(req, res, { slug, provider, error });
+  const providerError =
+    typeof req.query.error === "string" ? req.query.error : "";
+  if (providerError) {
+    return fail(
+      oauthProviderError(providerError, {
+        provider,
+        accessDenied: codes.accessDenied,
+        providerError: codes.providerError,
+      })
+    );
+  }
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  if (!code || !state) {
+    return fail(
+      new ApiError(
+        400,
+        codes.invalidState,
+        "code and state query parameters are required"
+      )
+    );
+  }
+  try {
+    const result = await route.handleCallback({ code, state });
+    (req.log ?? logger).info(
+      { slug, connectorInstanceId: result.connectorInstanceId },
+      "OAuth callback completed"
+    );
+    return sendOAuthCallbackPage(res, { slug, ...result });
+  } catch (err) {
+    return fail(toDbCancellationApiError(err) ?? route.mapError(err));
+  }
 }
