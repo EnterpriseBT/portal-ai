@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   jest,
   describe,
@@ -457,6 +459,19 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toContain("microsoft-excel-authorized");
+    // The page carries its own CSP + COOP over helmet's globals (#922):
+    // helmet's script-src 'self' blocks the inline script, and its COOP
+    // same-origin nulls window.opener.
+    // The CSP hash is checked against the script as served, so a change that
+    // makes the served bytes differ from what was hashed fails here.
+    const script = res.text.match(/<script>([\s\S]*?)<\/script>/)![1];
+    const hash = createHash("sha256").update(script).digest("base64");
+    expect(res.headers["content-security-policy"]).toContain(
+      `default-src 'none'; script-src 'sha256-${hash}'`
+    );
+    expect(res.headers["cross-origin-opener-policy"]).toBe("unsafe-none");
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(script).not.toContain('"*"');
 
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()
