@@ -40,6 +40,29 @@ const logger = createLogger({ module: "application" });
  *  under the provisioning lock (whose waiters give up at 10s). */
 const INVITE_RECHECK_TIMEOUT_MS = 5_000;
 
+/**
+ * #916: after a re-check that fetched the profile and still couldn't accept
+ * (an unverified email, a mismatched one, or a failed fetch), skip the fetch
+ * for this long. Otherwise every request of such a user (a page load fires
+ * several) would call /userinfo in turn under the provisioning lock, and hit
+ * Auth0's per-user rate limit. Per instance, which is enough: it only bounds
+ * a retry loop, and a backed-off request is still denied (the safe side).
+ */
+const INVITE_RECHECK_BACKOFF_MS = 60_000;
+const inviteRecheckBackoff = new Map<string, number>();
+
+function inviteRecheckBackedOff(userId: string, now: number): boolean {
+  const until = inviteRecheckBackoff.get(userId);
+  return until !== undefined && until > now;
+}
+
+function backOffInviteRecheck(userId: string, now: number): void {
+  for (const [id, until] of inviteRecheckBackoff) {
+    if (until <= now) inviteRecheckBackoff.delete(id);
+  }
+  inviteRecheckBackoff.set(userId, now + INVITE_RECHECK_BACKOFF_MS);
+}
+
 export class ApplicationService {
   static async getCurrentOrganization(userId: string) {
     const [orgUser] = await db
@@ -286,8 +309,10 @@ export class ApplicationService {
         // /userinfo per user. The fetch is bounded, and a failure denies
         // anyway (the safe side; the next request re-checks), with a warning
         // so an outage doesn't read as "not invited".
+        const now = SystemUtilities.utc.now().getTime();
         if (
           !profile &&
+          !inviteRecheckBackedOff(user.id, now) &&
           (await ApplicationService.hasPendingInviteFor(user.email))
         ) {
           const recheck = await withTimeout(
@@ -312,6 +337,7 @@ export class ApplicationService {
             );
             if (joined) return joined;
           }
+          backOffInviteRecheck(user.id, now);
         }
         // SaaS login through an invite-gated enterprise connection with no
         // invite: reject rather than provisioning a personal org.

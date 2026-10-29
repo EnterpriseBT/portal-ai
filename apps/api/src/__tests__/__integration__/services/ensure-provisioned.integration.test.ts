@@ -547,6 +547,31 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     expect(Date.now() - started).toBeLessThan(8_000);
   }, 15_000);
 
+  // #916 review: an invite that can't be accepted (an unverified email, as
+  // many SAML connections send) must not make every request re-fetch the
+  // profile under the lock; the re-check backs off per user.
+  it("deny with an unacceptable pending invite fetches the profile once per backoff window", async () => {
+    const email = `unverified-${generateId()}@example.com`;
+    const auth0Sub = sub();
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    await seedPendingInvite(email, "member");
+    const resolve = profileResolver({ email, emailVerified: false });
+
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        ApplicationService.ensureProvisioned(
+          auth0Sub,
+          resolve,
+          undefined,
+          "deny"
+        )
+      ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    }
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
   it("deny for a new user resolves the profile exactly once", async () => {
     const resolve = profileResolver({ emailVerified: true });
 
