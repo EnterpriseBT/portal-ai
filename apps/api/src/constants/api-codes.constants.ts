@@ -22,6 +22,10 @@ export enum ApiCode {
   /** A SaaS enterprise-federated identity that matched no pending invitation —
    *  provisioning is invite-gated, so it is denied rather than given an org. 403. */
   SSO_PROVISIONING_NOT_INVITED = "SSO_PROVISIONING_NOT_INVITED",
+  /** #916: a malformed "Sign in with SSO" discovery body. */
+  SSO_DISCOVERY_INVALID_PAYLOAD = "SSO_DISCOVERY_INVALID_PAYLOAD",
+  /** #916: the per-IP limit on the anonymous SSO discovery lookup. */
+  SSO_DISCOVERY_RATE_LIMITED = "SSO_DISCOVERY_RATE_LIMITED",
 
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",

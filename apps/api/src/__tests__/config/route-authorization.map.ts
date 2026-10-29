@@ -459,6 +459,12 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     reason:
       "the caller's own Auth0 profile + user row, resolved from the caller's own bearer token",
   },
+  "POST /api/public/sso-discovery": {
+    kind: "exempt",
+    reason:
+      "public: signing-in caller has no token; answers only an Auth0 connection name for an email domain, rate-limited per IP (#916)",
+    locks: { none: "a read of deploy config; writes nothing" },
+  },
   "GET /api/public/site-config": {
     kind: "exempt",
     reason:

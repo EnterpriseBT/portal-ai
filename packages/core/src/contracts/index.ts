@@ -124,6 +124,7 @@ export * from "./microsoft-excel.contract.js";
 
 /** Public marketing-site config contracts (#311) — schemas & types */
 export * from "./site-config.contract.js";
+export * from "./sso-discovery.contract.js";
 
 /** Connector runtime-config contract (#580) — schemas & types */
 export * from "./connector-config.contract.js";

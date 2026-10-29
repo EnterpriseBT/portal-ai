@@ -20,8 +20,14 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "public-rate-limit" });
 
 /** Per-IP fixed-window limiter. `limitPerMinute` comes from
- *  `environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN` at the mount site. */
-export function publicRateLimit(limitPerMinute: number) {
+ *  `environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN` at the mount site. Each
+ *  public router passes its own `bucket` (and refusal `code`), so one
+ *  route's traffic never spends another's window (#916). */
+export function publicRateLimit(
+  limitPerMinute: number,
+  code: ApiCode = ApiCode.SITE_CONFIG_RATE_LIMITED,
+  bucket = "site"
+) {
   return async (
     req: Request,
     _res: Response,
@@ -29,15 +35,12 @@ export function publicRateLimit(limitPerMinute: number) {
   ): Promise<void> => {
     try {
       const now = Date.now();
-      const count = await incrementRateWindow(`public-site:${req.ip}`, now);
+      const count = await incrementRateWindow(
+        `public-${bucket}:${req.ip}`,
+        now
+      );
       if (count > limitPerMinute) {
-        return next(
-          rateLimitedError(
-            ApiCode.SITE_CONFIG_RATE_LIMITED,
-            "Too many requests.",
-            now
-          )
-        );
+        return next(rateLimitedError(code, "Too many requests.", now));
       }
     } catch (error) {
       // Fail open — see module doc.
