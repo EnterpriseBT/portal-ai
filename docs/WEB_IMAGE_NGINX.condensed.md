@@ -61,7 +61,7 @@ Upstream, as of 2026-10-29: stable is **1.30** (`1.30.6-alpine-slim`, index dige
 1. Locally, `docker build -f apps/web/Dockerfile -t web-918 .`, then `docker run --rm -p 8080:8080 web-918`. `curl -i localhost:8080/` returns 200 with `Cache-Control: no-cache`; `/config.js` returns 200 with `no-store`; `/stations/x` returns `index.html`. `docker exec <id> id -u` prints `101`.
 2. `docker run --rm web-918 nginx -V` prints `nginx/1.30.6` and lists no `--add-dynamic-module`.
 3. `node scripts/nginx-advisories.mjs` reports the pin as current with no advisories. `node scripts/nginx-advisories.mjs --version 1.27.5` lists CVE-2026-15176 and exits non-zero.
-4. After the PR is pushed, run the workflow by hand (`gh workflow run nginx-advisories.yml --ref chore/918-web-image-nginx`). It succeeds and opens no issue.
+4. After merge (GitHub only dispatches a workflow that exists on the default branch): `gh workflow run nginx-advisories.yml --repo EnterpriseBT/portal-ai`. The run is green and opens no issue.
 5. After merge: the `deploy-dev` image gate passes on both platforms, and the residency web image is pushed and signed.
 
 ## Out of scope

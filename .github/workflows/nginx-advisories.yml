@@ -1,0 +1,82 @@
+name: nginx advisories
+
+# Checks the residency web image's pinned nginx against nginx.org's security
+# advisories (#918). nginx comes from nginx.org's apk repository, which the
+# deploy-time Trivy gate (#909) can't see, so this is how an nginx CVE gets
+# noticed. scripts/nginx-advisories.mjs reads the exact version from
+# apps/web/Dockerfile's runtime FROM and reports any advisory covering it, or
+# a newer stable release.
+#
+# Weekly, it opens or updates one issue when the pin is affected or stale,
+# and closes that issue once a run comes back clean. The check fails closed:
+# when it can't read the pin or parse nginx.org's pages, the issue says so and
+# the run goes red, so a broken parser never reads as "no advisories". Like
+# refresh-integration-durations.yml it needs only `issues: write` and pushes
+# nothing; the fix is a normal PR bumping the tag and digest.
+
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: "nginx-advisories"
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  TITLE: "nginx in the residency web image needs attention"
+
+jobs:
+  check:
+    name: Check nginx advisories
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Exit 0 clean, 1 affected or stale, 2 couldn't check. The step
+      # records the code instead of failing, so the issue step still runs.
+      - name: Check the pinned nginx
+        id: check
+        run: |
+          set +e
+          node scripts/nginx-advisories.mjs --report report.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.check.outputs.code }}
+        run: |
+          set -o pipefail
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -1)
+          if [ "$CODE" = "0" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --reason completed \
+                --comment "The pinned nginx is now the current stable release with no open advisory ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+              echo "Closed #$existing"
+            fi
+            exit 0
+          fi
+          {
+            cat report.md
+            echo
+            echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Patch SLA and policy: \`docs/SUPPLY_CHAIN.md\`. This issue is updated each week, and closed by the first clean run."
+          } > body.md
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+            echo "Updated #$existing"
+          else
+            gh issue create --title "$TITLE" --body-file body.md
+          fi
+
+      - name: Fail when the check couldn't run
+        if: steps.check.outputs.code != '0' && steps.check.outputs.code != '1'
+        run: |
+          echo "::error::The nginx advisory check couldn't run; see the issue \"$TITLE\"."
+          exit 1
