@@ -6,7 +6,7 @@ import { isResidency } from "./deploy-mode.js";
  *
  * The OIDC identity seam is config-driven: a list of trusted issuers (each with
  * its audience + signing alg), a deploy-mode discriminator, and an optional
- * "enterprise-federated" claim marker. Everything defaults to today's single
+ * list of invite-gated enterprise connections (#916). Everything defaults to today's single
  * Auth0 tenant, so with no SSO env set the behavior is unchanged — this is the
  * SaaS default. `self_hosted` installs point at the customer's own OIDC (or a
  * bundled issuer) via SSO_ISSUERS.
@@ -23,9 +23,14 @@ import { isResidency } from "./deploy-mode.js";
  * and matched no invitation:
  * - `personal_org`  — provision a personal owner-org (today's SaaS self-serve).
  * - `join_single_org` — residency: join the one org tree (first user → owner).
- * - `deny` — SaaS enterprise-federated with no invite: reject, no org created.
+ * - `deny` — SaaS login through a listed enterprise connection with no
+ *   invite: reject, no org created (#916).
  */
 export type ProvisioningFallback = "personal_org" | "join_single_org" | "deny";
+
+/** Auth0's connection-name rule: alphanumerics and dashes, starting and
+ *  ending alphanumeric, at most 128 characters. */
+const CONNECTION_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,126}[A-Za-z0-9])?$/;
 
 export interface IssuerConfig {
   /** The exact `iss` claim value to trust (Auth0 carries a trailing slash). */
@@ -33,13 +38,6 @@ export interface IssuerConfig {
   audience: string;
   /** JWT signing algorithm; defaults to RS256. */
   alg: string;
-}
-
-export interface EnterpriseClaimConfig {
-  /** The claim name that marks a token as enterprise-federated. */
-  name: string;
-  /** When set, the claim must equal this value; when absent, presence suffices. */
-  value?: string;
 }
 
 export class SsoConfig {
@@ -116,38 +114,60 @@ export class SsoConfig {
     }
   }
 
-  /** The enterprise-federated claim marker, or null when unconfigured. */
-  static enterpriseClaim(): EnterpriseClaimConfig | null {
-    const name = environment.SSO_ENTERPRISE_CLAIM;
-    if (!name || !name.trim()) return null;
-    const value = environment.SSO_ENTERPRISE_CLAIM_VALUE;
-    return value && value.trim() ? { name, value } : { name };
+  /**
+   * The Auth0 enterprise connections whose logins are invite-gated (#916),
+   * from `SSO_ENTERPRISE_CONNECTIONS`: a comma-separated list of connection
+   * names. Unset, blank or exactly `none` means gating is off (`none` exists
+   * because SSM can't store an empty value). Throws on a malformed list, and
+   * boot calls this so a typo refuses to start rather than silently ungating.
+   */
+  static enterpriseConnections(): ReadonlySet<string> {
+    const raw = environment.SSO_ENTERPRISE_CONNECTIONS?.trim();
+    if (!raw || raw === "none") return new Set();
+    const names = raw.split(",").map((entry) => entry.trim());
+    names.forEach((name, i) => {
+      if (name === "none") {
+        throw new Error(
+          `SSO_ENTERPRISE_CONNECTIONS[${i}]: "none" turns gating off and must be the whole value`
+        );
+      }
+      if (!CONNECTION_NAME.test(name)) {
+        throw new Error(
+          `SSO_ENTERPRISE_CONNECTIONS[${i}] "${name}" is not a valid Auth0 connection name`
+        );
+      }
+    });
+    return new Set(names);
   }
 
-  /** Whether a token's payload carries the configured enterprise-federated marker. */
-  private static isEnterpriseFederated(
-    payload: Record<string, unknown> | undefined,
-    claim: EnterpriseClaimConfig
-  ): boolean {
-    if (!payload) return false;
-    const actual = payload[claim.name];
-    if (actual === undefined || actual === null) return false;
-    return claim.value === undefined ? true : actual === claim.value;
+  /**
+   * The connection segment of an Auth0 user id (#916). Enterprise ids are
+   * `<strategy>|<connection>|<id>`; social and database ids
+   * (`google-oauth2|…`, `auth0|…`) have no connection segment, so they map to
+   * null and can never be gated. The sub is signed into the verified access
+   * token, so this needs no post-login Action (#873).
+   */
+  static connectionOf(sub: unknown): string | null {
+    if (typeof sub !== "string") return null;
+    const segments = sub.split("|");
+    if (segments.length < 3 || !segments[1]) return null;
+    return segments[1];
   }
 
   /**
    * The provisioning fallback for an authenticated user with no membership and
    * no matched invitation, decided from deploy mode + the token payload:
    * - residency → `join_single_org`;
-   * - saas + a configured enterprise claim the token carries → `deny`;
+   * - saas + a login through a listed enterprise connection → `deny`;
    * - otherwise (saas self-serve) → `personal_org`.
    */
   static provisioningFallback(
     payload: Record<string, unknown> | undefined
   ): ProvisioningFallback {
     if (isResidency()) return "join_single_org";
-    const claim = SsoConfig.enterpriseClaim();
-    if (claim && SsoConfig.isEnterpriseFederated(payload, claim)) return "deny";
+    const connection = SsoConfig.connectionOf(payload?.sub);
+    if (connection && SsoConfig.enterpriseConnections().has(connection))
+      return "deny";
     return "personal_org";
   }
 }

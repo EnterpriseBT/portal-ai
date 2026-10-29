@@ -25,7 +25,8 @@ const mockEnsureProvisioned =
     (
       sub: string,
       resolveProfile: () => Promise<unknown>,
-      auditCtx?: unknown
+      auditCtx?: unknown,
+      fallback?: unknown
     ) => Promise<unknown>
   >();
 jest.unstable_mockModule("../../services/application.service.js", () => ({
@@ -59,6 +60,7 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
 const { getApplicationMetadata } =
   await import("../../middleware/metadata.middleware.js");
 const { ApiError } = await import("../../services/http.service.js");
+const { environment } = await import("../../environment.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -227,6 +229,28 @@ describe("getApplicationMetadata", () => {
 
     expect(next).toHaveBeenCalledWith(refusal);
     expect(req.application).toBeUndefined();
+  });
+
+  // #916: a login through a listed enterprise connection is invite-gated, so
+  // provisioning gets the `deny` fallback, read from the token's `sub`.
+  it("passes deny to provisioning for a listed enterprise connection", async () => {
+    const previous = environment.SSO_ENTERPRISE_CONNECTIONS;
+    environment.SSO_ENTERPRISE_CONNECTIONS = "acme-okta";
+    try {
+      mockFindByAuth0Id.mockResolvedValue(null);
+      mockEnsureProvisioned.mockRejectedValue(
+        new ApiError(403, ApiCode.SSO_PROVISIONING_NOT_INVITED, "Not invited")
+      );
+      const { req, res, next } = createMocks({
+        sub: "samlp|acme-okta|jo@acme.com",
+      });
+
+      await getApplicationMetadata(req, res, next);
+
+      expect(mockEnsureProvisioned.mock.calls[0][3]).toBe("deny");
+    } finally {
+      environment.SSO_ENTERPRISE_CONNECTIONS = previous;
+    }
   });
 
   it("should call next with 500 error when an unexpected error occurs", async () => {

@@ -21,6 +21,7 @@ import { SsoConfig } from "./config/sso.config.js";
 import {
   assertDeployModeConsistency,
   deployMode,
+  isResidency,
 } from "./config/deploy-mode.js";
 import { publicUrlWarnings } from "./utils/public-url.util.js";
 
@@ -55,7 +56,17 @@ async function start() {
     // clean boot refusal. Runs AFTER the deploy-mode guard so residency reports
     // its own config errors first.
     SsoConfig.issuers();
+    // #916: same fail-fast for SSO_ENTERPRISE_CONNECTIONS. A malformed list
+    // refuses to boot, since a silently ignored typo would ungate an
+    // enterprise connection.
+    const enterpriseConnections = SsoConfig.enterpriseConnections();
     logger.info({ deployMode }, "Deploy mode resolved");
+    if (!isResidency()) {
+      logger.info(
+        { enterpriseConnections: [...enterpriseConnections] },
+        "Enterprise SSO connections resolved"
+      );
+    }
   } catch (err) {
     logger.fatal(
       { err, code: ApiCode.DEPLOY_MODE_CONFIG_INVALID },

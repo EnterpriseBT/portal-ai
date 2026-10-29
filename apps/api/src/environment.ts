@@ -15,12 +15,12 @@ export const environment = {
   DEPLOY_MODE: process.env.DEPLOY_MODE ?? "saas",
   // Enterprise SSO (#577) — saas-mode enterprise federation. SSO_ISSUERS: a
   // JSON array of { issuer, audience, alg? }; unset ⇒ derived from AUTH0_DOMAIN
-  // + AUTH0_AUDIENCE (the SaaS default). SSO_ENTERPRISE_CLAIM(+_VALUE): the
-  // token claim (and optional expected value) marking a login enterprise-
-  // federated, so SaaS provisioning can invite-gate it. Parsed by SsoConfig.
+  // + AUTH0_AUDIENCE (the SaaS default). SSO_ENTERPRISE_CONNECTIONS (#916): a
+  // comma-separated list of Auth0 connection names whose logins are
+  // invite-gated, matched against the token's `sub`; unset, blank or `none` ⇒
+  // gating off. Parsed (and validated at boot) by SsoConfig.
   SSO_ISSUERS: process.env.SSO_ISSUERS,
-  SSO_ENTERPRISE_CLAIM: process.env.SSO_ENTERPRISE_CLAIM,
-  SSO_ENTERPRISE_CLAIM_VALUE: process.env.SSO_ENTERPRISE_CLAIM_VALUE,
+  SSO_ENTERPRISE_CONNECTIONS: process.env.SSO_ENTERPRISE_CONNECTIONS,
   // Residency identity (#579) — the customer's own OIDC issuer URL + token
   // audience, used instead of AUTH0_* when DEPLOY_MODE=residency. Empty in
   // saas; the boot guard (config/deploy-mode.ts) requires both when residency.

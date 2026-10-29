@@ -112,8 +112,7 @@ const INTERNAL: Record<string, string> = {
     "triggers the marketing-site rebuild; the payload carries no customer data",
 
   SSO_ISSUERS: CUSTOMER_IDP,
-  SSO_ENTERPRISE_CLAIM: CUSTOMER_IDP,
-  SSO_ENTERPRISE_CLAIM_VALUE: CUSTOMER_IDP,
+  SSO_ENTERPRISE_CONNECTIONS: CUSTOMER_IDP,
   OIDC_AUDIENCE: CUSTOMER_IDP,
   OIDC_ISSUER: CUSTOMER_IDP,
 
