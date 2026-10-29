@@ -32,7 +32,7 @@ Remove the six `env` lines from both workflows, and correct the four docs to nam
 ## Smoke (manual, against your dev stack)
 
 1. `grep -rn VITE_GOOGLE .github` returns nothing.
-2. Local: in the app, Connectors → Catalog → Google Sheets → start the flow. The picker step loads its config from `/api/connector-config` (network panel: `200` with `google.pickerApiKey` present when the local API has the key set). No build-time value is involved.
+2. Local: in the app, Connectors → Catalog → Google Sheets → start the flow. The picker step loads its config from `/api/connector-config` (network panel: `200` with a non-null `google` holding `clientId`, `pickerApiKey` and `cloudProjectNumber`; the API returns `google: null` unless all three of `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_PICKER_API_KEY` and `GOOGLE_CLOUD_PROJECT_NUMBER` are set locally, which reads as "not configured" and isn't a regression). No build-time value is involved.
 3. After merge: the `deploy-dev` run's frontend build succeeds. On app-dev, starting the Google Sheets flow shows the picker, not the "not configured" message.
 4. Then delete the dev secrets: `gh secret delete DEV_VITE_GOOGLE_PICKER_API_KEY` (and `…_OAUTH_CLIENT_ID`, `…_CLOUD_PROJECT_NUMBER`) `--repo EnterpriseBT/portal-ai`. After the next prod release succeeds and the prod picker opens, do the same for the `PROD_` three.
 

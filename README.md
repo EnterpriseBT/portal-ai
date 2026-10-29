@@ -170,6 +170,7 @@ The marketing site deploys separately (`deploy-site-dev.yml`). Production deploy
 | `DEV_VITE_AUTH0_QA_CONNECTION` | The QA sign-in's Auth0 Database connection (#489) |
 | `TURBO_TOKEN`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY` | Turborepo remote cache (with the `TURBO_TEAM` variable, #454) |
 
+The repository may still hold `DEV_VITE_GOOGLE_*` and `PROD_VITE_GOOGLE_*` secrets. Nothing reads them: the Google Picker's config comes from the API at runtime (#580). Delete them, don't rotate them (#915).
 
 ### Verifying a Deploy
 
