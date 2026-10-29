@@ -35,8 +35,18 @@ jest.unstable_mockModule("../oauth-popup.util", () => {
   class MockPopupClosedError extends Error {
     override readonly name = "PopupClosedError" as const;
   }
+  class MockOAuthCallbackError extends Error {
+    override readonly name = "OAuthCallbackError" as const;
+    constructor(
+      readonly code: string,
+      message: string
+    ) {
+      super(message);
+    }
+  }
   return {
     PopupClosedError: MockPopupClosedError,
+    OAuthCallbackError: MockOAuthCallbackError,
     useOAuthPopupAuthorize: (opts: { slug: string; allowedOrigin: string }) => {
       lastPopupOptions = opts;
       return { start: popupStartMock };
@@ -133,6 +143,28 @@ describe("useReconnectConnectorInstance", () => {
     });
 
     expect(result.current.errorMessage).toBeNull();
+  });
+
+  it("surfaces the callback's message when consent is declined (#924)", async () => {
+    const { OAuthCallbackError } = await import("../oauth-popup.util");
+    popupStartMock.mockRejectedValueOnce(
+      new OAuthCallbackError(
+        "MICROSOFT_OAUTH_ACCESS_DENIED",
+        "Authorization was cancelled."
+      )
+    );
+
+    const { result } = renderHook(
+      () => useReconnectConnectorInstance("ci-1", "microsoft-excel"),
+      { wrapper }
+    );
+
+    await act(async () => {
+      await result.current.onReconnect();
+    });
+
+    expect(result.current.errorMessage).toBe("Authorization was cancelled.");
+    expect(result.current.isReconnecting).toBe(false);
   });
 
   it("clears errorMessage on dismiss", async () => {

@@ -7,6 +7,11 @@
  * locked to the allowed origin (the API host) so a malicious page can't
  * postMessage a forged payload.
  *
+ * A failed callback (a declined consent, a bad state, a failed exchange)
+ * posts `<slug>-failed` with `{ code, message }` instead, and the promise
+ * rejects with `OAuthCallbackError` carrying them (#924). The message is
+ * written by the API for the user, so callers show it as-is.
+ *
  * The window.open call MUST run synchronously inside the user's click
  * handler — browsers block popups opened in async continuations.
  *
@@ -18,7 +23,7 @@
  * that property and rejecting on `closed === true` triggers a false
  * "popup was closed" error within milliseconds of opening.
  *
- * Therefore the postMessage is the only success signal. To handle the
+ * Therefore the postMessages are the only signals. To handle the
  * "user actually closed without completing" case, a 5-minute timeout
  * (matching the OAuth state-token TTL) rejects the promise so callers
  * don't sit in a "connecting" state indefinitely.
@@ -40,6 +45,17 @@ export interface PopupAuthorizeResult {
 export class PopupClosedError extends Error {
   override readonly name = "PopupClosedError" as const;
   constructor(message = "Authorization timed out — please try again") {
+    super(message);
+  }
+}
+
+/** The callback reported a failure; `message` is the API's, for the user. */
+export class OAuthCallbackError extends Error {
+  override readonly name = "OAuthCallbackError" as const;
+  constructor(
+    readonly code: string,
+    message: string
+  ) {
     super(message);
   }
 }
@@ -68,8 +84,9 @@ export interface UseOAuthPopupAuthorizeOptions {
 export interface UseOAuthPopupAuthorizeResult {
   /**
    * Open the popup and return a promise that resolves with the
-   * authorize payload, or rejects with `PopupClosedError` after the
-   * 5-minute timeout if no postMessage arrives.
+   * authorize payload, rejects with `OAuthCallbackError` when the
+   * callback reports a failure, or rejects with `PopupClosedError` after
+   * the 5-minute timeout if no postMessage arrives.
    */
   start: (consentUrl: string) => Promise<PopupAuthorizeResult>;
 }
@@ -89,6 +106,24 @@ function buildIsExpectedMessage(messageType: string) {
       typeof v.connectorInstanceId === "string" &&
       typeof v.accountInfo === "object" &&
       v.accountInfo !== null
+    );
+  };
+}
+
+interface FailedMessage {
+  type: string;
+  code: string;
+  message: string;
+}
+
+function buildIsFailedMessage(messageType: string) {
+  return function isFailedMessage(value: unknown): value is FailedMessage {
+    if (typeof value !== "object" || value === null) return false;
+    const v = value as Record<string, unknown>;
+    return (
+      v.type === messageType &&
+      typeof v.code === "string" &&
+      typeof v.message === "string"
     );
   };
 }
@@ -113,6 +148,7 @@ export function useOAuthPopupAuthorize(
       const popupName = `${slug}-oauth`;
       const messageType = `${slug}-authorized`;
       const isExpectedMessage = buildIsExpectedMessage(messageType);
+      const isFailedMessage = buildIsFailedMessage(`${slug}-failed`);
 
       const popup = window.open(consentUrl, popupName, POPUP_FEATURES);
       if (!popup) {
@@ -141,13 +177,18 @@ export function useOAuthPopupAuthorize(
 
       const onMessage = (event: MessageEvent) => {
         if (event.origin !== acceptOrigin) return;
-        if (!isExpectedMessage(event.data)) return;
+        const authorized = isExpectedMessage(event.data);
+        if (!authorized && !isFailedMessage(event.data)) return;
         settled = true;
         cleanup();
         try {
           popup.close();
         } catch {
           /* popup already closed by self-postMessage handler */
+        }
+        if (!authorized) {
+          reject(new OAuthCallbackError(event.data.code, event.data.message));
+          return;
         }
         resolve({
           connectorInstanceId: event.data.connectorInstanceId,

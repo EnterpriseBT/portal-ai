@@ -8,7 +8,11 @@ import {
 } from "@jest/globals";
 import { renderHook, act } from "@testing-library/react";
 
-import { PopupClosedError, useOAuthPopupAuthorize } from "../oauth-popup.util";
+import {
+  OAuthCallbackError,
+  PopupClosedError,
+  useOAuthPopupAuthorize,
+} from "../oauth-popup.util";
 
 const ALLOWED_ORIGIN = "http://localhost:3001";
 
@@ -177,6 +181,92 @@ describe("useOAuthPopupAuthorize — slug=google-sheets", () => {
       );
     });
     expect(fakePopup.closed).toBe(false);
+  });
+
+  // These use their own slug: the "ignores…" tests above leave listeners that
+  // never settle, and a google-sheets-failed message would reject one of them
+  // with nothing to catch it.
+  it("rejects with OAuthCallbackError on <slug>-failed, closing the popup (#924)", async () => {
+    const { result } = renderHook(() =>
+      useOAuthPopupAuthorize({
+        slug: "test-connector",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
+    );
+    let rejected: unknown;
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current
+        .start("https://accounts.google.com/o/oauth2/auth")
+        .catch((err) => {
+          rejected = err;
+        });
+    });
+    act(() => {
+      dispatchMessage(
+        {
+          type: "test-connector-failed",
+          code: "GOOGLE_OAUTH_ACCESS_DENIED",
+          message: "Authorization was cancelled.",
+        },
+        ALLOWED_ORIGIN
+      );
+    });
+    await pending;
+    expect(rejected).toBeInstanceOf(OAuthCallbackError);
+    expect(rejected).not.toBeInstanceOf(PopupClosedError);
+    expect((rejected as OAuthCallbackError).code).toBe(
+      "GOOGLE_OAUTH_ACCESS_DENIED"
+    );
+    expect((rejected as OAuthCallbackError).message).toBe(
+      "Authorization was cancelled."
+    );
+    expect(fakePopup.closed).toBe(true);
+    // Settled: the timeout no longer fires a second rejection.
+    act(() => {
+      jest.advanceTimersByTime(5 * 60 * 1000 + 100);
+    });
+    expect(rejected).toBeInstanceOf(OAuthCallbackError);
+  });
+
+  it("ignores a failure from the wrong origin, for another slug, or malformed (#924)", async () => {
+    const { result } = renderHook(() =>
+      useOAuthPopupAuthorize({
+        slug: "test-connector",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
+    );
+    let rejected: unknown;
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current
+        .start("https://accounts.google.com/o/oauth2/auth")
+        .catch((err) => {
+          rejected = err;
+        });
+    });
+    const failed = {
+      type: "test-connector-failed",
+      code: "GOOGLE_OAUTH_ACCESS_DENIED",
+      message: "Authorization was cancelled.",
+    };
+    act(() => {
+      dispatchMessage(failed, "https://evil.example.com");
+      dispatchMessage(
+        { ...failed, type: "microsoft-excel-failed" },
+        ALLOWED_ORIGIN
+      );
+      dispatchMessage(
+        { type: "test-connector-failed", code: 1 },
+        ALLOWED_ORIGIN
+      );
+    });
+    expect(fakePopup.closed).toBe(false);
+    act(() => {
+      jest.advanceTimersByTime(5 * 60 * 1000 + 100);
+    });
+    await pending;
+    expect(rejected).toBeInstanceOf(PopupClosedError);
   });
 
   it("rejects with PopupClosedError after the 5-minute timeout when no message arrives", async () => {
