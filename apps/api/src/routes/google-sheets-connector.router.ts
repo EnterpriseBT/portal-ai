@@ -191,16 +191,12 @@ googleSheetsConnectorPublicRouter.get(
         { connectorInstanceId: result.connectorInstanceId },
         "Google Sheets OAuth callback completed"
       );
-      return res
-        .status(200)
-        .type("html")
-        .send(
-          renderOAuthCallbackHtml({
-            slug: "google-sheets",
-            connectorInstanceId: result.connectorInstanceId,
-            accountInfo: result.accountInfo,
-          })
-        );
+      const page = renderOAuthCallbackHtml({
+        slug: "google-sheets",
+        connectorInstanceId: result.connectorInstanceId,
+        accountInfo: result.accountInfo,
+      });
+      return res.status(200).type("html").set(page.headers).send(page.html);
     } catch (err) {
       return next(err);
     }

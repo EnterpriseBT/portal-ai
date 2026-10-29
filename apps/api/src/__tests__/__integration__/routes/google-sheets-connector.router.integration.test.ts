@@ -448,6 +448,13 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       .query({ code: "good-code", state });
 
     expect(res.status).toBe(200);
+    // The page carries its own CSP + COOP over helmet's globals (#922):
+    // helmet's script-src 'self' blocks the inline script, and its COOP
+    // same-origin nulls window.opener.
+    expect(res.headers["content-security-policy"]).toMatch(
+      /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/=]+'/
+    );
+    expect(res.headers["cross-origin-opener-policy"]).toBe("unsafe-none");
     // Slice 8 ships HTML — assert the new id appears in the body.
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()

@@ -457,6 +457,13 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toContain("microsoft-excel-authorized");
+    // The page carries its own CSP + COOP over helmet's globals (#922):
+    // helmet's script-src 'self' blocks the inline script, and its COOP
+    // same-origin nulls window.opener.
+    expect(res.headers["content-security-policy"]).toMatch(
+      /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/=]+'/
+    );
+    expect(res.headers["cross-origin-opener-policy"]).toBe("unsafe-none");
 
     const rows = await (db as ReturnType<typeof drizzle>)
       .select()

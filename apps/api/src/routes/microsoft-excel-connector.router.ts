@@ -162,16 +162,12 @@ microsoftExcelConnectorPublicRouter.get(
         { connectorInstanceId: result.connectorInstanceId },
         "microsoft-excel OAuth callback completed"
       );
-      return res
-        .status(200)
-        .type("html")
-        .send(
-          renderOAuthCallbackHtml({
-            slug: "microsoft-excel",
-            connectorInstanceId: result.connectorInstanceId,
-            accountInfo: result.accountInfo,
-          })
-        );
+      const page = renderOAuthCallbackHtml({
+        slug: "microsoft-excel",
+        connectorInstanceId: result.connectorInstanceId,
+        accountInfo: result.accountInfo,
+      });
+      return res.status(200).type("html").set(page.headers).send(page.html);
     } catch (err) {
       return next(mapMicrosoftAuthError(err));
     }

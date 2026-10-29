@@ -64,8 +64,11 @@ app.use(requestContextMiddleware);
 // in every deployed env — the CORS allowlist below is the access boundary,
 // not CORP (helmet's same-origin default would break those cross-origin
 // fetches). The strict global CSP is inert for the API's JSON responses
-// (CSP only constrains HTML rendering); the Swagger UI route relaxes it
-// locally to render its inline bundle — see swagger.router.ts.
+// (CSP only constrains HTML rendering). Two HTML routes override it: the
+// Swagger UI relaxes it to render its inline bundle (swagger.router.ts), and
+// the OAuth connector callbacks send their own CSP (their one script, by
+// hash) and COOP unsafe-none, so the popup can message the web app that
+// opened it (oauth-callback-html.util.ts, #922).
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 // Webhook routes must be mounted before express.json() so the webhook's
