@@ -31,7 +31,28 @@
     "secrets": { "type": "object" },
     "existingSecret": { "type": "string" },
     "api": { "type": "object", "additionalProperties": true },
-    "web": { "type": "object", "additionalProperties": true },
+    "web": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "basemap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["default", "custom", "none"] },
+            "styleUrl": { "type": "string", "pattern": "^(https?://.+)?$" },
+            "styleUrlDark": { "type": "string", "pattern": "^(https?://.+)?$" },
+            "attribution": { "type": "string" }
+          },
+          "required": ["mode"],
+          "if": { "properties": { "mode": { "const": "custom" } } },
+          "then": {
+            "properties": { "styleUrl": { "minLength": 1 } },
+            "required": ["styleUrl"]
+          }
+        }
+      }
+    },
     "postgresql": { "type": "object", "additionalProperties": true },
     "redis": { "type": "object", "additionalProperties": true }
   },
