@@ -2,6 +2,10 @@ import { describe, it, expect, jest } from "@jest/globals";
 
 import { queryClient } from "../client";
 import { ApiError } from "../utils/api.util";
+import {
+  registerAuthLogout,
+  registerNotInvitedHandler,
+} from "../utils/auth-error.util";
 
 /**
  * The retry predicates on the shared query client. A 4xx is a verdict about
@@ -138,5 +142,75 @@ describe("queryClient query retry delay (#747)", () => {
     expect(queryDelay()(0, err)).toBe(1_000);
     expect(queryDelay()(1, err)).toBe(2_000);
     expect(queryDelay()(10, err)).toBe(30_000);
+  });
+});
+
+describe("queryClient error routing (#916)", () => {
+  type OnError = (error: Error) => void;
+  const onErrors = (): OnError[] => {
+    const q = queryClient.getQueryCache().config.onError as unknown as OnError;
+    const m = queryClient.getMutationCache().config
+      .onError as unknown as OnError;
+    return [q, m];
+  };
+
+  it("sends SSO_PROVISIONING_NOT_INVITED to the not-invited handler, not logout", () => {
+    const logout = jest.fn();
+    const notInvited = jest.fn();
+    registerAuthLogout(logout);
+    registerNotInvitedHandler(notInvited);
+    const err = new ApiError(
+      "This account is not a member of any organization and was not invited",
+      "SSO_PROVISIONING_NOT_INVITED",
+      403
+    );
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(notInvited).toHaveBeenCalledTimes(2);
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it("logs out when the caller has no membership (ORGANIZATION_USER_NOT_FOUND)", () => {
+    const logout = jest.fn();
+    registerAuthLogout(logout);
+    const err = new ApiError(
+      "User not found",
+      "ORGANIZATION_USER_NOT_FOUND",
+      404
+    );
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(logout).toHaveBeenCalledTimes(2);
+  });
+
+  // #916's smoke: removing a member someone already removed answered with the
+  // caller's code and logged the remover out.
+  it("leaves a missing target member alone (ORGANIZATION_MEMBER_NOT_FOUND)", () => {
+    const logout = jest.fn();
+    registerAuthLogout(logout);
+    const err = new ApiError(
+      "Member not found in this organization",
+      "ORGANIZATION_MEMBER_NOT_FOUND",
+      404
+    );
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it("leaves a plain 403 alone", () => {
+    const logout = jest.fn();
+    const notInvited = jest.fn();
+    registerAuthLogout(logout);
+    registerNotInvitedHandler(notInvited);
+    const err = new ApiError("Forbidden", "PERMISSION_DENIED", 403);
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(notInvited).not.toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
   });
 });

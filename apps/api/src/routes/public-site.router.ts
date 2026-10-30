@@ -36,8 +36,13 @@ const logger = createLogger({ module: "public-site-router" });
 
 export const publicSiteRouter = Router();
 
-publicSiteRouter.use(
-  publicRateLimit(environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN)
+// Scoped to this router's own route, not `router.use`: the router is
+// mounted at `/api/public`, so a router-level limiter would also count the
+// other public routes mounted there (#916's SSO discovery) in this window.
+const siteRateLimit = publicRateLimit(
+  environment.PUBLIC_SITE_RATE_LIMIT_PER_MIN,
+  ApiCode.SITE_CONFIG_RATE_LIMITED,
+  "site"
 );
 
 /**
@@ -89,6 +94,7 @@ publicSiteRouter.use(
  */
 publicSiteRouter.get(
   "/site-config",
+  siteRateLimit,
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
       logger.info("GET /api/public/site-config called");

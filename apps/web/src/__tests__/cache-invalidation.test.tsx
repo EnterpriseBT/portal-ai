@@ -118,6 +118,8 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   }),
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
+  // #916: auth.api's SSO lookup imports it.
+  usePublicMutation: jest.fn(),
   toServerError: (error: unknown) =>
     error ? { message: String(error), code: "UNKNOWN" } : null,
   resolveApiUrl: (path: string) => path,

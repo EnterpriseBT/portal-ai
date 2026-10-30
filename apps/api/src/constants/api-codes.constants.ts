@@ -22,6 +22,10 @@ export enum ApiCode {
   /** A SaaS enterprise-federated identity that matched no pending invitation —
    *  provisioning is invite-gated, so it is denied rather than given an org. 403. */
   SSO_PROVISIONING_NOT_INVITED = "SSO_PROVISIONING_NOT_INVITED",
+  /** #916: a malformed "Sign in with SSO" discovery body. */
+  SSO_DISCOVERY_INVALID_PAYLOAD = "SSO_DISCOVERY_INVALID_PAYLOAD",
+  /** #916: the per-IP limit on the anonymous SSO discovery lookup. */
+  SSO_DISCOVERY_RATE_LIMITED = "SSO_DISCOVERY_RATE_LIMITED",
 
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
@@ -49,6 +53,10 @@ export enum ApiCode {
 
   // Organization
   ORGANIZATION_USER_NOT_FOUND = "ORGANIZATION_USER_NOT_FOUND",
+  /** A member route's target isn't a member of the caller's org. Distinct
+   *  from ORGANIZATION_USER_NOT_FOUND, which means the caller has no
+   *  membership and makes the web sign them out. */
+  ORGANIZATION_MEMBER_NOT_FOUND = "ORGANIZATION_MEMBER_NOT_FOUND",
   ORGANIZATION_NOT_FOUND = "ORGANIZATION_NOT_FOUND",
   ORGANIZATION_FETCH_FAILED = "ORGANIZATION_FETCH_FAILED",
   /** The authed user has no live membership in the target org (switch authz). */

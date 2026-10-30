@@ -6,6 +6,7 @@ import { SsoConfig } from "../config/sso.config.js";
 import { DbService } from "../services/db.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { isEmailVerified } from "../utils/email-verified.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { OrgRole } from "@portalai/core/models";
 
@@ -79,7 +80,7 @@ export const getApplicationMetadata = async (
             email: profile.email ?? null,
             name: profile.name ?? null,
             picture: profile.picture ?? null,
-            emailVerified: profile.email_verified ?? false,
+            emailVerified: isEmailVerified(profile.email_verified),
           };
         },
         { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null },
@@ -122,7 +123,7 @@ export const getApplicationMetadata = async (
           email: profile.email ?? null,
           name: profile.name ?? null,
           picture: profile.picture ?? null,
-          emailVerified: profile.email_verified ?? false,
+          emailVerified: isEmailVerified(profile.email_verified),
         };
       },
       { sourceIp: req.ip ?? null, userAgent: req.get("user-agent") ?? null }

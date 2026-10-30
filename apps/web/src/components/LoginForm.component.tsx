@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import MuiLink from "@mui/material/Link";
 import { sdk } from "../api/sdk";
 import {
@@ -19,6 +19,11 @@ import {
 } from "@portalai/core/ui";
 
 import { TERMS_URL, PRIVACY_URL } from "../utils/site-origin.util";
+import { toServerError } from "../utils/api.util";
+import {
+  SsoLoginFormUI,
+  type SsoLoginFormUIProps,
+} from "./SsoLoginForm.component";
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;
@@ -35,6 +40,11 @@ export interface LoginFormUIProps {
   primaryLabel?: string;
   /** Whether to show the Google icon on the primary button (SaaS only). */
   showProviderIcon?: boolean;
+  /** #916: shows "Sign in with SSO" under the primary button. The container
+   *  passes it only for Auth0 (SaaS); residency signs in at its own IdP. */
+  onClickSso?: () => void;
+  /** #916: when set, the SSO step renders in place of the sign-in choices. */
+  ssoForm?: SsoLoginFormUIProps;
 }
 
 export const LoginFormUI: React.FC<LoginFormUIProps> = ({
@@ -43,6 +53,8 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
   onClickQaLogin,
   primaryLabel = "Sign in with Google",
   showProviderIcon = true,
+  onClickSso,
+  ssoForm,
 }) => {
   return (
     <Container maxWidth="sm">
@@ -71,22 +83,40 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 
             <Divider />
 
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={onClickGoogleLogin}
-              startIcon={
-                showProviderIcon ? <Icon name={IconName.Google} /> : undefined
-              }
-              sx={{
-                py: 1.5,
-                textTransform: "none",
-                fontSize: "1rem",
-              }}
-            >
-              {primaryLabel}
-            </Button>
+            {ssoForm ? (
+              <SsoLoginFormUI {...ssoForm} />
+            ) : (
+              <>
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  onClick={onClickGoogleLogin}
+                  startIcon={
+                    showProviderIcon ? (
+                      <Icon name={IconName.Google} />
+                    ) : undefined
+                  }
+                  sx={{
+                    py: 1.5,
+                    textTransform: "none",
+                    fontSize: "1rem",
+                  }}
+                >
+                  {primaryLabel}
+                </Button>
+                {onClickSso && (
+                  <Button
+                    variant="text"
+                    fullWidth
+                    onClick={onClickSso}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Sign in with SSO
+                  </Button>
+                )}
+              </>
+            )}
 
             <Typography
               variant="caption"
@@ -115,7 +145,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               </MuiLink>
             </Typography>
 
-            {onClickDevLogin && (
+            {!ssoForm && onClickDevLogin && (
               <Button
                 variant="text"
                 size="small"
@@ -128,7 +158,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               </Button>
             )}
 
-            {onClickQaLogin && (
+            {!ssoForm && onClickQaLogin && (
               <Button
                 variant="text"
                 size="small"
@@ -148,12 +178,41 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 };
 
 export const LoginForm = () => {
-  const { withGoogle, withUniversal, withQaConnection } = sdk.auth.login();
+  const {
+    withGoogle,
+    withUniversal,
+    withQaConnection,
+    withEnterpriseConnection,
+  } = sdk.auth.login();
+  const discovery = sdk.auth.ssoDiscovery();
+  const [ssoMode, setSsoMode] = useState(false);
+  const [notConfigured, setNotConfigured] = useState(false);
   // Residency (OIDC) login is IdP-hosted, not Google — use generic copy (#607).
   const isOidc = getRuntimeConfig().authProvider === "oidc";
 
   const handleGoogleLogin = () => {
     withGoogle();
+  };
+
+  // #916: a work email's domain names the enterprise connection to sign in
+  // through. An unlisted domain stays on the form; a failure (a 429) shows
+  // through FormAlert from the mutation's own error.
+  const handleSsoSubmit = async (email: string) => {
+    setNotConfigured(false);
+    let connection: string | null;
+    try {
+      ({ connection } = await discovery.mutateAsync({ email }));
+    } catch {
+      return;
+    }
+    if (connection) withEnterpriseConnection(connection, email);
+    else setNotConfigured(true);
+  };
+
+  const handleSsoBack = () => {
+    discovery.reset();
+    setNotConfigured(false);
+    setSsoMode(false);
   };
 
   // Dev/test-only sign-in for the E2E harness (#304). The app's normal login
@@ -181,6 +240,19 @@ export const LoginForm = () => {
       onClickQaLogin={showQaLogin ? () => withQaConnection() : undefined}
       primaryLabel={isOidc ? "Sign in" : "Sign in with Google"}
       showProviderIcon={!isOidc}
+      onClickSso={isOidc ? undefined : () => setSsoMode(true)}
+      ssoForm={
+        ssoMode
+          ? {
+              onSubmit: (email) => void handleSsoSubmit(email),
+              onBack: handleSsoBack,
+              pending: discovery.isPending,
+              notConfigured,
+              serverError: toServerError(discovery.error),
+              onEmailChange: () => setNotConfigured(false),
+            }
+          : undefined
+      }
     />
   );
 };

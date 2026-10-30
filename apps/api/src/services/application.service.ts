@@ -27,13 +27,41 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
-import { SeatService } from "./seat.service.js";
+import { SeatService, type SeatAuditContext } from "./seat.service.js";
 import { SyncLockService } from "./sync-lock.service.js";
 import type { ProvisioningFallback } from "../config/sso.config.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { withTimeout } from "../utils/timeout.util.js";
 
 const logger = createLogger({ module: "application" });
+
+/** #916: bound on the deny-path invite re-check's profile fetch, which runs
+ *  under the provisioning lock (whose waiters give up at 10s). */
+const INVITE_RECHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * #916: after a re-check that fetched the profile and still couldn't accept
+ * (an unverified email, a mismatched one, or a failed fetch), skip the fetch
+ * for this long. Otherwise every request of such a user (a page load fires
+ * several) would call /userinfo in turn under the provisioning lock, and hit
+ * Auth0's per-user rate limit. Per instance, which is enough: it only bounds
+ * a retry loop, and a backed-off request is still denied (the safe side).
+ */
+const INVITE_RECHECK_BACKOFF_MS = 60_000;
+const inviteRecheckBackoff = new Map<string, number>();
+
+function inviteRecheckBackedOff(userId: string, now: number): boolean {
+  const until = inviteRecheckBackoff.get(userId);
+  return until !== undefined && until > now;
+}
+
+function backOffInviteRecheck(userId: string, now: number): void {
+  for (const [id, until] of inviteRecheckBackoff) {
+    if (until <= now) inviteRecheckBackoff.delete(id);
+  }
+  inviteRecheckBackoff.set(userId, now + INVITE_RECHECK_BACKOFF_MS);
+}
 
 export class ApplicationService {
   static async getCurrentOrganization(userId: string) {
@@ -136,6 +164,52 @@ export class ApplicationService {
   }
 
   /**
+   * Accept every pending invitation for a profile's VERIFIED email and join
+   * the invited org(s) (#584). Shared by the first-login branch and the
+   * deny-path re-check (#916). Null when the email is unverified or nothing
+   * was pending.
+   */
+  private static async joinPendingInvites(
+    user: UserSelect,
+    profile: { email: string | null; emailVerified: boolean },
+    auditCtx: SeatAuditContext | undefined
+  ): Promise<{
+    user: UserSelect;
+    organization: OrganizationSelect;
+    organizationUser: OrganizationUserSelect;
+    created: boolean;
+  } | null> {
+    if (!profile.emailVerified || !profile.email) return null;
+    const joined = await SeatService.acceptPendingForEmail(
+      user,
+      profile.email,
+      auditCtx ?? { sourceIp: null, userAgent: null }
+    );
+    if (!joined) return null;
+    return {
+      user,
+      organization: joined.organization,
+      organizationUser: joined.organizationUser,
+      created: true,
+    };
+  }
+
+  /** Whether any live pending invitation targets this stored email (#916). A
+   *  DB-only pre-check, so the deny path fetches the profile only when there
+   *  is something to accept. */
+  private static async hasPendingInviteFor(
+    email: string | null
+  ): Promise<boolean> {
+    if (!email) return false;
+    const pendings =
+      await DbService.repository.invitations.findPendingActiveByEmail(
+        email.trim().toLowerCase(),
+        SystemUtilities.utc.now().getTime()
+      );
+    return pendings.length > 0;
+  }
+
+  /**
    * First-login provisioning — the single idempotent, concurrency-safe path,
    * run from `getApplicationMetadata` on the request path (the Auth0 webhook
    * that also called it was removed in #577). Find-or-create the user, then, under an advisory
@@ -146,9 +220,10 @@ export class ApplicationService {
    * users; the lock is what lets the loser of a first-login race observe the
    * winner's committed org and no-op instead of provisioning a second one.
    *
-   * `resolveProfile` is lazy — invoked only when a user row must be created —
-   * so the request-path caller pays the Auth0 profile fetch only on a genuine
-   * first login, never on every request.
+   * `resolveProfile` is lazy — invoked only when a user row must be created,
+   * or (#916) when an existing user is about to be denied and the DB holds a
+   * pending invite for their stored email — so the request-path caller pays the Auth0 profile fetch
+   * only on a genuine first login or a refusal, never on every request.
    *
    * This is the first-login *wrapper* (with a no-membership gate), NOT the
    * reusable provisioning core. A future in-UI "create another org" feature
@@ -199,20 +274,13 @@ export class ApplicationService {
       // provisioning a personal org ("invited user joins the invited org
       // only"). Existing-user-no-membership falls through to personal-org
       // provisioning unchanged (they accept via the token endpoint).
-      if (profile?.emailVerified && profile.email) {
-        const joined = await SeatService.acceptPendingForEmail(
+      if (profile) {
+        const joined = await ApplicationService.joinPendingInvites(
           user,
-          profile.email,
-          auditCtx ?? { sourceIp: null, userAgent: null }
+          profile,
+          auditCtx
         );
-        if (joined) {
-          return {
-            user,
-            organization: joined.organization,
-            organizationUser: joined.organizationUser,
-            created: true,
-          };
-        }
+        if (joined) return joined;
       }
 
       // ── Org (provision iff no live membership) ─────────────────────
@@ -230,8 +298,53 @@ export class ApplicationService {
       // No membership and no matched invitation: what happens next depends on
       // the mode the caller resolved.
       if (fallback === "deny") {
-        // SaaS enterprise-federated identity with no invite — invite-gated, so
-        // reject rather than provisioning a personal org (tenant isolation).
+        // #916: a denied first login still created the user row, so on any
+        // later login the invite branch above never ran. Re-check here, before
+        // refusing, so a user invited after a denied attempt gets in without
+        // the emailed link.
+        //
+        // The profile fetch is gated on a pending invite for the stored
+        // email, so an uninvited refusal makes no network call: a refused
+        // user's parallel requests queue on this lock, and Auth0 rate-limits
+        // /userinfo per user. The fetch is bounded, and a failure denies
+        // anyway (the safe side; the next request re-checks), with a warning
+        // so an outage doesn't read as "not invited".
+        const now = SystemUtilities.utc.now().getTime();
+        if (
+          !profile &&
+          !inviteRecheckBackedOff(user.id, now) &&
+          (await ApplicationService.hasPendingInviteFor(user.email))
+        ) {
+          const recheck = await withTimeout(
+            resolveProfile(),
+            INVITE_RECHECK_TIMEOUT_MS,
+            "SSO invite re-check profile fetch"
+          ).catch((err: unknown) => {
+            logger.warn(
+              {
+                userId: user.id,
+                error: err instanceof Error ? err.message : "Unknown error",
+              },
+              "SSO invite re-check: profile fetch failed; denying"
+            );
+            return null;
+          });
+          if (recheck) {
+            const joined = await ApplicationService.joinPendingInvites(
+              user,
+              recheck,
+              auditCtx
+            );
+            if (joined) return joined;
+          }
+          backOffInviteRecheck(user.id, now);
+        }
+        // SaaS login through an invite-gated enterprise connection with no
+        // invite: reject rather than provisioning a personal org.
+        logger.info(
+          { userId: user.id },
+          "SSO provisioning denied: not invited"
+        );
         throw new ApiError(
           403,
           ApiCode.SSO_PROVISIONING_NOT_INVITED,

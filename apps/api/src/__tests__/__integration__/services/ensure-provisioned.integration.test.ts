@@ -307,16 +307,22 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
       createUser(auth0Sub, { email: "existing@example.com" }) as never
     );
     await seedPendingInvite("existing@example.com", "member");
+    const resolve = profileResolver({
+      email: "existing@example.com",
+      emailVerified: true,
+    });
 
     const result = await ApplicationService.ensureProvisioned(
       auth0Sub,
-      profileResolver({ email: "existing@example.com", emailVerified: true })
+      resolve
     );
 
     expect(result.created).toBe(true);
     expect(result.user.id).toBe(existing.id);
     expect(result.organization.ownerUserId).toBe(existing.id); // personal org
     expect(result.organizationUser.role).toBe("owner");
+    // #916: the deny-path re-check doesn't reach self-serve.
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   // ── deploy-mode provisioning fallback (#577, slice 4) ────────────────
@@ -374,6 +380,205 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
     expect(result.created).toBe(true);
     expect(result.organization.id).toBe(invitedOrgId);
     expect(result.organizationUser.role).toBe("member");
+  });
+
+  // ── deny-path invitation re-check (#916) ─────────────────────────────
+  // A denied first login still creates the user row, so on later logins the
+  // first-login invite branch never runs. The deny branch re-checks instead.
+
+  it("deny, then invite, then the next call joins the invited org", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    const auth0Sub = sub();
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        profileResolver({ email, emailVerified: true }),
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+
+    const invitedOrgId = await seedPendingInvite(email, "member");
+    const result = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver({ email, emailVerified: true }),
+      undefined,
+      "deny"
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.organization.id).toBe(invitedOrgId);
+    expect(result.organizationUser.role).toBe("member");
+    expect(await orgsOwnedBy(result.user.id)).toHaveLength(0);
+    const [invite] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(invitations)
+      .where(eq(invitations.email, email.toLowerCase()));
+    expect(invite.status).not.toBe("pending");
+  });
+
+  it("deny for an existing user with no invite → 403, one user row, no org or membership", async () => {
+    const auth0Sub = sub();
+    const existing = await DbService.repository.users.create(
+      createUser(auth0Sub, { email: "lonely@example.com" }) as never
+    );
+
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        profileResolver({ email: "lonely@example.com", emailVerified: true }),
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+
+    expect(await usersFor(auth0Sub)).toHaveLength(1);
+    expect(await orgsOwnedBy(existing.id)).toHaveLength(0);
+    const memberships = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(organizationUsers)
+      .where(eq(organizationUsers.userId, existing.id));
+    expect(memberships).toHaveLength(0);
+  });
+
+  it("deny for an existing user with an UNverified email does not accept the invite", async () => {
+    const email = `invitee-${generateId()}@example.com`;
+    const auth0Sub = sub();
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    await seedPendingInvite(email, "member");
+
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        profileResolver({ email, emailVerified: false }),
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+
+    const [invite] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(invitations)
+      .where(eq(invitations.email, email.toLowerCase()));
+    expect(invite.status).toBe("pending");
+  });
+
+  it("deny when the re-check's profile fetch fails → still 403, not 502", async () => {
+    const auth0Sub = sub();
+    const email = `flaky-${generateId()}@example.com`;
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    // A pending invite, so the re-check reaches the profile fetch.
+    await seedPendingInvite(email, "member");
+    const failing = jest.fn(async () => {
+      throw new Error("userinfo unavailable");
+    });
+
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        failing as never,
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    expect(failing).toHaveBeenCalledTimes(1);
+  });
+
+  // #916 review: an uninvited refusal makes no network call. Refused users
+  // send requests in parallel under the provisioning lock, and Auth0
+  // rate-limits /userinfo per user, so the re-check fetches the profile only
+  // when the DB holds a pending invite for the user's stored email.
+  it("deny for an existing user with no pending invite never fetches the profile", async () => {
+    const auth0Sub = sub();
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email: "nobody-invited@example.com" }) as never
+    );
+    const resolve = profileResolver({
+      email: "nobody-invited@example.com",
+      emailVerified: true,
+    });
+
+    await expect(
+      ApplicationService.ensureProvisioned(auth0Sub, resolve, undefined, "deny")
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("deny matches a pending invite to the stored email case-insensitively", async () => {
+    const auth0Sub = sub();
+    const email = `Mixed-${generateId()}@Example.com`;
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    const invitedOrgId = await seedPendingInvite(email, "member");
+
+    const result = await ApplicationService.ensureProvisioned(
+      auth0Sub,
+      profileResolver({ email, emailVerified: true }),
+      undefined,
+      "deny"
+    );
+
+    expect(result.organization.id).toBe(invitedOrgId);
+  });
+
+  it("deny when the re-check's profile fetch hangs → 403 within the bound", async () => {
+    const auth0Sub = sub();
+    const email = `slow-${generateId()}@example.com`;
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    await seedPendingInvite(email, "member");
+    const hanging = jest.fn(() => new Promise<never>(() => {}));
+
+    const started = Date.now();
+    await expect(
+      ApplicationService.ensureProvisioned(
+        auth0Sub,
+        hanging as never,
+        undefined,
+        "deny"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    expect(Date.now() - started).toBeLessThan(8_000);
+  }, 15_000);
+
+  // #916 review: an invite that can't be accepted (an unverified email, as
+  // many SAML connections send) must not make every request re-fetch the
+  // profile under the lock; the re-check backs off per user.
+  it("deny with an unacceptable pending invite fetches the profile once per backoff window", async () => {
+    const email = `unverified-${generateId()}@example.com`;
+    const auth0Sub = sub();
+    await DbService.repository.users.create(
+      createUser(auth0Sub, { email }) as never
+    );
+    await seedPendingInvite(email, "member");
+    const resolve = profileResolver({ email, emailVerified: false });
+
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        ApplicationService.ensureProvisioned(
+          auth0Sub,
+          resolve,
+          undefined,
+          "deny"
+        )
+      ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    }
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("deny for a new user resolves the profile exactly once", async () => {
+    const resolve = profileResolver({ emailVerified: true });
+
+    await expect(
+      ApplicationService.ensureProvisioned(sub(), resolve, undefined, "deny")
+    ).rejects.toMatchObject({ code: ApiCode.SSO_PROVISIONING_NOT_INVITED });
+    expect(resolve).toHaveBeenCalledTimes(1);
   });
 
   // ── re-homed per-login audit/profile (#577, slice 6) ─────────────────

@@ -28,6 +28,9 @@ export const members = {
       url: (v) => `/api/organization/members/${encodeURIComponent(v.userId)}`,
       method: "DELETE",
       body: () => undefined,
+      // A 404 means someone else already removed the member; refetch so the
+      // stale row goes away.
+      onPermissionDenied: { invalidate: () => [queryKeys.members.root] },
     }),
 
   /** Set a member's complete role set by slug (#620/#622 set-the-set; system +
@@ -41,6 +44,7 @@ export const members = {
         `/api/organization/members/${encodeURIComponent(v.userId)}/roles`,
       method: "PUT",
       body: (v) => ({ roleSlugs: v.roleSlugs }),
+      onPermissionDenied: { invalidate: () => [queryKeys.members.root] },
     }),
 
   /** Set a member's complete custom-group set (#622 member-centric set-the-set;

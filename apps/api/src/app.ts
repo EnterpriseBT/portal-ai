@@ -11,6 +11,7 @@ import { sseRouter } from "./routes/sse.router.js";
 import { webhookRouter } from "./routes/webhook.router.js";
 import { webhookHandleRouter } from "./routes/webhook-handle.router.js";
 import { publicSiteRouter } from "./routes/public-site.router.js";
+import { publicSsoRouter } from "./routes/public-sso.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { jsonBodyOnly } from "./middleware/json-body-only.middleware.js";
@@ -124,6 +125,10 @@ app.use("/api/webhook", webhookHandleRouter);
 // protectedRouter so jwtCheck never sees it; rate-limited per IP instead, and
 // serving only public tier rows + operator contact routes (no tenant data).
 app.use("/api/public", publicSiteRouter);
+// "Sign in with SSO" discovery (#916): anonymous BY DESIGN (the caller is
+// signing in). Answers only a connection name for an email domain, never
+// tenant data; rate-limited per IP in its own window.
+app.use("/api/public", publicSsoRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here

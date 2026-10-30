@@ -617,7 +617,7 @@ describe("SeatService Integration Tests", () => {
   it("404s removing a non-member; a member caller is denied", async () => {
     await expect(
       SeatService.removeMember(owner, "no-such-user", AUDIT)
-    ).rejects.toMatchObject({ code: ApiCode.ORGANIZATION_USER_NOT_FOUND });
+    ).rejects.toMatchObject({ code: ApiCode.ORGANIZATION_MEMBER_NOT_FOUND });
 
     const member: PermissionContext = {
       userId: "u-m",

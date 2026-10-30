@@ -30,6 +30,7 @@ const defaultAuth: NormalizedAuth = {
     withGoogle: () => {},
     withUniversal: () => {},
     withQaConnection: () => {},
+    withEnterpriseConnection: () => {},
   },
   logout: () => {},
 };

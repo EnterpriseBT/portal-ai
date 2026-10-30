@@ -134,6 +134,22 @@ describe("LoginFormUI QA sign-in (#489)", () => {
   });
 });
 
+describe("LoginFormUI SSO link (#916)", () => {
+  it("renders Sign in with SSO only when onClickSso is given", () => {
+    const { rerender } = render(<LoginFormUI onClickGoogleLogin={jest.fn()} />);
+    expect(
+      screen.queryByRole("button", { name: "Sign in with SSO" })
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <LoginFormUI onClickGoogleLogin={jest.fn()} onClickSso={jest.fn()} />
+    );
+    expect(
+      screen.getByRole("button", { name: "Sign in with SSO" })
+    ).toBeInTheDocument();
+  });
+});
+
 describe("LoginForm container label (#607)", () => {
   afterEach(() => {
     delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;

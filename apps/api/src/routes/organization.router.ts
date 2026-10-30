@@ -464,7 +464,7 @@ organizationRouter.delete(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Member not found in this organization
+ *         description: The target isn't a member of this organization (ORGANIZATION_MEMBER_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
@@ -932,7 +932,7 @@ organizationRouter.post(
  *       403:
  *         description: The caller lacks permission to remove members (PERMISSION_DENIED)
  *       404:
- *         description: Member not found in this organization
+ *         description: The target isn't a member of this organization (ORGANIZATION_MEMBER_NOT_FOUND)
  *       409:
  *         description: Cannot remove the last owner
  */

@@ -679,6 +679,11 @@ Resources:
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/auth0-domain"
             - Name: AUTH0_AUDIENCE
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/auth0-audience"
+            # #916: the Auth0 connections whose logins are invite-gated. Every
+            # env stores the key (`none` = gating off), because SSM can't hold
+            # an empty value and a missing parameter stops the task starting.
+            - Name: SSO_ENTERPRISE_CONNECTIONS
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/sso-enterprise-connections"
             - Name: CORS_ORIGIN
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/cors-origin"
             - Name: SYSTEM_ID

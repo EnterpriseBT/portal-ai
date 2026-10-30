@@ -43,6 +43,10 @@ jest.unstable_mockModule("../providers/Auth.provider", () => ({
 jest.unstable_mockModule("../utils/auth-error.util", () => ({
   handleAuthError: mockHandleAuthError,
   registerAuthLogout: mockRegisterAuthLogout,
+  // #916: the query client imports these too.
+  SSO_PROVISIONING_NOT_INVITED: "SSO_PROVISIONING_NOT_INVITED",
+  handleNotInvited: jest.fn(),
+  registerNotInvitedHandler: jest.fn(),
 }));
 
 const { render, renderHook, waitFor } = await import("@testing-library/react");

@@ -45,6 +45,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "MICROSOFT_OAUTH_TENANT",
       "SALES_EMAIL", // #311 public site-config contact
       "SECURITY_EMAIL", // #613 security.txt + /security/ disclosure contact
+      "SSO_ENTERPRISE_CONNECTIONS", // #916 invite-gated Auth0 connections
       "SUPPORT_EMAIL", // #311 public site-config contact
       "SYSTEM_ID",
     ]);

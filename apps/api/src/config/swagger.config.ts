@@ -71,6 +71,8 @@ import {
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   PublicSiteConfigResponseSchema,
+  SsoDiscoveryRequestBodySchema,
+  SsoDiscoveryResponseSchema,
   ConnectorConfigResponseSchema,
   DeltaEventSchema,
   ToolCallEventSchema,
@@ -620,6 +622,15 @@ const publicSiteSchemas: Record<string, unknown> = {
   ),
   ConnectorConfigResponse: z.toJSONSchema(
     ConnectorConfigResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  // #916: "Sign in with SSO" discovery.
+  SsoDiscoveryRequestBody: z.toJSONSchema(
+    SsoDiscoveryRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  SsoDiscoveryResponse: z.toJSONSchema(
+    SsoDiscoveryResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };

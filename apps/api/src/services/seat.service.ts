@@ -504,7 +504,7 @@ export class SeatService {
       if (!target) {
         throw new ApiError(
           404,
-          ApiCode.ORGANIZATION_USER_NOT_FOUND,
+          ApiCode.ORGANIZATION_MEMBER_NOT_FOUND,
           "Member not found in this organization"
         );
       }
@@ -616,7 +616,7 @@ export class SeatService {
       if (!target) {
         throw new ApiError(
           404,
-          ApiCode.ORGANIZATION_USER_NOT_FOUND,
+          ApiCode.ORGANIZATION_MEMBER_NOT_FOUND,
           "Member not found in this organization"
         );
       }

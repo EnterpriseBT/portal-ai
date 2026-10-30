@@ -93,6 +93,12 @@ export const CATALOG: CatalogEntry[] = [
   ssm("AUTH0_DOMAIN", "auth0-domain"),
   ssm("AUTH0_AUDIENCE", "auth0-audience"),
   ssm("AUTH0_CLI_CLIENT_ID", "auth0-cli-client-id"), // #194 device-flow app
+  // #916: JSON array of { connection, domains }: the Auth0 enterprise
+  // connections whose logins are invite-gated, and the email domains "Sign in
+  // with SSO" routes to them. Every env stores it; `none` turns it off (SSM
+  // can't hold an empty value). The API reads it at task start, so a `vars set`
+  // takes effect on the next deploy or task restart.
+  ssm("SSO_ENTERPRISE_CONNECTIONS", "sso-enterprise-connections"),
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("SYSTEM_ID", "system-id"),
   // #509: the shared demo custom-toolpack base URL the seeder registers the

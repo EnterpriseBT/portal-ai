@@ -25,7 +25,8 @@ const mockEnsureProvisioned =
     (
       sub: string,
       resolveProfile: () => Promise<unknown>,
-      auditCtx?: unknown
+      auditCtx?: unknown,
+      fallback?: unknown
     ) => Promise<unknown>
   >();
 jest.unstable_mockModule("../../services/application.service.js", () => ({
@@ -59,6 +60,7 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
 const { getApplicationMetadata } =
   await import("../../middleware/metadata.middleware.js");
 const { ApiError } = await import("../../services/http.service.js");
+const { environment } = await import("../../environment.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -189,6 +191,40 @@ describe("getApplicationMetadata", () => {
   });
 
   // case 12: Auth0 profile fetch fails on the miss path → fail-closed 500
+  // #916: a connection mapping can stringify email_verified, and "false" is
+  // truthy, so the invite match must not read it as verified.
+  it.each([
+    ["false", false],
+    ["true", true],
+    [true, true],
+    [undefined, false],
+  ])(
+    "resolves email_verified %p to emailVerified %p",
+    async (emailVerified, expected) => {
+      mockFindByAuth0Id.mockResolvedValue(null);
+      let resolved: unknown;
+      mockEnsureProvisioned.mockImplementation(async (_sub, resolveProfile) => {
+        resolved = await resolveProfile();
+        return {
+          user: { id: "user-1" },
+          organization: { id: "org-1" },
+        } as never;
+      });
+      mockGetAuth0UserProfile.mockResolvedValue({
+        sub: "oidc|smoke-sso|abc",
+        email: "a@acme.test",
+        email_verified: emailVerified,
+      });
+      const { req, res, next } = createMocks({ sub: "oidc|smoke-sso|abc" });
+
+      await getApplicationMetadata(req, res, next);
+
+      expect(resolved).toEqual(
+        expect.objectContaining({ emailVerified: expected })
+      );
+    }
+  );
+
   it("fails closed (500) when the Auth0 profile fetch throws", async () => {
     mockFindByAuth0Id.mockResolvedValue(null);
     // The real ensureProvisioned invokes resolveProfile to create the user;
@@ -227,6 +263,30 @@ describe("getApplicationMetadata", () => {
 
     expect(next).toHaveBeenCalledWith(refusal);
     expect(req.application).toBeUndefined();
+  });
+
+  // #916: a login through a listed enterprise connection is invite-gated, so
+  // provisioning gets the `deny` fallback, read from the token's `sub`.
+  it("passes deny to provisioning for a listed enterprise connection", async () => {
+    const previous = environment.SSO_ENTERPRISE_CONNECTIONS;
+    environment.SSO_ENTERPRISE_CONNECTIONS = JSON.stringify([
+      { connection: "acme-okta", domains: ["acme.com"] },
+    ]);
+    try {
+      mockFindByAuth0Id.mockResolvedValue(null);
+      mockEnsureProvisioned.mockRejectedValue(
+        new ApiError(403, ApiCode.SSO_PROVISIONING_NOT_INVITED, "Not invited")
+      );
+      const { req, res, next } = createMocks({
+        sub: "samlp|acme-okta|jo@acme.com",
+      });
+
+      await getApplicationMetadata(req, res, next);
+
+      expect(mockEnsureProvisioned.mock.calls[0][3]).toBe("deny");
+    } finally {
+      environment.SSO_ENTERPRISE_CONNECTIONS = previous;
+    }
   });
 
   it("should call next with 500 error when an unexpected error occurs", async () => {
