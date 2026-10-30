@@ -26,6 +26,8 @@ import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
+import { MapAttributionUI } from "./MapAttribution.component";
+import { mergeAttributions, toSafeAttribution } from "./utils/attribution.util";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
@@ -54,6 +56,7 @@ import {
 import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
 import type { InstallBasemap } from "../../utils/runtime-config.util";
+import type { AttributionPart } from "./utils/attribution.util";
 import type { MapLegend } from "./utils/map-config.util";
 
 const MAP_HEIGHT = 380;
@@ -146,6 +149,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   // The basemap style failed or timed out and the map fell back to the empty
   // style (#910); the data layers still render.
   const [basemapUnavailable, setBasemapUnavailable] = useState(false);
+  // The style's source attributions, reduced to safe text and links (#928).
+  const [attributions, setAttributions] = useState<AttributionPart[][]>([]);
   const tiles = tileStatus ?? internalTileStatus;
   const tilesRendering = tilesLoading ?? internalTilesLoading;
 
@@ -204,7 +209,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
           mode,
           installBasemap
         ) as maplibregl.StyleSpecification,
-        attributionControl: { compact: true },
+        // #928: MapLibre's control renders source attribution as HTML, and a
+        // spec's basemap can be a style its author chose; MapAttributionUI
+        // renders it as text instead.
+        attributionControl: false,
       });
       map.addControl(
         new maplibregl.NavigationControl({ showCompass: false }),
@@ -247,6 +255,21 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         });
         setBasemapUnavailable(true);
       };
+      // Re-read attribution as sources load (a TileJSON source only knows its
+      // attribution once fetched); set state only when the strings change.
+      let attributionKey = "";
+      const updateAttribution = () => {
+        const sources = Object.keys(m.getStyle()?.sources ?? {});
+        const strings = mergeAttributions(
+          sources.map((id) => m.getSource(id)?.attribution)
+        );
+        const key = strings.join("\n");
+        if (key === attributionKey) return;
+        attributionKey = key;
+        setAttributions(strings.map(toSafeAttribution));
+      };
+      m.on("styledata", updateAttribution);
+      m.on("sourcedata", updateAttribution);
       m.on(
         "data",
         (e: { dataType?: string; sourceId?: unknown; tile?: unknown }) => {
@@ -359,6 +382,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       // next map starts with no render error and its basemap presumed fine.
       setRenderError(null);
       setBasemapUnavailable(false);
+      setAttributions([]);
       map?.remove();
       if (isTile) unregisterTileContext(ctxId);
     };
@@ -452,6 +476,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             }}
           />
           {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
+          <MapAttributionUI attributions={attributions} />
         </Box>
         {/* #352: tile fetch/render in progress (tile path only). */}
         {isTile && tilesRendering ? (
