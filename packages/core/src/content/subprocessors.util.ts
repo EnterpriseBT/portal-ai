@@ -112,7 +112,8 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     name: "CARTO",
     purpose:
       "Basemap tiles behind portal maps, loaded by your browser; it receives your IP address and the map area on screen, never your records.",
-    usedWhen: "when you view a map in a portal",
+    usedWhen:
+      "when you view a map in a portal, unless the deployment replaces or turns off the basemap",
     reachedBy: ["browser"],
   },
   {
@@ -120,7 +121,8 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     name: "OpenStreetMap Foundation",
     purpose:
       "Basemap tiles for maps that use the OpenStreetMap style, loaded by your browser; it receives your IP address and the map area on screen, never your records.",
-    usedWhen: "when a map uses the OpenStreetMap basemap",
+    usedWhen:
+      "when a map uses the OpenStreetMap basemap, unless the deployment replaces or turns off the basemap",
     reachedBy: ["browser"],
   },
 ];
