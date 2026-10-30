@@ -19,12 +19,20 @@ const RUNTIME_KEYS = [
   "OIDC_CLIENT_ID",
   "OIDC_AUDIENCE",
   "DEPLOY_MODE",
+  // Map basemap (#910): default (CARTO/OSM) | custom (the operator's tile
+  // server) | none (no tile egress). Validated by the SPA's reader, which
+  // fails closed to `none`; passed through unchanged here.
+  "BASEMAP_MODE",
+  "BASEMAP_STYLE_URL",
+  "BASEMAP_STYLE_URL_DARK",
+  "BASEMAP_ATTRIBUTION",
 ];
 
 /** Defaults preserving today's SaaS behavior when a key is unset. */
 const DEFAULTS = {
   AUTH_PROVIDER: "auth0",
   DEPLOY_MODE: "saas",
+  BASEMAP_MODE: "default",
 };
 
 /**

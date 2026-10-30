@@ -83,6 +83,97 @@ export function getRuntimeConfig(): RuntimeConfig {
   );
 }
 
+/**
+ * The install-wide map basemap (#910), operator-set via the runtime config.
+ * `default` is today's SaaS behaviour (CARTO by theme, or the spec's own
+ * choice); `custom` and `none` override every map spec's basemap, so no stored
+ * pin or agent-authored spec can reach a host the operator didn't configure.
+ */
+export type InstallBasemap =
+  | { mode: "default" }
+  | { mode: "none" }
+  | {
+      mode: "custom";
+      /** A MapLibre style JSON URL, or a raster XYZ `{z}/{x}/{y}` template. */
+      styleUrl: string;
+      styleUrlDark: string | null;
+      attribution: string;
+    };
+
+export interface InstallBasemapResult {
+  basemap: InstallBasemap;
+  /** Why the raw config was rejected (→ `none`); null when it parsed as given. */
+  problem: string | null;
+}
+
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Pure parse of the `BASEMAP_*` keys. Fail-closed (#910 D4): a config this
+ * can't read as given resolves to `none` — losing a basemap is cosmetic, while
+ * falling back to CARTO would be third-party egress a residency install never
+ * agreed to.
+ */
+export function readInstallBasemap(
+  source: Record<string, unknown> | undefined
+): InstallBasemapResult {
+  const raw = source ?? {};
+  const mode = str(raw.BASEMAP_MODE).trim();
+  if (mode === "" || mode === "default") {
+    return { basemap: { mode: "default" }, problem: null };
+  }
+  if (mode === "none") return { basemap: { mode: "none" }, problem: null };
+  if (mode !== "custom") {
+    return {
+      basemap: { mode: "none" },
+      problem: `Unknown BASEMAP_MODE "${mode}" (expected default, custom or none); rendering maps without a basemap.`,
+    };
+  }
+
+  const styleUrl = str(raw.BASEMAP_STYLE_URL).trim();
+  if (!isHttpUrl(styleUrl)) {
+    return {
+      basemap: { mode: "none" },
+      problem:
+        "BASEMAP_MODE is custom but BASEMAP_STYLE_URL is not an absolute http(s) URL; rendering maps without a basemap.",
+    };
+  }
+  const dark = str(raw.BASEMAP_STYLE_URL_DARK).trim();
+  const darkValid = dark === "" || isHttpUrl(dark);
+  return {
+    basemap: {
+      mode: "custom",
+      styleUrl,
+      styleUrlDark: dark !== "" && darkValid ? dark : null,
+      attribution: str(raw.BASEMAP_ATTRIBUTION).trim(),
+    },
+    problem: darkValid
+      ? null
+      : "BASEMAP_STYLE_URL_DARK is not an absolute http(s) URL; using BASEMAP_STYLE_URL in both themes.",
+  };
+}
+
+const warnedBasemapProblems = new Set<string>();
+
+/** The live accessor; warns once per distinct problem rather than per map. */
+export function getInstallBasemap(): InstallBasemap {
+  const { basemap, problem } = readInstallBasemap(
+    typeof window !== "undefined" ? window.__RUNTIME_CONFIG__ : undefined
+  );
+  if (problem && !warnedBasemapProblems.has(problem)) {
+    warnedBasemapProblems.add(problem);
+    console.warn(`[basemap] ${problem}`);
+  }
+  return basemap;
+}
+
 interface ViteAuthEnv {
   VITE_AUTH0_DOMAIN?: string;
   VITE_AUTH0_CLIENT_ID?: string;

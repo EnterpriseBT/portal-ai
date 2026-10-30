@@ -8,6 +8,8 @@
  * per-module, so the Auth0 (build-time) path is tested as the pure function it
  * is factored into, mirroring `contact.util` (#369).
  */
+import { jest } from "@jest/globals";
+
 import {
   readRuntimeConfig,
   getRuntimeConfig,
@@ -16,6 +18,8 @@ import {
   shouldShowQaLogin,
   resolveOidcSettings,
   RuntimeConfigError,
+  readInstallBasemap,
+  getInstallBasemap,
 } from "../utils/runtime-config.util";
 
 const RESIDENCY = {
@@ -159,5 +163,162 @@ describe("resolveOidcSettings (#607)", () => {
   it("does not throw for an auth0 config with blank OIDC fields", () => {
     const cfg = readRuntimeConfig({ AUTH_PROVIDER: "auth0" });
     expect(() => resolveOidcSettings(cfg)).not.toThrow();
+  });
+});
+
+describe("readInstallBasemap (#910)", () => {
+  const LIGHT = "https://tiles.internal/light.json";
+  const DARK = "https://tiles.internal/dark.json";
+
+  it("unset → default (SaaS CARTO), no problem", () => {
+    expect(readInstallBasemap(undefined)).toEqual({
+      basemap: { mode: "default" },
+      problem: null,
+    });
+    expect(readInstallBasemap({ BASEMAP_MODE: "" }).basemap).toEqual({
+      mode: "default",
+    });
+  });
+
+  it("`default` → default, ignoring any URLs", () => {
+    expect(
+      readInstallBasemap({ BASEMAP_MODE: "default", BASEMAP_STYLE_URL: LIGHT })
+    ).toEqual({ basemap: { mode: "default" }, problem: null });
+  });
+
+  it("`none` → none, no problem", () => {
+    expect(readInstallBasemap({ BASEMAP_MODE: "none" })).toEqual({
+      basemap: { mode: "none" },
+      problem: null,
+    });
+  });
+
+  it("valid `custom` → custom with the light URL, no dark, attribution read", () => {
+    expect(
+      readInstallBasemap({
+        BASEMAP_MODE: "custom",
+        BASEMAP_STYLE_URL: LIGHT,
+        BASEMAP_ATTRIBUTION: "© Internal tiles",
+      })
+    ).toEqual({
+      basemap: {
+        mode: "custom",
+        styleUrl: LIGHT,
+        styleUrlDark: null,
+        attribution: "© Internal tiles",
+      },
+      problem: null,
+    });
+  });
+
+  it("`custom` with a valid dark URL keeps it", () => {
+    const { basemap } = readInstallBasemap({
+      BASEMAP_MODE: "custom",
+      BASEMAP_STYLE_URL: LIGHT,
+      BASEMAP_STYLE_URL_DARK: DARK,
+    });
+    expect(basemap).toEqual({
+      mode: "custom",
+      styleUrl: LIGHT,
+      styleUrlDark: DARK,
+      attribution: "",
+    });
+  });
+
+  it("`custom` with an invalid dark URL drops only the dark URL, with a problem", () => {
+    const result = readInstallBasemap({
+      BASEMAP_MODE: "custom",
+      BASEMAP_STYLE_URL: LIGHT,
+      BASEMAP_STYLE_URL_DARK: "not a url",
+    });
+    expect(result.basemap).toEqual({
+      mode: "custom",
+      styleUrl: LIGHT,
+      styleUrlDark: null,
+      attribution: "",
+    });
+    expect(result.problem).toContain("BASEMAP_STYLE_URL_DARK");
+  });
+
+  it("`custom` without a style URL fails closed to none (never CARTO)", () => {
+    const result = readInstallBasemap({ BASEMAP_MODE: "custom" });
+    expect(result.basemap).toEqual({ mode: "none" });
+    expect(result.problem).toContain("BASEMAP_STYLE_URL");
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "ftp://tiles.internal/style.json",
+    "/tiles/style.json",
+  ])(
+    "`custom` with a non-absolute-http(s) URL %p fails closed to none",
+    (url) => {
+      const result = readInstallBasemap({
+        BASEMAP_MODE: "custom",
+        BASEMAP_STYLE_URL: url,
+      });
+      expect(result.basemap).toEqual({ mode: "none" });
+      expect(result.problem).toContain("BASEMAP_STYLE_URL");
+    }
+  );
+
+  it.each(["off", "None", "carto"])(
+    "an unknown mode %p fails closed to none, naming the value",
+    (mode) => {
+      const result = readInstallBasemap({ BASEMAP_MODE: mode });
+      expect(result.basemap).toEqual({ mode: "none" });
+      expect(result.problem).toContain(mode);
+    }
+  );
+
+  it("trims whitespace around every value", () => {
+    expect(
+      readInstallBasemap({
+        BASEMAP_MODE: " custom ",
+        BASEMAP_STYLE_URL: `  ${LIGHT}\n`,
+        BASEMAP_STYLE_URL_DARK: ` ${DARK} `,
+        BASEMAP_ATTRIBUTION: "  © Internal tiles ",
+      })
+    ).toEqual({
+      basemap: {
+        mode: "custom",
+        styleUrl: LIGHT,
+        styleUrlDark: DARK,
+        attribution: "© Internal tiles",
+      },
+      problem: null,
+    });
+  });
+
+  it("accepts an XYZ template (placeholders don't affect parsing)", () => {
+    const xyz = "https://tiles.internal/{z}/{x}/{y}.png";
+    expect(
+      readInstallBasemap({ BASEMAP_MODE: "custom", BASEMAP_STYLE_URL: xyz })
+        .basemap
+    ).toMatchObject({ mode: "custom", styleUrl: xyz });
+  });
+});
+
+describe("getInstallBasemap (#910)", () => {
+  afterEach(() => {
+    delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
+    jest.restoreAllMocks();
+  });
+
+  it("reads window.__RUNTIME_CONFIG__ and warns once for a rejected config", () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    (
+      window as unknown as { __RUNTIME_CONFIG__: Record<string, string> }
+    ).__RUNTIME_CONFIG__ = { BASEMAP_MODE: "bogus-910" };
+    expect(getInstallBasemap()).toEqual({ mode: "none" });
+    expect(getInstallBasemap()).toEqual({ mode: "none" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0])).toContain("bogus-910");
+  });
+
+  it("an absent global is the SaaS default, without a warning", () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    expect(getInstallBasemap()).toEqual({ mode: "default" });
+    expect(warn).not.toHaveBeenCalled();
   });
 });
