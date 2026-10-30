@@ -25,7 +25,7 @@ import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
-import { BasemapUnavailableNotice } from "./BasemapUnavailableNotice.component";
+import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
@@ -64,6 +64,12 @@ const DEFAULT_INSTALL_BASEMAP: InstallBasemap = { mode: "default" };
 // Likewise stable: an inline `(p) => p` default re-ran the map effect, and so
 // rebuilt the map, on every state change when the prop was omitted.
 const IDENTITY_TILE_URL = (path: string): string => path;
+
+// The install basemap is fixed for the page's lifetime (config.js loads before
+// the bundle), so it's read once and every widget shares one reference.
+let installBasemapOnce: InstallBasemap | undefined;
+const readInstallBasemapOnce = (): InstallBasemap =>
+  (installBasemapOnce ??= getInstallBasemap());
 
 // ── UI (pure — props only; `mode` and auth are passed in, not read here) ──
 
@@ -212,12 +218,24 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       const template = spec.popup?.template;
 
       // #910: data layers attach on the first `style.load` — whichever style
-      // that is — so they never wait on the basemap. A basemap that errors or
-      // hasn't loaded within BASEMAP_LOAD_TIMEOUT_MS is swapped for the empty
-      // style, whose `style.load` then runs this. Under `none` the style is
-      // inline and there is nothing to fall back from.
+      // that is — so they never wait on the basemap. A basemap style that
+      // errors (or, for an operator's `custom` server, hasn't loaded within
+      // BASEMAP_LOAD_TIMEOUT_MS) is swapped for the empty style, whose
+      // `style.load` then runs this. SaaS's `default` CARTO gets no timeout: a
+      // slow style there still arrives. Under `none` the style is inline and
+      // there is nothing to fall back from.
       let styleLoaded = false;
       let fellBack = false;
+      // After the style loads, the basemap can still fail tile by tile (an XYZ
+      // template's style is inline, so it always "loads"). Its sources are the
+      // ones that aren't ours; once one of their tiles arrives, a later tile
+      // error is an edge 404, not an unavailable basemap.
+      let basemapTileLoaded = false;
+      const dataSources = new Set(
+        isTile ? [ctxId] : layerData.map((d) => d.sourceId)
+      );
+      const isBasemapSource = (id: unknown) =>
+        typeof id === "string" && !dataSources.has(id);
       const canFallBack = installBasemap.mode !== "none";
       const fallBack = (reason: unknown) => {
         if (styleLoaded || fellBack) return;
@@ -229,12 +247,37 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         });
         setBasemapUnavailable(true);
       };
-      // Registering a listener replaces MapLibre's default console logging.
-      m.on("error", (e: { error?: unknown }) => {
-        if (!styleLoaded && canFallBack) fallBack(e?.error ?? e);
-        else console.warn("[map]", e?.error ?? e);
+      m.on(
+        "data",
+        (e: { dataType?: string; sourceId?: unknown; tile?: unknown }) => {
+          if (
+            e?.dataType === "source" &&
+            e.tile &&
+            isBasemapSource(e.sourceId)
+          ) {
+            basemapTileLoaded = true;
+          }
+        }
+      );
+      // Registering a listener replaces MapLibre's default console logging,
+      // so every error is still logged as one.
+      m.on("error", (e: { error?: unknown; sourceId?: unknown }) => {
+        const reason = e?.error ?? e;
+        if (!styleLoaded && canFallBack) {
+          fallBack(reason);
+          return;
+        }
+        console.error("[map]", reason);
+        if (
+          canFallBack &&
+          !fellBack &&
+          !basemapTileLoaded &&
+          isBasemapSource(e?.sourceId)
+        ) {
+          setBasemapUnavailable(true);
+        }
       });
-      if (canFallBack) {
+      if (installBasemap.mode === "custom") {
         basemapTimer = setTimeout(
           () =>
             fallBack(
@@ -408,7 +451,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
               overflow: "hidden",
             }}
           />
-          {basemapUnavailable ? <BasemapUnavailableNotice /> : null}
+          {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
         </Box>
         {/* #352: tile fetch/render in progress (tile path only). */}
         {isTile && tilesRendering ? (
@@ -596,9 +639,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   const muiTheme = useTheme();
   const mode = muiTheme.palette.mode === "dark" ? "dark" : "light";
   const { getToken } = useAuth();
-  // Install-wide and fixed for the page's lifetime (config.js loads before the
-  // bundle), so one read per mounted widget is enough.
-  const installBasemap = useMemo(() => getInstallBasemap(), []);
+  const installBasemap = readInstallBasemapOnce();
 
   const parsed = useMemo(
     () => GeoBlockContentSchema.safeParse(content),

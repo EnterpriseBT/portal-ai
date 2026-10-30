@@ -66,7 +66,7 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
 | `web.basemap.mode` | `none` | Map basemap for every map, whatever its own spec names: `none` (data on a plain background, no tile traffic), `custom` (your tile server) or `default` (CARTO + OpenStreetMap, third-party egress). See *Egress*. |
-| `web.basemap.styleUrl` / `.styleUrlDark` | `""` | With `custom`: a MapLibre style JSON URL or a raster XYZ template (`https://…/{z}/{x}/{y}.png`); `styleUrl` is required, `styleUrlDark` optional (used in the dark theme). Must be `http(s)`. |
+| `web.basemap.styleUrl` / `.styleUrlDark` | `""` | With `custom`: a MapLibre style JSON URL or a raster XYZ template (`https://…/{z}/{x}/{y}.png`); `styleUrl` is required, `styleUrlDark` optional (used in the dark theme). Must be `http(s)`. A template supports `{z}`, `{x}` and `{y}` only; a Leaflet-style `{s}` subdomain isn't expanded, so name one host. |
 | `web.basemap.attribution` | `""` | Attribution shown for an XYZ template; a style JSON carries its own. |
 | `api.resources` / `web.resources` | see values | Resource requests/limits. |
 | `postgresql.enabled` | `true` | Bundle PostgreSQL (PostGIS image). `false` → use `postgresql.external`. |
@@ -172,8 +172,13 @@ residency operator most often needs to know about:
   and tiles must allow CORS from the app's origin), or `default` to use CARTO
   and OpenStreetMap, which then receive each viewer's IP and map viewport. The
   setting applies to every map, including a map whose spec names its own
-  basemap URL. If the configured style can't be loaded within 10 seconds, maps
-  still render their data and show "Basemap unavailable".
+  basemap URL. If a `custom` basemap fails (its style errors or hasn't loaded
+  within 10 seconds, or its tiles fail before any loads), maps still render
+  their data and show "Basemap unavailable".
+- **Running the web image without this chart.** The image's own default is
+  `BASEMAP_MODE=default` (CARTO + OpenStreetMap), the SaaS behaviour. Set
+  `BASEMAP_MODE` (and `BASEMAP_STYLE_URL` for `custom`) in its environment;
+  an unknown mode, or `custom` without a valid URL, renders no basemap.
 - **Optional tools and connectors.** Web search, geocoding and the Google and
   Microsoft connectors are off unless their keys are set.
 

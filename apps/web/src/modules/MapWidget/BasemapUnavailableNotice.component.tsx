@@ -6,7 +6,7 @@ import { Box, Typography } from "@mui/material";
  * layers still render on a blank background, and this says why the background
  * is blank. Absolutely positioned so it never shifts the map's layout.
  */
-export const BasemapUnavailableNotice: React.FC = () => (
+export const BasemapUnavailableNoticeUI: React.FC = () => (
   <Box
     role="status"
     data-testid="map-widget-basemap-unavailable"

@@ -686,7 +686,9 @@ function rasterStyle(
 export function resolveBasemapStyle(
   basemap: MapBasemap,
   mode: "light" | "dark",
-  install: InstallBasemap = { mode: "default" }
+  // Required, not defaulted: a caller that forgot it would get CARTO on an
+  // install configured to have no third-party basemap.
+  install: InstallBasemap
 ): string | Record<string, unknown> {
   if (install.mode === "none") return emptyBasemapStyle(mode);
   if (install.mode === "custom") {

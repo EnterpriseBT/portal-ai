@@ -633,4 +633,87 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS));
     expect(map.setStyle).not.toHaveBeenCalled();
   });
+
+  it("shows the notice when the basemap's tiles fail after its style loads (XYZ)", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={{
+          ...CUSTOM,
+          styleUrl: "https://tiles.internal/{z}/{x}/{y}.png",
+        }}
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    act(() =>
+      lastMap().emit("error", { sourceId: "basemap", error: new Error("404") })
+    );
+    expect(notice()).toBeInTheDocument();
+    // The data is fine where it is: no style swap after the style loaded.
+    expect(lastMap().setStyle).not.toHaveBeenCalled();
+  });
+
+  it("keeps quiet about a basemap tile error once a basemap tile has loaded", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    act(() =>
+      lastMap().emit("data", {
+        dataType: "source",
+        sourceId: "openmaptiles",
+        tile: {},
+      })
+    );
+    act(() =>
+      lastMap().emit("error", {
+        sourceId: "openmaptiles",
+        error: new Error("edge tile 404"),
+      })
+    );
+    expect(notice()).toBeNull();
+  });
+
+  it("a data-source error after load is no basemap failure, and logs as an error", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    errorSpy.mockClear();
+    act(() =>
+      lastMap().emit("error", {
+        sourceId: "layer-0",
+        error: new Error("bad geojson"),
+      })
+    );
+    expect(notice()).toBeNull();
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("`default` (SaaS CARTO) never times out a slow style", () => {
+    jest.useFakeTimers();
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS * 3));
+    expect(lastMap().setStyle).not.toHaveBeenCalled();
+    expect(notice()).toBeNull();
+  });
+
+  it("`default` still falls back when its style actually errors", () => {
+    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    act(() => lastMap().emit("error", { error: new Error("blocked") }));
+    expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
+    expect(notice()).toBeInTheDocument();
+  });
 });

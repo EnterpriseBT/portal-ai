@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
@@ -733,15 +737,22 @@ describe("boundsOf", () => {
 });
 
 describe("resolveBasemapStyle", () => {
+  const DEFAULT: InstallBasemap = { mode: "default" };
   it("keys the CARTO family to the theme mode", () => {
-    expect(resolveBasemapStyle("carto-light", "light")).toContain("positron");
-    expect(resolveBasemapStyle("carto-light", "dark")).toContain("dark-matter");
+    expect(resolveBasemapStyle("carto-light", "light", DEFAULT)).toContain(
+      "positron"
+    );
+    expect(resolveBasemapStyle("carto-light", "dark", DEFAULT)).toContain(
+      "dark-matter"
+    );
   });
   it("honours an explicit url and osm verbatim", () => {
-    expect(resolveBasemapStyle({ url: "https://x/y.json" }, "light")).toBe(
-      "https://x/y.json"
-    );
-    expect(resolveBasemapStyle("osm", "light")).toMatchObject({ version: 8 });
+    expect(
+      resolveBasemapStyle({ url: "https://x/y.json" }, "light", DEFAULT)
+    ).toBe("https://x/y.json");
+    expect(resolveBasemapStyle("osm", "light", DEFAULT)).toMatchObject({
+      version: 8,
+    });
   });
 });
 
@@ -761,8 +772,9 @@ describe("resolveBasemapStyle — install override (#910)", () => {
 
   it("`default` keeps today's mapping exactly", () => {
     const def: InstallBasemap = { mode: "default" };
-    expect(resolveBasemapStyle("carto-dark", "light", def)).toBe(
-      resolveBasemapStyle("carto-dark", "light")
+    // The CARTO family follows the theme, whatever the spec names.
+    expect(resolveBasemapStyle("carto-dark", "light", def)).toContain(
+      "positron"
     );
     expect(resolveBasemapStyle({ url: "https://x/y.json" }, "dark", def)).toBe(
       "https://x/y.json"
@@ -845,6 +857,27 @@ describe("emptyBasemapStyle (#910)", () => {
     expect(style.sources).toEqual({});
     expect(style.layers).toHaveLength(1);
     expect(style.layers[0].type).toBe("background");
+  });
+
+  it("matches the brand themes' background, so the map blends into its card", () => {
+    const themes = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../../../../packages/core/src/assets/themes"
+    );
+    const bg = (file: string) =>
+      (
+        JSON.parse(readFileSync(join(themes, file), "utf8")) as {
+          palette: { background: { default: string } };
+        }
+      ).palette.background.default;
+    const colour = (mode: "light" | "dark") =>
+      (
+        emptyBasemapStyle(mode) as {
+          layers: { paint: Record<string, string> }[];
+        }
+      ).layers[0].paint["background-color"];
+    expect(colour("light")).toBe(bg("brand-theme.json"));
+    expect(colour("dark")).toBe(bg("brand-theme-dark.json"));
   });
 
   it("colours the background from the theme mode", () => {

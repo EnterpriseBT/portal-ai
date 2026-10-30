@@ -103,6 +103,22 @@ const rejectScenarios = [
     ],
     error: /basemap[\s\S]*styleUrl/,
   },
+  {
+    // The SPA's reader would reject this at runtime and fall closed to `none`;
+    // refusing it here keeps the install-time and runtime gates in agreement.
+    name: "a basemap URL with whitespace (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+      "--set-string",
+      "web.basemap.styleUrl=https:// not a url",
+    ],
+    error: /basemap[\s\S]*styleUrl/,
+  },
 ];
 
 function helmAvailable() {
@@ -305,6 +321,28 @@ const CUSTOM_BASEMAP_ARGS = [
 ];
 
 const scenarios = [
+  {
+    name: "custom basemap with an upper-case scheme (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+      "--set",
+      "web.basemap.styleUrl=HTTPS://tiles.corp.example/style.json",
+    ],
+    assertions: [
+      [
+        "accepted, as the SPA's reader accepts it",
+        (out) =>
+          out.includes(
+            'BASEMAP_STYLE_URL: "HTTPS://tiles.corp.example/style.json"'
+          ),
+      ],
+    ],
+  },
   {
     name: "custom basemap (#910)",
     args: ["template", "p", CHART, ...IMAGE_ARGS, ...CUSTOM_BASEMAP_ARGS],
