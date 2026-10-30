@@ -27,7 +27,7 @@ import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
 import { MapAttributionUI } from "./MapAttribution.component";
-import { mergeAttributions, toSafeAttribution } from "./utils/attribution.util";
+import { toSafeAttributions } from "./utils/attribution.util";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
@@ -255,21 +255,37 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         });
         setBasemapUnavailable(true);
       };
-      // Re-read attribution as sources load (a TileJSON source only knows its
-      // attribution once fetched); set state only when the strings change.
+      // Credit the sources a visible layer draws from, as MapLibre's control
+      // did. Re-read when the style changes or a source's metadata arrives (a
+      // TileJSON source only knows its attribution once fetched), never per
+      // tile: getStyle() serializes the whole style. Set state only when the
+      // strings change. An operator's custom basemap keeps its https credit
+      // links; any other style (a spec's own URL) gets allow-listed hosts only.
+      const anyHttpsLink = installBasemap.mode === "custom";
       let attributionKey = "";
       const updateAttribution = () => {
-        const sources = Object.keys(m.getStyle()?.sources ?? {});
-        const strings = mergeAttributions(
-          sources.map((id) => m.getSource(id)?.attribution)
+        const style = m.getStyle();
+        const used = new Set(
+          (style?.layers ?? [])
+            .filter((l) => l.layout?.visibility !== "none")
+            .map((l) => ("source" in l ? l.source : undefined))
+            .filter((id): id is string => typeof id === "string")
         );
+        const strings = [...used].map((id) => m.getSource(id)?.attribution);
         const key = strings.join("\n");
         if (key === attributionKey) return;
         attributionKey = key;
-        setAttributions(strings.map(toSafeAttribution));
+        setAttributions(toSafeAttributions(strings, { anyHttpsLink }));
       };
       m.on("styledata", updateAttribution);
-      m.on("sourcedata", updateAttribution);
+      m.on("sourcedata", (e: { sourceDataType?: string }) => {
+        if (
+          e?.sourceDataType === "metadata" ||
+          e?.sourceDataType === "visibility"
+        ) {
+          updateAttribution();
+        }
+      });
       m.on(
         "data",
         (e: { dataType?: string; sourceId?: unknown; tile?: unknown }) => {

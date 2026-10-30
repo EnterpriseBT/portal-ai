@@ -31,6 +31,11 @@ describe("MapAttributionUI (#928)", () => {
     );
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    // One line on the map; the full credit is on hover.
+    expect(box).toHaveAttribute(
+      "title",
+      "© OpenStreetMap contributors | © Corp tiles"
+    );
   });
 
   it("renders nothing when there is nothing to credit", () => {

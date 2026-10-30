@@ -20,10 +20,10 @@
 - **B. Allow-list host for spec URLs, or drop `{url}` from the spec.** Rejected for this ticket: either changes the contract or adds install config (#928 would become `full`). It stays a possible follow-up for the arbitrary-host tile egress itself.
 - **C. Replace MapLibre's control with our own text renderer (chosen).**
   - Construct the map with `attributionControl: false`.
-  - On `styledata` and `sourcedata`, read `map.getSource(id)?.attribution` for every style source.
+  - On `styledata`, and on `sourcedata` whose `sourceDataType` is `metadata` or `visibility` (never per tile, since `getStyle()` serializes the whole style), read `map.getSource(id)?.attribution` for each source **a visible layer draws from**, as MapLibre's control did. Sanitize first, then deduplicate on the sanitized text.
   - Convert each string with a pure `toSafeAttribution(html): AttributionPart[]`. It parses with `DOMParser`, which is inert and runs no scripts, then walks the nodes:
     - text stays text;
-    - an `<a>` whose `href` is `https:` on `ATTRIBUTION_LINK_HOSTS` (`openstreetmap.org`, `carto.com` and their subdomains) becomes a link;
+    - an `<a>` whose `href` is `https:` on `ATTRIBUTION_LINK_HOSTS` becomes a link. The list holds **exact** hosts only: `openstreetmap.org`, `www.openstreetmap.org`, `carto.com`, `www.carto.com`. A subdomain match would admit CARTO's per-account `<account>.carto.com`. Under an operator's `custom` basemap (where the spec URL is ignored) any `https:` link is kept, since providers' credits may require it. *(Revised after code review.)*
     - **anything else contributes only its text**, so `<style>`/`<form>`/`<link>` are dropped and their CSS text discarded.
   - React renders the parts, escaping by construction, with `target="_blank" rel="noopener noreferrer"` on links.
 
@@ -32,7 +32,7 @@
 ## Plan — 2 slices
 
 **Slice 1: the sanitizer (pure).**
-- New: `apps/web/src/modules/MapWidget/utils/attribution.util.ts`, exporting `ATTRIBUTION_LINK_HOSTS`, `AttributionPart`, `toSafeAttribution` and `mergeAttributions(strings)` (dedupe, drop empties and substring duplicates, as MapLibre does).
+- New: `apps/web/src/modules/MapWidget/utils/attribution.util.ts`, exporting `ATTRIBUTION_LINK_HOSTS`, `AttributionPart`, `toSafeAttribution(html, { anyHttpsLink })` and `toSafeAttributions(strings, opts)` (sanitize, then drop empties, duplicates and entries contained in another, compared on sanitized text).
 - New test: `__tests__/attribution.util.test.ts`. Each of the following must yield only text:
   - `<style>`, `<svg><style>`, `<link>`, `<form>` with a password input, `<img onerror>`;
   - a non-allow-listed `<a>`, an `<a href="javascript:">`, an `http:` OSM link, and a look-alike host (`openstreetmap.org.evil.example`).

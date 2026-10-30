@@ -11,21 +11,27 @@ export interface MapAttributionUIProps {
 /**
  * The map's attribution (#928), in place of MapLibre's control, which renders
  * source attribution as HTML. Parts come from `toSafeAttribution`, so this
- * renders only text and allow-listed links; React escapes the text. Overlaid
- * bottom-right so it never shifts the map's layout.
+ * renders only text and allowed links; React escapes the text. Overlaid
+ * bottom-right on one line so it never shifts the map's layout.
  */
 export const MapAttributionUI: React.FC<MapAttributionUIProps> = ({
   attributions,
 }) => {
   if (attributions.length === 0) return null;
+  const fullText = attributions
+    .map((parts) => parts.map((p) => p.text).join(""))
+    .join(" | ");
   return (
     <Box
       data-testid="map-attribution"
+      title={fullText}
       sx={{
         position: "absolute",
         right: 0,
         bottom: 0,
-        maxWidth: "70%",
+        // One line, leaving the bottom-left free for the "Basemap
+        // unavailable" notice; the full credit is on hover.
+        maxWidth: "calc(100% - 180px)",
         px: 0.75,
         py: 0.125,
         borderTopLeftRadius: 4,
@@ -33,7 +39,12 @@ export const MapAttributionUI: React.FC<MapAttributionUIProps> = ({
         opacity: 0.85,
       }}
     >
-      <Typography variant="caption" color="text.secondary">
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        noWrap
+        component="div"
+      >
         {attributions.map((parts, i) => (
           <React.Fragment key={i}>
             {i > 0 ? " | " : null}
