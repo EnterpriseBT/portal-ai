@@ -180,6 +180,10 @@ async function sendApiRequest<T>(
     throw error;
   }
 
+  // A 204 has no body to parse (removing a member answers one). The caller
+  // gets undefined rather than a JSON parse error for a write that succeeded.
+  if (response.status === 204) return undefined as T;
+
   return response.json() as Promise<T>;
 }
 
@@ -431,7 +435,8 @@ const useApiMutation = <TData, TVariables>(
       const bound = isRead
         ? null
         : boundedSignal(timeoutMs ?? WRITE_TIMEOUT_MS, options?.signal);
-      let response: ApiSuccessResponse<TData>;
+      // Undefined for a 204, which carries no envelope.
+      let response: ApiSuccessResponse<TData> | undefined;
       try {
         const sent = fetchWithAuth<ApiSuccessResponse<TData>>(request.url, {
           ...options,
@@ -454,7 +459,7 @@ const useApiMutation = <TData, TVariables>(
       } finally {
         bound?.clear();
       }
-      return response.payload;
+      return response?.payload as TData;
     },
     // #753: a write isn't resent on its own. A network error or 5xx can
     // arrive after the server applied the write, so a retry would duplicate
