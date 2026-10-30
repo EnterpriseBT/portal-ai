@@ -1,6 +1,26 @@
 import { z } from "zod";
 
 /**
+ * Reads a boolean OIDC claim that may arrive as a string (#916). Auth0 returns
+ * an enterprise connection's mapped claims as strings, so `email_verified` can
+ * be `"true"` or `"false"`. Returns undefined for anything else, so a caller
+ * never mistakes an unknown value for `true`.
+ */
+export function parseBooleanClaim(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  return undefined;
+}
+
+/** A boolean claim, also accepting the strings `"true"` and `"false"`. */
+const booleanClaim = z
+  .preprocess((value) => parseBooleanClaim(value) ?? value, z.boolean())
+  .optional();
+
+/**
  * Auth0 user profile schema from the userinfo endpoint.
  * @see https://auth0.com/docs/api/authentication#get-user-info
  *
@@ -20,13 +40,13 @@ export const Auth0UserProfileSchema = z
     picture: z.string().optional(),
     website: z.string().optional(),
     email: z.string().optional(),
-    email_verified: z.boolean().optional(),
+    email_verified: booleanClaim,
     gender: z.string().optional(),
     birthdate: z.string().optional(),
     zoneinfo: z.string().optional(),
     locale: z.string().optional(),
     phone_number: z.string().optional(),
-    phone_number_verified: z.boolean().optional(),
+    phone_number_verified: booleanClaim,
     address: z
       .object({
         formatted: z.string().optional(),

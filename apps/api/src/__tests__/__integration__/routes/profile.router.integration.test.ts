@@ -127,6 +127,23 @@ describe("Profile Router", () => {
         expect(res.body.payload.lastLogin).toBeNull();
       });
 
+      // #916: an enterprise connection's mapped email_verified arrives as a
+      // string from /userinfo, which used to fail the schema with a 500.
+      it("should return 200 with a boolean when Auth0 sends email_verified as a string", async () => {
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue({
+          ...mockProfile,
+          email_verified: "true",
+        } as unknown as Auth0UserProfile);
+        mockedUsersRepo.findByAuth0Id.mockResolvedValue(undefined);
+
+        const res = await request(app)
+          .get("/api/profile")
+          .set("Authorization", "Bearer valid-token");
+
+        expect(res.status).toBe(200);
+        expect(res.body.payload.profile.email_verified).toBe(true);
+      });
+
       it("should return 500 when Auth0 returns a profile without sub", async () => {
         mockedAuth0Service.getAuth0UserProfile.mockResolvedValue({
           sub: "",

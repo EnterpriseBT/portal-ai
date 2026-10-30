@@ -191,6 +191,40 @@ describe("getApplicationMetadata", () => {
   });
 
   // case 12: Auth0 profile fetch fails on the miss path → fail-closed 500
+  // #916: a connection mapping can stringify email_verified, and "false" is
+  // truthy, so the invite match must not read it as verified.
+  it.each([
+    ["false", false],
+    ["true", true],
+    [true, true],
+    [undefined, false],
+  ])(
+    "resolves email_verified %p to emailVerified %p",
+    async (emailVerified, expected) => {
+      mockFindByAuth0Id.mockResolvedValue(null);
+      let resolved: unknown;
+      mockEnsureProvisioned.mockImplementation(async (_sub, resolveProfile) => {
+        resolved = await resolveProfile();
+        return {
+          user: { id: "user-1" },
+          organization: { id: "org-1" },
+        } as never;
+      });
+      mockGetAuth0UserProfile.mockResolvedValue({
+        sub: "oidc|smoke-sso|abc",
+        email: "a@acme.test",
+        email_verified: emailVerified,
+      });
+      const { req, res, next } = createMocks({ sub: "oidc|smoke-sso|abc" });
+
+      await getApplicationMetadata(req, res, next);
+
+      expect(resolved).toEqual(
+        expect.objectContaining({ emailVerified: expected })
+      );
+    }
+  );
+
   it("fails closed (500) when the Auth0 profile fetch throws", async () => {
     mockFindByAuth0Id.mockResolvedValue(null);
     // The real ensureProvisioned invokes resolveProfile to create the user;
