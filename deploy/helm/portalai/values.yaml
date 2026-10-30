@@ -54,6 +54,21 @@ web:
   # nginx-unprivileged already runs as uid 101; just assert non-root.
   podSecurityContext:
     runAsNonRoot: true
+  # Map basemap (#910), served to browsers through config.js.
+  #   none    (default) no basemap: maps draw their data on a plain
+  #           background and browsers fetch no map tiles at all.
+  #   custom  your own tile server: styleUrl is a MapLibre style JSON URL or a
+  #           raster XYZ template (https://…/{z}/{x}/{y}.png). The style and
+  #           its tiles must allow CORS from the app's origin.
+  #   default CARTO + OpenStreetMap, the SaaS basemap (third-party egress).
+  # Every map uses this basemap whatever its own spec names.
+  basemap:
+    mode: none
+    styleUrl: ""
+    # Optional dark-theme style; styleUrl is used in both themes when empty.
+    styleUrlDark: ""
+    # Attribution shown for an XYZ template (a style JSON carries its own).
+    attribution: ""
 
 # Per-container hardening applied to both workloads. readOnlyRootFilesystem is
 # off because the api writes transient files; tightened with #571.

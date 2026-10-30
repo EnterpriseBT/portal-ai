@@ -65,6 +65,9 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `OAUTH_STATE_SECRET`). Never `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` on a residency install: the API refuses to boot with them. |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
+| `web.basemap.mode` | `none` | Map basemap for every map, whatever its own spec names: `none` (data on a plain background, no tile traffic), `custom` (your tile server) or `default` (CARTO + OpenStreetMap, third-party egress). See *Egress*. |
+| `web.basemap.styleUrl` / `.styleUrlDark` | `""` | With `custom`: a MapLibre style JSON URL or a raster XYZ template (`https://…/{z}/{x}/{y}.png`); `styleUrl` is required, `styleUrlDark` optional (used in the dark theme). Must be `http(s)`. A template supports `{z}`, `{x}` and `{y}` only; a Leaflet-style `{s}` subdomain isn't expanded, so name one host. |
+| `web.basemap.attribution` | `""` | Attribution shown for an XYZ template; a style JSON carries its own. |
 | `api.resources` / `web.resources` | see values | Resource requests/limits. |
 | `postgresql.enabled` | `true` | Bundle PostgreSQL (PostGIS image). `false` → use `postgresql.external`. |
 | `postgresql.image.*` | `imresamu/postgis:17-3.5` | Bundled DB image (PostGIS). |
@@ -163,9 +166,19 @@ residency operator most often needs to know about:
 - **LLM.** Every model call goes to `ANTHROPIC_BASE_URL` when it is set (a
   proxy or self-hosted gateway), and to Anthropic directly when it isn't. Some
   callers send record or sample values; the review lists which.
-- **Map basemaps (browser).** The web app's map widget loads basemap tiles
-  from CARTO and OpenStreetMap, and there is **no override yet** (#910). A
-  browser egress policy that blocks them leaves maps without a basemap.
+- **Map basemaps (browser).** The chart defaults `web.basemap.mode` to
+  `none`: maps draw their data on a plain background and browsers fetch no
+  tiles. Set `custom` with a `styleUrl` to use a tile server you run (its style
+  and tiles must allow CORS from the app's origin), or `default` to use CARTO
+  and OpenStreetMap, which then receive each viewer's IP and map viewport. The
+  setting applies to every map, including a map whose spec names its own
+  basemap URL. If a `custom` basemap fails (its style errors or hasn't loaded
+  within 10 seconds, or its tiles fail before any loads), maps still render
+  their data and show "Basemap unavailable".
+- **Running the web image without this chart.** The image's own default is
+  `BASEMAP_MODE=default` (CARTO + OpenStreetMap), the SaaS behaviour. Set
+  `BASEMAP_MODE` (and `BASEMAP_STYLE_URL` for `custom`) in its environment;
+  an unknown mode, or `custom` without a valid URL, renders no basemap.
 - **Optional tools and connectors.** Web search, geocoding and the Google and
   Microsoft connectors are off unless their keys are set.
 

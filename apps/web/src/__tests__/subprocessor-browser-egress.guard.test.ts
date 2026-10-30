@@ -3,7 +3,7 @@
  *
  * `apps/api`'s parity test holds `SUBPROCESSORS` to the env vars the server
  * reads, but the browser opens connections of its own that no server env var
- * names: every portal map loads CARTO basemap tiles, the Google picker loads
+ * names: portal maps load CARTO basemap tiles (by default), the Google picker loads
  * Google's scripts, sign-in talks to Auth0. So every external host the web
  * source names, and every `VITE_*` var it reads, is classified here — as the
  * subprocessor it reaches, or as not one with a reason. A new host fails CI
@@ -12,6 +12,11 @@
  * A map spec can also name its own basemap URL (`{ url }`). That host comes
  * from the portal's author at runtime, like a webhook endpoint, so it can't
  * be listed; the security page's webhook note covers the principle.
+ *
+ * The CARTO and OSM hosts are the `default` basemap path (#910). An install
+ * whose runtime `BASEMAP_MODE` is `custom` or `none` overrides every spec's
+ * basemap, so its browsers reach the operator's tile server or no tile host
+ * at all; the hosts stay in source, and listed here, because SaaS uses them.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";

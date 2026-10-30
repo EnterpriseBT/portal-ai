@@ -1,4 +1,15 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { renderConfigJs } from "../../scripts/render-config.mjs";
+
+const BASEMAP_DEFAULTS = {
+  BASEMAP_MODE: "default",
+  BASEMAP_STYLE_URL: "",
+  BASEMAP_STYLE_URL_DARK: "",
+  BASEMAP_ATTRIBUTION: "",
+};
 
 /**
  * The runtime `config.js` shipped by the residency web image (#566). It is
@@ -29,6 +40,7 @@ describe("renderConfigJs", () => {
       OIDC_CLIENT_ID: "portalai-web",
       OIDC_AUDIENCE: "https://api.customer.example",
       DEPLOY_MODE: "residency",
+      ...BASEMAP_DEFAULTS,
     });
   });
 
@@ -39,6 +51,7 @@ describe("renderConfigJs", () => {
       OIDC_CLIENT_ID: "",
       OIDC_AUDIENCE: "",
       DEPLOY_MODE: "saas",
+      ...BASEMAP_DEFAULTS,
     });
   });
 
@@ -55,5 +68,39 @@ describe("renderConfigJs", () => {
     expect(js.trim()).toMatch(/^window\.__RUNTIME_CONFIG__ = \{.*\};$/s);
     // Round-trips through JSON.parse — i.e. it is valid, serializable JS.
     expect(() => parseConfig(js)).not.toThrow();
+  });
+
+  describe("basemap keys (#910)", () => {
+    it("defaults the basemap to SaaS CARTO (`default`) with empty URLs", () => {
+      expect(parseConfig(renderConfigJs({}))).toMatchObject(BASEMAP_DEFAULTS);
+    });
+
+    it("passes the basemap values through unchanged", () => {
+      const config = parseConfig(
+        renderConfigJs({
+          BASEMAP_MODE: "custom",
+          BASEMAP_STYLE_URL: "https://tiles.internal/light.json",
+          BASEMAP_STYLE_URL_DARK: "https://tiles.internal/dark.json",
+          BASEMAP_ATTRIBUTION: "© Internal tiles",
+        })
+      );
+      expect(config).toMatchObject({
+        BASEMAP_MODE: "custom",
+        BASEMAP_STYLE_URL: "https://tiles.internal/light.json",
+        BASEMAP_STYLE_URL_DARK: "https://tiles.internal/dark.json",
+        BASEMAP_ATTRIBUTION: "© Internal tiles",
+      });
+    });
+
+    it("keeps the static SaaS public/config.js in step with the renderer", () => {
+      const file = join(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../public/config.js"
+      );
+      const shipped = parseConfig(readFileSync(file, "utf8"));
+      const rendered = parseConfig(renderConfigJs({}));
+      expect(Object.keys(shipped)).toEqual(Object.keys(rendered));
+      expect(shipped).toEqual(rendered);
+    });
   });
 });

@@ -59,6 +59,68 @@ const EXTERNAL_ARGS = [
   "minio.external.endpoint=https://s3.example.com",
 ];
 
+/**
+ * Values the chart must refuse at `helm template`/`install` time, each with a
+ * pattern its error has to match (so an unrelated render failure can't pass
+ * for the intended refusal).
+ */
+const rejectScenarios = [
+  {
+    name: "custom basemap without a style URL (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+    ],
+    error: /basemap[\s\S]*styleUrl/,
+  },
+  {
+    name: "unknown basemap mode (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=off",
+    ],
+    error: /basemap[\s\S]*mode/,
+  },
+  {
+    name: "a basemap URL that isn't http(s) (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+      "--set",
+      "web.basemap.styleUrl=javascript:alert(1)",
+    ],
+    error: /basemap[\s\S]*styleUrl/,
+  },
+  {
+    // The SPA's reader would reject this at runtime and fall closed to `none`;
+    // refusing it here keeps the install-time and runtime gates in agreement.
+    name: "a basemap URL with whitespace (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+      "--set-string",
+      "web.basemap.styleUrl=https:// not a url",
+    ],
+    error: /basemap[\s\S]*styleUrl/,
+  },
+];
+
 function helmAvailable() {
   try {
     execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
@@ -246,7 +308,59 @@ const notesScenarios = () => {
   ];
 };
 
+// The `web.basemap` values a custom-tile-server install sets (#910).
+const CUSTOM_BASEMAP_ARGS = [
+  "--set",
+  "web.basemap.mode=custom",
+  "--set",
+  "web.basemap.styleUrl=https://tiles.corp.example/light.json",
+  "--set",
+  "web.basemap.styleUrlDark=https://tiles.corp.example/dark.json",
+  "--set-string",
+  "web.basemap.attribution=© Corp tiles",
+];
+
 const scenarios = [
+  {
+    name: "custom basemap with an upper-case scheme (#910)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "web.basemap.mode=custom",
+      "--set",
+      "web.basemap.styleUrl=HTTPS://tiles.corp.example/style.json",
+    ],
+    assertions: [
+      [
+        "accepted, as the SPA's reader accepts it",
+        (out) =>
+          out.includes(
+            'BASEMAP_STYLE_URL: "HTTPS://tiles.corp.example/style.json"'
+          ),
+      ],
+    ],
+  },
+  {
+    name: "custom basemap (#910)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, ...CUSTOM_BASEMAP_ARGS],
+    assertions: [
+      [
+        "BASEMAP_* reach the web config.js env",
+        (out) =>
+          out.includes('BASEMAP_MODE: "custom"') &&
+          out.includes(
+            'BASEMAP_STYLE_URL: "https://tiles.corp.example/light.json"'
+          ) &&
+          out.includes(
+            'BASEMAP_STYLE_URL_DARK: "https://tiles.corp.example/dark.json"'
+          ) &&
+          out.includes('BASEMAP_ATTRIBUTION: "© Corp tiles"'),
+      ],
+    ],
+  },
   {
     name: "defaults (api + web + bundled data deps)",
     args: ["template", "p", CHART, ...IMAGE_ARGS],
@@ -257,6 +371,10 @@ const scenarios = [
         (out) => out.includes("path: /api/health/ready"),
       ],
       ["non-root workloads", (out) => out.includes("runAsNonRoot: true")],
+      [
+        "no basemap by default: no third-party tile egress (#910)",
+        (out) => out.includes('BASEMAP_MODE: "none"'),
+      ],
       ["api image reference", (out) => out.includes('image: "example/api:test"')],
       ["web image reference", (out) => out.includes('image: "example/web:test"')],
       [
@@ -694,6 +812,25 @@ function main() {
       } else {
         console.error(`✗ [${scenario.name}] ${label}`);
         failures.push(`${scenario.name}: ${label}`);
+      }
+    }
+  }
+
+  // values the chart must refuse (#910)
+  for (const scenario of rejectScenarios) {
+    try {
+      run(scenario.args);
+      console.error(`✗ [${scenario.name}] rendered, but must be refused`);
+      failures.push(`reject: ${scenario.name}`);
+    } catch (err) {
+      const message = String(err.stderr || err.stdout || err.message);
+      if (scenario.error.test(message)) {
+        console.log(`✓ [${scenario.name}] refused`);
+      } else {
+        console.error(
+          `✗ [${scenario.name}] failed for another reason:\n${message}`
+        );
+        failures.push(`reject: ${scenario.name}`);
       }
     }
   }

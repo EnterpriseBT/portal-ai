@@ -12,6 +12,12 @@ data:
   OIDC_ISSUER: {{ .Values.oidc.issuer | quote }}
   OIDC_AUDIENCE: {{ .Values.oidc.audience | quote }}
   OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  # Map basemap for the web config.js (#910); the chart defaults to none, so a
+  # fresh install sends no tile traffic off the cluster.
+  BASEMAP_MODE: {{ .Values.web.basemap.mode | quote }}
+  BASEMAP_STYLE_URL: {{ .Values.web.basemap.styleUrl | quote }}
+  BASEMAP_STYLE_URL_DARK: {{ .Values.web.basemap.styleUrlDark | quote }}
+  BASEMAP_ATTRIBUTION: {{ .Values.web.basemap.attribution | quote }}
   # S3/MinIO uploads. ENDPOINT + FORCE_PATH_STYLE are consumed once #567 lands;
   # BUCKET/REGION are read today. Composed bundled-vs-external in _helpers.tpl.
   UPLOAD_S3_ENDPOINT: {{ include "portalai.s3Endpoint" . | quote }}

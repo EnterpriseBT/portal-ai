@@ -14,6 +14,8 @@ import type {
   WidgetRefreshResponse,
 } from "@portalai/core/contracts";
 
+import type { InstallBasemap } from "../../../utils/runtime-config.util";
+
 /**
  * Pure translation from a declarative `MapSpec` (+ result rows) to the
  * MapLibre primitives the widget mounts: GeoJSON sources, styled layers, a
@@ -620,14 +622,82 @@ const OSM_STYLE = {
 };
 
 /**
- * Resolve a MapSpec basemap to a MapLibre style. The CARTO family is keyed to
- * the active MUI theme so the map matches light/dark; an explicit `{url}` or
- * `osm` is honoured verbatim.
+ * How long a map waits for its basemap style before falling back to
+ * `emptyBasemapStyle` (#910). A firewall that silently drops packets raises no
+ * `error` event, so the timeout is what bounds that case.
+ */
+export const BASEMAP_LOAD_TIMEOUT_MS = 10_000;
+
+/**
+ * `palette.background.default` of the brand themes
+ * (`packages/core/src/assets/themes/brand-theme{,-dark}.json`), which core
+ * doesn't export as data.
+ */
+const EMPTY_BG = { light: "#ffffff", dark: "#0f0f1f" } as const;
+
+/**
+ * The no-basemap style (#910): no sources, so no tile egress and nothing for
+ * the attribution control to credit, and one theme-coloured background layer.
+ * Data layers need no glyphs or sprites, so they render on it unchanged.
+ */
+export function emptyBasemapStyle(
+  mode: "light" | "dark"
+): Record<string, unknown> {
+  return {
+    version: 8,
+    sources: {},
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: { "background-color": EMPTY_BG[mode] },
+      },
+    ],
+  };
+}
+
+/** Wrap a raster XYZ template (`…/{z}/{x}/{y}.png`) in a MapLibre style. */
+function rasterStyle(
+  url: string,
+  attribution: string
+): Record<string, unknown> {
+  return {
+    version: 8,
+    sources: {
+      basemap: {
+        type: "raster",
+        tiles: [url],
+        tileSize: 256,
+        ...(attribution ? { attribution } : {}),
+      },
+    },
+    layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+  };
+}
+
+/**
+ * Resolve a MapSpec basemap to a MapLibre style. Under the install's `custom`
+ * or `none` basemap (#910) the spec's choice is ignored entirely — a stored pin
+ * or an agent-authored `{url}` can't reach a host the operator didn't
+ * configure. Under `default`, the CARTO family is keyed to the active MUI
+ * theme so the map matches light/dark; an explicit `{url}` or `osm` is
+ * honoured verbatim.
  */
 export function resolveBasemapStyle(
   basemap: MapBasemap,
-  mode: "light" | "dark"
+  mode: "light" | "dark",
+  // Required, not defaulted: a caller that forgot it would get CARTO on an
+  // install configured to have no third-party basemap.
+  install: InstallBasemap
 ): string | Record<string, unknown> {
+  if (install.mode === "none") return emptyBasemapStyle(mode);
+  if (install.mode === "custom") {
+    const url =
+      mode === "dark" && install.styleUrlDark
+        ? install.styleUrlDark
+        : install.styleUrl;
+    return url.includes("{z}") ? rasterStyle(url, install.attribution) : url;
+  }
   if (typeof basemap === "object") return basemap.url;
   if (basemap === "osm") return OSM_STYLE;
   return mode === "dark" ? CARTO_DARK : CARTO_LIGHT;

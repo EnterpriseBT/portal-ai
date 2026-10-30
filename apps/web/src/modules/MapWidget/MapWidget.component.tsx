@@ -23,10 +23,14 @@ import { WidgetFreshnessBar } from "@portalai/core";
 
 import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
+import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
 import {
+  BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
   buildLegend,
+  emptyBasemapStyle,
   featuresForLayer,
   isTileBoundGeo,
   layerToMapLibre,
@@ -49,9 +53,23 @@ import {
 
 import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
+import type { InstallBasemap } from "../../utils/runtime-config.util";
 import type { MapLegend } from "./utils/map-config.util";
 
 const MAP_HEIGHT = 380;
+
+// A stable reference: the map effect depends on `installBasemap`, so an inline
+// default would rebuild the map on every render.
+const DEFAULT_INSTALL_BASEMAP: InstallBasemap = { mode: "default" };
+// Likewise stable: an inline `(p) => p` default re-ran the map effect, and so
+// rebuilt the map, on every state change when the prop was omitted.
+const IDENTITY_TILE_URL = (path: string): string => path;
+
+// The install basemap is fixed for the page's lifetime (config.js loads before
+// the bundle), so it's read once and every widget shares one reference.
+let installBasemapOnce: InstallBasemap | undefined;
+const readInstallBasemapOnce = (): InstallBasemap =>
+  (installBasemapOnce ??= getInstallBasemap());
 
 // ── UI (pure — props only; `mode` and auth are passed in, not read here) ──
 
@@ -85,6 +103,9 @@ export interface MapWidgetUIProps {
   degraded?: boolean;
   status?: "loading" | "ready" | "error" | "refreshing";
   onHeight?: (height: number) => void;
+  /** The install-wide basemap (#910); `custom`/`none` override the spec's.
+   *  Pass a stable reference — the map is rebuilt when it changes. */
+  installBasemap?: InstallBasemap;
 }
 
 export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
@@ -97,7 +118,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   tileTemplate = null,
   largeUnpersisted = false,
   getTileToken,
-  resolveTileUrl = (p) => p,
+  resolveTileUrl = IDENTITY_TILE_URL,
   tileStatus,
   lastUpdatedAt = null,
   tilesLoading,
@@ -108,6 +129,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   degraded = false,
   status = "ready",
   onHeight,
+  installBasemap = DEFAULT_INSTALL_BASEMAP,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   // React's useId() returns colon-wrapped ids (":r0:"); strip to URL-safe chars
@@ -121,6 +143,9 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   // Live tile-rendering flag from the map's dataloading/idle events (#352);
   // a controlled prop overrides it for tests/stories.
   const [internalTilesLoading, setInternalTilesLoading] = useState(false);
+  // The basemap style failed or timed out and the map fell back to the empty
+  // style (#910); the data layers still render.
+  const [basemapUnavailable, setBasemapUnavailable] = useState(false);
   const tiles = tileStatus ?? internalTileStatus;
   const tilesRendering = tilesLoading ?? internalTilesLoading;
 
@@ -160,8 +185,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
 
   useEffect(() => {
     if (!showMap || mapRef.current == null) return;
-    setRenderError(null);
     let map: maplibregl.Map | null = null;
+    let basemapTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (isTile) {
       installPortalMapProtocol(maplibregl, resolveTileUrl);
@@ -176,7 +201,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         container: mapRef.current,
         style: resolveBasemapStyle(
           spec.basemap,
-          mode
+          mode,
+          installBasemap
         ) as maplibregl.StyleSpecification,
         attributionControl: { compact: true },
       });
@@ -191,7 +217,81 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       m.on("idle", () => setInternalTilesLoading(false));
       const template = spec.popup?.template;
 
-      m.on("load", () => {
+      // #910: data layers attach on the first `style.load` — whichever style
+      // that is — so they never wait on the basemap. A basemap style that
+      // errors (or, for an operator's `custom` server, hasn't loaded within
+      // BASEMAP_LOAD_TIMEOUT_MS) is swapped for the empty style, whose
+      // `style.load` then runs this. SaaS's `default` CARTO gets no timeout: a
+      // slow style there still arrives. Under `none` the style is inline and
+      // there is nothing to fall back from.
+      let styleLoaded = false;
+      let fellBack = false;
+      // After the style loads, the basemap can still fail tile by tile (an XYZ
+      // template's style is inline, so it always "loads"). Its sources are the
+      // ones that aren't ours; once one of their tiles arrives, a later tile
+      // error is an edge 404, not an unavailable basemap.
+      let basemapTileLoaded = false;
+      const dataSources = new Set(
+        isTile ? [ctxId] : layerData.map((d) => d.sourceId)
+      );
+      const isBasemapSource = (id: unknown) =>
+        typeof id === "string" && !dataSources.has(id);
+      const canFallBack = installBasemap.mode !== "none";
+      const fallBack = (reason: unknown) => {
+        if (styleLoaded || fellBack) return;
+        fellBack = true;
+        clearTimeout(basemapTimer);
+        console.error("[map] basemap unavailable", reason);
+        m.setStyle(emptyBasemapStyle(mode) as maplibregl.StyleSpecification, {
+          diff: false,
+        });
+        setBasemapUnavailable(true);
+      };
+      m.on(
+        "data",
+        (e: { dataType?: string; sourceId?: unknown; tile?: unknown }) => {
+          if (
+            e?.dataType === "source" &&
+            e.tile &&
+            isBasemapSource(e.sourceId)
+          ) {
+            basemapTileLoaded = true;
+          }
+        }
+      );
+      // Registering a listener replaces MapLibre's default console logging,
+      // so every error is still logged as one.
+      m.on("error", (e: { error?: unknown; sourceId?: unknown }) => {
+        const reason = e?.error ?? e;
+        if (!styleLoaded && canFallBack) {
+          fallBack(reason);
+          return;
+        }
+        console.error("[map]", reason);
+        if (
+          canFallBack &&
+          !fellBack &&
+          !basemapTileLoaded &&
+          isBasemapSource(e?.sourceId)
+        ) {
+          setBasemapUnavailable(true);
+        }
+      });
+      if (installBasemap.mode === "custom") {
+        basemapTimer = setTimeout(
+          () =>
+            fallBack(
+              new Error(
+                `basemap style did not load within ${BASEMAP_LOAD_TIMEOUT_MS}ms`
+              )
+            ),
+          BASEMAP_LOAD_TIMEOUT_MS
+        );
+      }
+
+      m.once("style.load", () => {
+        styleLoaded = true;
+        clearTimeout(basemapTimer);
         try {
           if (isTile) {
             m.addSource(ctxId, {
@@ -253,6 +353,12 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       // Construction failure (e.g. no WebGL) — chrome still renders.
     }
     return () => {
+      clearTimeout(basemapTimer);
+      // Per-map state resets as the map is torn down rather than at the top
+      // of the effect (a synchronous setState there cascades renders), so the
+      // next map starts with no render error and its basemap presumed fine.
+      setRenderError(null);
+      setBasemapUnavailable(false);
       map?.remove();
       if (isTile) unregisterTileContext(ctxId);
     };
@@ -270,6 +376,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     mlLayers,
     bounds,
     onHeight,
+    installBasemap,
   ]);
 
   // #349: the header is the shared WidgetFreshnessBar — d3, table, and the
@@ -333,16 +440,19 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   } else {
     body = (
       <>
-        <Box
-          ref={mapRef}
-          data-testid="map-widget-canvas"
-          sx={{
-            width: "100%",
-            height: MAP_HEIGHT,
-            borderRadius: 1,
-            overflow: "hidden",
-          }}
-        />
+        <Box sx={{ position: "relative" }}>
+          <Box
+            ref={mapRef}
+            data-testid="map-widget-canvas"
+            sx={{
+              width: "100%",
+              height: MAP_HEIGHT,
+              borderRadius: 1,
+              overflow: "hidden",
+            }}
+          />
+          {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
+        </Box>
         {/* #352: tile fetch/render in progress (tile path only). */}
         {isTile && tilesRendering ? (
           <Box
@@ -529,6 +639,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   const muiTheme = useTheme();
   const mode = muiTheme.palette.mode === "dark" ? "dark" : "light";
   const { getToken } = useAuth();
+  const installBasemap = readInstallBasemapOnce();
 
   const parsed = useMemo(
     () => GeoBlockContentSchema.safeParse(content),
@@ -612,6 +723,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       status={status}
       lastUpdatedAt={lastUpdatedAt}
       onHeight={onHeight}
+      installBasemap={installBasemap}
     />
   );
 };
