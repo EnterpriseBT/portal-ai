@@ -1,23 +1,55 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 
 import type { MapSpec } from "@portalai/core/contracts";
 
+type Handler = (payload?: unknown) => void;
+
 // maplibre-gl is mocked at the module boundary — the UI's mount effect runs
-// against the mock (its "load" callback never fires, so no source/layer/WebGL
-// code executes), and the test asserts the chrome the UI renders from props.
+// against the mock (no event fires unless a test `emit`s it, so no
+// source/layer/WebGL code executes by default), and the test asserts the
+// chrome the UI renders from props. Each map records its constructor options,
+// its handlers and its setStyle calls (#910) so a test can drive the
+// basemap-fallback lifecycle.
 jest.unstable_mockModule("maplibre-gl", () => {
+  const instances: MockMap[] = [];
   class MockMap {
-    on() {
+    options: Record<string, unknown>;
+    handlers: { event: string; once: boolean; fn: Handler }[] = [];
+    setStyle = jest.fn();
+    addLayer = jest.fn();
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
+      instances.push(this);
+    }
+    on(event: string, layerOrFn: string | Handler, fn?: Handler) {
+      // Layer-scoped handlers (`on("click", layerId, fn)`) are recorded as
+      // `event:layerId` so they never fire on a map-level emit.
+      if (typeof layerOrFn === "function") {
+        this.handlers.push({ event, once: false, fn: layerOrFn });
+      } else if (fn) {
+        this.handlers.push({ event: `${event}:${layerOrFn}`, once: false, fn });
+      }
       return this;
+    }
+    once(event: string, fn: Handler) {
+      this.handlers.push({ event, once: true, fn });
+      return this;
+    }
+    emit(event: string, payload?: unknown) {
+      const matching = this.handlers.filter((h) => h.event === event);
+      this.handlers = this.handlers.filter(
+        (h) => !(h.event === event && h.once)
+      );
+      matching.forEach((h) => h.fn(payload));
     }
     addControl() {
       return this;
     }
     addSource() {}
-    addLayer() {}
     fitBounds() {}
+    jumpTo() {}
     getCanvas() {
       return { style: {} };
     }
@@ -39,6 +71,7 @@ jest.unstable_mockModule("maplibre-gl", () => {
   }
   return {
     __esModule: true,
+    __instances: instances,
     Map: MockMap,
     addProtocol: () => {},
     removeProtocol: () => {},
@@ -53,6 +86,16 @@ jest.unstable_mockModule("maplibre-gl", () => {
 });
 
 const { MapWidgetUI } = await import("../MapWidget.component");
+const { BASEMAP_LOAD_TIMEOUT_MS, emptyBasemapStyle } =
+  await import("../utils/map-config.util");
+const maplibreMock = (await import("maplibre-gl")) as unknown as {
+  __instances: {
+    options: Record<string, unknown>;
+    setStyle: jest.Mock;
+    addLayer: jest.Mock;
+    emit: (event: string, payload?: unknown) => void;
+  }[];
+};
 const { registerMapBlockRenderer } = await import("../utils/register.util");
 const { hasBlockRenderer } = await import("@portalai/core");
 
@@ -438,5 +481,156 @@ describe("MapWidgetUI — status cues (#348, #352)", () => {
   it("omits the tile-rendering cue when not loading", () => {
     render(<MapWidgetUI {...tileProps} />);
     expect(screen.queryByTestId("map-widget-tiles-loading")).toBeNull();
+  });
+});
+
+describe("MapWidgetUI — install basemap + fallback (#910)", () => {
+  const rows = [{ lat: 1, lng: 2 }];
+  const specWithUrl = {
+    ...pointsSpec,
+    basemap: { url: "https://elsewhere.example/style.json" },
+  } as unknown as MapSpec;
+  const CUSTOM = {
+    mode: "custom",
+    styleUrl: "https://tiles.internal/light.json",
+    styleUrlDark: null,
+    attribution: "",
+  } as const;
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const notice = () => screen.queryByText("Basemap unavailable");
+
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it("constructs the map on the install's basemap, not the spec's", () => {
+    const { unmount } = render(
+      <MapWidgetUI
+        spec={specWithUrl}
+        rows={rows}
+        mode="light"
+        installBasemap={{ mode: "none" }}
+      />
+    );
+    expect(lastMap().options.style).toEqual(emptyBasemapStyle("light"));
+    unmount();
+
+    render(
+      <MapWidgetUI
+        spec={specWithUrl}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    expect(lastMap().options.style).toBe("https://tiles.internal/light.json");
+  });
+
+  it("an error before the style loads swaps to the empty style and shows the notice", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="dark"
+        installBasemap={CUSTOM}
+      />
+    );
+    expect(notice()).toBeNull();
+    act(() => lastMap().emit("error", { error: new Error("fetch failed") }));
+    expect(lastMap().setStyle).toHaveBeenCalledWith(emptyBasemapStyle("dark"), {
+      diff: false,
+    });
+    expect(notice()).toBeInTheDocument();
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("attaches the data layers once the fallback style loads", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    act(() => lastMap().emit("error", { error: new Error("blocked") }));
+    expect(lastMap().addLayer).not.toHaveBeenCalled();
+    act(() => lastMap().emit("style.load"));
+    expect(lastMap().addLayer).toHaveBeenCalled();
+    const calls = lastMap().addLayer.mock.calls.length;
+    act(() => lastMap().emit("style.load"));
+    expect(lastMap().addLayer.mock.calls.length).toBe(calls);
+  });
+
+  it("falls back when the style hasn't loaded within the timeout", () => {
+    jest.useFakeTimers();
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS - 1));
+    expect(lastMap().setStyle).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(1));
+    expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
+    expect(notice()).toBeInTheDocument();
+  });
+
+  it("ignores errors after the style has loaded (tile errors are logged only)", () => {
+    jest.useFakeTimers();
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    act(() => lastMap().emit("error", { error: new Error("tile 404") }));
+    act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS));
+    expect(lastMap().setStyle).not.toHaveBeenCalled();
+    expect(notice()).toBeNull();
+  });
+
+  it("shows no notice under `none`, which is a choice rather than a failure", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={{ mode: "none" }}
+      />
+    );
+    act(() => lastMap().emit("error", { error: new Error("anything") }));
+    expect(lastMap().setStyle).not.toHaveBeenCalled();
+    expect(notice()).toBeNull();
+  });
+
+  it("clears the timeout on unmount", () => {
+    jest.useFakeTimers();
+    const { unmount } = render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+        installBasemap={CUSTOM}
+      />
+    );
+    const map = lastMap();
+    unmount();
+    act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS));
+    expect(map.setStyle).not.toHaveBeenCalled();
   });
 });

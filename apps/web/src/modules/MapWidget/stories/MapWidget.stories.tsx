@@ -123,6 +123,26 @@ export const Dark: Story = {
   args: { ...PolygonsColoredByClass.args, mode: "dark" },
 };
 
+/** #910: an install with `BASEMAP_MODE=none` — data on a plain background,
+ *  no tile egress, no attribution and no notice. */
+export const NoBasemap: Story = {
+  args: { ...PolygonsColoredByClass.args, installBasemap: { mode: "none" } },
+};
+
+/** #910: an install whose custom style can't be reached (`.invalid` never
+ *  resolves) — the data still renders, with the "Basemap unavailable" notice. */
+export const BasemapUnavailable: Story = {
+  args: {
+    ...PolygonsColoredByClass.args,
+    installBasemap: {
+      mode: "custom",
+      styleUrl: "https://tiles.example.invalid/style.json",
+      styleUrlDark: null,
+      attribution: "",
+    },
+  },
+};
+
 export const Empty: Story = {
   args: {
     mode: "light",
