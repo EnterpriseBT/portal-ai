@@ -1,6 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
 
-import type { MapLayer, MapSpec } from "@portalai/core/contracts";
+import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
 import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import type {
@@ -11,6 +11,7 @@ import type {
 import {
   boundsOf,
   buildLegend,
+  emptyBasemapStyle,
   EMPTY_ROWS,
   featuresForLayer,
   isTileBoundGeo,
@@ -21,6 +22,7 @@ import {
   sourceIdFor,
 } from "../utils/map-config.util";
 import type { MapLegend } from "../utils/map-config.util";
+import type { InstallBasemap } from "../../../utils/runtime-config.util";
 
 /** Swatch labels of a legend (or [] for null/gradient) — the discriminated
  *  MapLegend replaced the flat LegendEntry[] in #336. */
@@ -740,6 +742,120 @@ describe("resolveBasemapStyle", () => {
       "https://x/y.json"
     );
     expect(resolveBasemapStyle("osm", "light")).toMatchObject({ version: 8 });
+  });
+});
+
+describe("resolveBasemapStyle — install override (#910)", () => {
+  const NONE: InstallBasemap = { mode: "none" };
+  const LIGHT = "https://tiles.internal/light.json";
+  const DARK = "https://tiles.internal/dark.json";
+  const custom = (
+    over: Partial<Extract<InstallBasemap, { mode: "custom" }>> = {}
+  ): InstallBasemap => ({
+    mode: "custom",
+    styleUrl: LIGHT,
+    styleUrlDark: DARK,
+    attribution: "",
+    ...over,
+  });
+
+  it("`default` keeps today's mapping exactly", () => {
+    const def: InstallBasemap = { mode: "default" };
+    expect(resolveBasemapStyle("carto-dark", "light", def)).toBe(
+      resolveBasemapStyle("carto-dark", "light")
+    );
+    expect(resolveBasemapStyle({ url: "https://x/y.json" }, "dark", def)).toBe(
+      "https://x/y.json"
+    );
+  });
+
+  const overridden: [string, MapBasemap][] = [
+    ["carto-light", "carto-light"],
+    ["osm", "osm"],
+    ["a spec {url}", { url: "https://elsewhere.example/style.json" }],
+  ];
+  it.each(overridden)("`none` overrides %s with the empty style", (_l, b) => {
+    expect(resolveBasemapStyle(b, "light", NONE)).toEqual(
+      emptyBasemapStyle("light")
+    );
+  });
+
+  it("`custom` uses the light URL in light mode and the dark URL in dark mode", () => {
+    expect(resolveBasemapStyle("carto-light", "light", custom())).toBe(LIGHT);
+    expect(resolveBasemapStyle("carto-light", "dark", custom())).toBe(DARK);
+  });
+
+  it("`custom` without a dark URL uses the light URL in dark mode", () => {
+    expect(
+      resolveBasemapStyle("carto-dark", "dark", custom({ styleUrlDark: null }))
+    ).toBe(LIGHT);
+  });
+
+  it("`custom` ignores a spec {url} and osm", () => {
+    expect(
+      resolveBasemapStyle(
+        { url: "https://elsewhere.example/s.json" },
+        "light",
+        custom()
+      )
+    ).toBe(LIGHT);
+    expect(resolveBasemapStyle("osm", "light", custom())).toBe(LIGHT);
+  });
+
+  it("wraps an XYZ template in a raster style carrying the attribution", () => {
+    const xyz = "https://tiles.internal/{z}/{x}/{y}.png";
+    expect(
+      resolveBasemapStyle(
+        "carto-light",
+        "light",
+        custom({ styleUrl: xyz, styleUrlDark: null, attribution: "© Internal" })
+      )
+    ).toEqual({
+      version: 8,
+      sources: {
+        basemap: {
+          type: "raster",
+          tiles: [xyz],
+          tileSize: 256,
+          attribution: "© Internal",
+        },
+      },
+      layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+    });
+  });
+
+  it("omits an empty attribution from the wrapped raster source", () => {
+    const style = resolveBasemapStyle(
+      "carto-light",
+      "light",
+      custom({ styleUrl: "https://t.internal/{z}/{x}/{y}.png" })
+    ) as { sources: { basemap: Record<string, unknown> } };
+    expect(style.sources.basemap).not.toHaveProperty("attribution");
+  });
+});
+
+describe("emptyBasemapStyle (#910)", () => {
+  it("has no sources, so the attribution control credits nobody", () => {
+    const style = emptyBasemapStyle("light") as {
+      version: number;
+      sources: Record<string, unknown>;
+      layers: { type: string }[];
+    };
+    expect(style.version).toBe(8);
+    expect(style.sources).toEqual({});
+    expect(style.layers).toHaveLength(1);
+    expect(style.layers[0].type).toBe("background");
+  });
+
+  it("colours the background from the theme mode", () => {
+    const colour = (mode: "light" | "dark") =>
+      (
+        emptyBasemapStyle(mode) as {
+          layers: { paint: Record<string, string> }[];
+        }
+      ).layers[0].paint["background-color"];
+    expect(colour("light")).toBe("#ffffff");
+    expect(colour("dark")).toBe("#0f0f1f");
   });
 });
 
