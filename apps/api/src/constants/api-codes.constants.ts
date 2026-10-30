@@ -53,6 +53,10 @@ export enum ApiCode {
 
   // Organization
   ORGANIZATION_USER_NOT_FOUND = "ORGANIZATION_USER_NOT_FOUND",
+  /** A member route's target isn't a member of the caller's org. Distinct
+   *  from ORGANIZATION_USER_NOT_FOUND, which means the caller has no
+   *  membership and makes the web sign them out. */
+  ORGANIZATION_MEMBER_NOT_FOUND = "ORGANIZATION_MEMBER_NOT_FOUND",
   ORGANIZATION_NOT_FOUND = "ORGANIZATION_NOT_FOUND",
   ORGANIZATION_FETCH_FAILED = "ORGANIZATION_FETCH_FAILED",
   /** The authed user has no live membership in the target org (switch authz). */

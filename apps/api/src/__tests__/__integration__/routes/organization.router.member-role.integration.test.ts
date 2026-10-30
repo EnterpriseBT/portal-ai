@@ -249,6 +249,6 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
     const res = await putRoles("nonexistent-user-id", ["admin"]);
 
     expect(res.status).toBe(404);
-    expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_MEMBER_NOT_FOUND);
   });
 });

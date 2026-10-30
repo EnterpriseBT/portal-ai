@@ -171,6 +171,36 @@ describe("queryClient error routing (#916)", () => {
     expect(logout).not.toHaveBeenCalled();
   });
 
+  it("logs out when the caller has no membership (ORGANIZATION_USER_NOT_FOUND)", () => {
+    const logout = jest.fn();
+    registerAuthLogout(logout);
+    const err = new ApiError(
+      "User not found",
+      "ORGANIZATION_USER_NOT_FOUND",
+      404
+    );
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(logout).toHaveBeenCalledTimes(2);
+  });
+
+  // #916's smoke: removing a member someone already removed answered with the
+  // caller's code and logged the remover out.
+  it("leaves a missing target member alone (ORGANIZATION_MEMBER_NOT_FOUND)", () => {
+    const logout = jest.fn();
+    registerAuthLogout(logout);
+    const err = new ApiError(
+      "Member not found in this organization",
+      "ORGANIZATION_MEMBER_NOT_FOUND",
+      404
+    );
+
+    for (const onError of onErrors()) onError(err);
+
+    expect(logout).not.toHaveBeenCalled();
+  });
+
   it("leaves a plain 403 alone", () => {
     const logout = jest.fn();
     const notInvited = jest.fn();
