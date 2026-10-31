@@ -6,6 +6,8 @@ import {
 } from "@portalai/core/contracts";
 import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -13,6 +15,8 @@ import Chip from "@mui/material/Chip";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -27,6 +31,7 @@ import {
   type HighlightLanguage,
 } from "./HighlightedCode.component";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
+import { generateSigningSecret } from "../utils/signing-secret.util";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -65,6 +70,8 @@ interface FormState {
   runtimeUrl: string;
   metadataUrl: string;
   authHeaders: string;
+  /** #911: generated when the dialog opens; the builder may paste their own. */
+  signingSecret: string;
 }
 
 const INITIAL_FORM: FormState = {
@@ -74,6 +81,7 @@ const INITIAL_FORM: FormState = {
   runtimeUrl: "",
   metadataUrl: "",
   authHeaders: "",
+  signingSecret: "",
 };
 
 function buildBody(form: FormState): {
@@ -101,6 +109,7 @@ function buildBody(form: FormState): {
       ...(form.metadataUrl.trim() ? { metadata: form.metadataUrl.trim() } : {}),
     },
     ...(parsedHeaders ? { authHeaders: parsedHeaders } : {}),
+    signingSecret: form.signingSecret.trim(),
   };
 
   const validation = validateWithSchema(RegisterToolpackBodySchema, draft);
@@ -167,7 +176,8 @@ export const RegisterToolpackDialogUI: React.FC<
 
   React.useEffect(() => {
     if (open) {
-      setForm(INITIAL_FORM);
+      // A fresh secret per open, generated here rather than during render.
+      setForm({ ...INITIAL_FORM, signingSecret: generateSigningSecret() });
       setErrors({});
       setTouched({});
     }
@@ -195,6 +205,7 @@ export const RegisterToolpackDialogUI: React.FC<
       schemaUrl: true,
       runtimeUrl: true,
       authHeaders: true,
+      signingSecret: true,
     });
     const { body, errors: nextErrors } = buildBody(form);
     setErrors(nextErrors);
@@ -203,6 +214,15 @@ export const RegisterToolpackDialogUI: React.FC<
       return;
     }
     onSubmit(body);
+  };
+
+  const handleCopySecret = async () => {
+    try {
+      await navigator.clipboard.writeText(form.signingSecret);
+    } catch {
+      // Clipboard unavailable (insecure context, permissions); the field
+      // stays selectable for a manual copy.
+    }
   };
 
   // Most validation errors land under nested paths like `endpoints.schema`;
@@ -341,6 +361,49 @@ export const RegisterToolpackDialogUI: React.FC<
           value={form.metadataUrl}
           onChange={(e) => handleChange("metadataUrl", e.target.value)}
           placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
+          fullWidth
+        />
+        <TextField
+          label="Signing secret"
+          value={form.signingSecret}
+          onChange={(e) => handleChange("signingSecret", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("signingSecret"))}
+          error={touched.signingSecret && !!errors.signingSecret}
+          helperText={
+            (touched.signingSecret && errors.signingSecret) ||
+            "Set this secret on your toolpack server before registering. Portals AI signs every request with it, including the schema fetch. Use a different secret for each toolpack."
+          }
+          slotProps={{
+            input: {
+              sx: { fontFamily: "monospace" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="Copy signing secret"
+                    onClick={handleCopySecret}
+                    size="small"
+                  >
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    aria-label="Generate a new signing secret"
+                    onClick={() =>
+                      handleChange("signingSecret", generateSigningSecret())
+                    }
+                    size="small"
+                    edge="end"
+                  >
+                    <AutorenewIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            },
+            htmlInput: {
+              "aria-invalid": touched.signingSecret && !!errors.signingSecret,
+              spellCheck: false,
+            },
+          }}
+          required
           fullWidth
         />
         <Stack spacing={0.75}>
@@ -559,12 +622,10 @@ app.use(express.json({
   verify: (req: any, _res, buf) => { req.rawBody = buf; },
 }));
 
-// Portals AI only GETs your server to fetch the tool catalog (schema and
-// metadata, at whatever paths you registered). The registration-time fetch
-// is signed with a secret you only receive in the registration response,
-// so it can't be verified. Let GETs through; verify every POST.
+// Verify every request: the catalog GETs (schema, metadata) are signed over
+// an empty body, the runtime POSTs over the raw body. Set the secret here
+// before registering, so the registration fetch verifies too.
 app.use((req, res, next) => {
-  if (req.method === "GET") return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -600,14 +661,11 @@ from flask import Flask, request, abort, jsonify
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
-# Portals AI only GETs your server to fetch the tool catalog (schema and
-# metadata, at whatever paths you registered). The registration-time fetch
-# is signed with a secret you only receive in the registration response,
-# so it can't be verified. Let GETs through; verify every POST.
+# Verify every request: the catalog GETs (schema, metadata) are signed over
+# an empty body, the runtime POSTs over the raw body. Set the secret here
+# before registering, so the registration fetch verifies too.
 @app.before_request
 def verify_signature():
-    if request.method == "GET":
-        return None
     ts  = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
     sig = request.headers.get("X-Portalai-Signature", "")
@@ -640,18 +698,11 @@ var SIGNING_SECRET = Environment.GetEnvironmentVariable(
 
 var app = WebApplication.Create();
 
-// Portals AI only GETs your server to fetch the tool catalog (schema and
-// metadata, at whatever paths you registered). The registration-time fetch
-// is signed with a secret you only receive in the registration response,
-// so it can't be verified. Let GETs through; verify every POST.
+// Verify every request: the catalog GETs (schema, metadata) are signed over
+// an empty body, the runtime POSTs over the raw body. Set the secret here
+// before registering, so the registration fetch verifies too.
 app.Use(async (ctx, next) =>
 {
-    if (HttpMethods.IsGet(ctx.Request.Method))
-    {
-        await next();
-        return;
-    }
-
     var ts  = ctx.Request.Headers["X-Portalai-Timestamp"].ToString();
     var id  = ctx.Request.Headers["X-Portalai-Webhook-Id"].ToString();
     var sig = ctx.Request.Headers["X-Portalai-Signature"].ToString();

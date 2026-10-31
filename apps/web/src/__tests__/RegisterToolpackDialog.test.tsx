@@ -13,6 +13,15 @@ const defaultProps = {
   serverError: null,
 };
 
+const SECRET_PATTERN = /^whsec_[A-Za-z0-9_-]{43}$/;
+
+/** The secret field, once the open effect has generated its value. */
+async function secretField(): Promise<HTMLInputElement> {
+  const field = screen.getByLabelText(/Signing secret/) as HTMLInputElement;
+  await waitFor(() => expect(field.value).toMatch(SECRET_PATTERN));
+  return field;
+}
+
 function fillRequired() {
   fireEvent.change(screen.getByLabelText(/Name/), {
     target: { value: "customer_intel" },
@@ -118,7 +127,69 @@ describe("RegisterToolpackDialogUI", () => {
         schema: "https://example.com/schema",
         runtime: "https://example.com/runtime",
       },
+      signingSecret: expect.stringMatching(SECRET_PATTERN),
     });
+  });
+
+  // ── signing secret (#911) ──────────────────────────────────────
+
+  it("prefills a valid, required signing secret", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const field = await secretField();
+    expect(field).toBeRequired();
+    expect(field.value).toMatch(SECRET_PATTERN);
+    expect(
+      screen.getByText(
+        /Set this secret on your toolpack server before registering/
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("generates a new secret on Regenerate", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const field = await secretField();
+    const first = field.value;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate a new signing secret" })
+    );
+    expect(field.value).toMatch(SECRET_PATTERN);
+    expect(field.value).not.toBe(first);
+  });
+
+  it("copies the secret to the clipboard", async () => {
+    const writeText = jest.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const field = await secretField();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy signing secret" })
+    );
+    expect(writeText).toHaveBeenCalledWith(field.value);
+  });
+
+  it("blocks submit on a malformed secret and marks the field invalid", async () => {
+    const onSubmit = jest.fn();
+    render(<RegisterToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fillRequired();
+    const field = await secretField();
+    fireEvent.change(field, { target: { value: "hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => expect(field).toHaveAttribute("aria-invalid", "true"));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("submits a pasted secret as typed", async () => {
+    const onSubmit = jest.fn();
+    const pasted = "whsec_" + "p".repeat(43);
+    render(<RegisterToolpackDialogUI {...defaultProps} onSubmit={onSubmit} />);
+    fillRequired();
+    fireEvent.change(await secretField(), { target: { value: pasted } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ signingSecret: pasted });
   });
 
   it("submits with parsed auth headers when supplied", async () => {
@@ -339,10 +410,9 @@ describe("RegisterToolpackDialogUI", () => {
     expect(snippet.textContent).not.toContain("hmac.compare_digest");
   });
 
-  // #615: registration signs the catalog GETs with a secret the server
-  // doesn't have yet, so a snippet that verified every request made
-  // registration impossible. Each one lets GETs through and verifies POSTs.
-  it("lets the registration-time catalog fetches through in every snippet", () => {
+  // #911: the secret is set on the server before registering, so every
+  // snippet verifies every request, the catalog GETs included.
+  it("verifies every request, GETs included, in every snippet", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     fireEvent.click(
       screen.getByTestId("register-toolpack-verify-snippets-summary")
@@ -354,13 +424,9 @@ describe("RegisterToolpackDialogUI", () => {
       fireEvent.click(
         screen.getByTestId(`register-toolpack-verify-snippets-tab-${tab}`)
       );
-      // Skipped by method, not by path: the catalog URLs are whatever the
-      // user registered, so a path list would miss a prefixed one.
-      expect(snippet.textContent).toMatch(/registration/i);
-      expect(snippet.textContent).toMatch(
-        /Let GETs through; verify every POST/
-      );
-      expect(snippet.textContent).not.toContain('"/schema"');
+      expect(snippet.textContent).toMatch(/Verify every request/);
+      expect(snippet.textContent).not.toMatch(/Let GETs through/);
+      expect(snippet.textContent).not.toMatch(/"GET"|IsGet/);
     }
   });
 
