@@ -382,7 +382,7 @@ toolpacksRouter.get(
  *       400: { description: "Invalid payload, including a malformed `signingSecret` (TOOLPACK_INVALID_PAYLOAD)." }
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711), or the organization's tier does not include custom toolpacks (TOOLPACK_NOT_ENTITLED, #214)." }
  *       409: { description: Pack name or tool-name conflict. }
- *       502: { description: "Schema or metadata fetch / validation failure, or the toolpack server refused the request's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911)." }
+ *       502: { description: "Schema or metadata fetch / validation failure, or the toolpack server refused the request's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911). A redirect from a toolpack endpoint is refused (TOOLPACK_REDIRECT_REFUSED), and an endpoint that resolves to a non-public address is too (TOOLPACK_URL_PRIVATE_HOST, #931)." }
  */
 toolpacksRouter.post(
   "/",
@@ -554,7 +554,7 @@ toolpacksRouter.post(
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711)." }
  *       404: { description: Not found. }
  *       409: { description: Name conflict. }
- *       502: { description: "Schema fetch / validation failure on changed endpoints, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911)." }
+ *       502: { description: "Schema fetch / validation failure on changed endpoints, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911). A redirect from a toolpack endpoint is refused (TOOLPACK_REDIRECT_REFUSED), and an endpoint that resolves to a non-public address is too (TOOLPACK_URL_PRIVATE_HOST, #931)." }
  */
 toolpacksRouter.patch(
   "/:id",
@@ -795,7 +795,7 @@ toolpacksRouter.delete(
  *       200: { description: Refreshed. }
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711)." }
  *       404: { description: Not found. }
- *       502: { description: "Schema fetch failed, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911). Cached values are preserved." }
+ *       502: { description: "Schema fetch failed, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911). A redirect from a toolpack endpoint is refused (TOOLPACK_REDIRECT_REFUSED), and an endpoint that resolves to a non-public address is too (TOOLPACK_URL_PRIVATE_HOST, #931). Cached values are preserved." }
  */
 toolpacksRouter.post(
   "/:id/refresh",

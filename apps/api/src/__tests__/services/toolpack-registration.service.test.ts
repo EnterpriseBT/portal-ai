@@ -19,18 +19,12 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   }),
 }));
 
-// Skip SSRF DNS resolution in unit tests — assertUrlSafeToFetch
-// would otherwise hit real DNS for the test fixture URLs.
-jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
-  assertUrlSafeToFetch: async () => undefined,
-  SsrfBlockedError: class SsrfBlockedError extends Error {},
-  validateToolpackUrl: () => null,
-}));
-
 const { ToolpackRegistrationService } =
   await import("../../services/toolpack-registration.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 const { environment } = await import("../../environment.js");
+const { OutboundFetchBlockedError } =
+  await import("../../utils/guarded-fetch.util.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -507,6 +501,98 @@ describe("ToolpackRegistrationService", () => {
   });
 
   // ── validateNoBuiltinCollision ────────────────────────────────────
+
+  // ── #931: fetches go through guardedFetch ─────────────────────────
+
+  describe("outbound guard (#931)", () => {
+    function redirectTo(status: number, location: string) {
+      return {
+        ok: false,
+        status,
+        statusText: "",
+        headers: new Map([["location", location]]),
+        text: async () => "",
+      };
+    }
+
+    it("fetches with manual redirects and the guarded dispatcher", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      );
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options!.redirect).toBe("manual");
+      expect(options!.dispatcher).toBeDefined();
+    });
+
+    it("refuses a redirect from the schema endpoint", async () => {
+      mockFetch.mockResolvedValue(
+        redirectTo(302, "http://169.254.169.254/latest/meta-data/")
+      );
+      const err = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      ).catch((e: unknown) => e);
+
+      expect(err).toMatchObject({
+        status: 502,
+        code: ApiCode.TOOLPACK_REDIRECT_REFUSED,
+        details: { url: "https://example.com/schema", status: 302 },
+      });
+      expect(JSON.stringify(err)).not.toContain("169.254");
+      expect((err as Error).message).not.toContain("169.254");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws, rather than skipping metadata, on a metadata redirect", async () => {
+      mockFetch.mockResolvedValue(redirectTo(301, "https://elsewhere.test/m"));
+      await expect(
+        ToolpackRegistrationService.fetchMetadata(
+          "https://example.com/metadata",
+          undefined
+        )
+      ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_REDIRECT_REFUSED });
+    });
+
+    it("maps a connect-time refusal to TOOLPACK_URL_PRIVATE_HOST", async () => {
+      mockFetch.mockRejectedValue(
+        new TypeError("fetch failed", {
+          cause: new OutboundFetchBlockedError(
+            "private-address",
+            "https://example.com/schema"
+          ),
+        })
+      );
+      for (const call of [
+        () =>
+          ToolpackRegistrationService.fetchSchema(
+            "https://example.com/schema",
+            undefined
+          ),
+        () =>
+          ToolpackRegistrationService.fetchMetadata(
+            "https://example.com/metadata",
+            undefined
+          ),
+      ]) {
+        await expect(call()).rejects.toMatchObject({
+          status: 502,
+          code: ApiCode.TOOLPACK_URL_PRIVATE_HOST,
+        });
+      }
+    });
+
+    it("doesn't quote the body of a response that isn't JSON", async () => {
+      mockFetch.mockResolvedValue(fetchOk("SECRET-BODY ami-0abc"));
+      const err = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: ApiCode.TOOLPACK_SCHEMA_INVALID });
+      expect((err as Error).message).not.toContain("SECRET");
+    });
+  });
 
   describe("validateNoBuiltinCollision", () => {
     // Case 90
