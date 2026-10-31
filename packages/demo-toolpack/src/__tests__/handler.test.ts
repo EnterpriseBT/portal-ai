@@ -38,9 +38,25 @@ function runtimeEvent(
 
 const parse = (r: { body: string }) => JSON.parse(r.body);
 
-describe("handler — open catalog endpoints", () => {
-  it("serves GET /schema without a signature", async () => {
-    const res = await handler(getEvent("/schema"));
+function signedGetEvent(path: string, secret = SECRET): FunctionUrlEvent {
+  const ts = String(Math.floor(Date.now() / 1000));
+  return {
+    requestContext: { http: { method: "GET" } },
+    rawPath: path,
+    // GETs are signed over the empty body.
+    headers: {
+      "x-portalai-timestamp": ts,
+      "x-portalai-webhook-id": ID,
+      "x-portalai-signature": sign(secret, ts, ID, ""),
+    },
+  };
+}
+
+// #911: the app registers with a secret the Lambda already holds, so the
+// catalog endpoints are verified like /runtime.
+describe("handler — catalog endpoints", () => {
+  it("serves a signed GET /schema", async () => {
+    const res = await handler(signedGetEvent("/schema"));
     expect(res.statusCode).toBe(200);
     expect(parse(res).tools.map((t: { name: string }) => t.name)).toEqual([
       "quote_shipping_rate",
@@ -48,14 +64,30 @@ describe("handler — open catalog endpoints", () => {
     ]);
   });
 
-  it("serves GET /metadata without a signature", async () => {
-    const res = await handler(getEvent("/metadata"));
+  it("serves a signed GET /metadata", async () => {
+    const res = await handler(signedGetEvent("/metadata"));
     expect(res.statusCode).toBe(200);
     expect(parse(res).summary).toContain("Harborview");
   });
 
+  it.each(["/schema", "/metadata"])("401s an unsigned GET %s", async (path) => {
+    const res = await handler(getEvent(path));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("401s a GET signed with the wrong secret", async () => {
+    const res = await handler(signedGetEvent("/schema", "whsec_wrong"));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("serves unsigned GETs when the allow-list is unset (SKIPPED mode)", async () => {
+    delete process.env.PORTALAI_SIGNING_SECRETS;
+    expect((await handler(getEvent("/schema"))).statusCode).toBe(200);
+    expect((await handler(getEvent("/metadata"))).statusCode).toBe(200);
+  });
+
   it("tolerates a base path prefix and trailing slash", async () => {
-    const res = await handler(getEvent("/demo-toolpack/schema/"));
+    const res = await handler(signedGetEvent("/demo-toolpack/schema/"));
     expect(res.statusCode).toBe(200);
   });
 });

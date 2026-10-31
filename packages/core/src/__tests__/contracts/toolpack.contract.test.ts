@@ -1,4 +1,6 @@
 import {
+  generateSigningSecret,
+  SigningSecretSchema,
   ToolpackSchema,
   ToolpackListRequestQuerySchema,
   ToolpackListResponsePayloadSchema,
@@ -212,6 +214,73 @@ describe("UpdateToolpackBodySchema", () => {
         },
       }).success
     ).toBe(true);
+  });
+});
+
+describe("SigningSecretSchema (#911)", () => {
+  const generated = generateSigningSecret;
+  const ENDPOINTS = {
+    schema: "https://example.com/schema",
+    runtime: "https://example.com/runtime",
+  };
+
+  it("generates 32 random bytes, different on each call", () => {
+    const a = generateSigningSecret();
+    expect(a).not.toBe(generateSigningSecret());
+    const body = a.slice("whsec_".length);
+    const decoded = atob(body.replace(/-/g, "+").replace(/_/g, "/") + "=");
+    expect(decoded).toHaveLength(32);
+  });
+
+  it("accepts a generated secret", () => {
+    for (let i = 0; i < 20; i++) {
+      expect(SigningSecretSchema.safeParse(generated()).success).toBe(true);
+    }
+  });
+
+  it.each([
+    ["no prefix", "A".repeat(43)],
+    ["42 characters", `whsec_${"A".repeat(42)}`],
+    ["44 characters", `whsec_${"A".repeat(44)}`],
+    ["a non-base64url character", `whsec_${"A".repeat(42)}+`],
+    ["a slash", `whsec_${"A".repeat(42)}/`],
+    ["an empty string", ""],
+  ])("rejects %s", (_label, value) => {
+    expect(SigningSecretSchema.safeParse(value).success).toBe(false);
+  });
+
+  it("the register body accepts a valid signingSecret", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: ENDPOINTS,
+      signingSecret: generated(),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("the register body rejects a malformed signingSecret on that field", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: ENDPOINTS,
+      signingSecret: "whsec_short",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(["signingSecret"]);
+  });
+
+  it("the register body still accepts no signingSecret", () => {
+    expect(
+      RegisterToolpackBodySchema.safeParse({
+        name: "customer_intel",
+        endpoints: ENDPOINTS,
+      }).success
+    ).toBe(true);
+  });
+
+  it("the update body refuses signingSecret (strict)", () => {
+    expect(
+      UpdateToolpackBodySchema.safeParse({ signingSecret: generated() }).success
+    ).toBe(false);
   });
 });
 

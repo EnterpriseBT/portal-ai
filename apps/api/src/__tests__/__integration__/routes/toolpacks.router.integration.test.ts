@@ -7,6 +7,8 @@ import {
   beforeEach,
   afterEach,
 } from "@jest/globals";
+import { createHmac } from "node:crypto";
+
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -54,6 +56,46 @@ function fetchOk(body: unknown) {
     text: async () => text,
   };
 }
+
+const VALID_METADATA_RESPONSE = {
+  summary: "External customer intelligence calls.",
+  tools: [{ name: "lookup_company", description: "Looks up a company." }],
+};
+
+function fetchStatus(status: number) {
+  return {
+    ok: false,
+    status,
+    statusText: "",
+    headers: new Map(),
+    text: async () => "",
+  };
+}
+
+/**
+ * #911: a toolpack server that verifies every request, as the integration
+ * guide tells builders to. It recomputes `v1=` HMAC-SHA256 over
+ * `<ts>.<id>.` (GETs sign an empty body) with `secret`, answers 401 on a
+ * missing or wrong signature, and serves the schema or metadata otherwise.
+ */
+function strictFetch(secret: string, schema: unknown = VALID_SCHEMA_RESPONSE) {
+  return async (url: string, options?: Record<string, any>) => {
+    const headers = (options?.headers ?? {}) as Record<string, string>;
+    const ts = headers["X-Portalai-Timestamp"];
+    const id = headers["X-Portalai-Webhook-Id"];
+    const expected = createHmac("sha256", secret)
+      .update(`${ts}.${id}.`)
+      .digest("hex");
+    if (!ts || !id || headers["X-Portalai-Signature"] !== `v1=${expected}`) {
+      return fetchStatus(401);
+    }
+    return fetchOk(
+      url.endsWith("/metadata") ? VALID_METADATA_RESPONSE : schema
+    );
+  };
+}
+
+const SUPPLIED_SECRET = "whsec_" + "s".repeat(43);
 
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
@@ -328,6 +370,133 @@ describe("Toolpacks Router", () => {
     });
   });
 
+  describe("POST /api/toolpacks with a supplied signing secret (#911)", () => {
+    const WITH_METADATA = {
+      ...VALID_REGISTER_BODY,
+      endpoints: {
+        ...VALID_REGISTER_BODY.endpoints,
+        metadata: "https://example.com/metadata",
+      },
+    };
+
+    async function customCount(): Promise<number> {
+      const list = await request(app).get("/api/toolpacks?kind=custom");
+      return (list.body.payload.toolpacks as unknown[]).length;
+    }
+
+    it("signs the schema and metadata fetches with it and doesn't echo it", async () => {
+      mockFetch.mockImplementation(strictFetch(SUPPLIED_SECRET));
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...WITH_METADATA, signingSecret: SUPPLIED_SECRET });
+
+      expect(res.status).toBe(201);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(res.body.payload.toolpack.metadataFetchedAt).not.toBeNull();
+      expect(res.body.payload.toolpack.signingSecretStatus.has).toBe(true);
+      expect(res.body.payload).not.toHaveProperty("signingSecret");
+      expect(JSON.stringify(res.body)).not.toContain(SUPPLIED_SECRET);
+    });
+
+    it("stores it: a refresh against the same verifying server succeeds", async () => {
+      mockFetch.mockImplementation(strictFetch(SUPPLIED_SECRET));
+      const reg = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...WITH_METADATA, signingSecret: SUPPLIED_SECRET });
+      const id = reg.body.payload.toolpack.id as string;
+
+      mockFetch.mockImplementation(
+        strictFetch(SUPPLIED_SECRET, {
+          tools: [
+            {
+              name: "fresh_tool",
+              description: "Refreshed.",
+              parameterSchema: { type: "object", properties: {} },
+            },
+          ],
+        })
+      );
+      const res = await request(app).post(`/api/toolpacks/${id}/refresh`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.toolpack.tools[0].name).toBe("fresh_tool");
+    });
+
+    it("mints one and returns it once when it's omitted", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+
+      expect(res.status).toBe(201);
+      expect(res.body.payload.signingSecret).toMatch(
+        /^whsec_[A-Za-z0-9_-]{43}$/
+      );
+    });
+
+    it("502s TOOLPACK_SIGNATURE_REJECTED on a mismatch; nothing persisted", async () => {
+      mockFetch.mockImplementation(strictFetch(SUPPLIED_SECRET));
+      const before = await customCount();
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({
+          ...WITH_METADATA,
+          signingSecret: "whsec_" + "x".repeat(43),
+        });
+
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_SIGNATURE_REJECTED);
+      expect(res.body.details).toEqual({
+        url: "https://example.com/schema",
+        status: 401,
+      });
+      expect(await customCount()).toBe(before);
+    });
+
+    it("502s when only the metadata endpoint refuses; nothing persisted", async () => {
+      mockFetch
+        .mockResolvedValueOnce(fetchOk(VALID_SCHEMA_RESPONSE))
+        .mockResolvedValueOnce(fetchStatus(401));
+      const before = await customCount();
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...WITH_METADATA, signingSecret: SUPPLIED_SECRET });
+
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_SIGNATURE_REJECTED);
+      expect(res.body.details.url).toBe("https://example.com/metadata");
+      expect(await customCount()).toBe(before);
+    });
+
+    it("registers without metadata when the metadata endpoint 404s", async () => {
+      mockFetch
+        .mockResolvedValueOnce(fetchOk(VALID_SCHEMA_RESPONSE))
+        .mockResolvedValueOnce(fetchStatus(404));
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...WITH_METADATA, signingSecret: SUPPLIED_SECRET });
+
+      expect(res.status).toBe(201);
+      expect(res.body.payload.toolpack.metadataFetchedAt).toBeNull();
+    });
+
+    it("400s a malformed secret, naming the field, before any fetch", async () => {
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({ ...VALID_REGISTER_BODY, signingSecret: "hunter2" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_INVALID_PAYLOAD);
+      expect(res.body.details.issues[0].path).toEqual(["signingSecret"]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("PATCH /api/toolpacks/:id", () => {
     async function registerSeed(): Promise<string> {
       mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
@@ -404,6 +573,15 @@ describe("Toolpacks Router", () => {
         /^Invalid toolpack payload: description: /
       );
       expect(res.body.details.issues[0].path).toEqual(["description"]);
+    });
+
+    it("#911: refuses a signingSecret (no rotation by PATCH)", async () => {
+      const id = await registerSeed();
+      const res = await request(app)
+        .patch(`/api/toolpacks/${id}`)
+        .send({ signingSecret: SUPPLIED_SECRET });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_INVALID_PAYLOAD);
     });
 
     // Case 99

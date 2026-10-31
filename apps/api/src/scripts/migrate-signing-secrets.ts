@@ -28,9 +28,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
 
+import { generateSigningSecret } from "@portalai/core/contracts";
+
 import * as schema from "../db/schema/index.js";
 import { encryptCredentials } from "../utils/crypto.util.js";
-import { generateSigningSecret } from "../utils/webhook-signing.util.js";
 
 const SENTINEL = "__pending_phase6_rotation__";
 

@@ -8,11 +8,11 @@ A single AWS Lambda **function-URL** handler that serves the custom-toolpack con
 
 | Route | Method | Auth | Purpose |
 |---|---|---|---|
-| `/schema` | GET | open | Tool catalog (`{ tools: [...] }`) |
-| `/metadata` | GET | open | Human-readable descriptions/examples |
+| `/schema` | GET | **HMAC** | Tool catalog (`{ tools: [...] }`) |
+| `/metadata` | GET | **HMAC** | Human-readable descriptions/examples |
 | `/runtime` | POST | **HMAC** | Invoke a tool: body `{ tool, input }`, returns any JSON |
 
-`/schema` and `/metadata` are served openly (they are non-sensitive tool catalogs, and the app fetches `/schema` **signed with a secret it only returns after registration** — enforcing there would make registration impossible). `/runtime` verifies the `X-Portalai-*` HMAC signature (see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`) against the `PORTALAI_SIGNING_SECRETS` allow-list **when it is set**. When it is **unset**, `/runtime` accepts unsigned calls (the reference `mock-toolpack-server`'s SKIPPED mode): Portal mints the signing secret at registration and doesn't hand it back to the seeder, and the demo payloads are invented, so requiring it would leave the endpoint uncallable for no security gain. Set `PORTALAI_SIGNING_SECRETS` to lock it down.
+The handler verifies the `X-Portalai-*` HMAC signature (see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`) on **every request** when `PORTALAI_SIGNING_SECRETS` is set: the GETs over the empty body, `/runtime` over its raw body. The app registers with a secret this allow-list already holds (the demo seed uses its first entry, #911), so the registration fetches verify too. When it is **unset**, every route accepts unsigned calls (the reference `mock-toolpack-server`'s SKIPPED mode). That open catalog is an option, since the demo payloads are invented, but a weaker one: anyone can call the endpoint. Set `PORTALAI_SIGNING_SECRETS` to lock it down.
 
 ## The tools
 
@@ -27,16 +27,19 @@ Both are **deterministic** (a hash of the inputs) and **not derivable from the c
 
 | Env var | Purpose |
 |---|---|
-| `PORTALAI_SIGNING_SECRETS` | Comma-separated allow-list of the `whsec_…` secrets Portal returns at registration — one per demo env sharing this endpoint. `/runtime` accepts a request whose signature matches **any** of them. |
+| `PORTALAI_SIGNING_SECRETS` | Comma-separated allow-list of `whsec_…` secrets, one per demo env sharing this endpoint. Every route accepts a request whose signature matches **any** of them. Set through the stack's `SigningSecrets` parameter. |
 
 ## Deploy (ops)
 
 One shared endpoint serves all demo envs (epic #507 decision). Deployed via CloudFormation as the env-agnostic stack `portalai-demo-toolpack` (`infra/cloudformation/demo-toolpack.yml`), wired into the `deploy-infra` job. Because the function-URL is `AuthType: NONE`, the HMAC signature is the gate.
 
-1. **Deploy the stack** (creates the Lambda + function URL). Note the function URL output.
-2. **Register** the toolpack in each demo env via `RegisterToolpackDialog` (or #509's non-interactive path) using the payload below; capture the `whsec_…` each returns once.
-3. **Provision the secrets:** `portalops vars set DEMO_TOOLPACK_SIGNING_SECRETS "<local>,<app-dev>,<prod>" --env <env> --yes` (the value is the same comma-joined allow-list in each env's copy) and redeploy so the Lambda picks up the new env var.
-4. **Verify:** `curl` `/runtime` with a valid signature → tool result; without → 401. `GET /schema` returns the catalog unsigned.
+1. **Generate one secret per demo env:** `whsec_` + 43 base64url characters, e.g. `node -e "console.log('whsec_'+require('crypto').randomBytes(32).toString('base64url'))"` (or copy one from the register dialog).
+2. **Record each env's secret:** `portalops vars set DEMO_TOOLPACK_SIGNING_SECRETS "<this-env's secret>" --env <env> --yes`. The demo seed registers with the **first** entry, so if an env's copy lists several, put that env's own secret first.
+3. **Load the allow-list into the Lambda:** update the `portalai-demo-toolpack` stack with `SigningSecrets` set to every env's secret, comma-joined (`aws cloudformation deploy … --parameter-overrides SigningSecrets=<a>,<b>,<c>`). The deploy workflow leaves the parameter as it was.
+4. **Register** by running `portalai demo seed --env <env> --org <id> …` with `DEMO_TOOLPACK_URL` and `DEMO_TOOLPACK_SIGNING_SECRETS` exported in your shell (read them with `portalops vars get`). The seed script only sees what your shell passes it. A re-seed keeps the same secret.
+5. **Verify:** `curl` each route with a valid signature → 200; without → 401.
+
+**Release order (#911).** This version verifies `/schema` and `/metadata` too, so once it's deployed with a non-empty allow-list, a registration the Lambda can't verify is refused. Before deploying it: put each env's existing registered secret in `DEMO_TOOLPACK_SIGNING_SECRETS` (or record a new one and re-seed), and make sure the `SigningSecrets` allow-list holds them all. A demo seed run without the variable mints a secret the Lambda doesn't hold, so its registration fails with `TOOLPACK_SIGNATURE_REJECTED` and the demo org gets built-in toolpacks only. Existing registrations keep working as long as their stored secret is in the allow-list.
 
 ## Registration payload (for #509)
 

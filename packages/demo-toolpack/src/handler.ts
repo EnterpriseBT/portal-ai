@@ -1,19 +1,17 @@
 /**
  * AWS Lambda function-URL handler (#510) serving the custom-toolpack contract:
  *
- *   GET  /schema    — tool catalog (open; non-sensitive)
- *   GET  /metadata  — human-readable descriptions/examples (open)
- *   POST /runtime   — invoke a tool by name; HMAC-verified
+ *   GET  /schema    — tool catalog
+ *   GET  /metadata  — human-readable descriptions/examples
+ *   POST /runtime   — invoke a tool by name
  *
- * `/schema` and `/metadata` are served without signature verification on
- * purpose: the app fetches `/schema` signed with a secret it only returns
- * *after* registration, so enforcing signatures there would make registration
- * impossible. `/runtime` is verified against the `PORTALAI_SIGNING_SECRETS`
- * allow-list (comma-separated; one entry per demo env) **when it is set**; when
- * it is unset the call is accepted unsigned (the reference mock's SKIPPED mode)
- * — Portal mints the signing secret at registration and never hands it to the
- * seeder, and the demo payloads are invented, so requiring it would leave the
- * endpoint uncallable for no security gain.
+ * Every request is HMAC-verified against the `PORTALAI_SIGNING_SECRETS`
+ * allow-list (comma-separated; one entry per demo env) **when it is set**: the
+ * GETs over the empty body, `/runtime` over its raw body. The demo seed
+ * registers with the allow-list's first entry (`DEMO_TOOLPACK_SIGNING_SECRETS`
+ * on the app side), so the registration fetches verify too (#911). When it is
+ * unset every call is accepted unsigned (the reference mock's SKIPPED mode);
+ * the demo payloads are invented, so that's a weaker but harmless option.
  *
  * Framework-free (only `node:crypto` via ./signing) so it unit-tests under the
  * same ts-jest ESM config as the other leaf packages and needs no bundler.
@@ -93,6 +91,23 @@ export async function handler(
       : event.body
     : "";
 
+  // #911: verify every request once an allow-list is configured.
+  const secrets = signingSecrets();
+  if (secrets.length > 0 && endpoint !== null) {
+    const headers = lowerHeaders(event.headers);
+    const verdict = verifySignature({
+      timestamp: headers["x-portalai-timestamp"],
+      webhookId: headers["x-portalai-webhook-id"],
+      signature: headers["x-portalai-signature"],
+      rawBody,
+      secrets,
+      nowSec: Math.floor(Date.now() / 1000),
+    });
+    if (!verdict.ok) {
+      return json(verdict.status, { error: verdict.error });
+    }
+  }
+
   if (method === "GET" && endpoint === "schema") {
     return json(200, { tools: TOOLS });
   }
@@ -100,28 +115,6 @@ export async function handler(
     return json(200, METADATA);
   }
   if (method === "POST" && endpoint === "runtime") {
-    const headers = lowerHeaders(event.headers);
-    const secrets = signingSecrets();
-    // When no signing secret is configured, accept unsigned calls — mirroring
-    // the reference `mock-toolpack-server`'s SKIPPED mode. Portal generates the
-    // signing secret at registration and doesn't hand it back to the seeder, so
-    // requiring it here would leave the demo endpoint uncallable; the payloads
-    // are invented (shipping quotes, credit scores), so there's nothing to
-    // protect. Once `PORTALAI_SIGNING_SECRETS` is set, every call is verified.
-    if (secrets.length > 0) {
-      const verdict = verifySignature({
-        timestamp: headers["x-portalai-timestamp"],
-        webhookId: headers["x-portalai-webhook-id"],
-        signature: headers["x-portalai-signature"],
-        rawBody,
-        secrets,
-        nowSec: Math.floor(Date.now() / 1000),
-      });
-      if (!verdict.ok) {
-        return json(verdict.status, { error: verdict.error });
-      }
-    }
-
     let parsed: unknown;
     try {
       parsed = rawBody ? JSON.parse(rawBody) : {};

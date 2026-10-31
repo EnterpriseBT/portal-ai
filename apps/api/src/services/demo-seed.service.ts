@@ -25,6 +25,10 @@ import {
   OrganizationToolpackModelFactory,
   type ToolpackToolDefinition,
 } from "@portalai/core/models";
+import {
+  generateSigningSecret,
+  SigningSecretSchema,
+} from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
@@ -32,7 +36,6 @@ import { importRows } from "./record-import.util.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import { ToolpackRegistrationService } from "./toolpack-registration.service.js";
 import { BUILTIN_TOOL_NAMES } from "./tools.service.js";
-import { generateSigningSecret } from "../utils/webhook-signing.util.js";
 import { readCsvRows } from "../demo/csv-reader.js";
 import { readXlsxRows } from "../demo/xlsx-reader.js";
 import { readJsonRows } from "../demo/json-reader.js";
@@ -360,9 +363,15 @@ export class DemoSeedService {
       try {
         custom = await DemoSeedService.registerCustomToolpack(orgId, baseUrl);
       } catch (err) {
+        // A failed refresh (#911: a refused signature, an unreachable
+        // endpoint) keeps an already-registered demo toolpack attached, as
+        // it was; replacing the station's packs without it would detach it.
+        custom = (await DemoSeedService.findDemoToolpack(orgId))?.id ?? null;
         logger.warn(
-          { orgId, baseUrl, err: (err as Error).message },
-          "custom toolpack registration failed — enabling built-ins only"
+          { orgId, baseUrl, err: (err as Error).message, kept: custom },
+          custom
+            ? "custom toolpack refresh failed — keeping the registered one"
+            : "custom toolpack registration failed — enabling built-ins only"
         );
       }
     }
@@ -377,6 +386,47 @@ export class DemoSeedService {
     );
 
     return { builtins: builtinSlugs, custom };
+  }
+
+  /** The org's demo custom toolpack row, if it was registered before. */
+  private static async findDemoToolpack(orgId: string) {
+    return (
+      await DbService.repository.organizationToolpacks.findByOrganizationId(
+        orgId
+      )
+    ).find((t) => t.name === DEMO_TOOLPACK_NAME);
+  }
+
+  /**
+   * The demo toolpack's signing secret (#911), in order:
+   *   1. the first entry of `DEMO_TOOLPACK_SIGNING_SECRETS` (this env's entry
+   *      in the demo Lambda's allow-list), so the Lambda can verify the
+   *      registration fetches;
+   *   2. the secret the existing registration already holds, so a re-seed
+   *      run without the variable keeps it rather than replacing it;
+   *   3. a freshly minted one.
+   * A malformed configured value warns once, naming the variable but never
+   * its value, and falls through.
+   */
+  private static demoSigningSecret(existingSecret: string | undefined): string {
+    const configured = (process.env.DEMO_TOOLPACK_SIGNING_SECRETS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .find(Boolean);
+    if (configured) {
+      if (SigningSecretSchema.safeParse(configured).success) return configured;
+      logger.warn(
+        "DEMO_TOOLPACK_SIGNING_SECRETS' first entry is not a whsec_ signing secret; ignoring it"
+      );
+    }
+    // An undecryptable row reads back with an empty secret (#531).
+    if (
+      existingSecret &&
+      SigningSecretSchema.safeParse(existingSecret).success
+    ) {
+      return existingSecret;
+    }
+    return generateSigningSecret();
   }
 
   /**
@@ -397,7 +447,10 @@ export class DemoSeedService {
       runtime: `${baseUrl}/runtime`,
       metadata: `${baseUrl}/metadata`,
     };
-    const signingSecret = generateSigningSecret();
+    const existing = await DemoSeedService.findDemoToolpack(orgId);
+    const signingSecret = DemoSeedService.demoSigningSecret(
+      existing?.signingSecret
+    );
     const tools = await ToolpackRegistrationService.fetchSchema(
       endpoints.schema,
       undefined,
@@ -426,11 +479,6 @@ export class DemoSeedService {
       metadataFetchedAt: metadata !== null ? now : null,
     };
 
-    const existing = (
-      await DbService.repository.organizationToolpacks.findByOrganizationId(
-        orgId
-      )
-    ).find((t) => t.name === DEMO_TOOLPACK_NAME);
     if (existing) {
       await DbService.repository.organizationToolpacks.update(
         existing.id,

@@ -144,4 +144,113 @@ describe("DemoSeedService (integration): toolpacks", () => {
       delete process.env.DEMO_TOOLPACK_URL;
     }
   });
+  describe("signing secret (#911)", () => {
+    const SECRET_A = "whsec_" + "a".repeat(43);
+    const SECRET_B = "whsec_" + "b".repeat(43);
+    let saved: string | undefined;
+    let schemaSpy: ReturnType<typeof jest.spyOn>;
+    let metadataSpy: ReturnType<typeof jest.spyOn>;
+
+    beforeEach(() => {
+      saved = process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      process.env.DEMO_TOOLPACK_URL = "https://demo-toolpack.test";
+      schemaSpy = jest
+        .spyOn(ToolpackRegistrationService, "fetchSchema")
+        .mockResolvedValue([
+          {
+            name: "quote_shipping_rate",
+            description: "Quote a shipping rate.",
+            parameterSchema: { type: "object", properties: {} },
+          },
+        ] as never);
+      metadataSpy = jest
+        .spyOn(ToolpackRegistrationService, "fetchMetadata")
+        .mockResolvedValue(null as never);
+    });
+
+    afterEach(() => {
+      schemaSpy.mockRestore();
+      metadataSpy.mockRestore();
+      delete process.env.DEMO_TOOLPACK_URL;
+      if (saved === undefined) delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      else process.env.DEMO_TOOLPACK_SIGNING_SECRETS = saved;
+    });
+
+    async function storedSecret(id: string): Promise<string> {
+      const row = await DbService.repository.organizationToolpacks.findById(id);
+      return row!.signingSecret;
+    }
+
+    it("registers with the first DEMO_TOOLPACK_SIGNING_SECRETS entry", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = ` ${SECRET_A} , ${SECRET_B}`;
+      const orgId = await provisionOrg();
+
+      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(schemaSpy).toHaveBeenCalledWith(
+        "https://demo-toolpack.test/schema",
+        undefined,
+        SECRET_A
+      );
+      expect(await storedSecret(result.toolpacks.custom!)).toBe(SECRET_A);
+    });
+
+    it("keeps it across a re-seed", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = `${SECRET_A},${SECRET_B}`;
+      const orgId = await provisionOrg();
+
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(await storedSecret(second.toolpacks.custom!)).toBe(SECRET_A);
+    });
+
+    it("mints a secret on first registration when the variable is unset", async () => {
+      delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      const orgId = await provisionOrg();
+      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(result.toolpacks.custom!)).toMatch(
+        /^whsec_[A-Za-z0-9_-]{43}$/
+      );
+    });
+
+    it("keeps the stored secret on a re-seed without (or with a malformed) variable", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
+      const orgId = await provisionOrg();
+      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
+
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = "not-a-secret";
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
+      expect(schemaSpy).toHaveBeenLastCalledWith(
+        "https://demo-toolpack.test/schema",
+        undefined,
+        SECRET_A
+      );
+    });
+
+    it("keeps the registered toolpack attached when a refresh is refused", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
+      const orgId = await provisionOrg();
+      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      schemaSpy.mockRejectedValueOnce(new Error("signature rejected"));
+      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(second.toolpacks.custom).toBe(first.toolpacks.custom);
+      const [station] =
+        await DbService.repository.stations.findByOrganizationId(orgId);
+      const attached =
+        await DbService.repository.stationToolpacks.findByStationId(station.id);
+      expect(
+        attached.some(
+          (a) => a.organizationToolpackId === first.toolpacks.custom
+        )
+      ).toBe(true);
+    });
+  });
 });

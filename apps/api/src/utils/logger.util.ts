@@ -101,6 +101,8 @@ export const BASE_REDACT_PATHS: string[] = [
   "*.clientSecret",
   "*.client_secret",
   "*.secret",
+  // #911: a toolpack registration body carries the builder's signing secret.
+  "*.signingSecret",
   "*.authorization",
   // #540: DB-error value fields — defense-in-depth behind the `err`
   // serializer above (which already allowlists these away). Scoped to the

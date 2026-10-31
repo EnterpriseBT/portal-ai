@@ -6,11 +6,13 @@
  * - `fetchSchema(url, headers)`: required at registration. Fetches,
  *   caps the body at 256 KB, parses JSON, validates with the Zod
  *   `tools[]` shape, and returns the validated array. Throws
- *   `TOOLPACK_SCHEMA_*` ApiErrors on every failure path.
+ *   `TOOLPACK_SCHEMA_*` ApiErrors on every failure path, and
+ *   `TOOLPACK_SIGNATURE_REJECTED` on a 401/403 (#911).
  *
  * - `fetchMetadata(url, headers)`: optional and best-effort. Fetches
  *   and parses; returns `null` on any failure (HTTP error, oversize,
- *   validation failure, timeout). Never throws.
+ *   validation failure, timeout), except a 401/403, which throws
+ *   `TOOLPACK_SIGNATURE_REJECTED` as `fetchSchema` does (#911).
  *
  * - `validateNoBuiltinCollision(tools, builtinNames)`: synchronous
  *   guard. Throws `TOOLPACK_TOOL_NAME_CONFLICT` on the first match.
@@ -57,6 +59,10 @@ interface FetchResult {
   status: number;
   statusText?: string;
   text: string;
+  /** Whether the request carried a signature (#911). */
+  signed: boolean;
+  /** Whether the request carried registered auth headers (#911). */
+  withAuthHeaders: boolean;
 }
 
 async function fetchWithCap(
@@ -125,6 +131,8 @@ async function fetchWithCap(
       status: response.status,
       statusText: response.statusText,
       text,
+      signed: Object.keys(signedHeaders).length > 0,
+      withAuthHeaders: Object.keys(headers ?? {}).length > 0,
     };
   } finally {
     clearTimeout(timeout);
@@ -142,6 +150,29 @@ function parseJson(text: string, url: string): unknown {
       `The toolpack response from ${url} is not valid JSON (${reason}).`
     );
   }
+}
+
+/**
+ * #911: a 401/403 from a signed fetch means the toolpack server refused the
+ * signature, so its secret doesn't match the one being registered. Returns
+ * the error to throw, or `null` for any other status, and for an unsigned
+ * fetch (no secret, or `TOOLPACK_DISABLE_SIGNING`), where there was no
+ * signature to refuse. When auth headers were sent too, the message names
+ * them as the other possible cause. Carries the URL and status only, never
+ * secret or header material.
+ */
+function signatureRejection(url: string, result: FetchResult): ApiError | null {
+  const { status } = result;
+  if ((status !== 401 && status !== 403) || !result.signed) return null;
+  const authHint = result.withAuthHeaders
+    ? " If you registered auth headers, check that your server accepts them too."
+    : "";
+  return new ApiError(
+    502,
+    ApiCode.TOOLPACK_SIGNATURE_REJECTED,
+    `The toolpack server at ${url} rejected the request's signature (${status}). Its signing secret must match the one registered with Portals AI; see "Verifying requests" in the custom toolpack integration guide.${authHint}`,
+    { url, status }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +207,8 @@ export class ToolpackRegistrationService {
     }
 
     if (!result.ok) {
+      const rejected = signatureRejection(url, result);
+      if (rejected) throw rejected;
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
@@ -219,29 +252,18 @@ export class ToolpackRegistrationService {
   /**
    * GET the metadata endpoint, validate the response, and return the
    * parsed object. Failures (HTTP, oversize, malformed, validation)
-   * return `null` so callers can register without metadata.
+   * return `null` so callers can register without metadata, except a
+   * 401/403, which throws `TOOLPACK_SIGNATURE_REJECTED` (#911): a server
+   * that refuses the signature would refuse every tool call too.
    */
   static async fetchMetadata(
     url: string,
     headers: Record<string, string> | undefined,
     signingSecret?: string
   ): Promise<ToolpackMetadata | null> {
+    let result: FetchResult;
     try {
-      const result = await fetchWithCap(url, headers, signingSecret);
-      if (!result.ok) {
-        logger.warn(
-          { url, status: result.status },
-          "Metadata fetch returned non-OK status; proceeding without metadata"
-        );
-        return null;
-      }
-      const parsed = JSON.parse(result.text);
-      const validated = ToolpackMetadataSchema.safeParse(parsed);
-      if (!validated.success) {
-        logger.warn({ url }, "Metadata response failed validation");
-        return null;
-      }
-      return validated.data;
+      result = await fetchWithCap(url, headers, signingSecret);
     } catch (err) {
       logger.warn(
         { url, error: err instanceof Error ? err.message : "unknown" },
@@ -249,6 +271,28 @@ export class ToolpackRegistrationService {
       );
       return null;
     }
+    const rejected = signatureRejection(url, result);
+    if (rejected) throw rejected;
+    if (!result.ok) {
+      logger.warn(
+        { url, status: result.status },
+        "Metadata fetch returned non-OK status; proceeding without metadata"
+      );
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.text);
+    } catch {
+      logger.warn({ url }, "Metadata response is not valid JSON");
+      return null;
+    }
+    const validated = ToolpackMetadataSchema.safeParse(parsed);
+    if (!validated.success) {
+      logger.warn({ url }, "Metadata response failed validation");
+      return null;
+    }
+    return validated.data;
   }
 
   /**

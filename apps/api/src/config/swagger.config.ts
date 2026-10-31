@@ -107,6 +107,8 @@ import {
   EntityGroupGetResponsePayloadSchema,
   ToolpackListResponsePayloadSchema,
   ToolpackGetResponsePayloadSchema,
+  RegisterToolpackBodySchema,
+  ToolpackRegisterResponsePayloadSchema,
   StationInstanceWithConnectorInstanceSchema,
   StationViewWithCuratedViewSchema,
   CuratedViewFilterSqlPreviewRequestBodySchema,
@@ -549,6 +551,14 @@ const capabilitiesSchemas: Record<string, unknown> = {
   ),
   ToolpackGetResponsePayload: z.toJSONSchema(
     ToolpackGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  RegisterToolpackBody: z.toJSONSchema(
+    RegisterToolpackBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ToolpackRegisterResponsePayload: z.toJSONSchema(
+    ToolpackRegisterResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };

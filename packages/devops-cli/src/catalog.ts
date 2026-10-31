@@ -62,11 +62,13 @@ export const CATALOG: CatalogEntry[] = [
   // `price.*` webhook moves an amount the site has baked into static HTML.
   // NOT marked `siteConfig`: rotating the token is not a published fact.
   secret("GITHUB_DISPATCH_TOKEN", "github-dispatch-token"),
-  // #510: the demo custom-toolpack signing-secret allow-list — the comma-joined
-  // set of whsec_ secrets Portal returns when the shared demo webhook toolpack
-  // is registered in each demo env. Consumed by the env-agnostic
-  // `portalai-demo-toolpack` Lambda (infra/cloudformation/demo-toolpack.yml),
-  // NOT by backend.yml — a catalog-only key (the parity test allows these).
+  // #510/#911: this env's demo custom-toolpack signing secret (comma-joined
+  // when it holds several; the first is this env's). `db:demo:seed` registers
+  // the demo toolpack with the first entry, read from the operator's shell. The
+  // shared `portalai-demo-toolpack` Lambda verifies against its own
+  // `SigningSecrets` stack parameter (infra/cloudformation/demo-toolpack.yml),
+  // which holds every env's entry. Not read by the API task, so not in
+  // backend.yml — a catalog-only key (the parity test allows these).
   secret("DEMO_TOOLPACK_SIGNING_SECRETS", "demo-toolpack-signing-secrets"),
   // #489: the deployed-env QA identities the e2e harness signs in as: the QA
   // org's owner (also the post-deploy login check), admin and member. Never

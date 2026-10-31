@@ -105,6 +105,8 @@ const INTERNAL: Record<string, string> = {
 
   ENCRYPTION_KEY: SECRET,
   OAUTH_STATE_SECRET: SECRET,
+  DEMO_TOOLPACK_SIGNING_SECRETS:
+    "signs the demo seed's fetches to our own demo toolpack Lambda; reaches no third party",
 
   GITHUB_DISPATCH_REPO:
     "triggers the marketing-site rebuild; the payload carries no customer data",
