@@ -413,6 +413,12 @@ export enum ApiCode {
   TOOLPACK_URL_PRIVATE_HOST = "TOOLPACK_URL_PRIVATE_HOST",
   TOOLPACK_RUNTIME_TOO_LARGE = "TOOLPACK_RUNTIME_TOO_LARGE",
   TOOLPACK_RUNTIME_INVALID = "TOOLPACK_RUNTIME_INVALID",
+  /**
+   * The toolpack server answered a schema, metadata or runtime request with a
+   * redirect. Toolpack URLs aren't followed through redirects; register the
+   * final URL (#931). 502.
+   */
+  TOOLPACK_REDIRECT_REFUSED = "TOOLPACK_REDIRECT_REFUSED",
   TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED = "TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED",
   /**
    * The toolpack server refused a signed registration or refresh fetch
@@ -665,6 +671,13 @@ export enum ApiCode {
   // REST API Connector (Phase 1)
   /** Network error, DNS failure, timeout, or non-2xx response during a probe / sync fetch. */
   REST_API_FETCH_FAILED = "REST_API_FETCH_FAILED",
+  /**
+   * A REST request was refused before it was sent: the URL (or a redirect
+   * hop) resolves to an address that isn't public, isn't http(s), redirected
+   * more than 5 times, or redirected a body that can't be resent (#931).
+   * `details.reason` says which. 502, never retried.
+   */
+  REST_API_URL_BLOCKED = "REST_API_URL_BLOCKED",
   /** Response body isn't valid JSON. */
   REST_API_INVALID_JSON = "REST_API_INVALID_JSON",
   /** Walking `recordsPath` returned `undefined`. */

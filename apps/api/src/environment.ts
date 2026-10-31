@@ -120,8 +120,10 @@ export const environment = {
   // disable without redeploying: SSRF agent stops resolving+filtering
   // outbound IPs; signing stops appending HMAC headers. The static
   // URL refinement at registration is unaffected by either flag.
-  TOOLPACK_DISABLE_SSRF_FILTER:
-    process.env.TOOLPACK_DISABLE_SSRF_FILTER === "true",
+  // DISABLE_OUTBOUND_URL_GUARD turns off the address check on every fetch
+  // to an org-supplied URL (toolpacks and REST connections, #931); the
+  // redirect policy still applies.
+  DISABLE_OUTBOUND_URL_GUARD: process.env.DISABLE_OUTBOUND_URL_GUARD === "true",
   TOOLPACK_DISABLE_SIGNING: process.env.TOOLPACK_DISABLE_SIGNING === "true",
   // ── Google OAuth
   //    Per-env Google OAuth2 client used by the google-sheets connector.

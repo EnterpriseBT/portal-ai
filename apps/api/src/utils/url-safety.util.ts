@@ -25,7 +25,7 @@
  * implement the resolve+validate dance directly so it works with
  * native fetch.
  *
- * Emergency rollback: set `TOOLPACK_DISABLE_SSRF_FILTER=true` to
+ * Emergency rollback: set `DISABLE_OUTBOUND_URL_GUARD=true` to
  * bypass `assertUrlSafeToFetch` (the static validator still runs).
  */
 
@@ -97,10 +97,10 @@ export function validateToolpackUrl(raw: string): UrlValidationError | null {
  * non-unicast / private / reserved range. Call this immediately
  * before any outbound `fetch` to a user-supplied toolpack URL.
  *
- * Honors `TOOLPACK_DISABLE_SSRF_FILTER=true` for emergency rollback.
+ * Honors `DISABLE_OUTBOUND_URL_GUARD=true` for emergency rollback.
  */
 export async function assertUrlSafeToFetch(raw: string): Promise<void> {
-  if (environment.TOOLPACK_DISABLE_SSRF_FILTER) return;
+  if (environment.DISABLE_OUTBOUND_URL_GUARD) return;
 
   let parsed: URL;
   try {

@@ -150,7 +150,8 @@ const INTERNAL: Record<string, string> = {
   // Custom webhook tools call endpoints the customer hosts, which the public
   // list says are not subprocessors; these only harden that path.
   TOOLPACK_DISABLE_SIGNING: DEV_ONLY,
-  TOOLPACK_DISABLE_SSRF_FILTER: DEV_ONLY,
+  // Turns off the outbound address check (toolpacks + REST, #931).
+  DISABLE_OUTBOUND_URL_GUARD: DEV_ONLY,
   MOCK_TOOLPACK_FLAKY_MOD: DEV_ONLY,
   MOCK_TOOLPACK_LATENCY_MS: DEV_ONLY,
   MOCK_TOOLPACK_SIGNING_SECRET: DEV_ONLY,

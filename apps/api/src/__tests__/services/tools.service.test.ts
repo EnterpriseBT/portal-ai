@@ -117,7 +117,7 @@ jest.unstable_mockModule("../../environment.js", () => ({
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
     TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES: 1024 * 1024,
-    TOOLPACK_DISABLE_SSRF_FILTER: false,
+    DISABLE_OUTBOUND_URL_GUARD: false,
     TOOLPACK_DISABLE_SIGNING: false,
   },
 }));

@@ -416,7 +416,7 @@ export class ToolService {
     // the actual connect. Defeats DNS rebinding (window between our
     // lookup and fetch's lookup is microseconds). Throws
     // SsrfBlockedError on private/reserved IPs unless the emergency
-    // TOOLPACK_DISABLE_SSRF_FILTER flag is set.
+    // DISABLE_OUTBOUND_URL_GUARD flag is set.
     await assertUrlSafeToFetch(implementation.url);
 
     const bodyString = JSON.stringify(input);

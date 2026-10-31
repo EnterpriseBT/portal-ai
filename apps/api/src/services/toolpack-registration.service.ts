@@ -71,7 +71,7 @@ async function fetchWithCap(
   signingSecret: string | undefined
 ): Promise<FetchResult> {
   // SSRF: resolve+validate before connecting. Throws SsrfBlockedError
-  // on private/reserved IPs unless TOOLPACK_DISABLE_SSRF_FILTER=true.
+  // on private/reserved IPs unless DISABLE_OUTBOUND_URL_GUARD=true.
   // The static refinement at the contract layer is the first line of
   // defence; this is the canonical, DNS-rebinding-resistant guard.
   await assertUrlSafeToFetch(url);
