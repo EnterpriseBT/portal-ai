@@ -374,9 +374,12 @@ export const RegisterToolpackDialogUI: React.FC<
             (touched.signingSecret && errors.signingSecret) ||
             "Set this secret on your toolpack server before registering. Portals AI signs every request with it, including the schema fetch. Use a different secret for each toolpack."
           }
+          // The theme's `monospace` typography variant (Space Mono). Not
+          // `fontFamily: "monospace"`: sx resolves that against the theme's
+          // variant of the same name and emits a rule that matches nothing.
+          sx={{ "& .MuiInputBase-input": { typography: "monospace" } }}
           slotProps={{
             input: {
-              sx: { fontFamily: "monospace" },
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton

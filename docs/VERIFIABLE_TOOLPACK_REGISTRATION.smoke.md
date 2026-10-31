@@ -18,7 +18,7 @@ Run **Preflight** once. After that each section stands alone. Tags: untagged = a
 ### Fixtures
 
 - [ ] The `e2e-fixture` org is on a tier with **custom toolpacks** (Settings → Billing, or Toolpacks shows an enabled **Register toolpack** button).
-- [ ] A second terminal for the mock toolpack server (`apps/api/src/scripts/mock-toolpack-server.ts`). It verifies **every** route, `GET`s included, whenever `MOCK_TOOLPACK_SIGNING_SECRET` is set, and logs `Signature: OK` / `SIGNATURE_INVALID` / `SKIPPED` per request.
+- [ ] A second terminal for the mock toolpack server (`apps/api/src/scripts/mock-toolpack-server.ts`). It verifies **every** route, `GET`s included, whenever `MOCK_TOOLPACK_SIGNING_SECRET` is set, and logs `Signature: VERIFIED` / `SIGNATURE_INVALID` / `SKIPPED` per request.
 
 ### Reset between runs
 
@@ -41,9 +41,9 @@ Run **Preflight** once. After that each section stands alone. Tags: untagged = a
 - [ ] In the second terminal — backend: `cd apps/api && MOCK_TOOLPACK_SIGNING_SECRET=<copied secret> npm run webhook:toolpack` (listens on `http://localhost:4100`).
 - [ ] Fill in: Name `smoke_911_verified`, Schema `http://localhost:4100/schema`, Runtime `http://localhost:4100/runtime`, Metadata `http://localhost:4100/metadata`. Click **Register**.
 - [ ] The dialog closes and `smoke_911_verified` appears in the list with its tools (`echo`, `add_numbers`, …). **No** "Your toolpack signing secret" reveal dialog opens.
-- [ ] Mock server log — backend: the `GET /schema` and `GET /metadata` lines each show `Signature: OK` (not `SKIPPED`).
-- [ ] Click the row's **Refresh**. A "Refreshed "smoke_911_verified"." toast appears, and the mock log shows `GET /schema` with `Signature: OK`.
-- [ ] Runtime call — manual (needs the live agent): attach `smoke_911_verified` to a station, open a portal on it and prompt **"Use the echo tool to echo hello"**. The agent answers with the echoed value, and the mock log shows `POST /runtime` with `Signature: OK`.
+- [ ] Mock server log — backend: the `GET /schema` and `GET /metadata` lines each show `Signature: VERIFIED` (not `SKIPPED`).
+- [ ] Click the row's **Refresh**. A "Refreshed "smoke_911_verified"." toast appears, and the mock log shows `GET /schema` with `Signature: VERIFIED`.
+- [ ] Runtime call — manual (needs the live agent): attach `smoke_911_verified` to a station, open a portal on it and prompt **"Use the echo tool to echo hello"**. The agent answers with the echoed value, and the mock log shows `POST /runtime` with `Signature: VERIFIED`.
 - [ ] `db:studio` → `organization_toolpacks` — backend: the `smoke_911_verified` row's `signing_secret` is ciphertext, not the `whsec_` value.
 
 ## §3 — Wrong secret on the server (AC 4)
@@ -62,7 +62,7 @@ A toolpack registered without a supplied secret has the same stored shape as one
 - [ ] Restart the mock **without** a secret — backend: `npm run webhook:toolpack` (logs `SKIPPED`).
 - [ ] Backend: `POST http://localhost:3001/api/toolpacks` with the fixture owner's bearer token and body `{"name":"smoke_911_minted","endpoints":{"schema":"http://localhost:4100/schema","runtime":"http://localhost:4100/runtime"}}`. Expect **201**, with `payload.signingSecret` matching `^whsec_[A-Za-z0-9_-]{43}$`. Copy it.
 - [ ] `GET /api/toolpacks/<id>` — backend: the response has `signingSecretStatus.has: true` and does **not** contain the copied secret.
-- [ ] Restart the mock with `MOCK_TOOLPACK_SIGNING_SECRET=<that minted secret>`, then click the row's **Refresh** in the UI. It succeeds and the mock shows `Signature: OK`.
+- [ ] Restart the mock with `MOCK_TOOLPACK_SIGNING_SECRET=<that minted secret>`, then click the row's **Refresh** in the UI. It succeeds and the mock shows `Signature: VERIFIED`.
 - [ ] Row → **Edit** → **Rotate signing secret**. The reveal dialog shows a new secret. Restart the mock with it and **Refresh** again; it succeeds.
 - [ ] Restart the mock with the **old** minted secret and **Refresh**. The toast reads "Failed to refresh "smoke_911_minted": …rejected the request's signature (401)…".
 - [ ] Registering through the API with a supplied secret — backend: same POST, plus `"signingSecret":"<a generated whsec_ value>"` and name `smoke_911_supplied`, against a mock holding that secret. Expect **201**, with no `signingSecret` anywhere in the response body.
@@ -78,9 +78,9 @@ A toolpack registered without a supplied secret has the same stored shape as one
 Locally the mock server stands in for the Lambda.
 
 - [ ] Backend: pick a provisioned org id (`npx portalai org list --env local --json`). Start the mock with `MOCK_TOOLPACK_SIGNING_SECRET=<secret A>`.
-- [ ] Backend: `cd apps/api && DEMO_TOOLPACK_URL=http://localhost:4100 DEMO_TOOLPACK_SIGNING_SECRETS="<secret A>,<secret B>" npm run db:demo:seed -- --org <id> --rows 0`. The output's `toolpacks.custom` is a non-null id, and the mock logs `Signature: OK` on `/schema` and `/metadata`.
-- [ ] Re-run the same command. `toolpacks.custom` is the **same** id, and the mock still logs `Signature: OK` (the secret was kept).
-- [ ] Re-run **without** `DEMO_TOOLPACK_SIGNING_SECRETS`. It still registers with `Signature: OK`: the seed reused the stored secret.
+- [ ] Backend: `cd apps/api && DEMO_TOOLPACK_URL=http://localhost:4100 DEMO_TOOLPACK_SIGNING_SECRETS="<secret A>,<secret B>" npm run db:demo:seed -- --org <id> --rows 0`. The output's `toolpacks.custom` is a non-null id, and the mock logs `Signature: VERIFIED` on `/schema` and `/metadata`.
+- [ ] Re-run the same command. `toolpacks.custom` is the **same** id, and the mock still logs `Signature: VERIFIED` (the secret was kept).
+- [ ] Re-run **without** `DEMO_TOOLPACK_SIGNING_SECRETS`. It still registers with `Signature: VERIFIED`: the seed reused the stored secret.
 - [ ] Restart the mock with a different secret and re-run. The seed logs "custom toolpack refresh failed — keeping the registered one". In the org's station, the `demo_supply_tools` toolpack is **still attached** (Stations → station → toolpack chips).
 - [ ] Deployed Lambda — manual (after merge, per the PR's release order): with the `portalai-demo-toolpack` stack's `SigningSecrets` set, `curl <FUNCTION_URL>/schema` without signing headers gives **401**, and a correctly signed `GET` gives **200**.
 

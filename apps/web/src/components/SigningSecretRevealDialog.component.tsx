@@ -68,10 +68,13 @@ export const SigningSecretRevealDialogUI: React.FC<
           label="Signing secret"
           value={signingSecret ?? ""}
           fullWidth
+          // The theme's `monospace` typography variant (Space Mono). Not
+          // `fontFamily: "monospace"`: sx resolves that against the theme's
+          // variant of the same name and emits a rule that matches nothing.
+          sx={{ "& .MuiInputBase-input": { typography: "monospace" } }}
           slotProps={{
             input: {
               readOnly: true,
-              sx: { fontFamily: "monospace" },
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
