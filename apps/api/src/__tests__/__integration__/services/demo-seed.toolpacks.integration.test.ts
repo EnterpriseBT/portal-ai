@@ -144,4 +144,79 @@ describe("DemoSeedService (integration): toolpacks", () => {
       delete process.env.DEMO_TOOLPACK_URL;
     }
   });
+  describe("signing secret (#911)", () => {
+    const SECRET_A = "whsec_" + "a".repeat(43);
+    const SECRET_B = "whsec_" + "b".repeat(43);
+    let saved: string | undefined;
+    let schemaSpy: ReturnType<typeof jest.spyOn>;
+    let metadataSpy: ReturnType<typeof jest.spyOn>;
+
+    beforeEach(() => {
+      saved = process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      process.env.DEMO_TOOLPACK_URL = "https://demo-toolpack.test";
+      schemaSpy = jest
+        .spyOn(ToolpackRegistrationService, "fetchSchema")
+        .mockResolvedValue([
+          {
+            name: "quote_shipping_rate",
+            description: "Quote a shipping rate.",
+            parameterSchema: { type: "object", properties: {} },
+          },
+        ] as never);
+      metadataSpy = jest
+        .spyOn(ToolpackRegistrationService, "fetchMetadata")
+        .mockResolvedValue(null as never);
+    });
+
+    afterEach(() => {
+      schemaSpy.mockRestore();
+      metadataSpy.mockRestore();
+      delete process.env.DEMO_TOOLPACK_URL;
+      if (saved === undefined) delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      else process.env.DEMO_TOOLPACK_SIGNING_SECRETS = saved;
+    });
+
+    async function storedSecret(id: string): Promise<string> {
+      const row = await DbService.repository.organizationToolpacks.findById(id);
+      return row!.signingSecret;
+    }
+
+    it("registers with the first DEMO_TOOLPACK_SIGNING_SECRETS entry", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = ` ${SECRET_A} , ${SECRET_B}`;
+      const orgId = await provisionOrg();
+
+      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(schemaSpy).toHaveBeenCalledWith(
+        "https://demo-toolpack.test/schema",
+        undefined,
+        SECRET_A
+      );
+      expect(await storedSecret(result.toolpacks.custom!)).toBe(SECRET_A);
+    });
+
+    it("keeps it across a re-seed", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = `${SECRET_A},${SECRET_B}`;
+      const orgId = await provisionOrg();
+
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(await storedSecret(second.toolpacks.custom!)).toBe(SECRET_A);
+    });
+
+    it("mints a secret when the variable is unset or malformed", async () => {
+      delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      const orgId = await provisionOrg();
+      const unset = await DemoSeedService.seed({ orgId, rows: 0 });
+      const minted = await storedSecret(unset.toolpacks.custom!);
+      expect(minted).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
+
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = "not-a-secret";
+      const malformed = await DemoSeedService.seed({ orgId, rows: 0 });
+      const reminted = await storedSecret(malformed.toolpacks.custom!);
+      expect(reminted).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
+      expect(reminted).not.toBe(minted);
+    });
+  });
 });

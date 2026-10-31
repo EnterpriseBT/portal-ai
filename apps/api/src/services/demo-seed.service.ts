@@ -25,6 +25,7 @@ import {
   OrganizationToolpackModelFactory,
   type ToolpackToolDefinition,
 } from "@portalai/core/models";
+import { SigningSecretSchema } from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
@@ -380,6 +381,27 @@ export class DemoSeedService {
   }
 
   /**
+   * The demo toolpack's signing secret (#911): the first entry of
+   * `DEMO_TOOLPACK_SIGNING_SECRETS`, the allow-list the demo Lambda verifies
+   * against, so the Lambda can verify the registration fetches and every
+   * re-seed keeps the same secret. Unset, it mints one (the Lambda then runs
+   * unverified); malformed, it warns once, naming the variable but never its
+   * value, and mints.
+   */
+  private static demoSigningSecret(): string {
+    const configured = (process.env.DEMO_TOOLPACK_SIGNING_SECRETS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .find(Boolean);
+    if (!configured) return generateSigningSecret();
+    if (SigningSecretSchema.safeParse(configured).success) return configured;
+    logger.warn(
+      "DEMO_TOOLPACK_SIGNING_SECRETS' first entry is not a whsec_ signing secret; minting one instead"
+    );
+    return generateSigningSecret();
+  }
+
+  /**
    * Register (or refresh) the demo custom webhook toolpack — mirrors
    * POST /api/toolpacks, but **idempotent**: the demo seeder is a re-runnable
    * convergence (the prod refresh path is a `demo seed` re-run, #509), and
@@ -397,7 +419,7 @@ export class DemoSeedService {
       runtime: `${baseUrl}/runtime`,
       metadata: `${baseUrl}/metadata`,
     };
-    const signingSecret = generateSigningSecret();
+    const signingSecret = DemoSeedService.demoSigningSecret();
     const tools = await ToolpackRegistrationService.fetchSchema(
       endpoints.schema,
       undefined,
