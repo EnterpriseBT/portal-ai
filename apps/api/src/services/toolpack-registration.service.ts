@@ -210,7 +210,7 @@ export function blockedToApiError(
         `The toolpack server at ${url} answered with a redirect (${err.status}). Toolpack URLs aren't followed through redirects; register the final URL.`,
         details
       );
-    case "unresolvable":
+    case "unresolvable": // the host answered with no address
       return new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
@@ -317,9 +317,13 @@ export class ToolpackRegistrationService {
     try {
       result = await fetchWithCap(url, headers, signingSecret);
     } catch (err) {
-      // #931: a refused fetch fails the registration, as a refused
-      // signature does; anything else stays best-effort.
-      if (err instanceof OutboundFetchBlockedError) {
+      // #931: a non-public address or a redirect fails the registration, as
+      // a refused signature does; anything else (an unresolvable host
+      // included) stays best-effort.
+      if (
+        err instanceof OutboundFetchBlockedError &&
+        (err.reason === "private-address" || err.reason === "redirect-refused")
+      ) {
         throw blockedToApiError(url, err);
       }
       logger.warn(

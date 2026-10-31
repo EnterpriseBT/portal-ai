@@ -44,6 +44,7 @@ jest.unstable_mockModule(
 
 const { WebhookTool } = await import("../../tools/webhook.tool.js");
 const { environment } = await import("../../environment.js");
+const { ApiError } = await import("../../services/http.service.js");
 
 const IMPL = {
   type: "webhook" as const,
@@ -537,24 +538,31 @@ describe("WebhookTool — refused outbound fetch (#931)", () => {
   });
 
   it.each([
-    "TOOLPACK_REDIRECT_REFUSED",
-    "TOOLPACK_URL_PRIVATE_HOST",
-    "TOOLPACK_SCHEMA_FETCH_FAILED",
-  ])("returns %s as a typed result naming the tool", async (code) => {
+    ["TOOLPACK_REDIRECT_REFUSED", "redirect-refused"],
+    ["TOOLPACK_URL_PRIVATE_HOST", "private-address"],
+  ])("returns %s as a typed result naming the tool", async (code, reason) => {
     mockCallWebhook.mockRejectedValue(
-      Object.assign(new Error("The toolpack server refused."), { code })
+      new ApiError(502, code as never, "The toolpack server refused.", {
+        url: "https://x.test/run",
+        reason,
+      })
     );
-    const t = buildTool();
-    const result = await exec(t, { factor: 1 });
+    const result = await exec(buildTool(), { factor: 1 });
     expect(result).toEqual({
       error: { code, message: expect.stringContaining('"summarize"') },
     });
   });
 
+  it("still throws an error that shares a code but wasn't a refusal", async () => {
+    mockCallWebhook.mockRejectedValue(
+      new ApiError(502, "TOOLPACK_SCHEMA_FETCH_FAILED" as never, "other")
+    );
+    await expect(exec(buildTool(), { factor: 1 })).rejects.toThrow("other");
+  });
+
   it("still throws any other error", async () => {
     mockCallWebhook.mockRejectedValue(new Error("Webhook returned 500: Boom"));
-    const t = buildTool();
-    await expect(exec(t, { factor: 1 })).rejects.toThrow(
+    await expect(exec(buildTool(), { factor: 1 })).rejects.toThrow(
       "Webhook returned 500"
     );
   });

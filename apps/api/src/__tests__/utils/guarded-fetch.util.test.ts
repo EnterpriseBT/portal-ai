@@ -195,14 +195,43 @@ describe("guardedFetch (#931)", () => {
       expect(all.address).toEqual(addrs);
     });
 
-    it("is unresolvable on a resolver error or an empty answer", async () => {
-      const failed = await run(lookupWith(new Error("ENOTFOUND")), false);
-      expect((failed.err as OutboundFetchBlockedError).reason).toBe(
-        "unresolvable"
-      );
+    it("passes a resolver error through, so a transient one stays retryable", async () => {
+      const transient = Object.assign(new Error("getaddrinfo EAI_AGAIN"), {
+        code: "EAI_AGAIN",
+      });
+      const failed = await run(lookupWith(transient), false);
+      expect(failed.err).toBe(transient);
+      expect(failed.err).not.toBeInstanceOf(OutboundFetchBlockedError);
+    });
+
+    it("is unresolvable on an empty answer", async () => {
       const empty = await run(lookupWith([]), false);
       expect((empty.err as OutboundFetchBlockedError).reason).toBe(
         "unresolvable"
+      );
+    });
+
+    it("answers with the family asked for, after checking every address", async () => {
+      const addrs = [
+        { address: "2606:2800:220:1::", family: 6 },
+        { address: "93.184.216.34", family: 4 },
+      ];
+      const v4 = await new Promise<{ err: unknown; address: unknown }>((r) =>
+        lookupWith(addrs)("host.test", { family: 4 }, (err, address) =>
+          r({ err, address })
+        )
+      );
+      expect(v4.err).toBeNull();
+      expect(v4.address).toBe("93.184.216.34");
+      // A private address of the other family still refuses the host.
+      const mixed = await new Promise<{ err: unknown }>((r) =>
+        lookupWith([
+          { address: "93.184.216.34", family: 4 },
+          { address: "fd00::1", family: 6 },
+        ])("host.test", { family: 4 }, (err) => r({ err }))
+      );
+      expect((mixed.err as OutboundFetchBlockedError).reason).toBe(
+        "private-address"
       );
     });
 

@@ -522,6 +522,12 @@ describe("fetchJson — outbound guard (#931)", () => {
     });
   });
 
+  it("restFetch refuses a Request, whose method and body it can't forward", async () => {
+    await expect(
+      restFetch(new Request("https://x.test", { method: "POST", body: "b" }))
+    ).rejects.toThrow("not a Request");
+  });
+
   it("restFetch follows redirects through guardedFetch", async () => {
     expect(typeof restFetch).toBe("function");
     await expect(restFetch("http://10.255.255.1/x")).rejects.toBeInstanceOf(

@@ -5,26 +5,34 @@ import { join } from "node:path";
 /**
  * #931: every fetch to an org-supplied URL goes through `guardedFetch`,
  * which checks each connection's address and applies the caller's redirect
- * policy. A bare `fetch(` in these modules would skip both, as the toolpack
- * fetchers and the REST connector did before #931. `fetchImpl(` (an
- * injected fetch whose default is guarded) is allowed.
+ * policy. A bare `fetch(` would skip both, as the toolpack fetchers and the
+ * REST connector did before #931. The whole of `src` is scanned, so a new
+ * outbound path fails here until it's guarded or exempted with a reason.
+ * `fetchImpl(` (an injected fetch whose default is guarded) is allowed.
  */
-const GUARDED = [
-  "src/services/toolpack-registration.service.ts",
-  "src/services/tools.service.ts",
-  "src/adapters/rest-api",
-];
+const ROOT = "src";
 
 /** Files allowed a bare fetch, each with a reason. Only shrinks. */
-const EXEMPT: Record<string, string> = {};
+const EXEMPT: Record<string, string> = {
+  "src/utils/guarded-fetch.util.ts": "the guarded primitive itself",
+  "src/services/auth0.service.ts":
+    "the Auth0 tenant from AUTH0_* env, not an org-supplied URL",
+  "src/services/rebuild-dispatch.service.ts":
+    "a fixed api.github.com repository_dispatch URL",
+  "src/routes/webhook.router.ts":
+    "an AWS SNS SubscribeURL, fetched only after the message's signature check",
+  "src/scripts/mock-toolpack-server.ts":
+    "the dev-only mock toolpack, calling back to the local API",
+};
 
-function sourceFiles(path: string): string[] {
-  if (!statSync(path).isDirectory()) return [path];
-  return readdirSync(path).flatMap((name) =>
-    /\.ts$/.test(name) || statSync(join(path, name)).isDirectory()
-      ? sourceFiles(join(path, name))
-      : []
-  );
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) {
+      return name === "__tests__" ? [] : sourceFiles(path);
+    }
+    return /\.ts$/.test(name) ? [path] : [];
+  });
 }
 
 function stripComments(source: string): string {
@@ -47,16 +55,24 @@ function unguardedFetches(source: string): string[] {
 }
 
 describe("outbound fetches go through guardedFetch (#931)", () => {
-  it("no guarded module fetches directly", () => {
-    const files = GUARDED.flatMap(sourceFiles);
-    // Not vacuous: the REST adapter alone is many files.
-    expect(files.length).toBeGreaterThan(10);
+  it("nothing in src fetches directly outside the exemptions", () => {
+    const files = sourceFiles(ROOT);
+    // Not vacuous: all of src is scanned.
+    expect(files.length).toBeGreaterThan(300);
     const hits = files
       .filter((f) => !(f in EXEMPT))
       .flatMap((f) =>
         unguardedFetches(readFileSync(f, "utf8")).map((h) => `${f}: ${h}`)
       );
     expect(hits).toEqual([]);
+  });
+
+  it("every exemption is a file that still fetches directly", () => {
+    for (const file of Object.keys(EXEMPT)) {
+      expect(
+        unguardedFetches(readFileSync(file, "utf8")).length
+      ).toBeGreaterThan(0);
+    }
   });
 
   it("catches a bare call and the global used as a default", () => {

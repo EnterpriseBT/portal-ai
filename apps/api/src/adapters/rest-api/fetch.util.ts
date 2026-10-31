@@ -35,14 +35,18 @@ export const MAX_REST_REDIRECTS = 5;
  * `MAX_REST_REDIRECTS` checked hops, dropping auth headers on a change of
  * origin. The default `fetchImpl` of `fetchJson` and `streamFetchRecords`.
  */
-export const restFetch: typeof globalThis.fetch = (input, init) =>
-  guardedFetch(
-    String(input instanceof Request ? input.url : input),
-    init ?? {},
-    {
-      redirects: { max: MAX_REST_REDIRECTS },
-    }
-  );
+export const restFetch: typeof globalThis.fetch = (input, init) => {
+  // A Request carries its own method, headers and body, which `init` alone
+  // can't forward; every caller passes a URL string.
+  if (input instanceof Request) {
+    return Promise.reject(
+      new TypeError("restFetch takes a URL, not a Request")
+    );
+  }
+  return guardedFetch(String(input), init ?? {}, {
+    redirects: { max: MAX_REST_REDIRECTS },
+  });
+};
 
 const BLOCKED_MESSAGES: Record<string, string> = {
   "private-address":

@@ -22,27 +22,25 @@ import {
   callbackAddressAvailable,
   publicApiBase,
 } from "../utils/public-url.util.js";
+import { OUTBOUND_BLOCK_REASONS } from "../utils/guarded-fetch.util.js";
 
-/** Codes `callWebhook` raises when `guardedFetch` refused the call (#931). */
-const OUTBOUND_REFUSAL_CODES: ReadonlySet<unknown> = new Set([
-  ApiCode.TOOLPACK_REDIRECT_REFUSED,
-  ApiCode.TOOLPACK_URL_PRIVATE_HOST,
-  ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
-]);
-
-/** #931: a refused outbound call as the typed result the agent relays, or
- *  `null` for any other error. */
+/** #931: a call `guardedFetch` refused (an ApiError from
+ *  `blockedToApiError`, recognised by its `details.reason`, not its code) as
+ *  the typed result the agent relays, or `null` for any other error. */
 export function outboundRefusal(
   slug: string,
   err: unknown
 ): { error: { code: ApiCode; message: string } } | null {
-  const code = (err as { code?: unknown } | null)?.code;
-  if (!OUTBOUND_REFUSAL_CODES.has(code)) return null;
-  const reason = err instanceof Error ? err.message : "The call was refused.";
+  if (!(err instanceof ApiError)) return null;
+  const reason = (err.details as { reason?: unknown } | undefined)?.reason;
+  if (typeof reason !== "string" || !OUTBOUND_BLOCK_REASONS.has(reason)) {
+    return null;
+  }
+  const code = err.code;
   return {
     error: {
       code: code as ApiCode,
-      message: `The "${slug}" tool couldn't reach its server: ${reason}`,
+      message: `The "${slug}" tool couldn't reach its server: ${err.message}`,
     },
   };
 }

@@ -61,14 +61,15 @@ export class OutboundFetchBlockedError extends Error {
   }
 }
 
-const REASONS: ReadonlySet<string> = new Set<OutboundBlockReason>([
-  "unsupported-scheme",
-  "private-address",
-  "unresolvable",
-  "redirect-refused",
-  "too-many-redirects",
-  "unreplayable-body",
-]);
+export const OUTBOUND_BLOCK_REASONS: ReadonlySet<string> =
+  new Set<OutboundBlockReason>([
+    "unsupported-scheme",
+    "private-address",
+    "unresolvable",
+    "redirect-refused",
+    "too-many-redirects",
+    "unreplayable-body",
+  ]);
 
 const REBUILT = /^OutboundFetchBlockedError: .* \[([a-z-]+)\]$/s;
 
@@ -184,7 +185,7 @@ export function findOutboundBlock(
         : undefined;
     const tag =
       typeof message === "string" ? REBUILT.exec(message)?.[1] : undefined;
-    if (tag && REASONS.has(tag)) {
+    if (tag && OUTBOUND_BLOCK_REASONS.has(tag)) {
       return new OutboundFetchBlockedError(tag as OutboundBlockReason, "");
     }
     cur =
@@ -197,8 +198,11 @@ export function findOutboundBlock(
 
 /**
  * The connect-time lookup: resolve every address, refuse if any isn't
- * allowed, otherwise answer with the checked address(es). The resolver is
- * injectable for tests.
+ * allowed, otherwise answer with the checked address(es) of the requested
+ * family. A resolver error (NXDOMAIN, a timeout) passes through unchanged,
+ * so callers keep treating it as the network failure it is (and retrying a
+ * transient one); only an empty answer is refused as `unresolvable`. The
+ * resolver is injectable for tests.
  */
 export function createGuardedLookup(
   resolve: (
@@ -207,7 +211,16 @@ export function createGuardedLookup(
   allowLoopback: () => boolean
 ): LookupFunction {
   return (hostname, options, callback) => {
-    const all = typeof options === "object" && options?.all === true;
+    const opts = typeof options === "object" && options !== null ? options : {};
+    const all = opts.all === true;
+    const family =
+      typeof options === "number"
+        ? options
+        : opts.family === "IPv4"
+          ? 4
+          : opts.family === "IPv6"
+            ? 6
+            : Number(opts.family ?? 0);
     resolve(hostname).then(
       (addresses) => {
         if (addresses.length === 0) {
@@ -225,21 +238,28 @@ export function createGuardedLookup(
             0
           );
         }
+        // Every address was checked above; answer with the family asked for.
+        const usable =
+          family === 4 || family === 6
+            ? addresses.filter((a) => a.family === family)
+            : addresses;
+        if (usable.length === 0) {
+          return callback(
+            new OutboundFetchBlockedError("unresolvable", hostname) as never,
+            "",
+            0
+          );
+        }
         if (all) {
-          (callback as unknown as (e: null, a: typeof addresses) => void)(
+          (callback as unknown as (e: null, a: typeof usable) => void)(
             null,
-            addresses
+            usable
           );
         } else {
-          callback(null, addresses[0].address, addresses[0].family);
+          callback(null, usable[0].address, usable[0].family);
         }
       },
-      () =>
-        callback(
-          new OutboundFetchBlockedError("unresolvable", hostname) as never,
-          "",
-          0
-        )
+      (err: NodeJS.ErrnoException) => callback(err, "", 0)
     );
   };
 }

@@ -583,6 +583,23 @@ describe("ToolpackRegistrationService", () => {
       }
     });
 
+    it("still registers without metadata when the metadata host doesn't resolve", async () => {
+      mockFetch.mockRejectedValue(
+        new TypeError("fetch failed", {
+          cause: new OutboundFetchBlockedError(
+            "unresolvable",
+            "https://example.com/metadata"
+          ),
+        })
+      );
+      await expect(
+        ToolpackRegistrationService.fetchMetadata(
+          "https://example.com/metadata",
+          undefined
+        )
+      ).resolves.toBeNull();
+    });
+
     it("doesn't quote the body of a response that isn't JSON", async () => {
       mockFetch.mockResolvedValue(fetchOk("SECRET-BODY ami-0abc"));
       const err = await ToolpackRegistrationService.fetchSchema(
