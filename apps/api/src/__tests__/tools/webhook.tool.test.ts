@@ -528,3 +528,34 @@ describe("WebhookTool — callback address (#891)", () => {
     expect(mockCallWebhook).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("WebhookTool — refused outbound fetch (#931)", () => {
+  beforeEach(() => {
+    mockCallWebhook.mockReset();
+    mockMint.mockReset();
+    mockRevoke.mockReset().mockResolvedValue(undefined);
+  });
+
+  it.each([
+    "TOOLPACK_REDIRECT_REFUSED",
+    "TOOLPACK_URL_PRIVATE_HOST",
+    "TOOLPACK_SCHEMA_FETCH_FAILED",
+  ])("returns %s as a typed result naming the tool", async (code) => {
+    mockCallWebhook.mockRejectedValue(
+      Object.assign(new Error("The toolpack server refused."), { code })
+    );
+    const t = buildTool();
+    const result = await exec(t, { factor: 1 });
+    expect(result).toEqual({
+      error: { code, message: expect.stringContaining('"summarize"') },
+    });
+  });
+
+  it("still throws any other error", async () => {
+    mockCallWebhook.mockRejectedValue(new Error("Webhook returned 500: Boom"));
+    const t = buildTool();
+    await expect(exec(t, { factor: 1 })).rejects.toThrow(
+      "Webhook returned 500"
+    );
+  });
+});

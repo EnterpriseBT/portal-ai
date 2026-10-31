@@ -23,6 +23,30 @@ import {
   publicApiBase,
 } from "../utils/public-url.util.js";
 
+/** Codes `callWebhook` raises when `guardedFetch` refused the call (#931). */
+const OUTBOUND_REFUSAL_CODES: ReadonlySet<unknown> = new Set([
+  ApiCode.TOOLPACK_REDIRECT_REFUSED,
+  ApiCode.TOOLPACK_URL_PRIVATE_HOST,
+  ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
+]);
+
+/** #931: a refused outbound call as the typed result the agent relays, or
+ *  `null` for any other error. */
+export function outboundRefusal(
+  slug: string,
+  err: unknown
+): { error: { code: ApiCode; message: string } } | null {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (!OUTBOUND_REFUSAL_CODES.has(code)) return null;
+  const reason = err instanceof Error ? err.message : "The call was refused.";
+  return {
+    error: {
+      code: code as ApiCode,
+      message: `The "${slug}" tool couldn't reach its server: ${reason}`,
+    },
+  };
+}
+
 /** The typed result a webhook tool returns when it needs a callback and this
  *  server has no public API address (#891). The agent relays it. */
 export function webhookCallbackRefusal(
@@ -240,6 +264,8 @@ export class WebhookTool extends Tool {
             ) {
               return webhookCallbackRefusal(this.slug, "stage");
             }
+            const refused = outboundRefusal(this.slug, err);
+            if (refused) return refused;
             throw err;
           }
 

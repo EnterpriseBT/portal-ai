@@ -5,7 +5,7 @@
  * builds the full tool set for a station based on its enabled tool packs.
  */
 
-/* global AbortController, fetch */
+/* global AbortController */
 
 import { type Tool } from "ai";
 
@@ -116,7 +116,11 @@ import { CuratedViewDeleteTool } from "../tools/curated-views/curated-view-delet
 import { CuratedViewShareTool } from "../tools/curated-views/curated-view-share.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
-import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
+import {
+  guardedFetch,
+  OutboundFetchBlockedError,
+} from "../utils/guarded-fetch.util.js";
+import { blockedToApiError } from "./toolpack-registration.service.js";
 import { environment } from "../environment.js";
 import { geocodingTools } from "../utils/geocoding-tools.util.js";
 import { ApiError } from "./http.service.js";
@@ -404,21 +408,16 @@ export class ToolService {
   // -----------------------------------------------------------------------
 
   /**
-   * POST to a webhook URL with auth headers, a 30 s timeout, an
-   * SSRF-safe pre-flight check, optional HMAC signing, and a
-   * streaming response size cap. Returns parsed JSON response.
+   * POST to a webhook URL with auth headers, a 30 s timeout, optional
+   * HMAC signing, and a streaming response size cap, through
+   * `guardedFetch` (#931): every connection is checked against non-public
+   * addresses and any redirect is refused, as an ApiError from
+   * `blockedToApiError`. Returns the parsed JSON response.
    */
   static async callWebhook(
     implementation: WebhookImplementation,
     input: Record<string, unknown>
   ): Promise<unknown> {
-    // SSRF: resolve the URL's hostname and validate every IP before
-    // the actual connect. Defeats DNS rebinding (window between our
-    // lookup and fetch's lookup is microseconds). Throws
-    // SsrfBlockedError on private/reserved IPs unless the emergency
-    // DISABLE_OUTBOUND_URL_GUARD flag is set.
-    await assertUrlSafeToFetch(implementation.url);
-
     const bodyString = JSON.stringify(input);
     const signedHeaders =
       implementation.signingSecret && !environment.TOOLPACK_DISABLE_SIGNING
@@ -429,16 +428,28 @@ export class ToolService {
     const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
     try {
-      const response = await fetch(implementation.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(implementation.headers ?? {}),
-          ...signedHeaders,
-        },
-        body: bodyString,
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await guardedFetch(
+          implementation.url,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(implementation.headers ?? {}),
+              ...signedHeaders,
+            },
+            body: bodyString,
+            signal: controller.signal,
+          },
+          { redirects: "refuse" }
+        );
+      } catch (err) {
+        if (err instanceof OutboundFetchBlockedError) {
+          throw blockedToApiError(implementation.url, err);
+        }
+        throw err;
+      }
 
       if (!response.ok) {
         throw new Error(

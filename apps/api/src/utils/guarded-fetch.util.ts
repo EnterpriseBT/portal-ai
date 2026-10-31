@@ -136,7 +136,7 @@ export async function guardedFetch(
     }
 
     const location = response.headers.get("location");
-    if (!REDIRECT_STATUSES.has(response.status) || location === null) {
+    if (!REDIRECT_STATUSES.has(response.status) || !location) {
       return response;
     }
 
