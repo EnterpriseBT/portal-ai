@@ -14,18 +14,16 @@ Description: >-
 #    it regardless of which env deployed it. Deployed once from the deploy-dev
 #    workflow's deploy-infra job, exactly as portalai-dns-email is.
 #
-# 2. THE SIGNING SECRETS CANNOT EXIST WHEN THIS STACK IS FIRST DEPLOYED.
-#    Portal generates a signing secret (whsec_…) only *when the toolpack is
-#    registered*, which happens after this endpoint is live. So the allow-list
-#    starts empty and `POST /runtime` accepts calls unsigned until it is
-#    populated (mirroring the reference mock's SKIPPED mode; the demo payloads
-#    are invented, so there is nothing to protect until secrets exist). After
-#    registering in each env, set the combined allow-list and redeploy /
-#    update-function-configuration (see packages/demo-toolpack/README.md), and
-#    every call is HMAC-verified thereafter. GET /schema + /metadata are served
-#    openly so registration can fetch the schema
-#    before any secret exists.
-#
+# 2. THE SIGNING SECRETS ARE SET BY HAND, NOT BY THE DEPLOY.
+#    `SigningSecrets` is the PORTALAI_SIGNING_SECRETS allow-list (one whsec_
+#    per demo env). While it's empty every route accepts unsigned calls
+#    (mirroring the reference mock's SKIPPED mode; the demo payloads are
+#    invented). Once it's set, every route is HMAC-verified, GET /schema and
+#    /metadata included: since #911 each env's demo seed registers with a
+#    secret chosen beforehand (DEMO_TOOLPACK_SIGNING_SECRETS), so the
+#    registration fetch can be verified too. See
+#    packages/demo-toolpack/README.md for the steps and release order.
+
 # The handler code shipped by CloudFormation below is a PLACEHOLDER. The real
 # code is pushed by `aws lambda update-function-code` in the deploy step, from
 # the built @portalai/demo-toolpack package (zero runtime deps).
@@ -37,7 +35,7 @@ Parameters:
     NoEcho: true
     Description: >-
       Comma-separated PORTALAI_SIGNING_SECRETS allow-list (one whsec_ per demo
-      env registration). Empty on first deploy; set after registration.
+      env, each env's DEMO_TOOLPACK_SIGNING_SECRETS). Empty means unverified.
 
 Resources:
   FunctionRole:

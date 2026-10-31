@@ -44,14 +44,11 @@ In addition, any custom auth headers you configured during registration (e.g. `A
 
 ### Which requests you can verify
 
-Portals AI generates the signing secret **at registration** and signs the registration-time `GET /schema` and `GET /metadata` with it — but the secret only reaches you in the registration *response*, after those fetches. So your server can't verify those two requests, and a server that rejects them can never be registered (it fails with `TOOLPACK_SCHEMA_FETCH_FAILED`).
+All of them. Set the signing secret on your server **before** you register (the register dialog generates one; see [The signing secret](#the-signing-secret)), and Portals AI signs every request with it: the registration's `GET /schema` and `GET /metadata`, every refresh, and every `POST` to your runtime endpoint. A `GET` is signed over the empty body.
 
-The rule, as `packages/demo-toolpack` implements it (the local `mock-toolpack-server.ts` sidesteps the problem differently: it verifies nothing until you set `MOCK_TOOLPACK_SIGNING_SECRET`, which you can only do after registering):
+If your server rejects the registration fetch with `401` or `403`, registration fails with `TOOLPACK_SIGNATURE_REJECTED` and nothing is registered. That almost always means the secret on your server doesn't match the one you're registering with.
 
-- **Let `GET` requests through without verification.** Portals AI only ever sends your server a `GET` to fetch the tool catalog — the schema and metadata endpoints, at whatever URLs you registered — and the catalog is not customer data. Don't verify a schema refresh either: a server that does can't be registered again (a re-registration signs with a new secret it doesn't have yet).
-- **Verify every `POST`**: the runtime endpoint, which receives tool input and records.
-
-[#911](https://github.com/EnterpriseBT/portal-ai/issues/911) tracks letting the registration fetches be verified too.
+Both reference servers verify every request once a secret is configured: `packages/demo-toolpack` (`PORTALAI_SIGNING_SECRETS`) and the local `mock-toolpack-server.ts` (`MOCK_TOOLPACK_SIGNING_SECRET`).
 
 ### The checks
 
@@ -82,9 +79,8 @@ app.use(
   })
 );
 
-// Catalog fetches (GET) can't be verified at registration (see above).
+// Verify every request: GETs are signed over the empty body.
 app.use((req, res, next) => {
-  if (req.method === "GET") return next();
   const ts = req.header("X-Portalai-Timestamp");
   const id = req.header("X-Portalai-Webhook-Id");
   const sig = req.header("X-Portalai-Signature");
@@ -122,11 +118,9 @@ from flask import Flask, request, abort
 SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
 app = Flask(__name__)
 
-# Catalog fetches (GET) can't be verified at registration (see above).
+# Verify every request: GETs are signed over the empty body.
 @app.before_request
 def verify_signature():
-    if request.method == "GET":
-        return None
     ts = request.headers.get("X-Portalai-Timestamp")
     wid = request.headers.get("X-Portalai-Webhook-Id")
     sig = request.headers.get("X-Portalai-Signature", "")
@@ -164,13 +158,9 @@ import (
 
 var signingSecret = []byte(os.Getenv("TOOLPACK_SIGNING_SECRET"))
 
-// Catalog fetches (GET) can't be verified at registration (see above).
+// Verify every request: GETs are signed over the empty body.
 func verifySignature(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if r.Method == http.MethodGet {
-            next.ServeHTTP(w, r)
-            return
-        }
         ts := r.Header.Get("X-Portalai-Timestamp")
         id := r.Header.Get("X-Portalai-Webhook-Id")
         sig := r.Header.Get("X-Portalai-Signature")
@@ -429,14 +419,16 @@ If your toolpack is on a corporate VPN with a private IP, you'll need a public i
 
 ## The signing secret
 
-When someone with permission to manage toolpacks registers one:
+The secret is `whsec_` followed by 43 base64url characters (32 random bytes). When someone with permission to manage toolpacks registers one:
 
-1. Portals AI generates a fresh `whsec_<base64url-32B>` secret server-side, and signs the registration's schema and metadata fetches with it (which is why your server can't verify those two).
-2. The plaintext is shown **exactly once** on the registration response.
-3. The secret is encrypted at rest in Portals AI's database (AES-256-GCM, per-deployment key).
-4. Every subsequent read returns only `{ signingSecretStatus: { has: true } }` — the plaintext never leaves the server again.
+1. The register dialog generates a fresh secret and shows it, with Copy and Regenerate buttons. You can paste your own instead, as long as it has that format.
+2. **Set it on your toolpack server** (e.g. `TOOLPACK_SIGNING_SECRET`), then click Register.
+3. Portals AI signs the registration's schema and metadata fetches with it, so your server verifies them like every other request. A `401` or `403` there fails the registration with `TOOLPACK_SIGNATURE_REJECTED`, and nothing is stored.
+4. The secret is encrypted at rest in Portals AI's database (AES-256-GCM, per-deployment key). Every later read returns only `{ signingSecretStatus: { has: true } }`; the plaintext never leaves the server again, and the registration response doesn't echo it.
 
-Copy the secret out of band into your toolpack server's environment (e.g. `TOOLPACK_SIGNING_SECRET`).
+Use a different secret for each toolpack.
+
+**Calling the API directly.** `POST /api/toolpacks` takes the secret as the optional `signingSecret` field. If you omit it, Portals AI mints one, signs the registration fetches with it, and returns it **exactly once** in the response's `signingSecret`. Your server can't hold that secret yet, so it has to accept those first fetches unverified. Prefer supplying your own.
 
 ### Rotation
 
@@ -477,7 +469,9 @@ It listens on `http://localhost:4100` and verifies the same three headers your s
 - **`401 TIMESTAMP_STALE`** — the timestamp was outside the ±300 s / ±60 s window. Check clock drift.
 - **`401 SIGNATURE_INVALID`** — the signature didn't match. Check that you're hashing the raw body (not re-stringified JSON), that the secret matches what Portals AI sent, and that the payload is `<ts>.<id>.<body>` exactly.
 
-If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts unsigned requests — useful for early development before you've registered, but never in any environment you trust.
+It verifies every route, the `GET`s included (signed over the empty body), so register against it with the same secret you exported and the registration fetch is verified too. A mismatch fails the registration with `TOOLPACK_SIGNATURE_REJECTED`.
+
+If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts unsigned requests: useful for early development, but never in any environment you trust.
 
 ---
 
@@ -502,7 +496,8 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 |---|---|
 | Registration fails with `TOOLPACK_URL_PRIVATE_HOST` | Your URL hostname resolves to an RFC1918 / link-local / loopback IP. Use a public ingress. |
 | Registration fails with `TOOLPACK_URL_NOT_HTTPS` | Production rejects `http://`. Configure TLS or use `https://`. |
-| Registration fails with `TOOLPACK_SCHEMA_FETCH_FAILED` | Your `/schema` endpoint returned non-2xx, timed out, or your server isn't reachable from Portals AI's egress. |
+| Registration fails with `TOOLPACK_SIGNATURE_REJECTED` | Your `/schema` or `/metadata` endpoint answered `401` or `403`: it rejected the request's signature. Set the secret you're registering with on your server (or register with the one it already has), and check that you verify GETs over the empty body. Refresh fails the same way if the server's secret has changed. |
+| Registration fails with `TOOLPACK_SCHEMA_FETCH_FAILED` | Your `/schema` endpoint returned another non-2xx, timed out, or your server isn't reachable from Portals AI's egress. |
 | Registration fails with `TOOLPACK_SCHEMA_TOO_LARGE` | Schema response exceeded 256 KB. Trim tool descriptions; split into multiple toolpacks. |
 | Registration fails with `TOOLPACK_TOOL_NAME_CONFLICT` | One of your tool names matches a built-in (e.g. `cluster`, `regression`). Rename. |
 | Runtime calls fail with `TOOLPACK_RUNTIME_TOO_LARGE` | Your `/runtime` response exceeded 1 MB. Stage it to `output.writeUrl` and return the handle (see [Scaling over large datasets](#scaling-over-large-datasets)), or shrink the payload. |
@@ -514,7 +509,7 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 
 Before going live, confirm your toolpack server:
 
-- [ ] Verifies all three signing headers on every `POST` (the runtime endpoint); lets the catalog `GET`s through.
+- [ ] Verifies all three signing headers on every request, the catalog `GET`s included.
 - [ ] Hashes the **raw** body, not re-serialized JSON.
 - [ ] Uses a constant-time comparison (`hmac.compare_digest`, `crypto.timingSafeEqual`, `hmac.Equal`).
 - [ ] Enforces the 300-second replay window.

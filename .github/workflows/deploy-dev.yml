@@ -133,7 +133,7 @@ jobs:
       # deploy-infra is otherwise AWS-CLI-only, so Node is set up here just to
       # build + zip the zero-dependency handler and push it over the CFN
       # placeholder. The signing-secret allow-list is NOT set here — it is
-      # populated post-registration (see packages/demo-toolpack/README.md).
+      # a stack parameter set by hand (see packages/demo-toolpack/README.md).
       - name: Set up Node (demo-toolpack bundle)
         uses: actions/setup-node@v7
         with:
