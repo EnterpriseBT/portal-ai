@@ -407,11 +407,12 @@ The reference implementation of all three tiers lives in `apps/api/src/scripts/m
 
 ## URL requirements
 
-URLs are validated at two layers — at registration and again immediately before each outbound call:
+URLs are validated at two layers — statically at registration, and again on every connection each outbound request makes:
 
 - **Scheme**: `https://` is required in production. `http://localhost*` and `http://127.0.0.1*` are accepted in non-production environments (so the dev workflow against a local mock server works).
 - **Hostname**: must resolve to a public unicast IP. Private (`10/8`, `172.16/12`, `192.168/16`), link-local (`169.254/16` — including the cloud-metadata service), ULA, and reserved ranges are rejected. Loopback (`127/8`, `::1`) is also rejected in production but allowed in non-production for the localhost dev workflow.
-- **DNS rebinding** is defeated by re-resolving immediately before each fetch (the call connects only to the resolved IP, not the hostname).
+- **Every connection is checked.** Portals AI resolves your hostname when it opens each connection, refuses it if any address isn't public, and connects to the address it checked. A DNS answer that changes between requests (rebinding) can't reach a private address.
+- **Redirects aren't followed.** If your schema, metadata or runtime endpoint answers with a redirect (`301`, `302`, `303`, `307` or `308`), the request fails: registration and refresh with `TOOLPACK_REDIRECT_REFUSED`, and a tool call with a `TOOLPACK_REDIRECT_REFUSED` error the agent reports. Register the final URL, `https://` and all.
 
 If your toolpack is on a corporate VPN with a private IP, you'll need a public ingress (e.g. an authenticated reverse proxy or a tunnel like ngrok or Cloudflare Tunnel) before registering.
 
@@ -495,6 +496,7 @@ If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the mock server warns and accepts un
 | Symptom in Portals AI | Likely cause |
 |---|---|
 | Registration fails with `TOOLPACK_URL_PRIVATE_HOST` | Your URL hostname resolves to an RFC1918 / link-local / loopback IP. Use a public ingress. |
+| Registration, refresh or a tool call fails with `TOOLPACK_REDIRECT_REFUSED` | Your endpoint answered with a redirect, which isn't followed. Register the URL the redirect points to (a common cause is `http://` answering `301` to `https://`, or a missing or extra trailing slash). |
 | Registration fails with `TOOLPACK_URL_NOT_HTTPS` | Production rejects `http://`. Configure TLS or use `https://`. |
 | Registration fails with `TOOLPACK_SIGNATURE_REJECTED` | Your `/schema` or `/metadata` endpoint answered `401` or `403`: it rejected the request's signature. Set the secret you're registering with on your server (or register with the one it already has), and check that you verify GETs over the empty body. Refresh fails the same way if the server's secret has changed. |
 | Registration fails with `TOOLPACK_SCHEMA_FETCH_FAILED` | Your `/schema` endpoint returned another non-2xx, timed out, or your server isn't reachable from Portals AI's egress. |

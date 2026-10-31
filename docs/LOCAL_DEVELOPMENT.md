@@ -54,7 +54,7 @@ The API records each delivery in the `stripe_events` ledger (`outcome`: `applied
 npm run webhook:toolpack     # from apps/api — starts the mock toolpack server
 ```
 - Set `MOCK_TOOLPACK_SIGNING_SECRET` in `.env` to make the mock **verify** the outbound signing headers (`X-Portalai-Signature`/`-Timestamp`/`-Webhook-Id`) and return `401 SIGNATURE_MISSING`/`TIMESTAMP_STALE`/`SIGNATURE_INVALID` on failure; unset, it warns and accepts unsigned requests (useful before a registration exists).
-- In non-production the SSRF guard already allows loopback (`127.0.0.1`/`localhost`), so registering a toolpack pointed at the mock works without flipping `TOOLPACK_DISABLE_SSRF_FILTER`.
+- In non-production the outbound address guard already allows loopback (`127.0.0.1`/`localhost`), so registering a toolpack pointed at the mock works without setting `DISABLE_OUTBOUND_URL_GUARD`.
 - Author contract (header shapes, verification recipes, failure modes): [`docs/CUSTOM_TOOLPACK_INTEGRATION.md`](./CUSTOM_TOOLPACK_INTEGRATION.md).
 
 ## Exposing local `:3001` (ngrok tunnel)
