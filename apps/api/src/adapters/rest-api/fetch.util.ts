@@ -16,10 +16,63 @@
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import {
+  findOutboundBlock,
+  guardedFetch,
+} from "../../utils/guarded-fetch.util.js";
 import { networkFailure } from "./cause.util.js";
 import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const MAX_RESPONSE_BYTES = 500 * 1024 * 1024; // 500 MB
+
+/** Redirects a REST request may follow (#931). */
+export const MAX_REST_REDIRECTS = 5;
+
+/**
+ * The REST connector's fetch (#931): every request goes through
+ * `guardedFetch`, so a connection to a non-public address is refused at
+ * connect time, and redirects are followed through at most
+ * `MAX_REST_REDIRECTS` checked hops, dropping auth headers on a change of
+ * origin. The default `fetchImpl` of `fetchJson` and `streamFetchRecords`.
+ */
+export const restFetch: typeof globalThis.fetch = (input, init) =>
+  guardedFetch(
+    String(input instanceof Request ? input.url : input),
+    init ?? {},
+    {
+      redirects: { max: MAX_REST_REDIRECTS },
+    }
+  );
+
+const BLOCKED_MESSAGES: Record<string, string> = {
+  "private-address":
+    "This connection's URL resolves to an address that isn't public.",
+  "too-many-redirects": `The endpoint redirected more than ${MAX_REST_REDIRECTS} times.`,
+  "unsupported-scheme":
+    "The endpoint redirected to a URL that isn't http or https.",
+  "unreplayable-body":
+    "The endpoint redirected a request whose body can't be resent.",
+  unresolvable: "This connection's host could not be resolved.",
+};
+
+/**
+ * #931: a request `restFetch` refused, as `REST_API_URL_BLOCKED` — a code
+ * `withRetry` never replays — or `null` when `err` isn't a refusal.
+ */
+export function blockedRestRequest(url: string, err: unknown): ApiError | null {
+  const block = findOutboundBlock(err);
+  if (!block) return null;
+  return new ApiError(
+    502,
+    ApiCode.REST_API_URL_BLOCKED,
+    BLOCKED_MESSAGES[block.reason] ?? "The request was refused.",
+    {
+      url,
+      reason: block.reason,
+      ...(block.status !== undefined ? { status: block.status } : {}),
+    }
+  );
+}
 
 export interface FetchJsonResult {
   status: number;
@@ -43,18 +96,24 @@ export interface FetchJsonResult {
  *     (#435). Applies to a body dropped mid-read, not just a refused
  *     connect; `details.phase` says which.
  *
- * `fetchImpl` is injectable for tests; defaults to `globalThis.fetch`.
+ *   - Refused by the outbound guard (a non-public address, too many
+ *     redirects) → REST_API_URL_BLOCKED (#931), never retried.
+ *
+ * `fetchImpl` is injectable for tests; defaults to `restFetch`.
  */
 export async function fetchJson(
   url: string,
   init: RequestInit = {},
-  fetchImpl: typeof globalThis.fetch = globalThis.fetch
+  fetchImpl: typeof globalThis.fetch = restFetch
 ): Promise<FetchJsonResult> {
   let response: Response;
   try {
     response = await fetchImpl(url, init);
   } catch (err) {
-    throw networkFailure(url, err, { phase: "connect" });
+    throw (
+      blockedRestRequest(url, err) ??
+      networkFailure(url, err, { phase: "connect" })
+    );
   }
 
   const headers = collectHeaders(response.headers);

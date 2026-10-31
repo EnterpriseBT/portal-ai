@@ -2,6 +2,7 @@ import { describe, it, expect, jest } from "@jest/globals";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { streamFetchRecords } from "../../../adapters/rest-api/stream.util.js";
+import { OutboundFetchBlockedError } from "../../../utils/guarded-fetch.util.js";
 
 // ── Test helpers ──────────────────────────────────────────────────────
 
@@ -387,5 +388,27 @@ describe("streamFetchRecords — error cases", () => {
     await expect(iter.next()).rejects.toMatchObject({
       code: ApiCode.REST_API_INVALID_JSON,
     });
+  });
+});
+
+describe("streamFetchRecords — outbound guard (#931)", () => {
+  it("maps a refused request to REST_API_URL_BLOCKED", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockRejectedValue(
+        new OutboundFetchBlockedError("private-address", "http://x/")
+      );
+    await expect(
+      streamFetchRecords("https://x.test", {}, "data", { fetchImpl: fakeFetch })
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_URL_BLOCKED,
+      details: { url: "https://x.test", reason: "private-address" },
+    });
+  });
+
+  it("refuses a private address by default", async () => {
+    await expect(
+      streamFetchRecords("http://10.255.255.1/x", {}, "data")
+    ).rejects.toMatchObject({ code: ApiCode.REST_API_URL_BLOCKED });
   });
 });
