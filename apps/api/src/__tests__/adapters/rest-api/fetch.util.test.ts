@@ -3,8 +3,11 @@ import { describe, it, expect, jest } from "@jest/globals";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   fetchJson,
+  restFetch,
   MAX_RESPONSE_BYTES,
 } from "../../../adapters/rest-api/fetch.util.js";
+import { withRetry } from "../../../adapters/rest-api/retry.util.js";
+import { OutboundFetchBlockedError } from "../../../utils/guarded-fetch.util.js";
 
 function jsonResponse(
   body: unknown,
@@ -481,4 +484,54 @@ describe("fetchJson — body-read failure is typed (#435)", () => {
   // The size cap is guarded by the existing slow-path test above: it must keep
   // throwing REST_API_RESPONSE_TOO_LARGE, not be remapped to
   // REST_API_FETCH_FAILED by the new body-read wrapper.
+});
+
+describe("fetchJson — outbound guard (#931)", () => {
+  const blockedFetch = (reason: "private-address" | "too-many-redirects") =>
+    jest
+      .fn<typeof fetch>()
+      .mockRejectedValue(new OutboundFetchBlockedError(reason, "http://x/"));
+
+  it("maps a refused request to REST_API_URL_BLOCKED with its reason", async () => {
+    for (const reason of ["private-address", "too-many-redirects"] as const) {
+      const err = await fetchJson(
+        "https://x.test",
+        {},
+        blockedFetch(reason)
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({
+        status: 502,
+        code: ApiCode.REST_API_URL_BLOCKED,
+        details: { url: "https://x.test", reason },
+      });
+    }
+  });
+
+  it("is never retried", async () => {
+    const fakeFetch = blockedFetch("private-address");
+    await expect(
+      withRetry(() => fetchJson("https://x.test", {}, fakeFetch))
+    ).rejects.toMatchObject({ code: ApiCode.REST_API_URL_BLOCKED });
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a private address by default, without a fetch mock", async () => {
+    await expect(fetchJson("http://10.255.255.1/x")).rejects.toMatchObject({
+      code: ApiCode.REST_API_URL_BLOCKED,
+      details: { reason: "private-address" },
+    });
+  });
+
+  it("restFetch refuses a Request, whose method and body it can't forward", async () => {
+    await expect(
+      restFetch(new Request("https://x.test", { method: "POST", body: "b" }))
+    ).rejects.toThrow("not a Request");
+  });
+
+  it("restFetch follows redirects through guardedFetch", async () => {
+    expect(typeof restFetch).toBe("function");
+    await expect(restFetch("http://10.255.255.1/x")).rejects.toBeInstanceOf(
+      OutboundFetchBlockedError
+    );
+  });
 });

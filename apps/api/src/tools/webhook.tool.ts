@@ -22,6 +22,28 @@ import {
   callbackAddressAvailable,
   publicApiBase,
 } from "../utils/public-url.util.js";
+import { OUTBOUND_BLOCK_REASONS } from "../utils/guarded-fetch.util.js";
+
+/** #931: a call `guardedFetch` refused (an ApiError from
+ *  `blockedToApiError`, recognised by its `details.reason`, not its code) as
+ *  the typed result the agent relays, or `null` for any other error. */
+export function outboundRefusal(
+  slug: string,
+  err: unknown
+): { error: { code: ApiCode; message: string } } | null {
+  if (!(err instanceof ApiError)) return null;
+  const reason = (err.details as { reason?: unknown } | undefined)?.reason;
+  if (typeof reason !== "string" || !OUTBOUND_BLOCK_REASONS.has(reason)) {
+    return null;
+  }
+  const code = err.code;
+  return {
+    error: {
+      code: code as ApiCode,
+      message: `The "${slug}" tool couldn't reach its server: ${err.message}`,
+    },
+  };
+}
 
 /** The typed result a webhook tool returns when it needs a callback and this
  *  server has no public API address (#891). The agent relays it. */
@@ -240,6 +262,8 @@ export class WebhookTool extends Tool {
             ) {
               return webhookCallbackRefusal(this.slug, "stage");
             }
+            const refused = outboundRefusal(this.slug, err);
+            if (refused) return refused;
             throw err;
           }
 

@@ -173,6 +173,60 @@ describe("connectorSyncProcessor — a sync that can never run (#774)", () => {
   });
 });
 
+describe("connectorSyncProcessor — a refused outbound request (#931)", () => {
+  async function run() {
+    return connectorSyncProcessor(bullJob() as never).then(
+      () => undefined,
+      (e: unknown) => e
+    );
+  }
+
+  it("fails on the first attempt when the REST request was refused", async () => {
+    const { ApiError } = await import("../../../services/http.service.js");
+    const refused = new ApiError(
+      502,
+      "REST_API_URL_BLOCKED" as never,
+      "This connection's URL resolves to an address that isn't public.",
+      { url: "http://10.255.255.1/users", reason: "private-address" }
+    );
+    mockSyncInstance.mockRejectedValue(refused);
+
+    const err = await run();
+
+    expect(err).toBeInstanceOf(UnrecoverableError);
+    expect((err as Error).message).toBe(refused.message);
+    // The job's error text is built from the cause chain, so the code stays.
+    expect((err as Error).cause).toBe(refused);
+  });
+
+  it("finds the refusal when the adapter wrapped it", async () => {
+    const { ApiError } = await import("../../../services/http.service.js");
+    const refused = new ApiError(
+      502,
+      "REST_API_URL_BLOCKED" as never,
+      "The endpoint redirected more than 5 times."
+    );
+    mockSyncInstance.mockRejectedValue(
+      new Error("Sync failed", { cause: refused })
+    );
+    expect(await run()).toBeInstanceOf(UnrecoverableError);
+  });
+
+  it("leaves a network failure retryable", async () => {
+    const { ApiError } = await import("../../../services/http.service.js");
+    mockSyncInstance.mockRejectedValue(
+      new ApiError(
+        502,
+        "REST_API_FETCH_FAILED" as never,
+        "Fetch failed: ECONNRESET"
+      )
+    );
+    const err = await run();
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(UnrecoverableError);
+  });
+});
+
 describe("connectorSyncProcessor — sync ownership lock (#460)", () => {
   /** Make the lock refuse, as it does when another live pass holds it. */
   const lockRefused = () =>

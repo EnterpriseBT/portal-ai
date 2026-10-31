@@ -117,7 +117,7 @@ jest.unstable_mockModule("../../environment.js", () => ({
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
     TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES: 1024 * 1024,
-    TOOLPACK_DISABLE_SSRF_FILTER: false,
+    DISABLE_OUTBOUND_URL_GUARD: false,
     TOOLPACK_DISABLE_SIGNING: false,
   },
 }));
@@ -157,15 +157,8 @@ const mockFetch =
   jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
 (globalThis as any).fetch = mockFetch;
 
-// Skip SSRF DNS resolution in unit tests — assertUrlSafeToFetch
-// would otherwise call dns.lookup against the test fixture URLs
-// (e.g. api.example.com) which may or may not resolve depending on
-// the network. The integration tests exercise the real SSRF path.
-jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
-  assertUrlSafeToFetch: async () => undefined,
-  SsrfBlockedError: class SsrfBlockedError extends Error {},
-  validateToolpackUrl: () => null,
-}));
+// #931: callWebhook goes through guardedFetch, which calls this mock (the
+// mock ignores its dispatcher), so no DNS lookup happens here.
 
 const { ToolService, BUILTIN_TOOL_NAMES } =
   await import("../../services/tools.service.js");
@@ -1913,6 +1906,49 @@ describe("callWebhook()", () => {
 // Tier toolpack entitlements (#214) — availability is a projection of the
 // org's tier row; the builder is the single enforcement point.
 // ---------------------------------------------------------------------------
+
+describe("callWebhook() outbound guard (#931)", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("refuses a redirect with TOOLPACK_REDIRECT_REFUSED", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 303,
+      statusText: "See Other",
+      headers: new Map([["location", "http://169.254.169.254/latest/"]]),
+      text: async () => "",
+    });
+    const err = await callWebhook(
+      { type: "webhook", url: "https://api.example.com/hook" },
+      {}
+    ).catch((e: unknown) => e);
+    expect(err).toMatchObject({
+      code: "TOOLPACK_REDIRECT_REFUSED",
+      details: { url: "https://api.example.com/hook", status: 303 },
+    });
+    expect((err as Error).message).not.toContain("169.254");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][1]!.redirect).toBe("manual");
+  });
+
+  it("maps a connect-time refusal to TOOLPACK_URL_PRIVATE_HOST", async () => {
+    const { OutboundFetchBlockedError } =
+      await import("../../utils/guarded-fetch.util.js");
+    mockFetch.mockRejectedValue(
+      new TypeError("fetch failed", {
+        cause: new OutboundFetchBlockedError(
+          "private-address",
+          "https://api.example.com/hook"
+        ),
+      })
+    );
+    await expect(
+      callWebhook({ type: "webhook", url: "https://api.example.com/hook" }, {})
+    ).rejects.toMatchObject({ code: "TOOLPACK_URL_PRIVATE_HOST" });
+  });
+});
 
 describe("buildAnalyticsTools() tier entitlements (#214)", () => {
   beforeEach(() => {

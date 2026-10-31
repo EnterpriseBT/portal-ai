@@ -721,6 +721,60 @@ describe("Toolpacks Router", () => {
     });
   });
 
+  describe("redirects are refused (#931)", () => {
+    function redirectTo(location: string) {
+      return {
+        ok: false,
+        status: 302,
+        statusText: "Found",
+        headers: new Map([["location", location]]),
+        text: async () => "",
+      };
+    }
+
+    it("refuses a registration whose schema endpoint redirects", async () => {
+      mockFetch.mockResolvedValue(
+        redirectTo("http://169.254.169.254/latest/meta-data/")
+      );
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_REDIRECT_REFUSED);
+      expect(res.body.details).toMatchObject({
+        url: VALID_REGISTER_BODY.endpoints.schema,
+        status: 302,
+      });
+      expect(JSON.stringify(res.body)).not.toContain("169.254");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const list = await request(app).get("/api/toolpacks?kind=custom");
+      expect(list.body.payload.toolpacks).toHaveLength(0);
+    });
+
+    it("refuses a refresh once the server redirects, keeping the row", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const reg = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      const id = reg.body.payload.toolpack.id as string;
+      const before = reg.body.payload.toolpack;
+
+      mockFetch.mockResolvedValue(redirectTo("https://elsewhere.test/schema"));
+      const res = await request(app).post(`/api/toolpacks/${id}/refresh`);
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_REDIRECT_REFUSED);
+
+      const after = await request(app).get(`/api/toolpacks/${id}`);
+      expect(after.body.payload.toolpack.tools).toEqual(before.tools);
+      expect(after.body.payload.toolpack.schemaFetchedAt).toBe(
+        before.schemaFetchedAt
+      );
+    });
+  });
+
   describe("GET /api/toolpacks (custom merge)", () => {
     // Case 104
     it("returns built-ins and custom rows merged", async () => {

@@ -19,6 +19,7 @@ import {
 } from "@jest/globals";
 import request from "supertest";
 import type { Request, Response, NextFunction } from "express";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
@@ -201,6 +202,31 @@ describe("POST /api/connector-instances/:id/test-connection — REST API adapter
       ok: false,
       code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
     });
+  });
+});
+
+describe("POST /api/connector-instances/:id/test-connection — outbound guard (#931)", () => {
+  it("returns { ok: false, code: REST_API_URL_BLOCKED } for a private base URL, without fetching", async () => {
+    const entityId = await createUsersEndpoint();
+    await db
+      .update(schema.connectorInstances)
+      .set({
+        config: { baseUrl: "http://10.255.255.1", auth: { mode: "none" } },
+      } as never)
+      .where(eq(schema.connectorInstances.id, restApiInstanceId));
+    const fetchSpy = jest.spyOn(globalThis, "fetch");
+
+    const res = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/test-connection`)
+      .send({ endpointEntityId: entityId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.payload).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_URL_BLOCKED,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });
 

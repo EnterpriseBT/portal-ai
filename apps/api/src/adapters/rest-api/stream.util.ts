@@ -19,6 +19,7 @@ import StreamArray from "stream-json/streamers/stream-array.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
 import { networkFailure } from "./cause.util.js";
+import { blockedRestRequest, restFetch } from "./fetch.util.js";
 import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
@@ -35,7 +36,7 @@ const BUFFER_HIGH_WATERMARK = 64;
 const BUFFER_LOW_WATERMARK = 32;
 
 export interface StreamFetchOptions {
-  /** Injectable for tests; defaults to `globalThis.fetch`. */
+  /** Injectable for tests; defaults to `restFetch` (#931). */
   fetchImpl?: typeof globalThis.fetch;
   /**
    * Throws `REST_API_RECORD_TOO_LARGE` when any single record's
@@ -92,14 +93,17 @@ export async function streamFetchRecords(
   recordsPath: string,
   opts: StreamFetchOptions = {}
 ): Promise<StreamFetchResult> {
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+  const fetchImpl = opts.fetchImpl ?? restFetch;
   const maxRecordBytes = opts.maxRecordBytes ?? DEFAULT_MAX_RECORD_BYTES;
 
   let response: Response;
   try {
     response = await fetchImpl(url, init);
   } catch (err) {
-    throw networkFailure(url, err, { phase: "connect" });
+    throw (
+      blockedRestRequest(url, err) ??
+      networkFailure(url, err, { phase: "connect" })
+    );
   }
 
   const headers = collectHeaders(response.headers);

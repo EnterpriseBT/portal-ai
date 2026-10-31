@@ -12,13 +12,19 @@
  * - `fetchMetadata(url, headers)`: optional and best-effort. Fetches
  *   and parses; returns `null` on any failure (HTTP error, oversize,
  *   validation failure, timeout), except a 401/403, which throws
- *   `TOOLPACK_SIGNATURE_REJECTED` as `fetchSchema` does (#911).
+ *   `TOOLPACK_SIGNATURE_REJECTED` as `fetchSchema` does (#911), and a
+ *   refused fetch (a redirect, or a non-public address), which throws as
+ *   `fetchSchema` does (#931).
+ *
+ * Both fetch through `guardedFetch` (#931): every connection is checked
+ * against non-public addresses at connect time, and any redirect is
+ * refused, since toolpack URLs are registered exactly.
  *
  * - `validateNoBuiltinCollision(tools, builtinNames)`: synchronous
  *   guard. Throws `TOOLPACK_TOOL_NAME_CONFLICT` on the first match.
  */
 
-/* global AbortController, fetch */
+/* global AbortController */
 
 import { z } from "zod";
 
@@ -36,9 +42,9 @@ import { createLogger } from "../utils/logger.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { describeFirstZodIssue } from "../utils/zod-issue.util.js";
 import {
-  assertUrlSafeToFetch,
-  SsrfBlockedError,
-} from "../utils/url-safety.util.js";
+  guardedFetch,
+  OutboundFetchBlockedError,
+} from "../utils/guarded-fetch.util.js";
 import { environment } from "../environment.js";
 
 const logger = createLogger({ module: "toolpack-registration" });
@@ -70,12 +76,6 @@ async function fetchWithCap(
   headers: Record<string, string> | undefined,
   signingSecret: string | undefined
 ): Promise<FetchResult> {
-  // SSRF: resolve+validate before connecting. Throws SsrfBlockedError
-  // on private/reserved IPs unless TOOLPACK_DISABLE_SSRF_FILTER=true.
-  // The static refinement at the contract layer is the first line of
-  // defence; this is the canonical, DNS-rebinding-resistant guard.
-  await assertUrlSafeToFetch(url);
-
   // GET requests sign over the empty body — timestamp + webhookId
   // still bind into the signature so a captured request can't be
   // replayed past the receiver's window.
@@ -88,11 +88,17 @@ async function fetchWithCap(
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = (await fetch(url, {
-      method: "GET",
-      headers: { ...(headers ?? {}), ...signedHeaders },
-      signal: controller.signal,
-    })) as unknown as {
+    // #931: a non-public address or any redirect throws
+    // OutboundFetchBlockedError; callers map it with `blockedToApiError`.
+    const response = (await guardedFetch(
+      url,
+      {
+        method: "GET",
+        headers: { ...(headers ?? {}), ...signedHeaders },
+        signal: controller.signal,
+      },
+      { redirects: "refuse" }
+    )) as unknown as {
       ok: boolean;
       status: number;
       statusText?: string;
@@ -142,12 +148,12 @@ async function fetchWithCap(
 function parseJson(text: string, url: string): unknown {
   try {
     return JSON.parse(text);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "parse error";
+  } catch {
+    // #931: the parse error quotes the body, so it stays out of the message.
     throw new ApiError(
       502,
       ApiCode.TOOLPACK_SCHEMA_INVALID,
-      `The toolpack response from ${url} is not valid JSON (${reason}).`
+      `The toolpack response from ${url} is not valid JSON.`
     );
   }
 }
@@ -175,6 +181,52 @@ function signatureRejection(url: string, result: FetchResult): ApiError | null {
   );
 }
 
+/**
+ * #931: the error for a fetch `guardedFetch` refused. Names the registered
+ * URL and, for a redirect, its status, never the redirect's target or a
+ * resolved address. Shared with the runtime webhook call.
+ */
+export function blockedToApiError(
+  url: string,
+  err: OutboundFetchBlockedError
+): ApiError {
+  const details = {
+    url,
+    reason: err.reason,
+    ...(err.status !== undefined ? { status: err.status } : {}),
+  };
+  switch (err.reason) {
+    case "private-address":
+      return new ApiError(
+        502,
+        ApiCode.TOOLPACK_URL_PRIVATE_HOST,
+        `The toolpack URL ${url} resolves to an address that isn't public.`,
+        details
+      );
+    case "redirect-refused":
+      return new ApiError(
+        502,
+        ApiCode.TOOLPACK_REDIRECT_REFUSED,
+        `The toolpack server at ${url} answered with a redirect (${err.status}). Toolpack URLs aren't followed through redirects; register the final URL.`,
+        details
+      );
+    case "unresolvable": // the host answered with no address
+      return new ApiError(
+        502,
+        ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
+        `Could not resolve the host of ${url}.`,
+        details
+      );
+    default:
+      return new ApiError(
+        502,
+        ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
+        `The toolpack URL ${url} couldn't be fetched (${err.reason}).`,
+        details
+      );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -195,8 +247,8 @@ export class ToolpackRegistrationService {
       result = await fetchWithCap(url, headers, signingSecret);
     } catch (err) {
       if (err instanceof ApiError) throw err;
-      if (err instanceof SsrfBlockedError) {
-        throw new ApiError(502, ApiCode.TOOLPACK_URL_PRIVATE_HOST, err.message);
+      if (err instanceof OutboundFetchBlockedError) {
+        throw blockedToApiError(url, err);
       }
       const reason = err instanceof Error ? err.message : "unknown error";
       throw new ApiError(
@@ -265,6 +317,15 @@ export class ToolpackRegistrationService {
     try {
       result = await fetchWithCap(url, headers, signingSecret);
     } catch (err) {
+      // #931: a non-public address or a redirect fails the registration, as
+      // a refused signature does; anything else (an unresolvable host
+      // included) stays best-effort.
+      if (
+        err instanceof OutboundFetchBlockedError &&
+        (err.reason === "private-address" || err.reason === "redirect-refused")
+      ) {
+        throw blockedToApiError(url, err);
+      }
       logger.warn(
         { url, error: err instanceof Error ? err.message : "unknown" },
         "Metadata fetch failed; proceeding without metadata"

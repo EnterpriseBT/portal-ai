@@ -33,6 +33,7 @@ import type {
   Response as ExpressResponse,
   NextFunction,
 } from "express";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
@@ -411,5 +412,71 @@ describe("REST API connector — end-to-end probe pipeline", () => {
       .send({});
 
     expect(res.body.payload.recordsScanned).toBe(25);
+  });
+});
+
+describe("REST API connector — outbound guard (#931)", () => {
+  async function pointAt(baseUrl: string): Promise<void> {
+    await db
+      .update(schema.connectorInstances)
+      .set({ config: { baseUrl, auth: { mode: "none" } } } as never)
+      .where(eq(schema.connectorInstances.id, instanceId));
+  }
+
+  async function probe() {
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+    return request(app)
+      .post(
+        `/api/connector-instances/${instanceId}/api-endpoints/${entityId}/discover-columns`
+      )
+      .send({ forceRefresh: true });
+  }
+
+  it("refuses a connection whose base URL is a private address", async () => {
+    const fetchMock = jest.fn<typeof fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    await pointAt("http://10.255.255.1");
+
+    const res = await probe();
+
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe(ApiCode.REST_API_URL_BLOCKED);
+    expect(res.body.details).toMatchObject({ reason: "private-address" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a redirect to a private address without requesting it", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "http://169.254.169.254/latest/meta-data/" },
+      })
+    );
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    const res = await probe();
+
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe(ApiCode.REST_API_URL_BLOCKED);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(res.body)).not.toContain("meta-data");
+  });
+
+  it("follows a redirect between public hosts", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 301,
+          headers: { location: "https://api2.example.com/users" },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: buildRecords() }));
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    const res = await probe();
+
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://api2.example.com/users");
   });
 });
