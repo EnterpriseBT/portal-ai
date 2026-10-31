@@ -363,13 +363,26 @@ toolpacksRouter.get(
  *   post:
  *     tags: [Toolpacks]
  *     summary: Register a custom toolpack
+ *     description: >-
+ *       Fetches the pack's schema (and metadata, when given), signed with
+ *       `signingSecret` when the body supplies one, or with a secret the API
+ *       mints otherwise (#911). Only a minted secret is returned, once.
  *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/RegisterToolpackBody' }
  *     responses:
- *       201: { description: Registered. }
- *       400: { description: Invalid payload. }
+ *       201:
+ *         description: Registered.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ToolpackRegisterResponsePayload' }
+ *       400: { description: "Invalid payload, including a malformed `signingSecret` (TOOLPACK_INVALID_PAYLOAD)." }
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711), or the organization's tier does not include custom toolpacks (TOOLPACK_NOT_ENTITLED, #214)." }
  *       409: { description: Pack name or tool-name conflict. }
- *       502: { description: Schema or metadata fetch / validation failure. }
+ *       502: { description: "Schema or metadata fetch / validation failure, or the toolpack server refused the request's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911)." }
  */
 toolpacksRouter.post(
   "/",
@@ -434,10 +447,13 @@ toolpacksRouter.post(
         );
       }
 
-      // Generate the signing secret first so the registration-time
-      // schema/metadata fetches are signed with the same secret the
-      // toolpack server will see on every subsequent runtime call.
-      const signingSecret = generateSigningSecret();
+      // #911: sign the registration-time schema/metadata fetches with the
+      // secret the toolpack server will see on every runtime call. The
+      // builder supplies it (already set on their server, so it can verify
+      // these fetches too), or the API mints one and reveals it once.
+      const minted = parsed.data.signingSecret === undefined;
+      const signingSecret =
+        parsed.data.signingSecret ?? generateSigningSecret();
 
       // Fetch + validate schema.
       const tools = await ToolpackRegistrationService.fetchSchema(
@@ -479,16 +495,24 @@ toolpacksRouter.post(
         model.parse() as never
       );
 
-      logger.info({ id: row.id, organizationId }, "Toolpack registered");
+      logger.info(
+        {
+          id: row.id,
+          organizationId,
+          secretSource: minted ? "minted" : "supplied",
+        },
+        "Toolpack registered"
+      );
 
-      // Surface the freshly-generated signing secret exactly once.
-      // GET / PATCH / refresh responses omit this field; admins who
-      // lose the secret rotate via POST /:id/rotate-signing-secret.
+      // Surface a minted signing secret exactly once; a supplied one is
+      // never echoed (#911). GET / PATCH / refresh responses omit this
+      // field; admins who lose the secret rotate via
+      // POST /:id/rotate-signing-secret.
       return HttpService.success<ToolpackRegisterResponsePayload>(
         res,
         {
           toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack),
-          signingSecret,
+          ...(minted ? { signingSecret } : {}),
         },
         201
       );
