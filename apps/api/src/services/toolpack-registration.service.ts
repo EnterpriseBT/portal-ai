@@ -59,6 +59,10 @@ interface FetchResult {
   status: number;
   statusText?: string;
   text: string;
+  /** Whether the request carried a signature (#911). */
+  signed: boolean;
+  /** Whether the request carried registered auth headers (#911). */
+  withAuthHeaders: boolean;
 }
 
 async function fetchWithCap(
@@ -127,6 +131,8 @@ async function fetchWithCap(
       status: response.status,
       statusText: response.statusText,
       text,
+      signed: Object.keys(signedHeaders).length > 0,
+      withAuthHeaders: Object.keys(headers ?? {}).length > 0,
     };
   } finally {
     clearTimeout(timeout);
@@ -149,15 +155,22 @@ function parseJson(text: string, url: string): unknown {
 /**
  * #911: a 401/403 from a signed fetch means the toolpack server refused the
  * signature, so its secret doesn't match the one being registered. Returns
- * the error to throw, or `null` for any other status. Carries the URL and
- * status only, never secret material.
+ * the error to throw, or `null` for any other status, and for an unsigned
+ * fetch (no secret, or `TOOLPACK_DISABLE_SIGNING`), where there was no
+ * signature to refuse. When auth headers were sent too, the message names
+ * them as the other possible cause. Carries the URL and status only, never
+ * secret or header material.
  */
-function signatureRejection(url: string, status: number): ApiError | null {
-  if (status !== 401 && status !== 403) return null;
+function signatureRejection(url: string, result: FetchResult): ApiError | null {
+  const { status } = result;
+  if ((status !== 401 && status !== 403) || !result.signed) return null;
+  const authHint = result.withAuthHeaders
+    ? " If you registered auth headers, check that your server accepts them too."
+    : "";
   return new ApiError(
     502,
     ApiCode.TOOLPACK_SIGNATURE_REJECTED,
-    `The toolpack server at ${url} rejected the request's signature (${status}). Its signing secret must match the one registered with Portals AI; see "Verifying requests" in the custom toolpack integration guide.`,
+    `The toolpack server at ${url} rejected the request's signature (${status}). Its signing secret must match the one registered with Portals AI; see "Verifying requests" in the custom toolpack integration guide.${authHint}`,
     { url, status }
   );
 }
@@ -194,7 +207,7 @@ export class ToolpackRegistrationService {
     }
 
     if (!result.ok) {
-      const rejected = signatureRejection(url, result.status);
+      const rejected = signatureRejection(url, result);
       if (rejected) throw rejected;
       throw new ApiError(
         502,
@@ -258,7 +271,7 @@ export class ToolpackRegistrationService {
       );
       return null;
     }
-    const rejected = signatureRejection(url, result.status);
+    const rejected = signatureRejection(url, result);
     if (rejected) throw rejected;
     if (!result.ok) {
       logger.warn(

@@ -1,10 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 import crypto from "crypto";
 
-import {
-  signRequest,
-  generateSigningSecret,
-} from "../../utils/webhook-signing.util.js";
+import { signRequest } from "../../utils/webhook-signing.util.js";
 
 describe("webhook-signing.util", () => {
   // Case 140
@@ -63,20 +60,5 @@ describe("webhook-signing.util", () => {
     expect(diffBody["X-Portalai-Signature"]).not.toBe(
       baseline["X-Portalai-Signature"]
     );
-  });
-
-  // Case 142
-  it("generateSigningSecret produces unique whsec_-prefixed 256-bit secrets", () => {
-    const a = generateSigningSecret();
-    const b = generateSigningSecret();
-
-    expect(a).not.toBe(b);
-    expect(a).toMatch(/^whsec_/);
-    expect(b).toMatch(/^whsec_/);
-
-    // 32 random bytes → base64url is at least ~43 chars without padding.
-    const aBody = a.slice("whsec_".length);
-    const decoded = Buffer.from(aBody, "base64url");
-    expect(decoded.length).toBe(32);
   });
 });

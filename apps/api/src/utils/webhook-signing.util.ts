@@ -55,12 +55,3 @@ export function signRequest(
     "X-Portalai-Signature": `${SIGNATURE_VERSION}=${hex}`,
   };
 }
-
-/**
- * Generate a fresh signing secret. 32 random bytes, base64url-encoded,
- * prefixed with `whsec_` for out-of-band identification (matches
- * Stripe's whsec_xxx convention).
- */
-export function generateSigningSecret(): string {
-  return `whsec_${crypto.randomBytes(32).toString("base64url")}`;
-}

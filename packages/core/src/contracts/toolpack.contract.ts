@@ -155,7 +155,7 @@ export const toolpackNameField = () =>
 
 /**
  * A toolpack signing secret (#911): `whsec_` + 32 random bytes, base64url
- * (43 characters), exactly what the API's `generateSigningSecret()` emits.
+ * (43 characters), exactly what `generateSigningSecret()` below emits.
  * A registrant can supply one so their server already holds it when Portals
  * AI signs the registration-time schema fetch; the format refuses a
  * hand-typed (and so weak) value.
@@ -166,6 +166,22 @@ export const SigningSecretSchema = z
     /^whsec_[A-Za-z0-9_-]{43}$/,
     "Signing secret must be whsec_ followed by 43 characters. Generate one rather than typing it."
   );
+
+/**
+ * A fresh toolpack signing secret in `SigningSecretSchema`'s format: `whsec_`
+ * + 32 bytes from `crypto.getRandomValues`, base64url without padding. The
+ * one generator for the API (minting, rotation) and the register dialog
+ * (#911), so the format lives in this file only. Web Crypto, so it runs in
+ * the browser and in Node alike.
+ */
+export function generateSigningSecret(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  const base64url = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `whsec_${base64url}`;
+}
 
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const RegisterToolpackBodySchema = z

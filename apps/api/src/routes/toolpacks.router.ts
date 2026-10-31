@@ -12,6 +12,7 @@ import {
   type ToolpackToolDefinition,
 } from "@portalai/core/models";
 import {
+  generateSigningSecret,
   ToolpackListRequestQuerySchema,
   RegisterToolpackBodySchema,
   UpdateToolpackBodySchema,
@@ -43,7 +44,6 @@ import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { eq, and, isNull } from "drizzle-orm";
 import { stationToolpacks } from "../db/schema/index.js";
-import { generateSigningSecret } from "../utils/webhook-signing.util.js";
 
 import type { Request } from "../types/request.js";
 
@@ -554,7 +554,7 @@ toolpacksRouter.post(
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711)." }
  *       404: { description: Not found. }
  *       409: { description: Name conflict. }
- *       502: { description: Schema fetch / validation failure. }
+ *       502: { description: "Schema fetch / validation failure on changed endpoints, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911)." }
  */
 toolpacksRouter.patch(
   "/:id",
@@ -795,7 +795,7 @@ toolpacksRouter.delete(
  *       200: { description: Refreshed. }
  *       403: { description: "The caller lacks permission to manage toolpacks (PERMISSION_DENIED, #685/#711)." }
  *       404: { description: Not found. }
- *       502: { description: Schema fetch failed (cached values preserved). }
+ *       502: { description: "Schema fetch failed, or the toolpack server refused the stored secret's signature with a 401/403 (TOOLPACK_SIGNATURE_REJECTED, #911). Cached values are preserved." }
  */
 toolpacksRouter.post(
   "/:id/refresh",

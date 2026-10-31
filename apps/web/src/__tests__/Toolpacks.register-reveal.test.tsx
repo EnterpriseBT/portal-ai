@@ -109,4 +109,23 @@ describe("Toolpacks view: signing secret reveal after register (#911)", () => {
       await screen.findByText("Your toolpack signing secret")
     ).toBeInTheDocument();
   });
+
+  // Each successful registration starts the next one with a fresh secret.
+  it("generates a new secret for the next registration after a success", async () => {
+    registerResponse = { toolpack: TOOLPACK };
+    await register();
+    const sent = (
+      mockRegisterMutate.mock.calls[0][0] as { signingSecret: string }
+    ).signingSecret;
+
+    fireEvent.click(screen.getByRole("button", { name: /register toolpack/i }));
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText(/Signing secret/) as HTMLInputElement).value
+      ).toMatch(/^whsec_/)
+    );
+    expect(
+      (screen.getByLabelText(/Signing secret/) as HTMLInputElement).value
+    ).not.toBe(sent);
+  });
 });

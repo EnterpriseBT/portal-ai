@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import {
+  generateSigningSecret,
   RegisterToolpackBodySchema,
   type RegisterToolpackBody,
 } from "@portalai/core/contracts";
@@ -16,6 +17,7 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+import CheckIcon from "@mui/icons-material/Check";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { FormAlert } from "./FormAlert.component";
@@ -31,7 +33,7 @@ import {
   type HighlightLanguage,
 } from "./HighlightedCode.component";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
-import { generateSigningSecret } from "../utils/signing-secret.util";
+import { useCopyToClipboard } from "../utils/use-copy-to-clipboard.util";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -176,8 +178,14 @@ export const RegisterToolpackDialogUI: React.FC<
 
   React.useEffect(() => {
     if (open) {
-      // A fresh secret per open, generated here rather than during render.
-      setForm({ ...INITIAL_FORM, signingSecret: generateSigningSecret() });
+      // Keep a secret the builder may already have set on their server, so
+      // Cancel and reopen can retry with it; generate one (here, not during
+      // render) only when there is none. The view remounts this dialog after
+      // a successful registration, so the next toolpack gets a fresh secret.
+      setForm((prev) => ({
+        ...INITIAL_FORM,
+        signingSecret: prev.signingSecret || generateSigningSecret(),
+      }));
       setErrors({});
       setTouched({});
     }
@@ -216,14 +224,7 @@ export const RegisterToolpackDialogUI: React.FC<
     onSubmit(body);
   };
 
-  const handleCopySecret = async () => {
-    try {
-      await navigator.clipboard.writeText(form.signingSecret);
-    } catch {
-      // Clipboard unavailable (insecure context, permissions); the field
-      // stays selectable for a manual copy.
-    }
-  };
+  const { copied, copy } = useCopyToClipboard();
 
   // Most validation errors land under nested paths like `endpoints.schema`;
   // surface them on the corresponding flat-field key for ergonomics.
@@ -379,11 +380,15 @@ export const RegisterToolpackDialogUI: React.FC<
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
-                    aria-label="Copy signing secret"
-                    onClick={handleCopySecret}
+                    aria-label={copied ? "Copied" : "Copy signing secret"}
+                    onClick={() => copy(form.signingSecret)}
                     size="small"
                   >
-                    <ContentCopyIcon fontSize="small" />
+                    {copied ? (
+                      <CheckIcon fontSize="small" />
+                    ) : (
+                      <ContentCopyIcon fontSize="small" />
+                    )}
                   </IconButton>
                   <IconButton
                     aria-label="Generate a new signing secret"

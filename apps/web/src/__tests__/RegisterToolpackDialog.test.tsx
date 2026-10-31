@@ -168,6 +168,20 @@ describe("RegisterToolpackDialogUI", () => {
       screen.getByRole("button", { name: "Copy signing secret" })
     );
     expect(writeText).toHaveBeenCalledWith(field.value);
+    // The button confirms the copy.
+    expect(
+      await screen.findByRole("button", { name: "Copied" })
+    ).toBeInTheDocument();
+  });
+
+  // A secret the builder may already have set on their server survives a
+  // Cancel and reopen (a failed attempt's retry).
+  it("keeps the secret when the dialog is closed and reopened", async () => {
+    const { rerender } = render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const first = (await secretField()).value;
+    rerender(<RegisterToolpackDialogUI {...defaultProps} open={false} />);
+    rerender(<RegisterToolpackDialogUI {...defaultProps} open />);
+    expect((await secretField()).value).toBe(first);
   });
 
   it("blocks submit on a malformed secret and marks the field invalid", async () => {

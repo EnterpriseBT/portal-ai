@@ -30,6 +30,7 @@ jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
 const { ToolpackRegistrationService } =
   await import("../../services/toolpack-registration.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
+const { environment } = await import("../../environment.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -180,6 +181,48 @@ describe("ToolpackRegistrationService", () => {
         expect((err as Error).message).not.toContain(SECRET);
       }
     );
+
+    // A 401/403 is only a signature rejection when a signature was sent.
+    it("keeps TOOLPACK_SCHEMA_FETCH_FAILED for a 401 to an unsigned fetch", async () => {
+      mockFetch.mockResolvedValue(fetchStatus(401));
+      await expect(
+        ToolpackRegistrationService.fetchSchema(
+          "https://example.com/schema",
+          undefined
+        )
+      ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED });
+    });
+
+    it("keeps TOOLPACK_SCHEMA_FETCH_FAILED when signing is disabled", async () => {
+      const env = environment as { TOOLPACK_DISABLE_SIGNING: boolean };
+      env.TOOLPACK_DISABLE_SIGNING = true;
+      try {
+        mockFetch.mockResolvedValue(fetchStatus(403));
+        await expect(
+          ToolpackRegistrationService.fetchSchema(
+            "https://example.com/schema",
+            undefined,
+            SECRET
+          )
+        ).rejects.toMatchObject({
+          code: ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
+        });
+      } finally {
+        env.TOOLPACK_DISABLE_SIGNING = false;
+      }
+    });
+
+    it("names the auth headers as a possible cause when they were sent", async () => {
+      mockFetch.mockResolvedValue(fetchStatus(401));
+      const err = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        { Authorization: "Bearer expired-token" },
+        SECRET
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: ApiCode.TOOLPACK_SIGNATURE_REJECTED });
+      expect((err as Error).message).toMatch(/auth headers/);
+      expect((err as Error).message).not.toContain("expired-token");
+    });
 
     it("keeps TOOLPACK_SCHEMA_FETCH_FAILED for a 500", async () => {
       mockFetch.mockResolvedValue(fetchStatus(500, "Internal"));
@@ -404,6 +447,15 @@ describe("ToolpackRegistrationService", () => {
         expect((err as Error).message).not.toContain(SECRET);
       }
     );
+
+    it("returns null on a 401 to an unsigned fetch", async () => {
+      mockFetch.mockResolvedValue(fetchStatus(401));
+      const result = await ToolpackRegistrationService.fetchMetadata(
+        "https://example.com/metadata",
+        undefined
+      );
+      expect(result).toBeNull();
+    });
 
     it("still returns null on a 404", async () => {
       mockFetch.mockResolvedValue(fetchStatus(404, "Not Found"));

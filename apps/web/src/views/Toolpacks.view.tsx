@@ -430,6 +430,9 @@ export const Toolpacks: React.FC = () => {
   // rotation. The reveal dialog lifts state up so both flows share
   // the same UI; null hides the dialog.
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
+  // #911: remounting the register dialog after a success gives the next
+  // registration a fresh signing secret; a cancelled attempt keeps its own.
+  const [registerDialogKey, setRegisterDialogKey] = useState(0);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.toolpacks.root });
@@ -476,6 +479,7 @@ export const Toolpacks: React.FC = () => {
       </DataResult>
 
       <RegisterToolpackDialogUI
+        key={registerDialogKey}
         open={registerOpen}
         onClose={() => {
           setRegisterOpen(false);
@@ -485,6 +489,7 @@ export const Toolpacks: React.FC = () => {
           registerMutation.mutate(body, {
             onSuccess: (data) => {
               setRegisterOpen(false);
+              setRegisterDialogKey((k) => k + 1);
               invalidate();
               if (data.signingSecret) {
                 setRevealedSecret(data.signingSecret);

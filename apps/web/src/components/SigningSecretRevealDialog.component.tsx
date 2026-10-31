@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 
 import { Button, Modal, Stack } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
@@ -9,6 +9,8 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
+
+import { useCopyToClipboard } from "../utils/use-copy-to-clipboard.util";
 
 /**
  * One-time reveal of a per-toolpack HMAC signing secret.
@@ -32,20 +34,10 @@ export interface SigningSecretRevealDialogUIProps {
 export const SigningSecretRevealDialogUI: React.FC<
   SigningSecretRevealDialogUIProps
 > = ({ open, signingSecret, onClose }) => {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const handleCopy = async () => {
-    if (!signingSecret) return;
-    try {
-      await navigator.clipboard.writeText(signingSecret);
-      setCopied(true);
-      // Auto-revert the checkmark after a short delay so the icon
-      // is back to "copy" by the time the dialog reopens.
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard unavailable (insecure context, permissions). The
-      // user can still select-and-copy the input manually.
-    }
+    if (signingSecret) await copy(signingSecret);
   };
 
   return (

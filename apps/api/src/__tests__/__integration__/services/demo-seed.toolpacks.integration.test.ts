@@ -205,18 +205,52 @@ describe("DemoSeedService (integration): toolpacks", () => {
       expect(await storedSecret(second.toolpacks.custom!)).toBe(SECRET_A);
     });
 
-    it("mints a secret when the variable is unset or malformed", async () => {
+    it("mints a secret on first registration when the variable is unset", async () => {
       delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
       const orgId = await provisionOrg();
-      const unset = await DemoSeedService.seed({ orgId, rows: 0 });
-      const minted = await storedSecret(unset.toolpacks.custom!);
-      expect(minted).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
+      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(result.toolpacks.custom!)).toMatch(
+        /^whsec_[A-Za-z0-9_-]{43}$/
+      );
+    });
+
+    it("keeps the stored secret on a re-seed without (or with a malformed) variable", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
+      const orgId = await provisionOrg();
+      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
 
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = "not-a-secret";
-      const malformed = await DemoSeedService.seed({ orgId, rows: 0 });
-      const reminted = await storedSecret(malformed.toolpacks.custom!);
-      expect(reminted).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
-      expect(reminted).not.toBe(minted);
+      await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
+      expect(schemaSpy).toHaveBeenLastCalledWith(
+        "https://demo-toolpack.test/schema",
+        undefined,
+        SECRET_A
+      );
+    });
+
+    it("keeps the registered toolpack attached when a refresh is refused", async () => {
+      process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
+      const orgId = await provisionOrg();
+      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      schemaSpy.mockRejectedValueOnce(new Error("signature rejected"));
+      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+
+      expect(second.toolpacks.custom).toBe(first.toolpacks.custom);
+      const [station] =
+        await DbService.repository.stations.findByOrganizationId(orgId);
+      const attached =
+        await DbService.repository.stationToolpacks.findByStationId(station.id);
+      expect(
+        attached.some(
+          (a) => a.organizationToolpackId === first.toolpacks.custom
+        )
+      ).toBe(true);
     });
   });
 });

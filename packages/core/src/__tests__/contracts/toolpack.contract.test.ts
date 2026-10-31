@@ -1,6 +1,5 @@
-import { randomBytes } from "node:crypto";
-
 import {
+  generateSigningSecret,
   SigningSecretSchema,
   ToolpackSchema,
   ToolpackListRequestQuerySchema,
@@ -219,14 +218,21 @@ describe("UpdateToolpackBodySchema", () => {
 });
 
 describe("SigningSecretSchema (#911)", () => {
-  // The same expression as the API's generateSigningSecret().
-  const generated = () => `whsec_${randomBytes(32).toString("base64url")}`;
+  const generated = generateSigningSecret;
   const ENDPOINTS = {
     schema: "https://example.com/schema",
     runtime: "https://example.com/runtime",
   };
 
-  it("accepts a generator-shaped secret", () => {
+  it("generates 32 random bytes, different on each call", () => {
+    const a = generateSigningSecret();
+    expect(a).not.toBe(generateSigningSecret());
+    const body = a.slice("whsec_".length);
+    const decoded = atob(body.replace(/-/g, "+").replace(/_/g, "/") + "=");
+    expect(decoded).toHaveLength(32);
+  });
+
+  it("accepts a generated secret", () => {
     for (let i = 0; i < 20; i++) {
       expect(SigningSecretSchema.safeParse(generated()).success).toBe(true);
     }
