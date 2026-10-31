@@ -2,6 +2,7 @@ import { UnrecoverableError } from "bullmq";
 
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { ConnectorAdapterRegistry } from "../../adapters/adapter.registry.js";
+import { ApiCode } from "../../constants/api-codes.constants.js";
 import { DbService } from "../../services/db.service.js";
 import { JobLockService } from "../../services/job-lock.service.js";
 import { SyncLockService } from "../../services/sync-lock.service.js";
@@ -57,6 +58,33 @@ async function identifyHolder(
  * processor forwards each tick to BullMQ so SSE consumers see live
  * progress.
  */
+/**
+ * #931: a REST request the outbound guard refused (`REST_API_URL_BLOCKED`: a
+ * non-public address, too many redirects) is refused again on every retry,
+ * so it fails the job on its first attempt instead of holding the
+ * connector's lock through the budget. Anything else (a network failure
+ * included) stays retryable. The original error is the `cause`, so the job's
+ * error text, built from the cause chain, still names the code.
+ */
+async function runUnlessRefused<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    let cursor: unknown = err;
+    for (let depth = 0; depth < 6 && cursor; depth++) {
+      if (
+        (cursor as { code?: unknown }).code === ApiCode.REST_API_URL_BLOCKED
+      ) {
+        const refused = new UnrecoverableError((cursor as Error).message);
+        refused.cause = cursor;
+        throw refused;
+      }
+      cursor = (cursor as { cause?: unknown }).cause;
+    }
+    throw err;
+  }
+}
+
 export const connectorSyncProcessor: TypedJobProcessor<
   "connector_sync"
 > = async (bullJob) => {
@@ -108,17 +136,19 @@ export const connectorSyncProcessor: TypedJobProcessor<
   const outcome = await SyncLockService.withInstanceLock(
     connectorInstanceId,
     () =>
-      adapter.syncInstance!(instance, userId, {
-        // #458: forwarded verbatim — the worker's progress handler persists
-        // the detail and derives the percent.
-        progress: (update) => {
-          void bullJob.updateProgress(update);
-        },
-        // #439: BullMQ attempts of one sync must share a record-identity
-        // generation. Without this the adapter falls back to a per-run value
-        // and a retry inserts a second full copy of the dataset.
-        jobId,
-      })
+      runUnlessRefused(() =>
+        adapter.syncInstance!(instance, userId, {
+          // #458: forwarded verbatim — the worker's progress handler persists
+          // the detail and derives the percent.
+          progress: (update) => {
+            void bullJob.updateProgress(update);
+          },
+          // #439: BullMQ attempts of one sync must share a record-identity
+          // generation. Without this the adapter falls back to a per-run value
+          // and a retry inserts a second full copy of the dataset.
+          jobId,
+        })
+      )
   );
 
   if (!outcome.acquired) {
