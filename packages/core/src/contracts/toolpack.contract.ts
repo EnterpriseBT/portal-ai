@@ -153,6 +153,20 @@ export const toolpackNameField = () =>
       "Name must start with a lowercase letter and use only lowercase letters, digits and underscores"
     );
 
+/**
+ * A toolpack signing secret (#911): `whsec_` + 32 random bytes, base64url
+ * (43 characters), exactly what the API's `generateSigningSecret()` emits.
+ * A registrant can supply one so their server already holds it when Portals
+ * AI signs the registration-time schema fetch; the format refuses a
+ * hand-typed (and so weak) value.
+ */
+export const SigningSecretSchema = z
+  .string()
+  .regex(
+    /^whsec_[A-Za-z0-9_-]{43}$/,
+    "Signing secret must be whsec_ followed by 43 characters. Generate one rather than typing it."
+  );
+
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const RegisterToolpackBodySchema = z
   .object({
@@ -160,6 +174,12 @@ export const RegisterToolpackBodySchema = z
     description: descriptionField().min(1).optional(),
     endpoints: ToolpackEndpointsSchema,
     authHeaders: z.record(z.string(), z.string()).optional(),
+    /**
+     * #911: the secret the toolpack server already holds, used to sign the
+     * registration fetches and stored for every later call. Omit it to have
+     * the API mint one, which the response then returns once.
+     */
+    signingSecret: SigningSecretSchema.optional(),
   })
   .strict();
 export type RegisterToolpackBody = z.infer<typeof RegisterToolpackBodySchema>;
@@ -182,11 +202,12 @@ export type UpdateToolpackBody = z.infer<typeof UpdateToolpackBodySchema>;
 export const ToolpackRegisterResponsePayloadSchema = z.object({
   toolpack: CustomToolpackRecordSchema,
   /**
-   * The freshly-generated signing secret, surfaced exactly once on
-   * registration. Subsequent GET / PATCH / refresh responses omit
-   * this field entirely; admins who lose the secret rotate via
-   * `POST /api/toolpacks/:id/rotate-signing-secret` to view it
-   * again. Slice 5 in PR 2 of phase 6 wires this through the route.
+   * The signing secret the API minted, surfaced exactly once on
+   * registration. Present only when the request supplied no
+   * `signingSecret` (#911): a supplied secret is never echoed back.
+   * Subsequent GET / PATCH / refresh responses omit this field
+   * entirely; admins who lose the secret rotate via
+   * `POST /api/toolpacks/:id/rotate-signing-secret` to view it again.
    */
   signingSecret: z.string().optional(),
 });
