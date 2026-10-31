@@ -4,6 +4,7 @@ import { describe, it, expect } from "@jest/globals";
 import pino from "pino";
 
 import {
+  BASE_REDACT_PATHS,
   createLogger,
   logger,
   sanitizeError,
@@ -177,5 +178,26 @@ describe("sanitizeError — DB-error PII redaction (#540)", () => {
     // The serializer ran for both keys — sanitized messages are present.
     expect(output).toContain("Database query failed");
     expect(output).toContain("Database error (23505)");
+  });
+});
+
+describe("BASE_REDACT_PATHS", () => {
+  // #911: a registration body carries a toolpack's signing secret.
+  it("redacts a nested signingSecret", () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _enc, cb) {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const testLogger = pino({ redact: { paths: BASE_REDACT_PATHS } }, stream);
+    const secret = "whsec_" + "B".repeat(43);
+
+    testLogger.info({ body: { signingSecret: secret } }, "register");
+
+    const output = lines.join("");
+    expect(output).not.toContain(secret);
+    expect(output).toContain("[Redacted]");
   });
 });

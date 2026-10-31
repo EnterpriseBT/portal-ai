@@ -62,6 +62,18 @@ const VALID_SCHEMA_RESPONSE = {
 
 const BUILTIN_NAMES = new Set(["sql_query", "hypothesis_test"]);
 
+const SECRET = "whsec_" + "A".repeat(43);
+
+function fetchStatus(status: number, statusText = "") {
+  return {
+    ok: false,
+    status,
+    statusText,
+    headers: new Map(),
+    text: async () => "",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -144,6 +156,40 @@ describe("ToolpackRegistrationService", () => {
       ).rejects.toMatchObject({
         code: ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
       });
+    });
+
+    // #911: a server that refuses the signature gets a code that says so.
+    it.each([401, 403])(
+      "rejects a %i with TOOLPACK_SIGNATURE_REJECTED (502, details.status)",
+      async (status) => {
+        mockFetch.mockResolvedValue(fetchStatus(status, "Unauthorized"));
+
+        const err = await ToolpackRegistrationService.fetchSchema(
+          "https://example.com/schema",
+          undefined,
+          SECRET
+        ).catch((e: unknown) => e);
+
+        expect(err).toMatchObject({
+          status: 502,
+          code: ApiCode.TOOLPACK_SIGNATURE_REJECTED,
+          details: { url: "https://example.com/schema", status },
+        });
+        expect((err as Error).message).toContain("Verifying requests");
+        expect(JSON.stringify(err)).not.toContain(SECRET);
+        expect((err as Error).message).not.toContain(SECRET);
+      }
+    );
+
+    it("keeps TOOLPACK_SCHEMA_FETCH_FAILED for a 500", async () => {
+      mockFetch.mockResolvedValue(fetchStatus(500, "Internal"));
+      await expect(
+        ToolpackRegistrationService.fetchSchema(
+          "https://example.com/schema",
+          undefined,
+          SECRET
+        )
+      ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED });
     });
 
     // Case 84
@@ -333,6 +379,38 @@ describe("ToolpackRegistrationService", () => {
       const result = await ToolpackRegistrationService.fetchMetadata(
         "https://example.com/metadata",
         undefined
+      );
+      expect(result).toBeNull();
+    });
+
+    // #911: a refused signature fails the registration rather than
+    // registering silently without metadata.
+    it.each([401, 403])(
+      "throws TOOLPACK_SIGNATURE_REJECTED on a %i",
+      async (status) => {
+        mockFetch.mockResolvedValue(fetchStatus(status));
+
+        const err = await ToolpackRegistrationService.fetchMetadata(
+          "https://example.com/metadata",
+          undefined,
+          SECRET
+        ).catch((e: unknown) => e);
+
+        expect(err).toMatchObject({
+          status: 502,
+          code: ApiCode.TOOLPACK_SIGNATURE_REJECTED,
+          details: { url: "https://example.com/metadata", status },
+        });
+        expect((err as Error).message).not.toContain(SECRET);
+      }
+    );
+
+    it("still returns null on a 404", async () => {
+      mockFetch.mockResolvedValue(fetchStatus(404, "Not Found"));
+      const result = await ToolpackRegistrationService.fetchMetadata(
+        "https://example.com/metadata",
+        undefined,
+        SECRET
       );
       expect(result).toBeNull();
     });

@@ -414,6 +414,12 @@ export enum ApiCode {
   TOOLPACK_RUNTIME_TOO_LARGE = "TOOLPACK_RUNTIME_TOO_LARGE",
   TOOLPACK_RUNTIME_INVALID = "TOOLPACK_RUNTIME_INVALID",
   TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED = "TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED",
+  /**
+   * The toolpack server refused a signed registration or refresh fetch
+   * (401/403 from `/schema` or `/metadata`): its signing secret doesn't match
+   * the one registered (#911). 502.
+   */
+  TOOLPACK_SIGNATURE_REJECTED = "TOOLPACK_SIGNATURE_REJECTED",
   /** Org's tier does not include custom toolpacks (#214). 403. */
   TOOLPACK_NOT_ENTITLED = "TOOLPACK_NOT_ENTITLED",
   /**
