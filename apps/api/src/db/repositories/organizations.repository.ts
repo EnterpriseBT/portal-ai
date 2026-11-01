@@ -19,6 +19,24 @@ export class OrganizationsRepository extends Repository<
     super(organizations);
   }
 
+  /**
+   * #907: read a live organization and lock its row until the transaction
+   * ends, so a concurrent rename waits and reads the name this one wrote.
+   * `client` must be a transaction, or the lock is released at once.
+   */
+  async findByIdForUpdate(
+    id: string,
+    client: DbClient
+  ): Promise<OrganizationSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(and(eq(organizations.id, id), this.notDeleted()))
+      .limit(1)
+      .for("update");
+    return row;
+  }
+
   /** Find an organization by name (exact match). */
   async findByName(
     name: string,
