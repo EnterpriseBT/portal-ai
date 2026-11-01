@@ -216,6 +216,20 @@ describe("OrganizationUpdateRequestSchema (#907)", () => {
     ).toBe(true);
   });
 
+  it("rejects a name with a line break", () => {
+    for (const name of ["Acme\nCorp", "Acme\r\nCorp", "Acme\rCorp"]) {
+      const result = OrganizationUpdateRequestSchema.safeParse({ name });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe(
+        "Name can't contain line breaks"
+      );
+    }
+    // A tab is not a line break.
+    expect(
+      OrganizationUpdateRequestSchema.safeParse({ name: "Acme\tCorp" }).success
+    ).toBe(true);
+  });
+
   it("trims the name", () => {
     expect(OrganizationUpdateRequestSchema.parse({ name: "  Acme  " })).toEqual(
       { name: "Acme" }

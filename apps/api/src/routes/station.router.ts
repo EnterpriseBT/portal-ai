@@ -921,6 +921,17 @@ stationRouter.delete(
       );
 
       await DbService.transaction(async (tx) => {
+        // #907: take the org row lock first. A default-station PATCH holds it
+        // while it checks the station and writes the default, so the two
+        // serialize: either the PATCH sees this delete and refuses, or this
+        // delete's clear below sees the default the PATCH wrote. Without it the
+        // clear could match nothing and the default dangle on a deleted
+        // station.
+        await DbService.repository.organizations.findByIdForUpdate(
+          organizationId,
+          tx
+        );
+
         const stationPortals = await DbService.repository.portals.findByStation(
           id,
           {},

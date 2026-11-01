@@ -72,7 +72,11 @@ export type OrganizationDeleteResponse = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const OrganizationUpdateRequestSchema = z
   .object({
-    name: nameField().optional(),
+    // A line break would make the org undeletable from the UI: the delete
+    // confirmation is a single-line field that can't hold one.
+    name: nameField()
+      .regex(/^[^\r\n]*$/, "Name can't contain line breaks")
+      .optional(),
     defaultStationId: z.string().min(1).nullable().optional(),
   })
   .strict()

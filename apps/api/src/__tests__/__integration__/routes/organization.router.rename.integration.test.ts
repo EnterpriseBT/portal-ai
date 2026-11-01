@@ -240,6 +240,7 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     ["an unknown key", { name: "Acme Corp", timezone: "UTC" }],
     ["a blank name", { name: "   " }],
     ["a 121-character name", { name: "a".repeat(121) }],
+    ["a name with a line break", { name: "Acme\nCorp" }],
   ])("%s is 400 ORGANIZATION_INVALID_PAYLOAD", async (_label, body) => {
     const res = await patch(body);
     expect(res.status).toBe(400);
