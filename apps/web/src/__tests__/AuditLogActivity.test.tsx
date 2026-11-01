@@ -119,6 +119,26 @@ describe("AuditLogActivityUI (#596)", () => {
     expect(screen.getByText("curl/8.0")).toBeInTheDocument();
   });
 
+  it("#907: shows an org rename's summary under its action", () => {
+    render(
+      <AuditLogActivityUI
+        {...uiProps}
+        entries={[
+          entry({
+            action: "org.update",
+            targetType: "organization",
+            targetId: "org-1",
+            metadata: { field: "name", from: "Acme", to: "Acme Corp" },
+          }),
+        ]}
+      />
+    );
+    expect(screen.getByText("org.update")).toBeInTheDocument();
+    expect(
+      screen.getByText('Renamed from "Acme" to "Acme Corp"')
+    ).toBeInTheDocument();
+  });
+
   it("shows the empty state when there are no entries", () => {
     render(<AuditLogActivityUI {...uiProps} entries={[]} />);
     expect(
