@@ -27,6 +27,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
         isError: false,
         error: null,
       }),
+      // Rename (#907) — inert stub; behavior is covered by
+      // SettingsRename.test.tsx.
+      update: () => ({
+        mutate: jest.fn(),
+        reset: jest.fn(),
+        isPending: false,
+        error: null,
+      }),
       delete: mockDelete,
     },
   },

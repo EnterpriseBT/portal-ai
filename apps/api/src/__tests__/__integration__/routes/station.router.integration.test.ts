@@ -783,6 +783,51 @@ describe("Station Router", () => {
       expect(found[0].deleted).not.toBeNull();
     });
 
+    // #907: a default-station PATCH locks the org row, sees the station live
+    // and writes it as the default. A delete that ran its clear while that
+    // write was uncommitted matched nothing, so the default dangled on a
+    // deleted station. The delete now waits for the org row lock first.
+    it("waits for a default-station write holding the org row, then clears it", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const writer = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let settled = false;
+      let deletion!: Promise<request.Response>;
+      try {
+        await writer.begin(async (tx) => {
+          // What the PATCH does under OrganizationUpdateService.apply.
+          await tx`select id from organizations where id = ${organizationId} for update`;
+          await tx`update organizations set default_station_id = ${station.id} where id = ${organizationId}`;
+
+          deletion = request(app)
+            .delete(`/api/stations/${station.id}`)
+            .then((res) => {
+              settled = true;
+              return res;
+            });
+          await new Promise((r) => setTimeout(r, 500));
+          expect(settled).toBe(false);
+        });
+      } finally {
+        await writer.end();
+      }
+
+      const res = await deletion;
+      expect(res.status).toBe(200);
+      const [org] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, organizationId));
+      expect(org.defaultStationId).toBeNull();
+    });
+
     it("soft-deletes portals, hard-deletes messages, and detaches pinned results", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

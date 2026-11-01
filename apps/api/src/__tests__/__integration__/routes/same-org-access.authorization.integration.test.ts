@@ -446,6 +446,22 @@ describe("Same-org object access (#685)", () => {
     }
   });
 
+  it("#907: the caller's org.write capability agrees with the rename PATCH", async () => {
+    for (const [sub, expected] of [
+      [MEMBER_SUB, false],
+      [OWNER_SUB, true],
+    ] as const) {
+      currentSub = sub;
+      const current = await request(app).get("/api/organization/current");
+      expect(current.status).toBe(200);
+      expect(current.body.payload.capabilities["org.write"]).toBe(expected);
+      const patch = await request(app)
+        .patch(`/api/organization/${fx.orgId}`)
+        .send({ name: `Renamed ${suffix()}` });
+      expect(patch.status).toBe(expected ? 200 : 403);
+    }
+  });
+
   // #829: records are parts of their entity, so re-validate and clear follow
   // the entity's own write, which its `capabilities.write` reports.
   it("#829: revalidate and clear follow the entity's write, as its capabilities say", async () => {

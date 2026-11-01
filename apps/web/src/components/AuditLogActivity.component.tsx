@@ -7,6 +7,7 @@ import {
   DataTable,
   Stack,
   StatusMessage,
+  Typography,
   type DataTableColumn,
 } from "@portalai/core/ui";
 import { AUDIT_ACTIONS } from "@portalai/core/models";
@@ -14,6 +15,7 @@ import type { AuditLogEntry } from "@portalai/core/models";
 import type { AuditLogListRequestQuery } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
+import { auditActionSummary } from "../utils/audit-summary.util";
 import {
   PaginationToolbar,
   usePagination,
@@ -41,7 +43,23 @@ const AUDIT_COLUMNS: DataTableColumn[] = [
     format: (value) => new Date(Number(value)).toLocaleString(),
   },
   { key: "userId", label: "Actor", render: monospace },
-  { key: "action", label: "Action", render: (value) => String(value) },
+  {
+    key: "action",
+    label: "Action",
+    render: (value, row) => {
+      // #907: a vetted one-line summary of the metadata, when there is one.
+      const summary = auditActionSummary(row as unknown as AuditLogEntry);
+      if (!summary) return String(value);
+      return (
+        <Stack spacing={0.25}>
+          <span>{String(value)}</span>
+          <Typography variant="caption" color="text.secondary">
+            {summary}
+          </Typography>
+        </Stack>
+      );
+    },
+  },
   {
     key: "targetType",
     label: "Target",

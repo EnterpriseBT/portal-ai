@@ -530,6 +530,8 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
     > = {
       "billing.manage": { verb: "manage", resourceType: "billing" },
       "org.delete": { verb: "delete", resourceType: "org" },
+      // #907: rename the organization.
+      "org.write": { verb: "write", resourceType: "org" },
       "org.audit.read": { verb: "read", resourceType: "audit" },
       "member.role.assign": { verb: "manage", resourceType: "member" },
       "member.invite": { verb: "invite", resourceType: "member" },
@@ -546,6 +548,12 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
         )
       ).toBe(true);
     }
+  });
+
+  it("org takes write (rename, #907) and delete", () => {
+    expect(isVerbValidForResource("write", "org")).toBe(true);
+    expect(isVerbValidForResource("delete", "org")).toBe(true);
+    expect(isVerbValidForResource("read", "org")).toBe(false);
   });
 
   it("privileged singletons + page are class-scoped without ownership; data types own", () => {

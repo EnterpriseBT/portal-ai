@@ -14,6 +14,8 @@ const mockConstructEvent =
 const mockSubscriptionsRetrieve = jest.fn<(id: string) => Promise<unknown>>();
 const mockSubscriptionsCancel = jest.fn<(id: string) => Promise<unknown>>();
 const mockCustomersCreate = jest.fn<(args: unknown) => Promise<unknown>>();
+const mockCustomersUpdate =
+  jest.fn<(id: string, args: unknown) => Promise<unknown>>();
 const mockCheckoutSessionsCreate =
   jest.fn<(args: unknown) => Promise<unknown>>();
 const mockPortalSessionsCreate = jest.fn<(args: unknown) => Promise<unknown>>();
@@ -25,7 +27,7 @@ const mockStripeConstructor = jest.fn().mockImplementation(() => ({
     retrieve: mockSubscriptionsRetrieve,
     cancel: mockSubscriptionsCancel,
   },
-  customers: { create: mockCustomersCreate },
+  customers: { create: mockCustomersCreate, update: mockCustomersUpdate },
   checkout: { sessions: { create: mockCheckoutSessionsCreate } },
   billingPortal: { sessions: { create: mockPortalSessionsCreate } },
 }));
@@ -57,6 +59,7 @@ beforeEach(() => {
   mockSubscriptionsRetrieve.mockReset();
   mockSubscriptionsCancel.mockReset();
   mockCustomersCreate.mockReset();
+  mockCustomersUpdate.mockReset();
   mockCheckoutSessionsCreate.mockReset();
   mockPortalSessionsCreate.mockReset();
   env.STRIPE_SECRET_KEY = "sk_test_123";
@@ -217,6 +220,14 @@ describe("StripeService client + API passthroughs", () => {
         metadata: { organizationId: "org-1" },
       })
     );
+  });
+
+  it("updateCustomerName sets the customer's name (#907)", async () => {
+    mockCustomersUpdate.mockResolvedValue({ id: "cus_1" });
+    await StripeService.updateCustomerName("cus_1", "Acme Corp");
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_1", {
+      name: "Acme Corp",
+    });
   });
 
   it("cancelSubscription cancels immediately by id", async () => {

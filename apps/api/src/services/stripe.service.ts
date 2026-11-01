@@ -103,6 +103,14 @@ export class StripeService {
     return { id: customer.id };
   }
 
+  /** #907: keep the customer's name in step with an org rename. */
+  static async updateCustomerName(
+    customerId: string,
+    name: string
+  ): Promise<void> {
+    await StripeService.client().customers.update(customerId, { name });
+  }
+
   /** Mint a hosted Checkout session (D4 — SAQ-A; the webhook, never this
    *  redirect, writes the tier). */
   static async createCheckoutSession(args: {

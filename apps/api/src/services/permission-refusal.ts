@@ -22,6 +22,7 @@ export const PERMISSION_DENIED_FALLBACK =
 const ACTION_PHRASES: Partial<Record<PermissionAction, string>> = {
   "billing.manage": "manage billing",
   "org.delete": "delete the organization",
+  "org.write": "edit the organization",
   "org.audit.read": "view the audit log",
   // Gates role assignment and access authoring (roles, groups, policies).
   "member.role.assign": "manage roles and access",

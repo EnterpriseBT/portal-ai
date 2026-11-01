@@ -204,6 +204,7 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(ownerCaps).toEqual({
       "billing.manage": true,
       "org.delete": true,
+      "org.write": true,
       "org.audit.read": true,
       "member.role.assign": true,
       "member.invite": true,
@@ -218,6 +219,8 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     expect(memberCaps).toEqual({
       "billing.manage": false,
       "org.delete": false,
+      // #907: renaming is class `write org`, which a member doesn't hold.
+      "org.write": false,
       "org.audit.read": false,
       "member.role.assign": false,
       "member.invite": false,
@@ -235,6 +238,8 @@ describe("PermissionService.loadSet — data-driven engine (#598 slice 3, case 9
     );
     expect(adminCaps["billing.manage"]).toBe(false);
     expect(adminCaps["org.delete"]).toBe(false);
+    // #907: AdminAccess denies only delete org, so an admin may rename it.
+    expect(adminCaps["org.write"]).toBe(true);
     expect(adminCaps["org.audit.read"]).toBe(true);
     expect(adminCaps["member.invite"]).toBe(true);
     expect(adminCaps["station.default.set"]).toBe(true);

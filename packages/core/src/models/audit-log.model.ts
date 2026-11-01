@@ -24,6 +24,8 @@ export const AUDIT_ACTIONS = [
   "auth.login",
   "org.create",
   "org.delete",
+  /** #907: an org field changed; metadata `{ field, from, to }`. */
+  "org.update",
   "member.add",
   "member.remove",
   "member.switch",

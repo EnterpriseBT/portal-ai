@@ -44,6 +44,7 @@ export interface PermissionContext {
 export type PermissionAction =
   | "billing.manage"
   | "org.delete"
+  | "org.write"
   | "org.audit.read"
   | "member.role.assign"
   | "member.invite"

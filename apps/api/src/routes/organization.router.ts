@@ -6,6 +6,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { PermissionService } from "../services/permission.service.js";
 import type { OrgRole } from "@portalai/core/models";
 import { TierService } from "../services/tier.service.js";
@@ -13,6 +14,7 @@ import { UsageService } from "../services/usage.service.js";
 import type {
   OrganizationDeleteResponse,
   OrganizationGetResponse,
+  OrganizationUpdateResponse,
   OrganizationUsageGetResponse,
   UsageLedgerListResponse,
   AuditLogListResponse,
@@ -25,6 +27,7 @@ import type {
 import {
   OrganizationDeleteRequestSchema,
   OrganizationSwitchRequestSchema,
+  OrganizationUpdateRequestSchema,
   UsageLedgerListRequestQuerySchema,
   AuditLogListRequestQuerySchema,
   MemberRolesSetRequestSchema,
@@ -38,6 +41,7 @@ import { GroupService } from "../services/group.service.js";
 import { TOOL_USAGE_LEDGER_SORT_KEYS } from "../db/repositories/tool-usage-ledger.repository.js";
 import { AUDIT_LOG_SORT_KEYS } from "../db/repositories/audit-log.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
+import { OrganizationUpdateService } from "../services/organization-update.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
@@ -138,7 +142,13 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *     tags:
  *       - Organization
  *     summary: Update organization settings
- *     description: Updates organization fields. Currently supports setting defaultStationId.
+ *     description: >-
+ *       Updates the caller's current organization (#907). Each field is checked
+ *       and written only when present: `name` (rename) needs `org.write`;
+ *       `defaultStationId` needs class write on station, and a non-null station
+ *       must be in the org and readable (`null` clears it). At least one field
+ *       is required. A rename is audited as `org.update` and, best effort,
+ *       copied to the org's Stripe customer.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -152,19 +162,38 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               defaultStationId:
- *                 type: [string, "null"]
+ *             $ref: '#/components/schemas/OrganizationUpdateRequest'
  *     responses:
- *       403:
- *         description: The caller lacks permission on this object or it isn't theirs (#685)
  *       200:
  *         description: Organization updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OrganizationUpdateResponse'
+ *       400:
+ *         description: Invalid payload — no field, an unknown key, or a blank or over-long name (ORGANIZATION_INVALID_PAYLOAD)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller lacks the permission a sent field needs (PERMISSION_DENIED)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Organization or station not found
+ *         description: Not the caller's organization (ORGANIZATION_NOT_FOUND), or the station isn't in it (STATION_NOT_FOUND)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 organizationRouter.patch(
   "/:id",
@@ -185,46 +214,82 @@ organizationRouter.patch(
         );
       }
 
-      const { defaultStationId } = req.body as {
-        defaultStationId?: string | null;
-      };
+      const parsed = OrganizationUpdateRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "Invalid organization update payload",
+            parsed.error
+          )
+        );
+      }
+      const { name, defaultStationId } = parsed.data;
 
-      // #685: the org's default station is an org-wide setting, so changing
-      // it is owner/admin only (class write on station; there is no separate
-      // org-settings permission). It used to be open to any member.
+      // #907: each field is checked only when present, and every check runs
+      // before any write. A rename needs class `write org`.
       const set = await PermissionService.loadSet(req.application!.metadata);
-      set.check("resource.write", { type: "station" });
+      if (name !== undefined) set.check("org.write");
 
-      if (defaultStationId !== undefined && defaultStationId !== null) {
-        // The station must be in this org and readable by the caller.
-        const station =
-          await DbService.repository.stations.findById(defaultStationId);
-        if (
-          !station ||
-          station.organizationId !== organizationId ||
-          !set.can("resource.read", {
-            type: "station",
-            id: station.id,
-            createdBy: station.createdBy,
-          })
-        ) {
-          return next(
-            new ApiError(
-              404,
-              ApiCode.STATION_NOT_FOUND,
-              "Station not found or does not belong to this organization"
-            )
-          );
-        }
+      // #685: the default station is an org-wide setting, so changing it needs
+      // class write on station, which a member's own-station write doesn't
+      // satisfy.
+      if (defaultStationId !== undefined)
+        set.check("resource.write", { type: "station" });
+
+      // The station must be in this org and readable by the caller. It's
+      // checked under the org row lock, so a station deleted concurrently
+      // (whose delete clears the default under the same lock) can't be
+      // written as the default.
+      const assertStation =
+        defaultStationId !== undefined && defaultStationId !== null
+          ? async (tx: DbClient) => {
+              const station = await DbService.repository.stations.findById(
+                defaultStationId,
+                tx
+              );
+              if (
+                !station ||
+                station.organizationId !== organizationId ||
+                !set.can("resource.read", {
+                  type: "station",
+                  id: station.id,
+                  createdBy: station.createdBy,
+                })
+              ) {
+                throw new ApiError(
+                  404,
+                  ApiCode.STATION_NOT_FOUND,
+                  "Station not found or does not belong to this organization"
+                );
+              }
+            }
+          : undefined;
+
+      const { organization, previousName } =
+        await OrganizationUpdateService.apply(id, parsed.data, userId, {
+          beforeWrite: assertStation,
+        });
+
+      // #907: post-commit and fail-open, only when the name actually changed.
+      if (name !== undefined && organization.name !== previousName) {
+        void AuditService.record({
+          ...auditContextFromRequest(req),
+          action: "org.update",
+          targetType: "organization",
+          targetId: id,
+          metadata: {
+            field: "name",
+            from: previousName,
+            to: organization.name,
+          },
+        });
+        void OrganizationUpdateService.syncStripeCustomerName(id);
       }
 
-      const organization = await DbService.repository.organizations.update(id, {
-        defaultStationId: defaultStationId ?? null,
-        updated: Date.now(),
-        updatedBy: userId,
-      } as never);
-
-      return HttpService.success(res, { organization });
+      return HttpService.success<OrganizationUpdateResponse>(res, {
+        organization,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

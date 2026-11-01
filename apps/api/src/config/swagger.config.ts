@@ -37,6 +37,8 @@ import {
   OrganizationSwitchRequestSchema,
   OrganizationDeleteRequestSchema,
   OrganizationDeleteResponseSchema,
+  OrganizationUpdateRequestSchema,
+  OrganizationUpdateResponseSchema,
   MemberRolesSetRequestSchema,
   MemberRolesSetResponseSchema,
   ShareGrantRequestSchema,
@@ -388,6 +390,15 @@ const orgDeleteSchemas: Record<string, unknown> = {
   ),
   OrganizationDeleteResponse: z.toJSONSchema(
     OrganizationDeleteResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  // #907: PATCH /api/organization/:id.
+  OrganizationUpdateRequest: z.toJSONSchema(
+    OrganizationUpdateRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  OrganizationUpdateResponse: z.toJSONSchema(
+    OrganizationUpdateResponseSchema,
     JSON_SCHEMA_OPTS
   ),
   MemberRolesSetRequest: z.toJSONSchema(

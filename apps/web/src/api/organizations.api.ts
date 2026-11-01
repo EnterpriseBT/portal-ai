@@ -7,6 +7,8 @@ import type {
   OrganizationSwitchRequest,
   OrganizationDeleteRequest,
   OrganizationDeleteResponse,
+  OrganizationUpdateRequest,
+  OrganizationUpdateResponse,
 } from "@portalai/core/contracts";
 import {
   useAuthQuery,
@@ -59,6 +61,15 @@ export const organizations = {
     useAuthMutation<OrganizationGetResponse, OrganizationSwitchRequest>({
       url: "/api/organization/switch",
       method: "POST",
+    }),
+  /** Update the caller's org (#907): `name` needs `org.write`. The variables
+   *  ARE the request body. Consumers invalidate `organizations.root` on
+   *  success so the header, switcher and Settings pick up the new name. */
+  update: (orgId: string) =>
+    useAuthMutation<OrganizationUpdateResponse, OrganizationUpdateRequest>({
+      url: `/api/organization/${encodeURIComponent(orgId)}`,
+      method: "PATCH",
+      onPermissionDenied: { invalidate: () => [queryKeys.organizations.root] },
     }),
   /** Owner-only org deletion (#197). The variables ARE the request body
    *  ({ confirmationName } — the server-verified type-to-confirm gate).

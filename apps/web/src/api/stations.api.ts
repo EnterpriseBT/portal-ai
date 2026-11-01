@@ -8,7 +8,7 @@ import type {
   CreateStationBody,
   UpdateStationBody,
 } from "@portalai/core/contracts";
-import type { OrganizationGetResponse } from "@portalai/core/contracts";
+import type { OrganizationUpdateResponse } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -53,7 +53,7 @@ export const stations = {
 
   setDefault: (orgId: string) =>
     useAuthMutation<
-      OrganizationGetResponse,
+      OrganizationUpdateResponse,
       { defaultStationId: string | null }
     >({
       url: `/api/organization/${encodeURIComponent(orgId)}`,

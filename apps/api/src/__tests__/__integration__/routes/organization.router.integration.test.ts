@@ -202,6 +202,7 @@ describe("Organization Router", () => {
       expect(res.body.payload.capabilities).toEqual({
         "billing.manage": true,
         "org.delete": true,
+        "org.write": true,
         "org.audit.read": true,
         "member.role.assign": true,
         "member.invite": true,
@@ -483,7 +484,8 @@ describe("Organization Router", () => {
 
   describe("PATCH /api/organization/:id", () => {
     // #897: Express 5 leaves a bodiless write's body undefined; the handler
-    // used to destructure it directly. A bodiless PATCH must behave as `{}`.
+    // used to destructure it directly. A bodiless PATCH must behave as `{}`,
+    // which #907 refuses: it names no field to change.
     it("treats a bodiless PATCH as an empty body", async () => {
       const owner = createOwner();
       const result = await provisionTestOrg(owner);
@@ -492,8 +494,8 @@ describe("Organization Router", () => {
         .patch(`/api/organization/${result.organization.id}`)
         .set("Authorization", "Bearer test-token")
         .set("Content-Length", "0");
-      expect(res.status).toBe(200);
-      expect(res.body.payload.organization.defaultStationId).toBeNull();
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
     });
   });
 
