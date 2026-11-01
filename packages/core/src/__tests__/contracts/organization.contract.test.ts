@@ -2,6 +2,8 @@ import {
   OrganizationDeleteRequestSchema,
   OrganizationDeleteResponseSchema,
   OrganizationGetResponseSchema,
+  OrganizationUpdateRequestSchema,
+  OrganizationUpdateResponseSchema,
   MemberRolesSetRequestSchema,
 } from "../../contracts/organization.contract.js";
 import { OrganizationModelFactory } from "../../models/organization.model.js";
@@ -157,6 +159,77 @@ describe("MemberRolesSetRequestSchema (#620/#622)", () => {
     // role is checked server-side against the org's roles.
     expect(
       MemberRolesSetRequestSchema.safeParse({ roleSlugs: ["anything"] }).success
+    ).toBe(true);
+  });
+});
+
+// ── PATCH /organization/:id request (#907) ───────────────────────────
+
+describe("OrganizationUpdateRequestSchema (#907)", () => {
+  it("accepts a name alone, a station alone, a null station, and both", () => {
+    for (const body of [
+      { name: "Acme" },
+      { defaultStationId: "st-1" },
+      { defaultStationId: null },
+      { name: "Acme", defaultStationId: "st-1" },
+    ]) {
+      expect(OrganizationUpdateRequestSchema.safeParse(body).success).toBe(
+        true
+      );
+    }
+  });
+
+  it("rejects an empty body with the refine message", () => {
+    const result = OrganizationUpdateRequestSchema.safeParse({});
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(
+      "Provide a name or a default station"
+    );
+  });
+
+  it("rejects an unknown key", () => {
+    expect(
+      OrganizationUpdateRequestSchema.safeParse({
+        name: "Acme",
+        timezone: "UTC",
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects a blank or whitespace name", () => {
+    for (const name of ["", "   "]) {
+      const result = OrganizationUpdateRequestSchema.safeParse({ name });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe("Name is required");
+    }
+  });
+
+  it("rejects a name over 120 characters", () => {
+    expect(
+      OrganizationUpdateRequestSchema.safeParse({ name: "a".repeat(121) })
+        .success
+    ).toBe(false);
+    expect(
+      OrganizationUpdateRequestSchema.safeParse({ name: "a".repeat(120) })
+        .success
+    ).toBe(true);
+  });
+
+  it("trims the name", () => {
+    expect(OrganizationUpdateRequestSchema.parse({ name: "  Acme  " })).toEqual(
+      { name: "Acme" }
+    );
+  });
+});
+
+describe("OrganizationUpdateResponseSchema (#907)", () => {
+  it("wraps the updated organization", () => {
+    const organization = new OrganizationModelFactory()
+      .create("user-1")
+      .update({ name: "Acme", ownerUserId: "user-1", timezone: "UTC" })
+      .parse();
+    expect(
+      OrganizationUpdateResponseSchema.safeParse({ organization }).success
     ).toBe(true);
   });
 });

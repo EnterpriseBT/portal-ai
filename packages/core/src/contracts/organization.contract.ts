@@ -6,6 +6,7 @@ import {
   PagePermissionMapSchema,
   ResourcePermissionMapSchema,
 } from "../models/permission.model.js";
+import { nameField } from "./text-limits.contract.js";
 
 /**
  * Response payload for the caller's current organization (#576/#620).
@@ -61,6 +62,35 @@ export const OrganizationDeleteResponseSchema = z.object({
 
 export type OrganizationDeleteResponse = z.infer<
   typeof OrganizationDeleteResponseSchema
+>;
+
+/**
+ * Request body for PATCH /api/organization/:id (#907). Each field is checked
+ * and written only when present: `name` needs `org.write`, `defaultStationId`
+ * the class station write (#690). `null` clears the default station.
+ */
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const OrganizationUpdateRequestSchema = z
+  .object({
+    name: nameField().optional(),
+    defaultStationId: z.string().min(1).nullable().optional(),
+  })
+  .strict()
+  .refine((b) => b.name !== undefined || b.defaultStationId !== undefined, {
+    message: "Provide a name or a default station",
+  });
+
+export type OrganizationUpdateRequest = z.infer<
+  typeof OrganizationUpdateRequestSchema
+>;
+
+/** Response payload for a successful organization update — the updated row. */
+export const OrganizationUpdateResponseSchema = z.object({
+  organization: OrganizationSchema,
+});
+
+export type OrganizationUpdateResponse = z.infer<
+  typeof OrganizationUpdateResponseSchema
 >;
 
 /**

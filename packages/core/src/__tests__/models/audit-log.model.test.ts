@@ -80,6 +80,15 @@ describe("AuditLogEntrySchema", () => {
     expect(AUDIT_ACTIONS).toContain("station.attachments.change");
   });
 
+  it("includes the org field change action (#907)", () => {
+    const model = new AuditLogEntryModelFactory().create("user-1").update({
+      ...validFields,
+      action: "org.update" as const,
+      metadata: { field: "name", from: "Acme", to: "Acme Corp" },
+    });
+    expect(model.validate().success).toBe(true);
+  });
+
   it("accepts every declared AuditAction", () => {
     for (const action of AUDIT_ACTIONS) {
       const model = new AuditLogEntryModelFactory()
