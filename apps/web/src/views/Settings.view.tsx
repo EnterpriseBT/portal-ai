@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Divider,
+  GatedButton,
   MetadataList,
   Typography,
   Tabs,
@@ -27,6 +28,7 @@ import { AccessAuthoring } from "../modules/AccessAuthoring";
 import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
+import { RenameOrganizationDialogUI } from "../components/RenameOrganizationDialog.component";
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
 import { SubscriptionBilling } from "../components/SubscriptionBilling.component";
 import { sdk } from "../api/sdk";
@@ -34,6 +36,7 @@ import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { decideActionGate } from "../utils/action-gate.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 import { formatSeats } from "../utils/tier-format.util";
 import {
@@ -116,6 +119,8 @@ export const SettingsView = () => {
   const canManageMembers = can("member.invite");
   const canViewActivity = can("org.audit.read");
   const canDeleteOrg = can("org.delete");
+  // #907: renaming is class `write org`; a caller without it sees no Rename.
+  const renameGate = decideActionGate({ allowed: can("org.write") });
   // #622: the Access (custom RBAC) tab shows to owner/admin (the capability);
   // the entitlement toggles the authoring module vs. a locked upgrade state.
   const canAuthorAccess = can("member.role.assign");
@@ -155,6 +160,31 @@ export const SettingsView = () => {
 
   const handleDeleteConfirm = (confirmationName: string) =>
     deleteMutation.mutate({ confirmationName }, { onSuccess: () => logout() });
+
+  // #907: rename. The new name reaches the header, the switcher and this page
+  // through the organizations.root invalidation.
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const renameMutation = sdk.organizations.update(organizationId);
+  const openRenameDialog = () => {
+    renameMutation.reset();
+    setRenameDialogOpen(true);
+  };
+  const closeRenameDialog = () => {
+    renameMutation.reset();
+    setRenameDialogOpen(false);
+  };
+  const handleRename = (name: string) =>
+    renameMutation.mutate(
+      { name },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.organizations.root,
+          });
+          setRenameDialogOpen(false);
+        },
+      }
+    );
 
   // #691: lets the upgrade affordances inside a tab switch to Billing
   // (a navigation to ?tab=billing wouldn't move this read-once tab).
@@ -318,6 +348,17 @@ export const SettingsView = () => {
                         >
                           {organization.name}
                         </Typography>
+                        {renameGate.kind !== "hide" && (
+                          <GatedButton
+                            gate={renameGate}
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Icon name={IconName.Edit} />}
+                            onClick={openRenameDialog}
+                          >
+                            Rename
+                          </GatedButton>
+                        )}
                       </Stack>
                       <Divider />
                       <MetadataList
@@ -432,6 +473,18 @@ export const SettingsView = () => {
                       </Stack>
                     </PageSection>
                   )}
+
+                  {/* Keyed on open so each opening starts from the
+                    current name, not the last attempt's input. */}
+                  <RenameOrganizationDialogUI
+                    key={renameDialogOpen ? "open" : "closed"}
+                    open={renameDialogOpen}
+                    onClose={closeRenameDialog}
+                    currentName={organization.name}
+                    onSubmit={handleRename}
+                    isPending={renameMutation.isPending}
+                    serverError={toServerError(renameMutation.error)}
+                  />
 
                   <DeleteOrganizationDialog
                     open={deleteDialogOpen}

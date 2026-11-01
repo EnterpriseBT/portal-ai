@@ -16,6 +16,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
       // Itemized drill-down (#179) — dialog internals are covered by
       // UsageLedgerDialog.component.test.tsx.
       usageLedger: mockUsageLedger,
+      // Rename (#907) — inert stub; behavior is covered by
+      // SettingsRename.test.tsx.
+      update: () => ({
+        mutate: jest.fn(),
+        reset: jest.fn(),
+        isPending: false,
+        error: null,
+      }),
       // Danger zone (#197) — inert stub; behavior is covered by
       // SettingsDangerZone.test.tsx.
       delete: () => ({ mutate: jest.fn(), isPending: false, error: null }),
