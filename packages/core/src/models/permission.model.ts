@@ -160,6 +160,8 @@ export type PermissionCondition = z.infer<typeof PermissionConditionSchema>;
 export const CALLER_CAPABILITY_ACTIONS = [
   "billing.manage",
   "org.delete",
+  /** #907: rename the organization; class `write org`. */
+  "org.write",
   "org.audit.read",
   "member.role.assign",
   "member.invite",
@@ -355,9 +357,10 @@ export const RESOURCE_CAPABILITIES: Record<
   // `view`-only nav pseudo-resource — fixed page ids, no per-object ownership.
   page: { verbs: ["view"], instanceScope: true, ownership: false },
   // Privileged singletons — verbs are exactly what CALLER_CAPABILITY_ACTIONS
-  // gates (billing.manage / org.delete / org.audit.read / member.*); class-only.
+  // gates (billing.manage / org.write / org.delete / org.audit.read /
+  // member.*); class-only.
   billing: { verbs: ["manage"], instanceScope: false, ownership: false },
-  org: { verbs: ["delete"], instanceScope: false, ownership: false },
+  org: { verbs: ["write", "delete"], instanceScope: false, ownership: false },
   audit: { verbs: ["read"], instanceScope: false, ownership: false },
   member: {
     verbs: ["invite", "manage", "delete"],

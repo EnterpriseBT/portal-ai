@@ -222,6 +222,8 @@ describe("PermissionSet — switch parity (spec case 8)", () => {
   const cases: Case[] = [
     ["billing.manage", undefined, { owner: true, admin: false, member: false }],
     ["org.delete", undefined, { owner: true, admin: false, member: false }],
+    // #907: rename — AdminAccess's carve-outs deny only delete org + billing.
+    ["org.write", undefined, { owner: true, admin: true, member: false }],
     ["org.audit.read", undefined, { owner: true, admin: true, member: false }],
     [
       "member.role.assign",

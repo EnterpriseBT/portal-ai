@@ -22,6 +22,7 @@ describe("permissionRefusalMessage (#711)", () => {
   it.each([
     ["billing.manage", "manage billing"],
     ["org.delete", "delete the organization"],
+    ["org.write", "edit the organization"],
     ["org.audit.read", "view the audit log"],
     ["member.role.assign", "manage roles and access"],
     ["member.invite", "invite members"],
@@ -78,6 +79,7 @@ describe("permissionRefusalMessage (#711)", () => {
     for (const action of [
       "billing.manage",
       "org.delete",
+      "org.write",
       "org.audit.read",
       "member.role.assign",
       "member.invite",

@@ -20,6 +20,7 @@ describe("OrganizationGetResponseSchema (#620)", () => {
   const capabilities = {
     "billing.manage": true,
     "org.delete": true,
+    "org.write": true,
     "org.audit.read": true,
     "member.role.assign": true,
     "member.invite": true,
