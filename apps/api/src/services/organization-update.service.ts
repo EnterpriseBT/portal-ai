@@ -9,11 +9,13 @@
  *
  * `syncStripeCustomerName` runs after commit and is best effort: the rename is
  * the record of truth, and a stale Stripe name is cosmetic and logged for
- * manual reconciliation.
+ * manual reconciliation. It sends the org's name as stored when it runs, so
+ * two renames whose syncs finish out of order still leave Stripe current.
  */
 
 import type { Organization } from "@portalai/core/models";
 
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
 import { ApiError } from "./http.service.js";
@@ -25,6 +27,14 @@ const logger = createLogger({ module: "organization-update" });
 export interface OrganizationUpdatePatch {
   name?: string;
   defaultStationId?: string | null;
+}
+
+export interface OrganizationUpdateOptions {
+  /** Runs in the transaction after the row lock and before the write; throw
+   *  to refuse. The route checks the default station here, so a station
+   *  deleted concurrently can't be written as the default (its delete clears
+   *  the default under the same row lock). */
+  beforeWrite?: (tx: DbClient) => Promise<void>;
 }
 
 export interface OrganizationUpdateResult {
@@ -41,7 +51,8 @@ export class OrganizationUpdateService {
   static async apply(
     orgId: string,
     patch: OrganizationUpdatePatch,
-    userId: string
+    userId: string,
+    options: OrganizationUpdateOptions = {}
   ): Promise<OrganizationUpdateResult> {
     return DbService.transaction(async (tx) => {
       const current =
@@ -54,23 +65,14 @@ export class OrganizationUpdateService {
         );
       }
 
-      const changes: OrganizationUpdatePatch = {};
-      if (patch.name !== undefined) changes.name = patch.name;
-      if (patch.defaultStationId !== undefined)
-        changes.defaultStationId = patch.defaultStationId;
+      await options.beforeWrite?.(tx);
 
-      const organization = await DbService.repository.organizations.update(
+      // The patch is the parsed request, so it holds only the keys sent.
+      const organization = (await DbService.repository.organizations.update(
         orgId,
-        { ...changes, updated: Date.now(), updatedBy: userId },
+        { ...patch, updated: Date.now(), updatedBy: userId },
         tx
-      );
-      if (!organization) {
-        throw new ApiError(
-          404,
-          ApiCode.ORGANIZATION_NOT_FOUND,
-          "Organization not found"
-        );
-      }
+      ))!;
       return {
         organization: organization as Organization,
         previousName: current.name,
@@ -82,13 +84,15 @@ export class OrganizationUpdateService {
    * Post-commit, best effort. A no-op without a Stripe customer or when Stripe
    * isn't configured; a failure is logged and never thrown.
    */
-  static async syncStripeCustomerName(
-    organization: Organization
-  ): Promise<void> {
-    const { id: organizationId, stripeCustomerId, name } = organization;
-    if (!stripeCustomerId || !StripeService.isConfigured()) return;
+  static async syncStripeCustomerName(organizationId: string): Promise<void> {
+    if (!StripeService.isConfigured()) return;
+    let stripeCustomerId: string | null = null;
     try {
-      await StripeService.updateCustomerName(stripeCustomerId, name);
+      const current =
+        await DbService.repository.organizations.findById(organizationId);
+      stripeCustomerId = current?.stripeCustomerId ?? null;
+      if (!current || !stripeCustomerId) return;
+      await StripeService.updateCustomerName(stripeCustomerId, current.name);
     } catch (error) {
       logger.warn(
         {

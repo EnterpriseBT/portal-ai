@@ -97,6 +97,22 @@ describe("RenameOrganizationDialogUI (#907)", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("treats a stored name with stray spaces, saved unedited, as unchanged", async () => {
+    const onSubmit = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <RenameOrganizationDialogUI
+        {...defaultProps}
+        currentName="Acme "
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("calls onClose on Cancel", async () => {
     const onClose = jest.fn();
     render(<RenameOrganizationDialogUI {...defaultProps} onClose={onClose} />);

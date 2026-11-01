@@ -164,9 +164,14 @@ export const SettingsView = () => {
   // #907: rename. The new name reaches the header, the switcher and this page
   // through the organizations.root invalidation.
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  // Bumped on each opening so the dialog starts from the current name. Keying
+  // on the open flag itself would also remount on close and cut the exit
+  // transition.
+  const [renameDialogKey, setRenameDialogKey] = useState(0);
   const renameMutation = sdk.organizations.update(organizationId);
   const openRenameDialog = () => {
     renameMutation.reset();
+    setRenameDialogKey((k) => k + 1);
     setRenameDialogOpen(true);
   };
   const closeRenameDialog = () => {
@@ -181,6 +186,8 @@ export const SettingsView = () => {
           queryClient.invalidateQueries({
             queryKey: queryKeys.organizations.root,
           });
+          // The rename is recorded in Settings → Activity.
+          queryClient.invalidateQueries({ queryKey: queryKeys.auditLog.root });
           setRenameDialogOpen(false);
         },
       }
@@ -474,10 +481,8 @@ export const SettingsView = () => {
                     </PageSection>
                   )}
 
-                  {/* Keyed on open so each opening starts from the
-                    current name, not the last attempt's input. */}
                   <RenameOrganizationDialogUI
-                    key={renameDialogOpen ? "open" : "closed"}
+                    key={renameDialogKey}
                     open={renameDialogOpen}
                     onClose={closeRenameDialog}
                     currentName={organization.name}

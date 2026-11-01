@@ -6,6 +6,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { PermissionService } from "../services/permission.service.js";
 import type { OrgRole } from "@portalai/core/models";
 import { TierService } from "../services/tier.service.js";
@@ -236,31 +237,39 @@ organizationRouter.patch(
       if (defaultStationId !== undefined)
         set.check("resource.write", { type: "station" });
 
-      if (defaultStationId !== undefined && defaultStationId !== null) {
-        // The station must be in this org and readable by the caller.
-        const station =
-          await DbService.repository.stations.findById(defaultStationId);
-        if (
-          !station ||
-          station.organizationId !== organizationId ||
-          !set.can("resource.read", {
-            type: "station",
-            id: station.id,
-            createdBy: station.createdBy,
-          })
-        ) {
-          return next(
-            new ApiError(
-              404,
-              ApiCode.STATION_NOT_FOUND,
-              "Station not found or does not belong to this organization"
-            )
-          );
-        }
-      }
+      // The station must be in this org and readable by the caller. It's
+      // checked under the org row lock, so a station deleted concurrently
+      // (whose delete clears the default under the same lock) can't be
+      // written as the default.
+      const assertStation =
+        defaultStationId !== undefined && defaultStationId !== null
+          ? async (tx: DbClient) => {
+              const station = await DbService.repository.stations.findById(
+                defaultStationId,
+                tx
+              );
+              if (
+                !station ||
+                station.organizationId !== organizationId ||
+                !set.can("resource.read", {
+                  type: "station",
+                  id: station.id,
+                  createdBy: station.createdBy,
+                })
+              ) {
+                throw new ApiError(
+                  404,
+                  ApiCode.STATION_NOT_FOUND,
+                  "Station not found or does not belong to this organization"
+                );
+              }
+            }
+          : undefined;
 
       const { organization, previousName } =
-        await OrganizationUpdateService.apply(id, parsed.data, userId);
+        await OrganizationUpdateService.apply(id, parsed.data, userId, {
+          beforeWrite: assertStation,
+        });
 
       // #907: post-commit and fail-open, only when the name actually changed.
       if (name !== undefined && organization.name !== previousName) {
@@ -275,7 +284,7 @@ organizationRouter.patch(
             to: organization.name,
           },
         });
-        void OrganizationUpdateService.syncStripeCustomerName(organization);
+        void OrganizationUpdateService.syncStripeCustomerName(id);
       }
 
       return HttpService.success<OrganizationUpdateResponse>(res, {

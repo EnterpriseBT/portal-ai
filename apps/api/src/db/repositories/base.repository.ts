@@ -147,6 +147,24 @@ export class Repository<
   }
 
   /**
+   * Fetch a live row by primary key and lock it until `client`'s transaction
+   * ends (#760, #907). `client` must be a transaction, or the lock is released
+   * at once.
+   */
+  async findByIdForUpdate(
+    id: string,
+    client: DbClient
+  ): Promise<TSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table as any)
+      .where(and(eq(this.cols.id, id), this.notDeleted()))
+      .limit(1)
+      .for("update");
+    return row as TSelect | undefined;
+  }
+
+  /**
    * Return rows matching an optional `where` clause.
    * Supports pagination and an opt-in to include soft-deleted records.
    */

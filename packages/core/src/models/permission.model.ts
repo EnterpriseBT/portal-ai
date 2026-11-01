@@ -360,7 +360,8 @@ export const RESOURCE_CAPABILITIES: Record<
   // gates (billing.manage / org.write / org.delete / org.audit.read /
   // member.*); class-only.
   billing: { verbs: ["manage"], instanceScope: false, ownership: false },
-  org: { verbs: ["write", "delete"], instanceScope: false, ownership: false },
+  // `delete` stays first: it's the editor's default verb for `org`.
+  org: { verbs: ["delete", "write"], instanceScope: false, ownership: false },
   audit: { verbs: ["read"], instanceScope: false, ownership: false },
   member: {
     verbs: ["invite", "manage", "delete"],

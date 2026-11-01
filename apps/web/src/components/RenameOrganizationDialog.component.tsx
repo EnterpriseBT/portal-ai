@@ -34,9 +34,12 @@ export const RenameOrganizationDialogUI: React.FC<
 
   // #801: an unchanged name isn't sent (Save just closes), so one saved before
   // the length limit doesn't block the dialog; only an edited name is checked.
+  // Both sides are trimmed: a stored name with stray spaces, saved unedited,
+  // isn't a rename.
+  const unchanged = currentName.trim();
   const validate = (value: string) =>
-    value.trim() === currentName
-      ? ({ success: true, data: { name: currentName } } as const)
+    value.trim() === unchanged
+      ? ({ success: true, data: { name: unchanged } } as const)
       : validateWithSchema(OrganizationUpdateRequestSchema, { name: value });
 
   const handleSubmit = () => {
@@ -53,7 +56,7 @@ export const RenameOrganizationDialogUI: React.FC<
     if (trimmed === undefined) return;
     setErrors({});
     // The schema trims, so a whitespace-only edit reads as unchanged.
-    if (trimmed === currentName) {
+    if (trimmed === unchanged) {
       onClose();
       return;
     }

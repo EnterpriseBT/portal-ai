@@ -177,6 +177,9 @@ describe("SettingsView — Rename organization (#907)", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.organizations.root,
     });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.auditLog.root,
+    });
     await waitFor(() =>
       expect(screen.queryByText("Rename organization")).toBeNull()
     );
