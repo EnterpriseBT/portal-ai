@@ -572,7 +572,7 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
   },
   "PATCH /api/organization/{id}": {
     kind: "authorized",
-    by: "caller's org + class resource.write station for the default station, station readable (#685)",
+    by: "caller's org; name → org.write (#907); defaultStationId → class resource.write station + readable station in org (#685)",
     locks: { none: "org settings; no job reads or writes them" },
   },
   "PATCH /api/portal-results/{id}": {
