@@ -80,6 +80,18 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -rf /tmp/helm.tgz "/tmp/linux-${ARCH}" \
     && helm version --short
 
+# Install kubectl (#946) to drive a Kubernetes cluster that runs OUTSIDE this
+# container: the local mock client install targets Docker Desktop's built-in
+# cluster on the host. Client only; keep it within one minor of that cluster.
+# Release binary from dl.k8s.io, verified against its published sha256.
+ARG KUBECTL_VERSION=1.37.2
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -o /tmp/kubectl \
+    && echo "$(curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl.sha256")  /tmp/kubectl" | sha256sum --check \
+    && install -m 0755 /tmp/kubectl /usr/local/bin/kubectl \
+    && rm /tmp/kubectl \
+    && kubectl version --client
+
 # Install Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
