@@ -21,7 +21,7 @@ Run **Preflight** once. Each section then starts from a fresh org (Fixtures). Ta
 
 ### Reset between runs
 
-- [ ] Each section uses its own org. Afterwards cancel its subscriptions (`stripe subscriptions cancel <sub>`) and delete it (`npx portalai org delete <orgId> --env local --yes`). Switch back to your main org at the end. — backend
+- [ ] Each section uses its own org. Afterwards cancel its subscriptions (`stripe subscriptions cancel <sub> --confirm`) and delete it (`npx portalai org delete <orgId> --env local --yes`). Switch back to your main org at the end. — backend
 
 ## §1 — The checkout return confirms the plan without the webhook (webhook down)
 
@@ -63,7 +63,7 @@ Fresh org with a customer (Subscribe → close Checkout unpaid, as in §3).
 - [ ] Create an unpaid subscription: `stripe subscriptions create --customer <cus> -d "items[0][price]=<plus price id>" -d payment_behavior=default_incomplete` (status `incomplete`). — backend
 - [ ] `$Q`: `stripe_subscription_id` is still empty — an unpaid subscription is never tracked (with the webhook up too, its `created` event records `noop`). — backend
 - [ ] Open `/settings?tab=billing&billing=success`. Expected: an info alert "Your payment is being processed — this page updates when it completes. Reload to check again."; every **Subscribe** button is greyed, and hovering one shows "Your payment is being processed"; plan unchanged (**Standard**).
-- [ ] Cancel it (`stripe subscriptions cancel <sub>`), then `npx portalai org set-tier <orgId> enterprise --env local --yes`. Open `/settings?tab=billing&billing=success` again. Expected: an info toast "Stripe hasn't confirmed a subscription yet — if you paid, reload this page in a minute"; no processing alert; `$Q` still shows `tier = enterprise` (sync didn't reset it). — backend + browser
+- [ ] Cancel it (`stripe subscriptions cancel <sub> --confirm`), then `npx portalai org set-tier <orgId> enterprise --env local --yes`. Open `/settings?tab=billing&billing=success` again. Expected: an info toast "Stripe hasn't confirmed a subscription yet — if you paid, reload this page in a minute"; no processing alert; `$Q` still shows `tier = enterprise` (sync didn't reset it). — backend + browser
 
 ## §6 — Duplicates: the webhook follows the live one; delete cancels all (webhook up)
 
@@ -72,7 +72,7 @@ Fresh org; start `stripe listen` per Preflight.
 - [ ] Subscribe on Plus and pay (`4242…`). Expected: plan **Plus**; `stripe_subscription_id = <subA>`. — manual
 - [ ] Create a duplicate on the same customer, paid with the same card: `PM=$(stripe subscriptions retrieve <subA> | jq -r .default_payment_method)` then `stripe subscriptions create --customer <cus> -d "items[0][price]=<plus price id>" -d default_payment_method=$PM` → `<subB>`, `active`. — backend
 - [ ] Expected: the API log has "Customer has more than one live Stripe subscription — cancel the extra one in Stripe"; the newest `commercial_events` row has `outcome = duplicate_subscription`; `<subB>` is **not** cancelled. — backend
-- [ ] `stripe subscriptions cancel <subA>`. Expected: plan stays **Plus**; `$Q` shows `stripe_subscription_id = <subB>`. — backend + browser
+- [ ] `stripe subscriptions cancel <subA> --confirm`. Expected: plan stays **Plus**; `$Q` shows `stripe_subscription_id = <subB>`. — backend + browser
 - [ ] Create one more duplicate (`<subC>`, same command), then delete the org from Settings → Danger zone (type the org name, confirm).
 - [ ] Expected: `stripe subscriptions list --customer <cus> --status all` shows `<subB>` and `<subC>` both `canceled`; the API log has "Cancelled Stripe subscription during organization delete" twice. — backend
 
