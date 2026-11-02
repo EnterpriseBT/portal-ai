@@ -12,7 +12,10 @@
 import type Stripe from "stripe";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { CommercialEventModelFactory } from "@portalai/core/models";
-import type { BillingTier } from "@portalai/core/contracts";
+import type {
+  BillingSyncResponse,
+  BillingTier,
+} from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
 import { TierService } from "./tier.service.js";
@@ -204,8 +207,9 @@ export class BillingService {
   /**
    * #939: converge an org from its customer's current subscriptions. The
    * caller supplies how its ledger row is identified (`row`): a webhook keys
-   * it on the Stripe event, a sync on its own id. Builds the resolution only;
-   * {@link TierGrantService.applyResolution} writes it.
+   * it on the Stripe event, a sync on its own id. A caller that already
+   * listed the customer's `subscriptions` passes them. Builds the resolution
+   * only; the caller writes it.
    */
   static async resolveCustomer(
     org: Pick<
@@ -214,9 +218,10 @@ export class BillingService {
     >,
     customerId: string,
     fallback: Stripe.Subscription | null,
-    row: (fields: EventRowFields) => EventRow
+    row: (fields: EventRowFields) => EventRow,
+    subscriptions?: Stripe.Subscription[]
   ): Promise<GrantResolution & { outcome: "grant" }> {
-    const subscriptions = await StripeService.listSubscriptions(customerId);
+    subscriptions ??= await StripeService.listSubscriptions(customerId);
     const { basis, governingCount } =
       BillingService.selectGoverningSubscription(
         subscriptions,
@@ -281,6 +286,100 @@ export class BillingService {
             : "noop",
       }),
     };
+  }
+
+  /**
+   * #939: `POST /api/billing/sync` — converge the caller's org from Stripe
+   * now, instead of waiting for a webhook that may be late or failing. The
+   * checkout return page calls it. Stripe is read before the org row is
+   * locked, so the lock never waits on Stripe; the plan is then derived from
+   * the locked row, and a change writes a `billing.sync` ledger row with it.
+   */
+  static async syncFromStripe(
+    org: OrganizationSelect,
+    caller: PermissionContext
+  ): Promise<BillingSyncResponse> {
+    if (!StripeService.isConfigured()) {
+      throw new ApiError(
+        503,
+        ApiCode.BILLING_NOT_CONFIGURED,
+        "Billing is not configured in this environment"
+      );
+    }
+    await PermissionService.check(caller, "billing.manage");
+    const customerId = org.stripeCustomerId;
+    if (!customerId) return { tier: org.tier, subscription: "none" };
+
+    let subscriptions: Stripe.Subscription[];
+    try {
+      subscriptions = await StripeService.listSubscriptions(customerId);
+    } catch (err) {
+      logger.error(
+        { err, organizationId: org.id },
+        "Stripe subscription list failed during billing sync"
+      );
+      throw new ApiError(
+        502,
+        ApiCode.BILLING_SYNC_FAILED,
+        "Could not reach Stripe — your plan will update shortly"
+      );
+    }
+
+    const tier = await DbService.transaction(async (tx) => {
+      const locked =
+        (await DbService.repository.organizations.findByIdForUpdate(
+          org.id,
+          tx
+        )) ?? org;
+      const resolution = await BillingService.resolveCustomer(
+        locked,
+        customerId,
+        null,
+        BillingService.syncRow,
+        subscriptions
+      );
+      if (!resolution.changed) return locked.tier;
+      await DbService.repository.commercialEvents.insertIfNew(
+        resolution.eventRow,
+        tx
+      );
+      await DbService.repository.organizations.update(
+        org.id,
+        resolution.orgUpdate,
+        tx
+      );
+      logger.info(
+        { organizationId: org.id, tier: resolution.orgUpdate.tier },
+        "Billing sync converged the organization's plan from Stripe"
+      );
+      return resolution.orgUpdate.tier as string;
+    });
+
+    const subscription = subscriptions.some((sub) =>
+      GOVERNING_SUBSCRIPTION_STATUSES.has(sub.status)
+    )
+      ? "live"
+      : subscriptions.some((sub) =>
+            BLOCKING_SUBSCRIPTION_STATUSES.has(sub.status)
+          )
+        ? "pending"
+        : "none";
+    return { tier, subscription };
+  }
+
+  /** #939: a pull convergence's ledger row. It has no Stripe event, so it
+   *  gets its own id; it's written only when it changes the org, under the
+   *  org row lock, so there is nothing to dedupe. */
+  static syncRow(fields: EventRowFields): EventRow {
+    return new CommercialEventModelFactory()
+      .create(SystemUtilities.id.system)
+      .update({
+        source: "stripe",
+        externalId: `sync:${SystemUtilities.id.v4.generate()}`,
+        type: "billing.sync",
+        ...fields,
+      })
+      .parse();
   }
 
   /**

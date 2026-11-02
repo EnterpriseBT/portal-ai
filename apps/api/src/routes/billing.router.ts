@@ -19,6 +19,8 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   BillingCheckoutRequestSchema,
   BillingPortalRequestSchema,
+  BillingSyncRequestSchema,
+  type BillingSyncResponse,
   type BillingTiersGetResponse,
   type BillingCheckoutResponse,
   type BillingPortalResponse,
@@ -133,8 +135,12 @@ billingRouter.get(
  *       Guards in order: billing configured (503), caller is the org owner
  *       (403), org not already subscribed (409), org not on a managed custom
  *       tier (409), tier exists and is listed (404), tier carries a Stripe
- *       price (400). The org's Stripe customer is created lazily on first
- *       checkout. The webhook — never this redirect — writes the tier.
+ *       price (400). Then, one checkout at a time per organization: a
+ *       subscription Stripe lists for the customer that the webhook hasn't
+ *       recorded yet also refuses (409), and the customer's other open
+ *       Checkout sessions are expired. The org's Stripe customer is created
+ *       lazily on first checkout. The webhook, or `POST /api/billing/sync`
+ *       on return, writes the tier — never this redirect.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -198,6 +204,86 @@ billingRouter.post(
               502,
               ApiCode.BILLING_CHECKOUT_FAILED,
               "Could not start checkout — please try again"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/billing/sync:
+ *   post:
+ *     tags:
+ *       - Billing
+ *     summary: Converge the organization's plan from Stripe now
+ *     description: >
+ *       Reads the organization's Stripe subscriptions and applies the plan
+ *       they amount to, without waiting for the subscription webhook. The
+ *       checkout return page calls it. `subscription` is `live` when one
+ *       governs the plan, `pending` when only ones that block a new checkout
+ *       without granting a plan exist (a payment still processing), and
+ *       `none` otherwise. An organization with no Stripe customer answers
+ *       `none` without calling Stripe. Needs `billing.manage`.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BillingSyncRequest'
+ *     responses:
+ *       200:
+ *         description: The organization's plan after converging
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BillingSyncResponse'
+ *       400:
+ *         description: The body carried a key (BILLING_INVALID_PAYLOAD)
+ *       401:
+ *         description: Unauthenticated
+ *       403:
+ *         description: The caller lacks permission to manage billing (PERMISSION_DENIED)
+ *       502:
+ *         description: Stripe couldn't be reached (BILLING_SYNC_FAILED)
+ *       503:
+ *         description: Billing not configured in this environment
+ */
+billingRouter.post(
+  "/sync",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = BillingSyncRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          invalidPayload(
+            ApiCode.BILLING_INVALID_PAYLOAD,
+            "Invalid billing sync payload",
+            parsed.error
+          )
+        );
+      }
+      const { user, organization, roles } = await resolveCallerOrg(req);
+      const result = await BillingService.syncFromStripe(organization, {
+        userId: user.id,
+        organizationId: organization.id,
+        roles,
+      });
+      return HttpService.success<BillingSyncResponse>(res, result);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to sync billing from Stripe"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              502,
+              ApiCode.BILLING_SYNC_FAILED,
+              "Could not reach Stripe — your plan will update shortly"
             )
       );
     }

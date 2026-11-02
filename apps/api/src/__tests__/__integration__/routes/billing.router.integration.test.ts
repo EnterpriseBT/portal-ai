@@ -444,6 +444,95 @@ describe("Billing router", () => {
     });
   });
 
+  // ── #939: POST /api/billing/sync ────────────────────────────────────
+  describe("POST /api/billing/sync", () => {
+    let listSpy!: ReturnType<typeof jest.spyOn>;
+
+    beforeEach(async () => {
+      await db
+        .update(schema.organizations)
+        .set({ stripeCustomerId: "cus_sync_939" })
+        .where(eq(schema.organizations.id, orgId));
+      listSpy = jest
+        .spyOn(StripeService, "listSubscriptions")
+        .mockResolvedValue([
+          {
+            id: "sub_sync_939",
+            status: "active",
+            created: 100,
+            billing_cycle_anchor: Date.UTC(2026, 6, 15) / 1000,
+            items: { data: [{ price: { id: "price_billing_pro" } }] },
+          } as never,
+        ]);
+    });
+
+    afterEach(async () => {
+      listSpy.mockRestore();
+      // The sync moved the org onto the test tier, which the outer teardown
+      // deletes; put it back and drop the ledger rows that name the org.
+      await db
+        .delete(schema.commercialEvents)
+        .where(eq(schema.commercialEvents.organizationId, orgId));
+      await db
+        .update(schema.organizations)
+        .set({ tier: "standard", stripeSubscriptionId: null })
+        .where(eq(schema.organizations.id, orgId));
+    });
+
+    async function syncRows() {
+      return db
+        .select()
+        .from(schema.commercialEvents)
+        .where(eq(schema.commercialEvents.organizationId, orgId));
+    }
+
+    it("converges a paid plan the webhook never delivered, and records it once", async () => {
+      const res = await request(app).post("/api/billing/sync");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload).toEqual({
+        tier: PRO_SLUG,
+        subscription: "live",
+      });
+      const [org] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, orgId));
+      expect(org.tier).toBe(PRO_SLUG);
+      expect(org.stripeSubscriptionId).toBe("sub_sync_939");
+      expect(org.billingAnchorDay).toBe(15);
+      let rows = await syncRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].type).toBe("billing.sync");
+      expect(rows[0].outcome).toBe("applied");
+
+      // Nothing changed since, so a repeat records nothing.
+      const again = await request(app).post("/api/billing/sync").send({});
+      expect(again.status).toBe(200);
+      rows = await syncRows();
+      expect(rows).toHaveLength(1);
+    });
+
+    it("400s a body with a key", async () => {
+      const res = await request(app)
+        .post("/api/billing/sync")
+        .send({ tier: PRO_SLUG });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.BILLING_INVALID_PAYLOAD);
+    });
+
+    it("403s a member without billing.manage, and changes nothing", async () => {
+      currentAuth0Id = MEMBER_AUTH0;
+
+      const res = await request(app).post("/api/billing/sync");
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.PERMISSION_DENIED);
+      expect(listSpy).not.toHaveBeenCalled();
+    });
+  });
+
   // ── #260: in-app plan switch via the portal ─────────────────────────
   describe("POST /api/billing/portal — switch flow", () => {
     let portalSpy!: ReturnType<typeof jest.spyOn>;

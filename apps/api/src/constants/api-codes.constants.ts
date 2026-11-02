@@ -157,6 +157,8 @@ export enum ApiCode {
   BILLING_CHECKOUT_FAILED = "BILLING_CHECKOUT_FAILED",
   /** Stripe portal-session call failed. 502. */
   BILLING_PORTAL_FAILED = "BILLING_PORTAL_FAILED",
+  /** A billing sync couldn't read the customer's subscriptions from Stripe (#939). 502. */
+  BILLING_SYNC_FAILED = "BILLING_SYNC_FAILED",
 
   // AWS Marketplace entitlement rail (#568)
   /** The marketplace webhook was hit but the rail isn't configured. 404. */

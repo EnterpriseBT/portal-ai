@@ -605,6 +605,11 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     by: "BillingService billing.manage",
     locks: { none: "billing; no job reads or writes it" },
   },
+  "POST /api/billing/sync": {
+    kind: "authorized",
+    by: "BillingService billing.manage",
+    locks: { none: "billing; no job reads or writes it" },
+  },
   "POST /api/column-definitions": {
     kind: "authorized",
     by: "class resource.write column_definition (owner/admin) (#685)",

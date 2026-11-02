@@ -22,6 +22,7 @@ import { JobLockService } from "./job-lock.service.js";
 import { JobsService } from "./jobs.service.js";
 import { S3Service } from "./s3.service.js";
 import { StripeService } from "./stripe.service.js";
+import { BLOCKING_SUBSCRIPTION_STATUSES } from "./billing.service.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -84,6 +85,7 @@ export class OrganizationDeleteService {
     await OrganizationDeleteService.cleanupS3(organizationId, s3Keys);
     await OrganizationDeleteService.cancelStripeSubscription(
       organizationId,
+      org?.stripeCustomerId ?? null,
       org?.stripeSubscriptionId ?? null
     );
 
@@ -311,31 +313,56 @@ export class OrganizationDeleteService {
 
   /**
    * Post-commit, best-effort (#176 Q4): cancel the org's live Stripe
-   * subscription immediately so a deleted org stops billing. Like the S3
+   * subscriptions (every one on the customer since #939) immediately so a
+   * deleted org stops billing. Like the S3
    * cleanup, a Stripe outage never blocks deletion — failure logs a warn
    * with the ids for manual reconciliation. The tombstoned row keeps both
    * Stripe ids.
    */
   private static async cancelStripeSubscription(
     organizationId: string,
+    stripeCustomerId: string | null,
     stripeSubscriptionId: string | null
   ): Promise<void> {
-    if (!stripeSubscriptionId) return;
-    try {
-      await StripeService.cancelSubscription(stripeSubscriptionId);
-      logger.info(
-        { organizationId, stripeSubscriptionId },
-        "Cancelled Stripe subscription during organization delete"
-      );
-    } catch (error) {
-      logger.warn(
-        {
-          organizationId,
-          stripeSubscriptionId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        },
-        "Failed to cancel Stripe subscription during organization delete — reconcile manually"
-      );
+    // #939: a customer can carry more than the tracked subscription (a
+    // duplicate from a late webhook), and every one of them would keep
+    // billing a deleted org. Cancel all that can still bill; if Stripe can't
+    // list them, fall back to the tracked one.
+    let ids = stripeSubscriptionId ? [stripeSubscriptionId] : [];
+    if (stripeCustomerId) {
+      try {
+        ids = (await StripeService.listSubscriptions(stripeCustomerId))
+          .filter((sub) => BLOCKING_SUBSCRIPTION_STATUSES.has(sub.status))
+          .map((sub) => sub.id);
+      } catch (error) {
+        logger.warn(
+          {
+            organizationId,
+            stripeCustomerId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to list Stripe subscriptions during organization delete — cancelling the tracked one only"
+        );
+      }
+    }
+
+    for (const id of ids) {
+      try {
+        await StripeService.cancelSubscription(id);
+        logger.info(
+          { organizationId, stripeSubscriptionId: id },
+          "Cancelled Stripe subscription during organization delete"
+        );
+      } catch (error) {
+        logger.warn(
+          {
+            organizationId,
+            stripeSubscriptionId: id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to cancel Stripe subscription during organization delete — reconcile manually"
+        );
+      }
     }
   }
 

@@ -45,6 +45,7 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
 
 const mockFindBySlug =
   jest.fn<(slug: string) => Promise<Record<string, unknown> | undefined>>();
+const mockPriceIndex = jest.fn<() => Promise<Map<string, string>>>();
 const mockFindSelectableForOrg =
   jest.fn<(orgId: string) => Promise<Record<string, unknown>[]>>();
 // #939: checkout re-reads the org and stores a new customer id with a
@@ -56,6 +57,13 @@ const mockOrgFindById =
 const mockOrgUpdateWhere =
   jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>[]>>();
 const mockExecute = jest.fn<(query: unknown) => Promise<unknown>>();
+// #939: the sync locks the org row, then writes the plan and a ledger row.
+const mockOrgFindByIdForUpdate =
+  jest.fn<
+    (...args: unknown[]) => Promise<Record<string, unknown> | undefined>
+  >();
+const mockOrgUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockInsertIfNew = jest.fn<(...args: unknown[]) => Promise<boolean>>();
 const TX = { execute: mockExecute };
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -63,11 +71,15 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       organizations: {
         findById: mockOrgFindById,
+        findByIdForUpdate: mockOrgFindByIdForUpdate,
+        update: mockOrgUpdate,
         updateWhere: mockOrgUpdateWhere,
       },
+      commercialEvents: { insertIfNew: mockInsertIfNew },
       tiers: {
         findBySlug: mockFindBySlug,
         findSelectableForOrg: mockFindSelectableForOrg,
+        priceIndex: mockPriceIndex,
       },
     },
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
@@ -105,6 +117,8 @@ jest.unstable_mockModule("../../environment.js", () => ({
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
     CORS_ORIGIN: ["http://app.test"],
+    // #939: the sync's ledger row is created by the system actor.
+    SYSTEM_ID: "system-test",
   },
 }));
 
@@ -199,6 +213,10 @@ beforeEach(() => {
   mockOrgFindById.mockReset().mockResolvedValue(undefined);
   mockOrgUpdateWhere.mockReset().mockResolvedValue([{ name: "Acme Corp" }]);
   mockExecute.mockReset().mockResolvedValue([]);
+  mockOrgFindByIdForUpdate.mockReset().mockResolvedValue(undefined);
+  mockOrgUpdate.mockReset().mockResolvedValue({});
+  mockInsertIfNew.mockReset().mockResolvedValue(true);
+  mockPriceIndex.mockReset().mockResolvedValue(new Map([["price_pro", "pro"]]));
   mockListSubscriptions.mockReset().mockResolvedValue([]);
   mockListOpenCheckoutSessions.mockReset().mockResolvedValue([]);
   mockExpireCheckoutSession.mockReset().mockResolvedValue(true);
@@ -523,6 +541,124 @@ describe("BillingService.createCheckout happy path", () => {
         "pro"
       )
     ).rejects.toMatchObject({ status: 502, code: "BILLING_CHECKOUT_FAILED" });
+  });
+});
+
+// ── #939: POST /api/billing/sync ─────────────────────────────────────
+
+describe("BillingService.syncFromStripe", () => {
+  const liveSub = (overrides: Record<string, unknown> = {}) => ({
+    id: "sub_paid",
+    status: "active",
+    created: 100,
+    billing_cycle_anchor: Date.UTC(2026, 6, 15) / 1000,
+    items: { data: [{ price: { id: "price_pro" } }] },
+    ...overrides,
+  });
+
+  it("503 when unconfigured, 403 without billing.manage", async () => {
+    mockIsConfigured.mockReturnValue(false);
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), OWNER)
+    ).rejects.toMatchObject({ status: 503 });
+    mockIsConfigured.mockReturnValue(true);
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), MEMBER)
+    ).rejects.toMatchObject({ status: 403, code: "PERMISSION_DENIED" });
+  });
+
+  it("no customer → none, without calling Stripe", async () => {
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), OWNER)
+    ).resolves.toEqual({ tier: "standard", subscription: "none" });
+    expect(mockListSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("live: a paid subscription the webhook never recorded converges the plan", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub()]);
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "pro", subscription: "live" });
+    expect(mockOrgFindByIdForUpdate).toHaveBeenCalledWith("org-1", TX);
+    expect(mockOrgUpdate).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        tier: "pro",
+        stripeSubscriptionId: "sub_paid",
+      }),
+      TX
+    );
+    expect(mockInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "stripe",
+        type: "billing.sync",
+        externalId: expect.stringMatching(/^sync:/),
+        outcome: "applied",
+        resultingTier: "pro",
+      }),
+      TX
+    );
+  });
+
+  it("an org already converged writes nothing", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub()]);
+    mockOrgFindByIdForUpdate.mockResolvedValue(
+      orgFixture({
+        tier: "pro",
+        stripeCustomerId: "cus_1",
+        stripeSubscriptionId: "sub_paid",
+        billingAnchorDay: 15,
+      })
+    );
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "pro", subscription: "live" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).not.toHaveBeenCalled();
+  });
+
+  it("pending: an incomplete subscription grants nothing yet", async () => {
+    mockListSubscriptions.mockResolvedValue([
+      liveSub({ status: "incomplete" }),
+    ]);
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "standard", subscription: "pending" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("none: only ended subscriptions", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub({ status: "canceled" })]);
+
+    await expect(
+      BillingService.syncFromStripe(
+        orgFixture({ stripeCustomerId: "cus_1" }),
+        OWNER
+      )
+    ).resolves.toEqual({ tier: "standard", subscription: "none" });
+  });
+
+  it("502 BILLING_SYNC_FAILED when Stripe can't be read", async () => {
+    mockListSubscriptions.mockRejectedValue(new Error("stripe down"));
+
+    await expect(
+      BillingService.syncFromStripe(
+        orgFixture({ stripeCustomerId: "cus_1" }),
+        OWNER
+      )
+    ).rejects.toMatchObject({ status: 502, code: "BILLING_SYNC_FAILED" });
   });
 });
 
