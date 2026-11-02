@@ -16,7 +16,9 @@ metadata:
     # uses the separate migrate (pre-install) + seed (post-install) jobs.
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # Kept after success so its log (the UPGRADE COMPLETE signal) stays
+    # readable; the next upgrade replaces it.
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 6
   template:
@@ -41,11 +43,13 @@ spec:
           env:
             {{- . | nindent 12 }}
           {{- end }}
+          # The hook env (hook-env.yaml): the release's own ConfigMap/Secret
+          # still hold the previous release's values during pre-upgrade.
           envFrom:
             - configMapRef:
-                name: {{ include "portalai.fullname" . }}-config
+                name: {{ include "portalai.fullname" . }}-hook-config
             - secretRef:
-                name: {{ include "portalai.secretName" . }}
+                name: {{ include "portalai.hookSecretName" . }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
 {{- end }}

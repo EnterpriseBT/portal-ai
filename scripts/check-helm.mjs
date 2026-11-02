@@ -82,6 +82,20 @@ const BUNDLED_ISSUER_ARGS = [
  */
 const rejectScenarios = [
   {
+    // #946: the migrations write 'SYSTEM' as the system principal (0065,
+    // 0080), so any other id splits system ownership in two.
+    name: "a SYSTEM_ID other than the migrations' (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "config.SYSTEM_ID=other",
+    ],
+    error: /SYSTEM_ID/,
+  },
+  {
     name: "custom basemap without a style URL (#910)",
     args: [
       "template",
@@ -221,6 +235,37 @@ const images = (out) =>
 // The init container named `name` in one workload's manifest, if any.
 const hasInitContainer = (doc, name) =>
   /initContainers:/.test(doc) && doc.includes(`- name: ${name}\n`);
+
+// #946: the ConfigMap/Secret names a workload loads env from (envFrom).
+const envFromNames = (doc) =>
+  [...doc.matchAll(/(?:configMapRef|secretRef):\n\s+name: (\S+)/g)].map(
+    (m) => m[1]
+  );
+
+// #946: a manifest's body from `data:`/`stringData:` on, so two objects can be
+// compared on what they carry rather than their names and annotations.
+const dataOf = (doc) => doc.slice(doc.search(/^(?:data|stringData):$/m));
+
+// #946: a pre-install/pre-upgrade hook runs before Helm creates or updates the
+// release's own ConfigMap and Secret, so a hook job must load its env from
+// hook-scoped copies that exist, with this render's values, before it runs.
+const hookEnvIsCurrent = (out, secretName) => {
+  const cm = manifest(out, "ConfigMap", "p-portalai-hook-config");
+  const isEarlyHook = (doc) =>
+    doc.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
+    doc.includes('"helm.sh/hook-weight": "-10"');
+  const secretOk =
+    secretName === "p-portalai-hook-secret"
+      ? isEarlyHook(manifest(out, "Secret", secretName)) &&
+        dataOf(manifest(out, "Secret", secretName)) ===
+          dataOf(manifest(out, "Secret", "p-portalai-secret"))
+      : manifest(out, "Secret", "p-portalai-hook-secret") === "";
+  return (
+    isEarlyHook(cm) &&
+    dataOf(cm) === dataOf(manifest(out, "ConfigMap", "p-portalai-config")) &&
+    secretOk
+  );
+};
 
 const MIGRATION_USER_ARGS = [
   "--set",
@@ -452,6 +497,15 @@ const scenarios = [
         (out) => publicApiUrls(out).length === 0,
       ],
       [
+        // Found on the live install: without it the API creates no users
+        // (createdBy undefined), so every first sign-in answered 500.
+        "SYSTEM_ID is the migrations' system principal, once (#946)",
+        (out) => {
+          const ids = configValues(out, "SYSTEM_ID");
+          return ids.length === 1 && ids[0] === "SYSTEM";
+        },
+      ],
+      [
         "api reads env from ConfigMap + Secret",
         (out) =>
           out.includes("configMapRef:") && out.includes("secretRef:"),
@@ -588,6 +642,27 @@ const scenarios = [
         "bundled object storage: no public host, so the in-cluster endpoint",
         (out) =>
           out.includes('UPLOAD_S3_ENDPOINT: "http://p-portalai-s3:8333"'),
+      ],
+      [
+        // Found on the live install: a value added on upgrade (SYSTEM_ID)
+        // never reached the upgrade's seed, which read the previous release's
+        // ConfigMap.
+        "upgrade job reads hook env that carries this render's values (#946)",
+        (out) =>
+          hookEnvIsCurrent(out, "p-portalai-hook-secret") &&
+          envFromNames(manifest(out, "Job", "p-portalai-upgrade")).join() ===
+            "p-portalai-hook-config,p-portalai-hook-secret",
+      ],
+      [
+        // The README's upgrade signal is the job's log; deleting the job on
+        // success left nothing to read.
+        "hook jobs are kept after success, replaced on the next run (#946)",
+        (out) =>
+          ["p-portalai-upgrade", "p-portalai-seed"].every((job) =>
+            manifest(out, "Job", job).includes(
+              '"helm.sh/hook-delete-policy": before-hook-creation\n'
+            )
+          ),
       ],
       [
         "upgrade hook: pre-upgrade + db-upgrade command",
@@ -872,6 +947,30 @@ const scenarios = [
     ],
   },
   {
+    name: "existingSecret (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      "--set",
+      "existingSecret=operator-env",
+    ],
+    assertions: [
+      [
+        "hook jobs read the operator's Secret; no chart copy renders",
+        (out) =>
+          hookEnvIsCurrent(out, "operator-env") &&
+          ["p-portalai-migrate", "p-portalai-upgrade"].every(
+            (job) =>
+              envFromNames(manifest(out, "Job", job)).join() ===
+              "p-portalai-hook-config,operator-env"
+          ),
+      ],
+    ],
+  },
+  {
     name: "external (managed endpoints)",
     args: ["template", "p", CHART, ...IMAGE_ARGS, ...EXTERNAL_ARGS],
     assertions: [
@@ -907,6 +1006,18 @@ const scenarios = [
             )
           );
         },
+      ],
+      [
+        // The release's ConfigMap and Secret don't exist yet during
+        // pre-install, so the migrate hook can't load env from them.
+        "external DB: the pre-install migrate reads the hook env (#946)",
+        (out) =>
+          hookEnvIsCurrent(out, "p-portalai-hook-secret") &&
+          envFromNames(manifest(out, "Job", "p-portalai-migrate")).join() ===
+            "p-portalai-hook-config,p-portalai-hook-secret" &&
+          manifest(out, "Job", "p-portalai-migrate").includes(
+            '"helm.sh/hook-delete-policy": before-hook-creation\n'
+          ),
       ],
       [
         "external object storage: credentials are the operator's, not the chart's",
