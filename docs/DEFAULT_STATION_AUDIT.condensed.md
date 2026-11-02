@@ -41,12 +41,14 @@
 
 ## Smoke (manual, against your dev stack)
 
-1. As an owner, Settings → Organization: set a default station (none before), change it to another, then clear it. Settings → Activity shows three `org.update` lines, newest first: cleared (was "B"), changed from "A" to "B", set to "A", each with your name.
-2. Re-save the same station: no new line.
-3. Rename the org in the same session: the rename line is unchanged ("Renamed from … to …").
-4. Make station C the default, then delete C from Stations. Activity shows "Default station cleared (was "C")" by you; the org has no default.
-5. As a member without read on station B (not shared with them) but with `org.audit.read` (an admin, or a custom grant): Activity shows "B" by name; opening B from the Stations list isn't possible for them.
-6. As a member without `station.default.set`, `PATCH /api/organization/<org> {"defaultStationId":"<A>"}` → 403 and no Activity line.
+The default is set from **Stations → Set as default** (the star icon); there's no clear button, so clearing is `PATCH /api/organization/<org> {"defaultStationId": null}` (or deleting the default station). A new org starts with "My Station" as its default.
+
+1. As an owner with stations A and B: Set as default on A, then on B, then clear it through the API. Settings → Activity shows three `org.update` lines, newest first: `Default station cleared (was "B")`, `changed from "A" to "B"`, `set to "A"` (the first reads `changed from "My Station" to "A"` if My Station was still the default), each with your name.
+2. Re-save the current default (`PATCH … {"defaultStationId": "<current>"}`): no new line.
+3. Rename the org: its line still reads `Renamed from … to …`.
+4. Make station C the default, then delete C from Stations (trash icon → Delete). Activity shows `Default station cleared (was "C")` by you; the org has no default.
+5. As a member granted only audit read (`read audit`, e.g. a custom policy) and not shared stations A–C: Activity names A, B and C; their Stations list doesn't show them, and `GET /api/stations/<B>` answers 404.
+6. As a member without the default-station permission, `PATCH /api/organization/<org> {"defaultStationId":"<A>"}` → 403 and no Activity line.
 
 ## Out of scope
 
