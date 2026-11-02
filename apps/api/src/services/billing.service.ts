@@ -14,6 +14,7 @@ import { CommercialEventModelFactory } from "@portalai/core/models";
 import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
+import { OrganizationUpdateService } from "./organization-update.service.js";
 import { TierService } from "./tier.service.js";
 import { RebuildDispatchService } from "./rebuild-dispatch.service.js";
 import { ApiError } from "./http.service.js";
@@ -271,11 +272,19 @@ export class BillingService {
           name: org.name,
         });
         customerId = customer.id;
-        await DbService.repository.organizations.update(org.id, {
+        const stored = await DbService.repository.organizations.update(org.id, {
           stripeCustomerId: customerId,
           updated: Date.now(),
           updatedBy: caller.userId,
         });
+        // #938: a rename committed since `org` was read found no customer to
+        // sync. This UPDATE waits for a rename holding the row and returns the
+        // committed name, so a mismatch here is exactly that case; a rename
+        // committing after it sees the customer id and syncs itself. Best
+        // effort: the sync logs a failure and never throws.
+        if (stored && stored.name !== org.name) {
+          await OrganizationUpdateService.syncStripeCustomerName(org.id);
+        }
       }
 
       return await StripeService.createCheckoutSession({
