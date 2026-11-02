@@ -26,6 +26,7 @@ import { environment } from "../environment.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { OrganizationSelect } from "../db/schema/zod.js";
+import type { GrantResolution } from "./tier-grant.service.js";
 
 const logger = createLogger({ module: "billing-service" });
 
@@ -61,6 +62,41 @@ const TERMINAL_SUBSCRIPTION_STATUSES = new Set([
 
 /** The tier every org reverts to when its subscription ends. */
 const DEFAULT_TIER = "standard";
+
+/** #939: a subscription in any of these states refuses a new checkout —
+ *  everything but the two that can never bill again. */
+export const BLOCKING_SUBSCRIPTION_STATUSES: ReadonlySet<string> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "incomplete",
+  "unpaid",
+  "paused",
+]);
+
+/** #939: the states in which a subscription can govern the org's plan. */
+export const GOVERNING_SUBSCRIPTION_STATUSES: ReadonlySet<string> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+]);
+
+/** The fields a `commercial_events` row carries beyond its event identity. */
+export interface EventRowFields {
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  organizationId: string | null;
+  resultingTier: string | null;
+  outcome:
+    | "applied"
+    | "noop"
+    | "unmatched"
+    | "ignored"
+    | "foreign"
+    | "duplicate_subscription";
+}
+
+type EventRow = ReturnType<typeof BillingService.eventRow>;
 
 /** What the webhook writes to the org for a subscription state. */
 export interface DerivedTierState {
@@ -121,6 +157,126 @@ export class BillingService {
     // past_due (Stripe dunning owns grace) and any unrecognized status:
     // hold the line — keep the current tier and the anchor.
     return { tier: currentTier, subscriptionLive: true, anchorDay };
+  }
+
+  /**
+   * PURE (#939) — which of a customer's subscriptions governs the org's plan:
+   * the tracked one while its status governs, else the governing one created
+   * most recently. With none governing, the tracked subscription (or the
+   * `fallback`, the event's) is the basis, so its end reverts the plan
+   * exactly as before. A listed copy wins over the fallback, which is the
+   * same subscription read earlier. `governingCount` > 1 is a duplicate.
+   */
+  static selectGoverningSubscription(
+    subscriptions: Stripe.Subscription[],
+    trackedId: string | null,
+    fallback: Stripe.Subscription | null
+  ): { basis: Stripe.Subscription | null; governingCount: number } {
+    const governing = subscriptions.filter((sub) =>
+      GOVERNING_SUBSCRIPTION_STATUSES.has(sub.status)
+    );
+    const tracked = trackedId
+      ? (subscriptions.find((sub) => sub.id === trackedId) ??
+        (fallback?.id === trackedId ? fallback : undefined))
+      : undefined;
+
+    let basis: Stripe.Subscription | null;
+    if (tracked && GOVERNING_SUBSCRIPTION_STATUSES.has(tracked.status)) {
+      basis = tracked;
+    } else if (governing.length > 0) {
+      basis = governing.reduce((newest, sub) =>
+        sub.created > newest.created ? sub : newest
+      );
+    } else {
+      basis =
+        tracked ??
+        (fallback
+          ? (subscriptions.find((sub) => sub.id === fallback.id) ?? fallback)
+          : null);
+    }
+    return { basis, governingCount: governing.length };
+  }
+
+  /**
+   * #939: converge an org from its customer's current subscriptions. The
+   * caller supplies how its ledger row is identified (`row`): a webhook keys
+   * it on the Stripe event, a sync on its own id. Builds the resolution only;
+   * {@link TierGrantService.applyResolution} writes it.
+   */
+  static async resolveCustomer(
+    org: Pick<
+      OrganizationSelect,
+      "id" | "tier" | "stripeSubscriptionId" | "billingAnchorDay"
+    >,
+    customerId: string,
+    fallback: Stripe.Subscription | null,
+    row: (fields: EventRowFields) => EventRow
+  ): Promise<GrantResolution & { outcome: "grant" }> {
+    const subscriptions = await StripeService.listSubscriptions(customerId);
+    const { basis, governingCount } =
+      BillingService.selectGoverningSubscription(
+        subscriptions,
+        org.stripeSubscriptionId,
+        fallback
+      );
+
+    const derived: DerivedTierState = basis
+      ? BillingService.deriveTierFromSubscription(
+          {
+            status: basis.status,
+            priceId: basis.items.data[0]?.price?.id ?? null,
+            billingCycleAnchor: basis.billing_cycle_anchor,
+          },
+          await DbService.repository.tiers.priceIndex(),
+          org.tier
+        )
+      : { tier: DEFAULT_TIER, subscriptionLive: false, anchorDay: null };
+
+    const nextSubscriptionId =
+      basis && derived.subscriptionLive ? basis.id : null;
+    const changed =
+      org.tier !== derived.tier ||
+      org.stripeSubscriptionId !== nextSubscriptionId ||
+      org.billingAnchorDay !== derived.anchorDay;
+
+    const duplicate = governingCount > 1;
+    if (duplicate) {
+      logger.warn(
+        {
+          organizationId: org.id,
+          customerId,
+          governingSubscriptionId: basis?.id ?? null,
+          liveSubscriptionIds: subscriptions
+            .filter((sub) => GOVERNING_SUBSCRIPTION_STATUSES.has(sub.status))
+            .map((sub) => sub.id),
+        },
+        "Customer has more than one live Stripe subscription — cancel the extra one in Stripe"
+      );
+    }
+
+    return {
+      outcome: "grant",
+      organizationId: org.id,
+      changed,
+      orgUpdate: {
+        tier: derived.tier,
+        stripeSubscriptionId: nextSubscriptionId,
+        billingAnchorDay: derived.anchorDay,
+        updated: Date.now(),
+        updatedBy: SystemUtilities.id.system,
+      },
+      eventRow: row({
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: basis?.id ?? null,
+        organizationId: org.id,
+        resultingTier: changed ? derived.tier : null,
+        outcome: duplicate
+          ? "duplicate_subscription"
+          : changed
+            ? "applied"
+            : "noop",
+      }),
+    };
   }
 
   /**
@@ -424,22 +580,7 @@ export class BillingService {
    * `recordIgnoredEvent` does. The row is `source: "stripe"`, keyed on the
    * Stripe `event.id` as its `externalId`.
    */
-  static eventRow(
-    event: Stripe.Event,
-    fields: {
-      stripeCustomerId: string | null;
-      stripeSubscriptionId: string | null;
-      organizationId: string | null;
-      resultingTier: string | null;
-      outcome:
-        | "applied"
-        | "noop"
-        | "unmatched"
-        | "ignored"
-        | "foreign"
-        | "duplicate_subscription";
-    }
-  ) {
+  static eventRow(event: Stripe.Event, fields: EventRowFields) {
     return new CommercialEventModelFactory()
       .create(SystemUtilities.id.system)
       .update({

@@ -49,7 +49,8 @@ type OrgUpdate = Parameters<
  * What a source's `resolve` hands `apply` — a tagged union over the outcome:
  *
  * - `unmatched` — no org matches the event; record and resolve (never retry).
- * - `foreign` — the org tracks a different subscription (#230); record + skip.
+ * - `foreign` — the org tracks a different entitlement (#230; the marketplace
+ *   rail since #939 — Stripe converges per customer instead); record + skip.
  * - `grant` — a real grant: the org to write, whether anything `changed`, the
  *   column write, and the dedup row (built with the applied/noop outcome).
  */
@@ -87,8 +88,16 @@ export class TierGrantService {
     source: TierGrantSource<E>,
     event: E
   ): Promise<TierGrantOutcome> {
-    const resolution = await source.resolve(event);
+    return TierGrantService.applyResolution(await source.resolve(event));
+  }
 
+  /**
+   * The write half of {@link apply}, for a resolution built without an event
+   * (#939's sync). The dedup row and the org write still commit together.
+   */
+  static async applyResolution(
+    resolution: GrantResolution
+  ): Promise<TierGrantOutcome> {
     if (
       resolution.outcome === "unmatched" ||
       resolution.outcome === "foreign"
@@ -124,7 +133,8 @@ export class TierGrantService {
  * StripeGrantSource (#565) — the Stripe subscription webhook as a
  * {@link TierGrantSource}. Holds the Stripe-specific `resolve`: the D2
  * converge re-fetch (out-of-order delivery can't regress the tier), the
- * customer→org lookup, the #230 foreign-subscription guard, and the pure
+ * customer→org lookup, per-customer convergence (#939, which replaced the
+ * #230 foreign-subscription guard), and the pure
  * {@link BillingService.deriveTierFromSubscription} status table — untouched.
  */
 export class StripeGrantSource implements TierGrantSource<Stripe.Event> {
@@ -163,71 +173,13 @@ export class StripeGrantSource implements TierGrantSource<Stripe.Event> {
       };
     }
 
-    // Foreign-subscription guard (#230): once an org tracks a subscription,
-    // only events for THAT subscription may move its billing state. A customer
-    // with a second (orphan) subscription — e.g. a double-checkout before the
-    // first webhook lands — must not have the orphan's lifecycle clobber the
-    // tracked subscription (a terminal orphan event would otherwise clear the
-    // live subscription id + anchor and revert the tier). Record + skip. When
-    // nothing is tracked (null), the initial subscribe still adopts below.
-    if (org.stripeSubscriptionId && org.stripeSubscriptionId !== sub.id) {
-      logger.warn(
-        {
-          eventId: event.id,
-          organizationId: org.id,
-          trackedSubscriptionId: org.stripeSubscriptionId,
-          eventSubscriptionId: sub.id,
-        },
-        "Ignoring Stripe event for a foreign subscription (org tracks a different one)"
-      );
-      return {
-        outcome: "foreign",
-        eventRow: BillingService.eventRow(event, {
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          organizationId: org.id,
-          resultingTier: null,
-          outcome: "foreign",
-        }),
-      };
-    }
-
-    const priceIndex = await DbService.repository.tiers.priceIndex();
-    const derived = BillingService.deriveTierFromSubscription(
-      {
-        status: sub.status,
-        priceId: sub.items.data[0]?.price?.id ?? null,
-        billingCycleAnchor: sub.billing_cycle_anchor,
-      },
-      priceIndex,
-      org.tier
+    // #939: the event says when to converge, never what. The plan follows
+    // the customer's governing subscription, so a live duplicate is adopted
+    // when the tracked one ends instead of being skipped as foreign (#230's
+    // guard), and an ended duplicate can't clobber the tracked one.
+    return BillingService.resolveCustomer(org, customerId, sub, (fields) =>
+      BillingService.eventRow(event, fields)
     );
-
-    const nextSubscriptionId = derived.subscriptionLive ? sub.id : null;
-    const changed =
-      org.tier !== derived.tier ||
-      org.stripeSubscriptionId !== nextSubscriptionId ||
-      org.billingAnchorDay !== derived.anchorDay;
-
-    return {
-      outcome: "grant",
-      organizationId: org.id,
-      changed,
-      orgUpdate: {
-        tier: derived.tier,
-        stripeSubscriptionId: nextSubscriptionId,
-        billingAnchorDay: derived.anchorDay,
-        updated: Date.now(),
-        updatedBy: SystemUtilities.id.system,
-      },
-      eventRow: BillingService.eventRow(event, {
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: sub.id,
-        organizationId: org.id,
-        resultingTier: changed ? derived.tier : null,
-        outcome: changed ? "applied" : "noop",
-      }),
-    };
   }
 }
 

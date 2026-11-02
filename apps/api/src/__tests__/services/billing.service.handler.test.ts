@@ -13,8 +13,13 @@ import type Stripe from "stripe";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockFetchSubscription = jest.fn<(id: string) => Promise<unknown>>();
+const mockListSubscriptions =
+  jest.fn<(customerId: string) => Promise<unknown[]>>();
 jest.unstable_mockModule("../../services/stripe.service.js", () => ({
-  StripeService: { fetchSubscription: mockFetchSubscription },
+  StripeService: {
+    fetchSubscription: mockFetchSubscription,
+    listSubscriptions: mockListSubscriptions,
+  },
 }));
 
 const mockFindByStripeCustomerId =
@@ -79,6 +84,12 @@ function convergedSub(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mockFetchSubscription.mockReset().mockResolvedValue(convergedSub());
+  // #939: by default the customer has exactly the subscription the event
+  // re-fetched, so single-subscription cases converge as they always did.
+  mockListSubscriptions.mockReset().mockImplementation(async () => {
+    const last = mockFetchSubscription.mock.results.at(-1);
+    return last ? [await last.value] : [];
+  });
   mockFindByStripeCustomerId.mockReset().mockResolvedValue({ ...org });
   mockOrgUpdate.mockReset().mockResolvedValue({});
   mockPriceIndex.mockReset().mockResolvedValue(new Map([["price_pro", "pro"]]));
@@ -191,10 +202,11 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     );
   });
 
-  // ── Foreign-subscription guard (#230) ──────────────────────────────
-  // Once an org tracks a subscription, only events for THAT subscription
-  // may move its billing state; a second (orphan) subscription's lifecycle
-  // must not clobber it.
+  // ── Several subscriptions on one customer (#939) ───────────────────
+  // The event says when to converge, never what: the plan follows the
+  // customer's governing subscription (the tracked one while live, else the
+  // newest live one). #230's foreign guard skipped every other
+  // subscription's events, so a live duplicate was never adopted.
   const trackedOrg = {
     ...org,
     tier: "pro",
@@ -202,11 +214,15 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     billingAnchorDay: 15,
   };
 
-  it("foreign terminal: org tracks sub_1, a canceled sub_2 arrives — org untouched, outcome foreign", async () => {
+  it("an ended duplicate's event leaves the live tracked subscription in charge", async () => {
     mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
     mockFetchSubscription.mockResolvedValue(
-      convergedSub({ id: "sub_2", status: "canceled" })
+      convergedSub({ id: "sub_2", status: "canceled", created: 200 })
     );
+    mockListSubscriptions.mockResolvedValue([
+      convergedSub({ id: "sub_2", status: "canceled", created: 200 }),
+      convergedSub({ id: "sub_1", created: 100 }),
+    ]);
 
     const outcome = await TierGrantService.apply(
       new StripeGrantSource(),
@@ -216,43 +232,85 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
       })
     );
 
-    expect(outcome).toBe("foreign");
+    expect(outcome).toBe("noop");
+    expect(mockListSubscriptions).toHaveBeenCalledWith("cus_1");
     expect(mockOrgUpdate).not.toHaveBeenCalled();
-    // Skips before deriving — the tier price index is never consulted.
-    expect(mockPriceIndex).not.toHaveBeenCalled();
     expect(mockInsertIfNew).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: "stripe",
         externalId: "evt_1",
-        stripeSubscriptionId: "sub_2",
+        stripeSubscriptionId: "sub_1",
         organizationId: "org-1",
-        resultingTier: null,
-        outcome: "foreign",
-      })
+        outcome: "noop",
+      }),
+      TX
     );
   });
 
-  it("foreign active: org tracks sub_1, an active sub_2 arrives — not adopted, outcome foreign", async () => {
+  it("the tracked subscription ending while a duplicate is live adopts the duplicate", async () => {
     mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
     mockFetchSubscription.mockResolvedValue(
-      convergedSub({ id: "sub_2", status: "active" })
+      convergedSub({ id: "sub_1", status: "canceled", created: 100 })
     );
+    mockListSubscriptions.mockResolvedValue([
+      convergedSub({ id: "sub_2", created: 200 }),
+      convergedSub({ id: "sub_1", status: "canceled", created: 100 }),
+    ]);
 
     const outcome = await TierGrantService.apply(
       new StripeGrantSource(),
       subscriptionEvent({
-        data: { object: { id: "sub_2", customer: "cus_1" } },
+        type: "customer.subscription.deleted",
+        data: { object: { id: "sub_1", customer: "cus_1" } },
       })
     );
 
-    expect(outcome).toBe("foreign");
-    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(outcome).toBe("applied");
+    expect(mockOrgUpdate).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ tier: "pro", stripeSubscriptionId: "sub_2" }),
+      TX
+    );
   });
 
-  it("foreign redelivery: insertIfNew false → duplicate, still no org write", async () => {
+  it("two live subscriptions record duplicate_subscription", async () => {
     mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
-    mockFetchSubscription.mockResolvedValue(convergedSub({ id: "sub_2" }));
-    mockInsertIfNew.mockResolvedValue(false);
+    mockFetchSubscription.mockResolvedValue(
+      convergedSub({ id: "sub_2", created: 200 })
+    );
+    mockListSubscriptions.mockResolvedValue([
+      convergedSub({ id: "sub_2", created: 200 }),
+      convergedSub({ id: "sub_1", created: 100 }),
+    ]);
+
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent({
+        type: "customer.subscription.created",
+        data: { object: { id: "sub_2", customer: "cus_1" } },
+      })
+    );
+
+    // The plan already matches the tracked one, so nothing is written, but
+    // the row flags the customer for a person to cancel the extra one.
+    expect(outcome).toBe("noop");
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stripeSubscriptionId: "sub_1",
+        outcome: "duplicate_subscription",
+      }),
+      TX
+    );
+  });
+
+  it("a duplicate-flagged event that changes the plan still writes it", async () => {
+    mockFetchSubscription.mockResolvedValue(
+      convergedSub({ id: "sub_2", created: 200 })
+    );
+    mockListSubscriptions.mockResolvedValue([
+      convergedSub({ id: "sub_2", created: 200 }),
+      convergedSub({ id: "sub_1", created: 100 }),
+    ]);
 
     const outcome = await TierGrantService.apply(
       new StripeGrantSource(),
@@ -261,8 +319,19 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
       })
     );
 
-    expect(outcome).toBe("duplicate");
-    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(outcome).toBe("applied");
+    expect(mockOrgUpdate).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ tier: "pro", stripeSubscriptionId: "sub_2" }),
+      TX
+    );
+    expect(mockInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultingTier: "pro",
+        outcome: "duplicate_subscription",
+      }),
+      TX
+    );
   });
 
   it("adopts a differing subscription id when the org tracks none (null → adopt)", async () => {

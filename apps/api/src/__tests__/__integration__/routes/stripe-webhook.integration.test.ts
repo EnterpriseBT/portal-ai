@@ -97,6 +97,7 @@ describe("POST /api/webhooks/stripe", () => {
   let orgId: string;
   let userId: string;
   let fetchSpy: ReturnType<typeof jest.spyOn>;
+  let listSpy: ReturnType<typeof jest.spyOn>;
   const PRO_SLUG = "test-pro-int";
 
   beforeEach(async () => {
@@ -147,10 +148,19 @@ describe("POST /api/webhooks/stripe", () => {
     fetchSpy = jest
       .spyOn(StripeService, "fetchSubscription")
       .mockResolvedValue(convergedSub());
+    // #939: convergence reads the customer's subscriptions. By default the
+    // customer has exactly the one the event re-fetched.
+    listSpy = jest
+      .spyOn(StripeService, "listSubscriptions")
+      .mockImplementation(async () => {
+        const last = fetchSpy.mock.results.at(-1);
+        return last ? [(await last.value) as Stripe.Subscription] : [];
+      });
   });
 
   afterEach(async () => {
     fetchSpy.mockRestore();
+    listSpy.mockRestore();
     await db.delete(schema.commercialEvents);
     await teardownOrg(db);
     await db.delete(schema.tiers).where(eq(schema.tiers.slug, PRO_SLUG));
@@ -197,6 +207,42 @@ describe("POST /api/webhooks/stripe", () => {
     expect(rows[0].outcome).toBe("applied");
     expect(rows[0].organizationId).toBe(orgId);
     expect(rows[0].resultingTier).toBe(PRO_SLUG);
+  });
+
+  // #939: the tracked subscription ends while a duplicate is still live.
+  it("cancelling the tracked subscription with a live duplicate keeps the paid plan on the duplicate", async () => {
+    await db
+      .update(schema.organizations)
+      .set({
+        tier: PRO_SLUG,
+        stripeSubscriptionId: "sub_test_1",
+        billingAnchorDay: 15,
+      })
+      .where(eq(schema.organizations.id, orgId));
+    fetchSpy.mockResolvedValue(
+      convergedSub({ status: "canceled", created: 100 })
+    );
+    listSpy.mockResolvedValue([
+      convergedSub({ id: "sub_test_2", created: 200 }),
+      convergedSub({ status: "canceled", created: 100 }),
+    ]);
+    const payload = JSON.stringify(
+      eventPayload({ id: "evt_939", type: "customer.subscription.deleted" })
+    );
+
+    const res = await request(app)
+      .post("/api/webhooks/stripe")
+      .set("stripe-signature", signed(payload))
+      .set("content-type", "application/json")
+      .send(payload);
+
+    expect(res.status).toBe(200);
+    const org = await orgRow();
+    expect(org.tier).toBe(PRO_SLUG);
+    expect(org.stripeSubscriptionId).toBe("sub_test_2");
+    const rows = await eventRows("evt_939");
+    expect(rows[0].outcome).toBe("applied");
+    expect(rows[0].stripeSubscriptionId).toBe("sub_test_2");
   });
 
   // ── case 20 ─────────────────────────────────────────────────────────

@@ -13,6 +13,10 @@ const mockConstructEvent =
   jest.fn<(body: unknown, sig: string, secret: string) => unknown>();
 const mockSubscriptionsRetrieve = jest.fn<(id: string) => Promise<unknown>>();
 const mockSubscriptionsCancel = jest.fn<(id: string) => Promise<unknown>>();
+const mockSubscriptionsList = jest.fn<(args: unknown) => Promise<unknown>>();
+const mockCustomersDel = jest.fn<(id: string) => Promise<unknown>>();
+const mockCheckoutSessionsList = jest.fn<(args: unknown) => Promise<unknown>>();
+const mockCheckoutSessionsExpire = jest.fn<(id: string) => Promise<unknown>>();
 const mockCustomersCreate = jest.fn<(args: unknown) => Promise<unknown>>();
 const mockCustomersUpdate =
   jest.fn<(id: string, args: unknown) => Promise<unknown>>();
@@ -26,9 +30,20 @@ const mockStripeConstructor = jest.fn().mockImplementation(() => ({
   subscriptions: {
     retrieve: mockSubscriptionsRetrieve,
     cancel: mockSubscriptionsCancel,
+    list: mockSubscriptionsList,
   },
-  customers: { create: mockCustomersCreate, update: mockCustomersUpdate },
-  checkout: { sessions: { create: mockCheckoutSessionsCreate } },
+  customers: {
+    create: mockCustomersCreate,
+    update: mockCustomersUpdate,
+    del: mockCustomersDel,
+  },
+  checkout: {
+    sessions: {
+      create: mockCheckoutSessionsCreate,
+      list: mockCheckoutSessionsList,
+      expire: mockCheckoutSessionsExpire,
+    },
+  },
   billingPortal: { sessions: { create: mockPortalSessionsCreate } },
 }));
 
@@ -62,6 +77,10 @@ beforeEach(() => {
   mockCustomersUpdate.mockReset();
   mockCheckoutSessionsCreate.mockReset();
   mockPortalSessionsCreate.mockReset();
+  mockSubscriptionsList.mockReset();
+  mockCustomersDel.mockReset();
+  mockCheckoutSessionsList.mockReset();
+  mockCheckoutSessionsExpire.mockReset();
   env.STRIPE_SECRET_KEY = "sk_test_123";
   env.STRIPE_WEBHOOK_SECRET = "whsec_test_123";
   env.STRIPE_AUTOMATIC_TAX = true; // #217 default-on
@@ -295,5 +314,94 @@ describe("StripeService.createCheckoutSession — Stripe Tax (#217)", () => {
       customer: "cus_1",
       line_items: [{ price: "price_1", quantity: 1 }],
     });
+  });
+});
+
+// #939: checkout and convergence read the customer's current Stripe state.
+describe("StripeService customer subscription + session reads (#939)", () => {
+  it("listSubscriptions lists every status for the customer, one page of 100", async () => {
+    mockSubscriptionsList.mockResolvedValue({
+      data: [{ id: "sub_2" }, { id: "sub_1" }],
+    });
+
+    const subs = await StripeService.listSubscriptions("cus_1");
+
+    expect(mockSubscriptionsList).toHaveBeenCalledWith({
+      customer: "cus_1",
+      status: "all",
+      limit: 100,
+    });
+    expect(subs.map((sub) => sub.id)).toEqual(["sub_2", "sub_1"]);
+  });
+
+  it("listOpenCheckoutSessions returns the ids of the customer's open sessions", async () => {
+    mockCheckoutSessionsList.mockResolvedValue({
+      data: [{ id: "cs_a" }, { id: "cs_b" }],
+    });
+
+    const ids = await StripeService.listOpenCheckoutSessions("cus_1");
+
+    expect(mockCheckoutSessionsList).toHaveBeenCalledWith({
+      customer: "cus_1",
+      status: "open",
+      limit: 100,
+    });
+    expect(ids).toEqual(["cs_a", "cs_b"]);
+  });
+
+  it("expireCheckoutSession expires the session and reports true", async () => {
+    mockCheckoutSessionsExpire.mockResolvedValue({ id: "cs_a" });
+
+    await expect(StripeService.expireCheckoutSession("cs_a")).resolves.toBe(
+      true
+    );
+    expect(mockCheckoutSessionsExpire).toHaveBeenCalledWith("cs_a");
+  });
+
+  it("expireCheckoutSession reports false for a session that is no longer open", async () => {
+    mockCheckoutSessionsExpire.mockRejectedValue(
+      Object.assign(new Error("Only open sessions can be expired"), {
+        type: "StripeInvalidRequestError",
+        statusCode: 400,
+      })
+    );
+
+    await expect(StripeService.expireCheckoutSession("cs_a")).resolves.toBe(
+      false
+    );
+  });
+
+  it("expireCheckoutSession rethrows anything else", async () => {
+    mockCheckoutSessionsExpire.mockRejectedValue(new Error("network"));
+
+    await expect(StripeService.expireCheckoutSession("cs_a")).rejects.toThrow(
+      "network"
+    );
+  });
+
+  it("deleteCustomer deletes the customer", async () => {
+    mockCustomersDel.mockResolvedValue({ id: "cus_1", deleted: true });
+
+    await StripeService.deleteCustomer("cus_1");
+
+    expect(mockCustomersDel).toHaveBeenCalledWith("cus_1");
+  });
+
+  it("checkout sessions tag their subscription with the org id", async () => {
+    mockCheckoutSessionsCreate.mockResolvedValue({ url: "https://stripe/x" });
+
+    await StripeService.createCheckoutSession({
+      customerId: "cus_1",
+      priceId: "price_1",
+      successUrl: "https://app/s",
+      cancelUrl: "https://app/c",
+      organizationId: "org-1",
+    });
+
+    expect(mockCheckoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscription_data: { metadata: { organizationId: "org-1" } },
+      })
+    );
   });
 });
