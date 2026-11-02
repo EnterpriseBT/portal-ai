@@ -51,9 +51,12 @@ web:
       memory: 64Mi
     limits:
       memory: 256Mi
-  # nginx-unprivileged already runs as uid 101; just assert non-root.
+  # nginx-unprivileged runs as uid 101. Its USER is the name `nginx`, which
+  # runAsNonRoot can't verify, so the uid is given numerically.
   podSecurityContext:
     runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
   # Map basemap (#910), served to browsers through config.js.
   #   none    (default) no basemap: maps draw their data on a plain
   #           background and browsers fetch no map tiles at all.

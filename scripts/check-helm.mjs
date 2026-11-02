@@ -529,6 +529,23 @@ const scenarios = [
         },
       ],
       [
+        // Found on the live install: the wait runs as uid 1000, which has no
+        // passwd entry in the postgres image, so pg_isready without -U can't
+        // pick a user and never attempts a connection ("no attempt").
+        "bundled DB: the migrate wait names its user (#946)",
+        (out) =>
+          /pg_isready -U portalai /.test(
+            manifest(out, "Job", "p-portalai-migrate")
+          ),
+      ],
+      [
+        // Found on the live install: the image's USER is the name `nginx`,
+        // and runAsNonRoot refuses a non-numeric user it can't verify.
+        "web pod runs as a numeric non-root user (nginx-unprivileged's 101)",
+        (out) =>
+          /runAsUser: 101\n/.test(manifest(out, "Deployment", "p-portalai-web")),
+      ],
+      [
         "bundled DB: the API and the seed wait for the migrations (#946)",
         (out) =>
           hasInitContainer(

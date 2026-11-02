@@ -49,7 +49,9 @@ spec:
             - sh
             - -c
             - |
-              until pg_isready -h {{ include "portalai.depName" (dict "root" . "dep" "postgresql") }} -p 5432 -d {{ .Values.postgresql.auth.database }}; do
+              # -U: this runs as uid 1000, which the postgres image has no
+              # passwd entry for, so libpq can't default a user without it.
+              until pg_isready -U {{ .Values.postgresql.auth.username }} -h {{ include "portalai.depName" (dict "root" . "dep" "postgresql") }} -p 5432 -d {{ .Values.postgresql.auth.database }}; do
                 echo "waiting for the bundled database"; sleep 3
               done
           securityContext:
