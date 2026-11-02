@@ -353,6 +353,24 @@ describe("TierGrantService.apply (StripeGrantSource)", () => {
     );
   });
 
+  // #939: Stripe sends `created` for a subscription before its first payment.
+  it("an unpaid (incomplete) subscription isn't adopted — org untouched, noop", async () => {
+    mockFetchSubscription.mockResolvedValue(
+      convergedSub({ id: "sub_unpaid", status: "incomplete" })
+    );
+
+    const outcome = await TierGrantService.apply(
+      new StripeGrantSource(),
+      subscriptionEvent({
+        type: "customer.subscription.created",
+        data: { object: { id: "sub_unpaid", customer: "cus_1" } },
+      })
+    );
+
+    expect(outcome).toBe("noop");
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+  });
+
   it("unmatched: unknown customer records the outcome, org untouched, resolves (no throw)", async () => {
     mockFindByStripeCustomerId.mockResolvedValue(undefined);
 

@@ -130,6 +130,19 @@ describe("BillingService.deriveTierFromSubscription", () => {
     }
   );
 
+  // #939: an incomplete subscription is unpaid — Stripe creates it before the
+  // first payment and sends `created` straight away. Tracking it would show
+  // the org as subscribed (Switch/Manage) for a payment that may never come.
+  it("incomplete keeps the current tier and is not tracked", () => {
+    expect(
+      BillingService.deriveTierFromSubscription(
+        sub({ status: "incomplete" }),
+        priceIndex,
+        "standard"
+      )
+    ).toEqual({ tier: "standard", subscriptionLive: false, anchorDay: null });
+  });
+
   it("an unrecognized status keeps the current tier (never grants, never revokes)", () => {
     expect(
       BillingService.deriveTierFromSubscription(

@@ -125,8 +125,12 @@ export class BillingService {
    * - `past_due` → keep the paid tier; Stripe dunning owns the grace window.
    * - `canceled`/`unpaid`/`incomplete_expired` → revert to `standard`,
    *   clear subscription id + anchor.
-   * - Anything else (`incomplete`, `paused`, future statuses) → keep
-   *   `currentTier`; never grants, never revokes.
+   * - `incomplete` → keep `currentTier` and don't track it (#939): Stripe
+   *   creates it before the first payment, and tracking it would show the
+   *   org as subscribed for a payment that may never come. Its `updated`
+   *   event on payment adopts it then.
+   * - Anything else (`paused`, future statuses) → keep `currentTier`;
+   *   never grants, never revokes.
    *
    * The anchor day is the UTC day-of-month of `billingCycleAnchor`, clamped
    * to 28 so every period id exists in every month.
@@ -159,6 +163,10 @@ export class BillingService {
         "Live subscription carries an unmapped Stripe price; keeping the org's current tier"
       );
       return { tier: currentTier, subscriptionLive: true, anchorDay };
+    }
+
+    if (sub.status === "incomplete") {
+      return { tier: currentTier, subscriptionLive: false, anchorDay: null };
     }
 
     // past_due (Stripe dunning owns grace) and any unrecognized status:
