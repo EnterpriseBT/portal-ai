@@ -1,0 +1,186 @@
+{{- /*
+#946: the bundled OIDC issuer for residency installs with no customer IdP:
+the official Keycloak image, a single replica on its own file database, with
+one realm imported at start. The realm holds one public SPA client (PKCE)
+that allows the app's origin, the scopes the SPA asks for, and an audience
+mapper for the `aud` the API validates; oidc.* default from it
+(_helpers.tpl). --import-realm skips a realm that already exists, so an
+operator's changes in the admin console survive restarts and upgrades.
+*/ -}}
+{{- if .Values.bundledIssuer.enabled }}
+{{- $name := include "portalai.depName" (dict "root" . "dep" "keycloak") }}
+{{- $selector := include "portalai.selectorLabels" (dict "root" . "component" "keycloak") }}
+{{- $issuerUrl := include "portalai.bundledIssuerUrl" . }}
+{{- $origin := include "portalai.appOrigin" . }}
+{{- $kc := .Values.bundledIssuer }}
+{{- $client := dict
+  "clientId" $kc.clientId
+  "name" "Portals AI"
+  "enabled" true
+  "publicClient" true
+  "protocol" "openid-connect"
+  "standardFlowEnabled" true
+  "implicitFlowEnabled" false
+  "directAccessGrantsEnabled" false
+  "serviceAccountsEnabled" false
+  "redirectUris" (list $origin (printf "%s/*" $origin))
+  "webOrigins" (list $origin)
+  "attributes" (dict
+    "pkce.code.challenge.method" "S256"
+    "post.logout.redirect.uris" (printf "%s##%s/*" $origin $origin))
+  "defaultClientScopes" (list "basic" "web-origins" "acr" "profile" "roles" "email")
+  "optionalClientScopes" (list "offline_access" "address" "phone")
+  "protocolMappers" (list (dict
+    "name" "api-audience"
+    "protocol" "openid-connect"
+    "protocolMapper" "oidc-audience-mapper"
+    "config" (dict
+      "included.custom.audience" $kc.audience
+      "access.token.claim" "true"
+      "id.token.claim" "false"
+      "introspection.token.claim" "true")))
+}}
+{{- $realm := dict
+  "realm" $kc.realm
+  "enabled" true
+  "registrationAllowed" false
+  "loginWithEmailAllowed" true
+  "duplicateEmailsAllowed" false
+  "resetPasswordAllowed" false
+  "sslRequired" "external"
+  "clients" (list $client)
+}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+type: Opaque
+stringData:
+  admin-username: {{ $kc.admin.username | quote }}
+  admin-password: {{ include "portalai.keptSecretValue" (dict "root" . "secret" $name "key" "admin-password" "value" $kc.admin.password) | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-realm
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+data:
+  realm.json: |-
+    {{- $realm | toPrettyJson | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+spec:
+  selector:
+    {{- $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: keycloak
+    spec:
+      # The image's `keycloak` user is uid 1000.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: keycloak
+          image: "{{ $kc.image.repository }}:{{ $kc.image.tag }}"
+          imagePullPolicy: {{ $kc.image.pullPolicy }}
+          args:
+            - start
+            - --import-realm
+            # The issuer is the public URL: tokens carry it as `iss`, and the
+            # API fetches discovery and JWKS from it, so both sides use it.
+            - --hostname={{ trimSuffix (printf "/realms/%s" $kc.realm) $issuerUrl }}
+            - --http-enabled=true
+            - --http-port=8080
+            - --proxy-headers=xforwarded
+            # Evaluation-grade: Keycloak's own file database on the volume.
+            - --db=dev-file
+            - --health-enabled=true
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: admin-username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: admin-password
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 6
+          resources:
+            {{- toYaml $kc.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /opt/keycloak/data/h2
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: realm
+          configMap:
+            name: {{ $name }}-realm
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with $kc.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $kc.persistence.size }}
+{{- end }}

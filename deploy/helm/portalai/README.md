@@ -5,8 +5,13 @@ dependencies — as **one Helm release**, for the full-residency (self-hosted)
 deployment (#566). It is **additive**: the SaaS deployment (ECS + S3/CloudFront)
 is untouched.
 
-Data dependencies (PostgreSQL/PostGIS, Redis, MinIO) are **bundled by default**
-for evaluation and **disable-able to managed endpoints** for production.
+Data dependencies (PostgreSQL/PostGIS, Redis, S3-compatible object storage)
+are **bundled by default** for evaluation and **disable-able to managed
+endpoints** for production. The bundled deps are this chart's own single-replica
+StatefulSets on maintained upstream images (#946): `imresamu/postgis`,
+`redis`, `chrislusf/seaweedfs` (SeaweedFS, for S3) and, optionally,
+`quay.io/keycloak/keycloak` as the OIDC issuer. The chart has no subchart
+dependencies, so there is no `helm dependency build` step.
 
 ## Prerequisites
 
@@ -28,7 +33,6 @@ for evaluation and **disable-able to managed endpoints** for production.
 Bundled data deps (evaluation):
 
 ```bash
-helm dependency build deploy/helm/portalai
 helm install portalai deploy/helm/portalai \
   --set image.api.repository=<registry>/portalai-api --set image.api.tag=<tag> \
   --set image.web.repository=<registry>/portalai-web --set image.web.tag=<tag>
@@ -45,8 +49,8 @@ helm install portalai deploy/helm/portalai \
   --set postgresql.external.password=<db-password> \
   --set redis.enabled=false \
   --set redis.external.url=rediss://<redis-host>:6379 \
-  --set minio.enabled=false \
-  --set minio.external.endpoint=https://<s3-endpoint> \
+  --set objectStorage.enabled=false \
+  --set objectStorage.external.endpoint=https://<s3-endpoint> \
   -f my-secrets.yaml   # secrets: { ENCRYPTION_KEY: ..., ANTHROPIC_API_KEY: ..., ... }
 ```
 
@@ -70,30 +74,36 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `web.basemap.attribution` | `""` | Attribution shown for an XYZ template; a style JSON carries its own. |
 | `api.resources` / `web.resources` | see values | Resource requests/limits. |
 | `postgresql.enabled` | `true` | Bundle PostgreSQL (PostGIS image). `false` → use `postgresql.external`. |
-| `postgresql.image.*` | `imresamu/postgis:17-3.5` | Bundled DB image (PostGIS). |
-| `postgresql.auth.*` | `portalai` | Bundled DB user/password/database. |
+| `postgresql.image.*` | `imresamu/postgis:17-3.5` | Bundled DB image (PostGIS, arm64 + amd64). |
+| `postgresql.auth.username` / `.password` / `.database` | `portalai` | The bundled DB's app user, which owns the database. |
+| `postgresql.auth.postgresPassword` | `""` | The bundled DB's `postgres` superuser, used only by the migrate/upgrade jobs. Generated on first install and kept in the `<release>-portalai-postgresql` Secret unless set. |
+| `postgresql.persistence.size` / `redis.persistence.size` / `objectStorage.persistence.size` / `bundledIssuer.persistence.size` | `8Gi` / `8Gi` / `20Gi` / `1Gi` | Each bundled dep's volume; `.storageClass` picks its class. |
 | `postgresql.external.*` | `""` | Managed DB host/port/database/user/password. |
 | `postgresql.external.migrationUser` / `.migrationPassword` / `.migrationExistingSecret.{name,key}` | `""` / `""` / `""`,`password` | Optional privileged user for an external DB whose app user lacks CREATEROLE; used only to create the SQL reader role and grant it to the app user (#660). Only the migrate/upgrade jobs receive it. See *Restricted SQL reader role* below. |
-| `redis.enabled` | `true` | Bundle Redis (mandatory PVC). `false` → `redis.external.url`. |
+| `redis.enabled` | `true` | Bundle Redis 7.4 (append-only file on its volume: the durable BullMQ store). `false` → `redis.external.url`. |
 | `redis.external.url` | `""` | Managed Redis URL. `rediss://` connects over TLS (#852). |
 | `redis.external.tls.caSecret.{name,key}` | `""`,`ca.crt` | Secret holding a private CA's PEM for a `rediss://` URL; reaches the API as `REDIS_TLS_CA`. Leave empty when the cert chains to a public root. |
-| `redis.master.persistence.size` | `8Gi` | Redis PVC size (durable BullMQ store). |
-| `minio.enabled` | `true` | Bundle MinIO. `false` → `minio.external.*`. Full S3 wiring lands with #567. |
-| `migrate.enabled` | `true` | Run first-install migrations as a `pre-install` hook Job. |
+| `objectStorage.enabled` | `true` | Bundle SeaweedFS as the S3 store. `false` → `objectStorage.external.*`. |
+| `objectStorage.publicHost` | `""` | The object store's public hostname, served by the chart's ingress. **Uploads need it**: browsers PUT to presigned URLs, which carry this host. |
+| `objectStorage.bucket` | `portalai-uploads` | Bundled bucket, created by a post-install/post-upgrade Job. |
+| `objectStorage.auth.accessKey` / `.secretKey` | `portalai` / `""` | The app's S3 credentials, scoped to the bucket. The secret key is generated on first install and kept in the `<release>-portalai-s3` Secret unless set. |
+| `objectStorage.external.*` | see values | External S3 endpoint/region/bucket/path style. Credentials come from `secrets` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) or the pod's cloud identity. |
+| `migrate.enabled` | `true` | Run first-install migrations: a `pre-install` hook with an external DB; with the bundled DB, a Job that waits for it (the API and seed wait for its migrations). |
 | `seed.enabled` | `true` | Run first-install global seeds as a `post-install` hook Job. |
 | `upgrade.enabled` | `true` | On `helm upgrade`, run migrations + seeds as one advisory-locked `pre-upgrade` hook Job (`db:upgrade`). |
 | `ingress.enabled` | `false` | Route `/api` → API, `/` → web on `ingress.host`. |
 | `ingress.className` | `""` | IngressClass. |
 | `ingress.tls.enabled` / `.secretName` | `false` / `""` | TLS via a (cert-manager-issued) secret. |
-| `bundledIssuer.enabled` | `false` | Deploy a bundled Keycloak fallback OIDC issuer. |
+| `bundledIssuer.enabled` | `false` | Deploy Keycloak as the OIDC issuer, with a `portalai` realm and SPA client imported at start; `oidc.*` default from it (an explicit `oidc.*` value wins). Needs `ingress.enabled` + `ingress.host`. |
+| `bundledIssuer.host` | `""` | The issuer's public hostname, served by the chart's ingress. Browsers and the API pods must both resolve it. |
+| `bundledIssuer.realm` / `.clientId` / `.audience` | `portalai` / `portalai-web` / `portalai-api` | Realm, SPA client and the access token `aud` the API validates. |
+| `bundledIssuer.admin.username` / `.password` | `admin` / `""` | Keycloak's bootstrap admin. The password is generated on first install and kept in the `<release>-portalai-keycloak` Secret unless set. |
 
 ## Notes & caveats
 
-- **Bundled PostGIS is a smoke risk.** The Bitnami `postgresql` subchart is
-  built around a Bitnami image; the `imresamu/postgis` override uses the
-  official Postgres entrypoint/data-dir conventions, so `global.security.allowInsecureImages`
-  is set and runtime compatibility must be confirmed on a real cluster.
-  Production should use **managed PostGIS** (`postgresql.enabled=false`).
+- **Bundled deps are evaluation-grade** (single replica, no HA, no backups,
+  in-cluster). Production points at managed services through the
+  `enabled: false` toggles: managed PostGIS, Redis and S3.
 - **Upgrades run one job, with one signal (#581).** On `helm upgrade` the
   `upgrade` hook (`pre-upgrade`) runs `db:upgrade` — pending migrations + the
   idempotent global seed, under a session advisory lock so two concurrent passes
@@ -103,20 +113,23 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
   expand-only schema stays valid under the previous image. Migrations are
   forward-only — a mistake is undone by a new forward migration, never a
   down-migration. Set `upgrade.enabled=false` to fall back to migrate-only.
-- **Bundled-DB first install + migrate.** The first-install `migrate` hook is
-  `pre-install`; on a *first install with the bundled DB* the DB is created in
-  the main phase and is not reachable during `pre-install`. Either install
-  against an external DB, or set `migrate.enabled=false` and run the migration
-  once the bundled DB is up. The `pre-upgrade` path (DB already exists) is
-  unaffected. This is why production points at an external managed DB.
-- **Bundled deps are evaluation-grade** (non-HA, in-cluster). Production points
-  at external managed HA services via the `enabled: false` toggles.
+- **First install with the bundled DB.** The bundled DB is part of the
+  release, so it doesn't exist during `pre-install`. The migration therefore
+  runs as a plain Job that waits for the DB, and the API pods and the seed
+  hook wait for its migrations before they start. `helm install --wait` works
+  as usual. With an external DB the migration is a `pre-install` hook.
+- **Bundled issuer users.** The realm has no self-registration: create each
+  user in Keycloak's admin console (`https://<bundledIssuer.host>/admin/`, the
+  install notes print how to read the admin password) and mark the email
+  verified. Realm changes made there survive restarts and upgrades: the import
+  skips a realm that already exists.
 - **TLS.** With `ingress.tls.enabled=true`, provide `ingress.tls.secretName`.
   For cert-manager, add the issuer annotation via `ingress.annotations`
   (e.g. `cert-manager.io/cluster-issuer: letsencrypt`).
-- **Bitnami catalog.** Subchart versions are pinned and `Chart.lock` is
-  committed; `helm dependency build` fails loudly if a pinned chart is moved or
-  removed (Bitnami is restricting its free catalog).
+- **No Bitnami.** The chart used Bitnami subcharts until #946. Their pinned
+  images are gone from `docker.io/bitnami`, and MinIO no longer publishes
+  images, so the bundled deps moved to the chart's own templates. The
+  `minio.*` values are now `objectStorage.*`; the schema refuses `minio`.
 - **Restricted SQL reader role (#660).** Agent SQL runs under a NOLOGIN
   Postgres role (`PORTAL_SQL_READER_ROLE`, default `portalai_sql_reader`, set
   it through `config`) that can read only each session's own views. Migration
@@ -124,7 +137,7 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
   jobs use a privileged `MIGRATE_DATABASE_URL` (jobs only) **just to create
   the role and grant it to the app user**; the schema migrations still run as
   the app user, so it keeps owning every table:
-  - **Bundled DB:** the subchart's `postgres` superuser is used automatically.
+  - **Bundled DB:** its `postgres` superuser is used automatically.
   - **External DB:** set `postgresql.external.migrationUser` to a superuser
     or CREATEROLE user, with `migrationPassword` or
     `migrationExistingSecret`. The password reaches the job as its own

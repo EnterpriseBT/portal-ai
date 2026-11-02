@@ -21,10 +21,26 @@ Prefer `helm upgrade --atomic`: a failed upgrade then rolls the workloads back
 automatically (migrations are expand-only, so the schema stays valid).
 {{- end }}
 
-{{- if not .Values.ingress }}
+{{- if not .Values.ingress.enabled }}
 
 No ingress is defined yet. Reach the app by port-forwarding:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "portalai.fullname" . }}-web {{ .Values.web.port }}:{{ .Values.web.port }}
+{{- end }}
+
+{{- if .Values.bundledIssuer.enabled }}
+
+Sign-in goes through the bundled Keycloak at {{ include "portalai.oidcIssuer" . }}.
+Create users in its admin console (realm "{{ .Values.bundledIssuer.realm }}"; mark each email verified),
+signing in to {{ include "portalai.publicScheme" . }}://{{ .Values.bundledIssuer.host }}/admin/ as
+"{{ .Values.bundledIssuer.admin.username }}" with the password from:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "portalai.depName" (dict "root" . "dep" "keycloak") }} -o jsonpath='{.data.admin-password}' | base64 -d
+{{- end }}
+
+{{- if and .Values.objectStorage.enabled (not .Values.objectStorage.publicHost) }}
+
+File uploads need objectStorage.publicHost (empty here): browsers upload
+to the object store directly, and its in-cluster address isn't reachable from
+a browser. Set objectStorage.publicHost (served by the chart's ingress).
 {{- end }}
 
 {{- $ingressOrigin := and .Values.ingress.enabled .Values.ingress.host }}

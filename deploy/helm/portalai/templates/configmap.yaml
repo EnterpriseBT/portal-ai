@@ -9,21 +9,21 @@ data:
   # Web config.js selects the auth provider from AUTH_PROVIDER; default it from
   # the deploy mode so residency installs get OIDC without a second knob.
   AUTH_PROVIDER: {{ if eq .Values.deployMode "residency" }}"oidc"{{ else }}"auth0"{{ end }}
-  OIDC_ISSUER: {{ .Values.oidc.issuer | quote }}
-  OIDC_AUDIENCE: {{ .Values.oidc.audience | quote }}
-  OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  # oidc.* when set, else the bundled issuer's (#946).
+  OIDC_ISSUER: {{ include "portalai.oidcIssuer" . | quote }}
+  OIDC_AUDIENCE: {{ include "portalai.oidcAudience" . | quote }}
+  OIDC_CLIENT_ID: {{ include "portalai.oidcClientId" . | quote }}
   # Map basemap for the web config.js (#910); the chart defaults to none, so a
   # fresh install sends no tile traffic off the cluster.
   BASEMAP_MODE: {{ .Values.web.basemap.mode | quote }}
   BASEMAP_STYLE_URL: {{ .Values.web.basemap.styleUrl | quote }}
   BASEMAP_STYLE_URL_DARK: {{ .Values.web.basemap.styleUrlDark | quote }}
   BASEMAP_ATTRIBUTION: {{ .Values.web.basemap.attribution | quote }}
-  # S3/MinIO uploads. ENDPOINT + FORCE_PATH_STYLE are consumed once #567 lands;
-  # BUCKET/REGION are read today. Composed bundled-vs-external in _helpers.tpl.
+  # S3-compatible uploads (#567). Composed bundled-vs-external in _helpers.tpl.
   UPLOAD_S3_ENDPOINT: {{ include "portalai.s3Endpoint" . | quote }}
   UPLOAD_S3_BUCKET: {{ include "portalai.s3Bucket" . | quote }}
-  UPLOAD_S3_REGION: {{ if .Values.minio.enabled }}"us-east-1"{{ else }}{{ .Values.minio.external.region | quote }}{{ end }}
-  UPLOAD_S3_FORCE_PATH_STYLE: {{ if .Values.minio.enabled }}"true"{{ else }}{{ .Values.minio.external.forcePathStyle | quote }}{{ end }}
+  UPLOAD_S3_REGION: {{ if .Values.objectStorage.enabled }}"us-east-1"{{ else }}{{ .Values.objectStorage.external.region | quote }}{{ end }}
+  UPLOAD_S3_FORCE_PATH_STYLE: {{ if .Values.objectStorage.enabled }}"true"{{ else }}{{ .Values.objectStorage.external.forcePathStyle | quote }}{{ end }}
   # The public URLs default from the ingress host, where the app and /api
   # share one origin (#889, #891). WEB_APP_URL builds invite links;
   # PUBLIC_API_BASE_URL is where webhook runtimes call back. An explicit

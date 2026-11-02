@@ -1,0 +1,153 @@
+{{- /*
+#946: the bundled PostGIS database, a single-replica StatefulSet on the
+official postgres entrypoint (imresamu/postgis). Evaluation-grade: no HA, no
+backups. The `postgres` superuser is used only by the migrate/upgrade jobs
+(#660); the app connects as its own user, which owns the database. Production
+sets postgresql.enabled=false and points at managed PostGIS.
+*/ -}}
+{{- if .Values.postgresql.enabled }}
+{{- $name := include "portalai.depName" (dict "root" . "dep" "postgresql") }}
+{{- $selector := include "portalai.selectorLabels" (dict "root" . "component" "postgresql") }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+type: Opaque
+stringData:
+  postgres-password: {{ include "portalai.keptSecretValue" (dict "root" . "secret" $name "key" "postgres-password" "value" .Values.postgresql.auth.postgresPassword) | quote }}
+  password: {{ .Values.postgresql.auth.password | quote }}
+---
+# Runs once, on an empty data directory: the app user owns the database and
+# its public schema, and the extensions the migrations need already exist
+# (CREATE EXTENSION postgis needs a superuser; the app user can't).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+data:
+  10-app-user.sh: |
+    # Sourced by the image's entrypoint (no exec bit), which already runs
+    # with errexit; ON_ERROR_STOP makes a failed statement fail the init.
+    psql -v ON_ERROR_STOP=1 -v app_user="$APP_DB_USER" -v app_password="$APP_DB_PASSWORD" \
+      -v app_db="$POSTGRES_DB" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
+    CREATE ROLE :"app_user" LOGIN PASSWORD :'app_password';
+    ALTER DATABASE :"app_db" OWNER TO :"app_user";
+    ALTER SCHEMA public OWNER TO :"app_user";
+    CREATE EXTENSION IF NOT EXISTS postgis;
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  selector:
+    {{- $selector | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      # The image's `postgres` user (uid 999) owns the data directory.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: APP_DB_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: password
+            # A subdirectory, so the volume's own lost+found isn't in PGDATA.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -d \"$POSTGRES_DB\" -h 127.0.0.1"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U postgres -h 127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            # The entrypoint writes its socket here; the image's own dir is
+            # root-owned under a non-root pod.
+            - name: run
+              mountPath: /var/run/postgresql
+      volumes:
+        - name: init
+          configMap:
+            name: {{ $name }}-init
+        - name: run
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+{{- end }}

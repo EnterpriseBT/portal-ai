@@ -1,4 +1,17 @@
+{{- /*
+First-install schema only (#581). The `pre-upgrade` path is `upgrade-job.yaml`,
+which runs migrate + seed as one signalled operation.
+
+External DB: a `pre-install` hook, so the schema exists before the api pods.
+Bundled DB (#946): the DB is part of the release, so it doesn't exist during
+`pre-install`. The migration is then a plain Job, rendered on install only,
+that waits for the DB; the api pods and the seed wait for its migrations
+(`portalai.waitForMigrations`). A hook would deadlock `helm install --wait`,
+which runs post-install hooks only after the waiting pods are ready.
+*/ -}}
 {{- if .Values.migrate.enabled }}
+{{- $bundled := .Values.postgresql.enabled }}
+{{- if or (not $bundled) .Release.IsInstall }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -6,14 +19,12 @@ metadata:
   labels:
     {{- include "portalai.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
+  {{- if not $bundled }}
   annotations:
-    # First-install schema only (#581). The `pre-upgrade` path moved to
-    # `upgrade-job.yaml`, which runs migrate + seed as one signalled operation.
-    # On a FIRST install with the bundled DB, see README (the DB is created in
-    # the main phase — point at an external DB or migrate after it is up).
     "helm.sh/hook": pre-install
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  {{- end }}
 spec:
   backoffLimit: 6
   template:
@@ -29,6 +40,21 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      {{- if $bundled }}
+      initContainers:
+        - name: wait-for-db
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ include "portalai.depName" (dict "root" . "dep" "postgresql") }} -p 5432 -d {{ .Values.postgresql.auth.database }}; do
+                echo "waiting for the bundled database"; sleep 3
+              done
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      {{- end }}
       containers:
         - name: migrate
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
@@ -45,4 +71,5 @@ spec:
                 name: {{ include "portalai.secretName" . }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}
 {{- end }}

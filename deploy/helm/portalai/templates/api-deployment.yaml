@@ -26,6 +26,12 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      # #946: the bundled DB's first-install migrations run beside the pods,
+      # so they start once the schema is in place.
+      initContainers:
+        {{- include "portalai.waitForMigrations" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ required "image.api.repository is required" .Values.image.api.repository }}:{{ required "image.api.tag is required" .Values.image.api.tag }}"
@@ -44,6 +50,22 @@ spec:
             {{- range $key, $value := .Values.api.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
+            {{- /* #946: the bundled object store's credentials, scoped to its
+                   bucket. External storage reads the operator's own, from
+                   `secrets` or the pod's cloud identity. */}}
+            {{- if .Values.objectStorage.enabled }}
+            {{- $s3 := include "portalai.depName" (dict "root" $ "dep" "s3") }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s3 }}
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s3 }}
+                  key: secret-key
             {{- end }}
             {{- /* #852: private CA for an external rediss:// Redis. Only when
                    Redis is external: the bundled one is plaintext in-cluster. */}}

@@ -1,9 +1,9 @@
 # Portals AI residency chart — default values. See README.md for the full
 # reference. The chart installs the api + web workloads with their config and
 # secret env and split liveness/readiness probes; bundled data dependencies
-# (postgresql/redis/minio subcharts, evaluation-grade); the migrate, seed and
-# #581 upgrade hooks; an optional ingress; and an optional bundled Keycloak
-# issuer for installs with no customer IdP (#566).
+# (PostGIS, Redis and S3-compatible object storage, evaluation-grade); the
+# migrate, seed and #581 upgrade hooks; an optional ingress; and an optional
+# bundled Keycloak issuer for installs with no customer IdP (#566, #946).
 
 # Container images. repository/tag are required at install (the deploy pipeline
 # pushes them to ECR; a customer mirrors them into their own registry).
@@ -87,7 +87,9 @@ containerSecurityContext:
 deployMode: saas
 
 # OIDC identity (residency). Non-secret; reaches the API validator and the web
-# config.js. Ignored in saas mode (Auth0 via secrets/config).
+# config.js. Ignored in saas mode (Auth0 via secrets/config). With
+# bundledIssuer.enabled, each empty field defaults from the bundled Keycloak;
+# a value set here always wins.
 oidc:
   issuer: ""
   audience: ""
@@ -112,37 +114,40 @@ config: {}
 secrets: {}
 existingSecret: ""
 
-# Required by recent Bitnami charts to accept a non-Bitnami image (the PostGIS
-# override below). Bundled deps are evaluation-grade; production points at
-# managed endpoints via the `external` blocks (enabled: false).
-global:
-  security:
-    allowInsecureImages: true
-
 # ── Data dependencies ────────────────────────────────────────────────────
 # Each is bundled by default and disable-able to an external managed endpoint.
-# When enabled, DATABASE_URL / REDIS_URL / UPLOAD_S3_* are composed from the
-# bundled service names (_helpers.tpl); when disabled, from the `external` block.
+# Bundled deps are this chart's own single-replica StatefulSets on maintained
+# upstream images (#946): evaluation-grade, no HA, no backups. Production
+# points at managed services via `enabled: false` and the `external` block.
+# DATABASE_URL / REDIS_URL / UPLOAD_S3_* are composed in _helpers.tpl.
 
 postgresql:
   enabled: true
-  # PostGIS image so the bundled DB satisfies migration 0076 (CREATE EXTENSION
-  # postgis). NOTE: the Bitnami postgresql subchart is built around a Bitnami
-  # image; running a foreign PostGIS image is a DOCUMENTED SMOKE RISK
-  # (entrypoint / data-dir path conventions differ) — see README. Production
-  # should use managed PostGIS via enabled:false + external.
+  # PostGIS (migration 0076 runs CREATE EXTENSION postgis). imresamu/postgis is
+  # the official postgres image + PostGIS, built for arm64 and amd64 (the
+  # postgis/postgis image has no arm64).
   image:
-    registry: docker.io
     repository: imresamu/postgis
     tag: "17-3.5"
+    pullPolicy: IfNotPresent
   auth:
+    # The app's own user, which owns the database. The bundled DB's superuser
+    # (`postgres`) is used only by the migrate/upgrade jobs (#660); its
+    # password is generated on first install and kept in the
+    # <release>-portalai-postgresql Secret unless set here.
     username: portalai
     password: portalai
     database: portalai
-  primary:
-    persistence:
-      enabled: true
-      size: 8Gi
+    postgresPassword: ""
+  persistence:
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
   external:
     host: ""
     port: 5432
@@ -156,7 +161,7 @@ postgresql:
     # API pods never get it. Give the password inline or through an existing
     # Secret. Leave the user empty and the app user creates the role itself
     # (it must then hold CREATEROLE, or provision the role by hand: see
-    # README). With the bundled DB the subchart's postgres superuser is used
+    # README). With the bundled DB its postgres superuser is used
     # automatically.
     migrationUser: ""
     migrationPassword: ""
@@ -166,17 +171,24 @@ postgresql:
 
 redis:
   enabled: true
-  architecture: standalone
-  # Evaluation-grade: auth off so REDIS_URL is composable without a generated
-  # password. A managed Redis (enabled:false) carries its own auth in the URL.
-  auth:
-    enabled: false
-  master:
-    # MANDATORY PVC — Redis is the durable BullMQ store; without it, in-flight
-    # jobs are lost on a pod restart.
-    persistence:
-      enabled: true
-      size: 8Gi
+  # Same 7.4 line as the managed ElastiCache the SaaS runs. Auth off: it is
+  # reachable only inside the cluster. A managed Redis (enabled:false) carries
+  # its own auth in the URL.
+  image:
+    repository: redis
+    tag: "7.4.12-alpine"
+    pullPolicy: IfNotPresent
+  # Redis is the durable BullMQ store, so it always keeps an append-only file
+  # on a volume: without one, in-flight jobs are lost on a pod restart.
+  persistence:
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
   external:
     # redis:// or rediss://. With rediss:// the API connects over TLS (the
     # scheme is the switch, #852).
@@ -188,17 +200,35 @@ redis:
         name: ""
         key: ca.crt
 
-minio:
+# S3-compatible object storage for file uploads. Browsers upload straight to
+# it through presigned URLs, so its endpoint must be reachable from the
+# browser AND from the API pods under the same URL (the host is signed).
+objectStorage:
   enabled: true
+  # SeaweedFS (Apache-2.0), single server with its S3 gateway (#946).
+  image:
+    repository: chrislusf/seaweedfs
+    tag: "4.48"
+    pullPolicy: IfNotPresent
+  bucket: portalai-uploads
+  # The app's S3 credentials, scoped to the bucket. Generated on first install
+  # and kept in the <release>-portalai-s3 Secret unless set here.
   auth:
-    rootUser: portalai
-    rootPassword: portalai-minio
-  defaultBuckets: portalai-uploads
+    accessKey: portalai
+    secretKey: ""
+  # Public hostname, served by the chart's ingress (ingress.enabled). Without
+  # it the endpoint is the in-cluster service, which a browser can't reach, so
+  # uploads only work through a host set here.
+  publicHost: ""
   persistence:
-    enabled: true
     size: 20Gi
-  # Full S3 endpoint/credential wiring lands with #567 (PR #606); this composes
-  # the endpoint + bucket the app will read once merged.
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
   external:
     endpoint: ""
     region: us-east-1
@@ -206,24 +236,28 @@ minio:
     forcePathStyle: true
 
 # ── Lifecycle hooks ──────────────────────────────────────────────────────
-# Run the API image's existing migrate/seed entrypoints as Helm hook Jobs.
-# migrate is pre-install,pre-upgrade (schema ready before api pods roll — see
-# README for the bundled-DB first-install caveat); seed is post-install
-# (idempotent global seeds).
+# Run the API image's existing migrate/seed entrypoints as Jobs.
+# migrate: with an external DB, a pre-install hook (schema ready before the
+# api pods start). With the bundled DB, which doesn't exist until the release
+# does, a plain Job on first install that waits for the DB; the api pods and
+# the seed wait for its migrations (#946). seed is post-install (idempotent
+# global seeds).
 migrate:
   enabled: true
 seed:
   enabled: true
 # On `helm upgrade`, a single pre-upgrade job runs migrations + the idempotent
 # global seed under one advisory lock (`db:upgrade`, #581), before the api pods
-# roll. First install still uses migrate (pre-install) + seed (post-install).
+# roll. First install still uses migrate + seed.
 upgrade:
   enabled: true
 
 # ── Ingress ──────────────────────────────────────────────────────────────
 # Off by default (reach the app by port-forward, or bring your own ingress).
-# When enabled, /api routes to the API service and / to the web service on a
-# single host. TLS via a cert-manager-issued secret — see README.
+# When enabled, /api routes to the API service and / to the web service on
+# ingress.host, plus bundledIssuer.host → Keycloak and objectStorage.publicHost
+# → object storage when those are set. TLS via a cert-manager-issued secret
+# that covers every host — see README.
 ingress:
   enabled: false
   className: ""
@@ -234,7 +268,36 @@ ingress:
     secretName: ""
 
 # ── Bundled identity issuer (Keycloak) ───────────────────────────────────
-# Optional fallback OIDC issuer for residency installs with no customer IdP.
-# Off by default; customer OIDC (oidc.*) is the primary path.
+# Optional OIDC issuer for residency installs with no customer IdP: the
+# official Keycloak image, a realm imported at start with one public SPA
+# client, and oidc.* defaulted from it (#946). Needs the chart's ingress:
+# ingress.host is the app origin the client allows, and `host` is the issuer's
+# public hostname, which browsers and the API pods must both resolve. Users
+# are created by an operator in Keycloak's admin console; the realm has no
+# self-registration.
 bundledIssuer:
   enabled: false
+  host: ""
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "26.8.0"
+    pullPolicy: IfNotPresent
+  realm: portalai
+  clientId: portalai-web
+  # The access token's `aud`, which the API validates.
+  audience: portalai-api
+  # Keycloak's bootstrap admin. The password is generated on first install and
+  # kept in the <release>-portalai-keycloak Secret unless set here.
+  admin:
+    username: admin
+    password: ""
+  # Keycloak's own data (realm, users) in its file database on this volume.
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      memory: 1536Mi

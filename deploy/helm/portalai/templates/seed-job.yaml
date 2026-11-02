@@ -27,6 +27,11 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      # #946: the bundled DB's first-install migrations may still be running.
+      initContainers:
+        {{- include "portalai.waitForMigrations" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: seed
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
