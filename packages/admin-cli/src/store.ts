@@ -11,6 +11,8 @@
  * Slice 1: reads. Mutations land in slice 2.
  */
 
+import { randomUUID } from "node:crypto";
+
 import { and, desc, eq, ilike, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -20,7 +22,14 @@ import { OrganizationUserModelFactory } from "@portalai/core/models";
 import type { Organization, User } from "@portalai/core/models";
 
 import { AdminConflictError, AdminNotFoundError } from "./errors.js";
-import { organizations, organizationUsers, tiers, users } from "./tables.js";
+import {
+  auditLog,
+  organizations,
+  organizationUsers,
+  stations,
+  tiers,
+  users,
+} from "./tables.js";
 
 const DEFAULT_LIMIT = 50;
 
@@ -40,13 +49,37 @@ export type OrgPatch = Partial<
   Pick<Organization, "name" | "timezone" | "defaultStationId">
 >;
 
+/** #936: what an org update actually changed (fields whose value moved). */
+export interface OrgChanges {
+  name?: { from: string; to: string };
+  timezone?: { from: string; to: string };
+  defaultStationId?: {
+    from: string | null;
+    to: string | null;
+    fromName: string | null;
+    toName: string | null;
+  };
+}
+
+export interface OrgUpdateResult {
+  org: Organization;
+  changes: OrgChanges;
+}
+
 export interface AdminStore {
   /** Live orgs, name-searchable (ILIKE), created desc, paginated. */
   listOrgs(opts: ListOrgsOptions): Promise<Organization[]>;
   /** Live org by id → ADMIN_NOT_FOUND otherwise. */
   getOrg(id: string): Promise<Organization>;
-  /** Patch a live org, stamping updated/updatedBy. */
-  updateOrg(id: string, patch: OrgPatch, actor: string): Promise<Organization>;
+  /** Patch a live org, stamping updated/updatedBy. #936: in one transaction
+   *  with the org row locked; a new default station must be a live station in
+   *  the org (else ADMIN_NOT_FOUND); a changed name or default station records
+   *  the app's `org.update` entry. Returns what changed. */
+  updateOrg(
+    id: string,
+    patch: OrgPatch,
+    actor: string
+  ): Promise<OrgUpdateResult>;
   /** Assign a tier (slug must exist live in `tiers`); returns the previous. */
   setTier(
     id: string,
@@ -138,13 +171,106 @@ export function createAdminStore(
     },
 
     async updateOrg(id, patch, actor) {
-      const [row] = await db
-        .update(organizations)
-        .set({ ...patch, updated: Date.now(), updatedBy: actor })
-        .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
-        .returning();
-      if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
-      return row as Organization;
+      return db.transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(organizations)
+          .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
+          .for("update");
+        if (!current)
+          throw new AdminNotFoundError(`Organization ${id} not found`);
+
+        const stationName = async (stationId: string | null) => {
+          if (!stationId) return null;
+          const [row] = await tx
+            .select({ name: stations.name })
+            .from(stations)
+            .where(
+              and(
+                eq(stations.id, stationId),
+                eq(stations.organizationId, id),
+                isNull(stations.deleted)
+              )
+            )
+            .limit(1);
+          return row?.name ?? null;
+        };
+
+        // A new default must be a live station in this org, as the app's
+        // PATCH requires; the CLI used to write any id.
+        let toName: string | null = null;
+        if (patch.defaultStationId) {
+          toName = await stationName(patch.defaultStationId);
+          if (toName === null) {
+            throw new AdminNotFoundError(
+              `Station ${patch.defaultStationId} not found in organization ${id}`
+            );
+          }
+        }
+
+        const [row] = await tx
+          .update(organizations)
+          .set({ ...patch, updated: Date.now(), updatedBy: actor })
+          .where(eq(organizations.id, id))
+          .returning();
+        const org = row as Organization;
+
+        const changes: OrgChanges = {};
+        if (patch.name !== undefined && org.name !== current.name)
+          changes.name = { from: current.name, to: org.name };
+        if (patch.timezone !== undefined && org.timezone !== current.timezone)
+          changes.timezone = { from: current.timezone, to: org.timezone };
+        const from = current.defaultStationId ?? null;
+        const to = org.defaultStationId ?? null;
+        if (patch.defaultStationId !== undefined && to !== from)
+          changes.defaultStationId = {
+            from,
+            to,
+            fromName: await stationName(from),
+            toName,
+          };
+
+        // The same entries the app records (#907 name, #935 default station),
+        // committed with the change, attributed to the operator's user when
+        // their session sub matches one.
+        const audited = [
+          changes.name && { field: "name", ...changes.name },
+          changes.defaultStationId && {
+            field: "defaultStationId",
+            ...changes.defaultStationId,
+          },
+        ].filter(Boolean) as Record<string, unknown>[];
+        if (audited.length > 0) {
+          const [operatorUser] = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.auth0Id, actor), isNull(users.deleted)))
+            .limit(1);
+          const now = Date.now();
+          await tx.insert(auditLog).values(
+            audited.map((metadata) => ({
+              id: randomUUID(),
+              created: now,
+              createdBy: actor,
+              updated: null,
+              updatedBy: null,
+              deleted: null,
+              deletedBy: null,
+              organizationId: id,
+              userId: operatorUser?.id ?? actor,
+              action: "org.update",
+              targetType: "organization",
+              targetId: id,
+              outcome: "success",
+              sourceIp: null,
+              userAgent: null,
+              metadata: { ...metadata, via: "portalai" },
+            }))
+          );
+        }
+
+        return { org, changes };
+      });
     },
 
     async setTier(id, tierSlug, actor) {

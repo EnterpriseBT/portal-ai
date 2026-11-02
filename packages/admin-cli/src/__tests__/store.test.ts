@@ -1,6 +1,13 @@
 import { desc, eq } from "drizzle-orm";
 import { createAdminStore } from "../store.js";
-import { organizations, organizationUsers, tiers, users } from "../tables.js";
+import {
+  auditLog,
+  organizations,
+  organizationUsers,
+  stations,
+  tiers,
+  users,
+} from "../tables.js";
 import { AdminNotFoundError } from "../errors.js";
 import { makeTestDb, rowBase, type TestDb } from "./helpers/test-db.js";
 
@@ -142,12 +149,148 @@ describe("updateOrg", () => {
       .insert(organizations)
       .values([org("Old Name", { id: "o-1" }) as never]);
     const out = await store.updateOrg("o-1", { name: "New Name" }, "actor-1");
-    expect(out.name).toBe("New Name");
-    expect(out.updatedBy).toBe("actor-1");
-    expect(out.updated).toBeGreaterThan(0);
+    expect(out.org.name).toBe("New Name");
+    expect(out.org.updatedBy).toBe("actor-1");
+    expect(out.org.updated).toBeGreaterThan(0);
     await expect(
       store.updateOrg("o-none", { name: "x" }, "actor-1")
     ).rejects.toBeInstanceOf(AdminNotFoundError);
+  });
+});
+
+// #936: the CLI records the app's org.update entries (#907 rename, #935
+// default station) in the same transaction as the change.
+describe("updateOrg — audit_log", () => {
+  const station = (id: string, organizationId: string, name: string) =>
+    rowBase({ id, organizationId, name }) as never;
+
+  const entries = () =>
+    t.db.select().from(auditLog).orderBy(auditLog.created, auditLog.id);
+
+  beforeEach(async () => {
+    await t.db
+      .insert(organizations)
+      .values([
+        org("Acme", { id: "o-1", defaultStationId: "st-a" }) as never,
+        org("Other", { id: "o-2" }) as never,
+      ]);
+    await t.db.insert(stations).values([
+      station("st-a", "o-1", "Main"),
+      station("st-b", "o-1", "Sales"),
+      station("st-x", "o-2", "Elsewhere"),
+      rowBase({
+        id: "st-gone",
+        organizationId: "o-1",
+        name: "Archived",
+        deleted: 5,
+      }) as never,
+    ]);
+  });
+
+  it("a rename records org.update { field: name, from, to, via }", async () => {
+    const out = await store.updateOrg("o-1", { name: "Acme Corp" }, "actor-1");
+
+    expect(out.changes).toEqual({ name: { from: "Acme", to: "Acme Corp" } });
+    const rows = await entries();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      organizationId: "o-1",
+      userId: "actor-1",
+      action: "org.update",
+      targetType: "organization",
+      targetId: "o-1",
+      outcome: "success",
+      metadata: {
+        field: "name",
+        from: "Acme",
+        to: "Acme Corp",
+        via: "portalai",
+      },
+    });
+  });
+
+  it("changing the default station records both ids and names", async () => {
+    await store.updateOrg("o-1", { defaultStationId: "st-b" }, "actor-1");
+
+    const rows = await entries();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].metadata).toEqual({
+      field: "defaultStationId",
+      from: "st-a",
+      to: "st-b",
+      fromName: "Main",
+      toName: "Sales",
+      via: "portalai",
+    });
+  });
+
+  it("setting it from none and clearing it record null on the empty side", async () => {
+    await store.updateOrg("o-2", { defaultStationId: null }, "actor-1");
+    expect(await entries()).toHaveLength(0); // already none: a no-op
+
+    await store.updateOrg("o-1", { defaultStationId: null }, "actor-1");
+    const [cleared] = await entries();
+    expect(cleared.metadata).toMatchObject({
+      from: "st-a",
+      to: null,
+      fromName: "Main",
+      toName: null,
+    });
+  });
+
+  it("an unchanged value records nothing", async () => {
+    await store.updateOrg(
+      "o-1",
+      { name: "Acme", defaultStationId: "st-a" },
+      "actor-1"
+    );
+    expect(await entries()).toHaveLength(0);
+  });
+
+  it("a name and a station change record one entry each", async () => {
+    const out = await store.updateOrg(
+      "o-1",
+      { name: "Acme Corp", defaultStationId: "st-b" },
+      "actor-1"
+    );
+    expect(Object.keys(out.changes).sort()).toEqual([
+      "defaultStationId",
+      "name",
+    ]);
+    const fields = (await entries()).map(
+      (r) => (r.metadata as { field: string }).field
+    );
+    expect(fields.sort()).toEqual(["defaultStationId", "name"]);
+  });
+
+  it.each([
+    ["another org's station", "st-x"],
+    ["a deleted station", "st-gone"],
+    ["an unknown station", "st-none"],
+  ])("%s is ADMIN_NOT_FOUND and writes nothing", async (_label, id) => {
+    await expect(
+      store.updateOrg("o-1", { name: "Acme Corp", defaultStationId: id }, "a")
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+
+    const [row] = await t.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, "o-1"));
+    expect(row.name).toBe("Acme");
+    expect(row.defaultStationId).toBe("st-a");
+    expect(await entries()).toHaveLength(0);
+  });
+
+  it("the actor is the operator's user id when their sub matches a user", async () => {
+    await t.db
+      .insert(users)
+      .values([
+        user("op@example.com", { id: "u-op", auth0Id: "auth0|op" }) as never,
+      ]);
+
+    await store.updateOrg("o-1", { name: "Acme Corp" }, "auth0|op");
+
+    expect((await entries())[0].userId).toBe("u-op");
   });
 });
 

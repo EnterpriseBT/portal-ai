@@ -25,19 +25,52 @@ export function orgGet(
   return withStore(def, (s) => s.getOrg(id));
 }
 
+/** #936: `portalai` holds no Stripe credential, so a rename of an org with a
+ *  Stripe customer reports the step that keeps the customer's name (shown on
+ *  invoices and in the billing portal) in step with the app. */
+export interface StripeNameStep {
+  action: "update_customer_name";
+  customerId: string;
+  name: string;
+  command: string;
+}
+
+export interface OrgUpdateOutput {
+  org: Organization;
+  stripe?: StripeNameStep;
+}
+
+/** POSIX single-quote a value for the printed shell command. */
+const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+
 export async function orgUpdate(
   def: EnvironmentDefinition,
   id: string,
   patch: OrgPatch,
   flags: MutateFlags
-): Promise<Organization> {
+): Promise<OrgUpdateOutput> {
   const operator = await beginMutation(def, flags, false);
-  const org = await withStore(def, (s) => s.updateOrg(id, patch, operator));
+  // #936: the store records the app's org.update entries in the same
+  // transaction; this line is the operator's own local record.
+  const { org, changes } = await withStore(def, (s) =>
+    s.updateOrg(id, patch, operator)
+  );
   await audit(def, operator, "org update", {
     orgId: id,
-    fields: Object.keys(patch),
+    fields: Object.keys(changes),
   });
-  return org;
+
+  const customerId = org.stripeCustomerId;
+  if (!changes.name || !customerId) return { org };
+  return {
+    org,
+    stripe: {
+      action: "update_customer_name",
+      customerId,
+      name: org.name,
+      command: `stripe customers update ${customerId} --name ${shellQuote(org.name)}`,
+    },
+  };
 }
 
 export async function orgSetTier(

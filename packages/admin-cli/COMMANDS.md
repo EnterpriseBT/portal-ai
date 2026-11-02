@@ -47,7 +47,11 @@ Mutation. **Full app provisioning** via `db:create-org` (org + owner membership 
 `--json`: `{ "organizationId", "stationId" }`
 
 ### `portalai org update <id> [--name] [--timezone] [--default-station-id] --env <env> --yes [--json]`
-Mutation. `--json`: `{ "org": Organization }`
+Mutation, in one transaction with the org row locked.
+- **Activity (#936):** a changed `--name` or `--default-station-id` records the same `org.update` entry the app does: `{ field: "name", from, to }` (#907) or `{ field: "defaultStationId", from, to, fromName, toName }` (#935), plus `via: "portalai"`. Entries commit with the change and are attributed to your user when your `portalai login` session matches one (else the session `sub`, or the OS username locally). An unchanged value records nothing. `--timezone` isn't recorded in Activity.
+- **Default station:** must be a live station in that org, else `ADMIN_NOT_FOUND` (exit 8) and nothing is written.
+- **Stripe:** `portalai` holds no Stripe credential. When the name changed and the org has a Stripe customer, the result carries the step that keeps the customer's name (invoices, billing portal) in step, and human output warns on stderr. Run it with the env's Stripe CLI.
+- `--json`: `{ "org": Organization, "stripe"?: { "action": "update_customer_name", "customerId", "name", "command": "stripe customers update <cus> --name '<name>'" } }`
 
 ### `portalai org set-tier <id> <tierSlug> --env <env> --yes [--allow-stripe-desync] [--json]`
 Mutation. Tier slug must exist live → else 8. Audits old→new; the app sees it within ≤60s (tier cache).
