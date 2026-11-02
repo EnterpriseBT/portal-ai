@@ -68,19 +68,18 @@ beforeEach(() => {
 });
 
 describe("OrganizationUpdateService.auditDefaultStationChange (#935)", () => {
-  const context = {
-    userId: "user-1",
-    organizationId: "org-1",
-    sourceIp: "127.0.0.1",
-    userAgent: "jest",
-  };
+  it("records org.update with the change exactly as given, reading nothing", async () => {
+    const context = {
+      userId: "user-1",
+      organizationId: "org-1",
+      sourceIp: "127.0.0.1",
+      userAgent: "jest",
+    };
 
-  it("records org.update with both ids and the names as of the change", async () => {
     await OrganizationUpdateService.auditDefaultStationChange(
       context,
       "org-1",
-      "st-a",
-      "st-b"
+      { from: "st-a", to: "st-b", fromName: "Main", toName: "Sales" }
     );
 
     expect(mockRecord).toHaveBeenCalledWith({
@@ -96,47 +95,7 @@ describe("OrganizationUpdateService.auditDefaultStationChange (#935)", () => {
         toName: "Sales",
       },
     });
-  });
-
-  it("uses a name the caller passes, without reading the station", async () => {
-    await OrganizationUpdateService.auditDefaultStationChange(
-      context,
-      "org-1",
-      "st-gone",
-      null,
-      { fromName: "Archived" }
-    );
-
     expect(mockStationFindById).not.toHaveBeenCalled();
-    expect(mockRecord).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: {
-          field: "defaultStationId",
-          from: "st-gone",
-          to: null,
-          fromName: "Archived",
-          toName: null,
-        },
-      })
-    );
-  });
-
-  it("still records the entry, without the name, when the lookup fails", async () => {
-    mockStationFindById.mockRejectedValue(new Error("db down"));
-
-    await OrganizationUpdateService.auditDefaultStationChange(
-      context,
-      "org-1",
-      null,
-      "st-b"
-    );
-
-    expect(mockWarn).toHaveBeenCalled();
-    expect(mockRecord).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ to: "st-b", toName: null }),
-      })
-    );
   });
 });
 

@@ -12,7 +12,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -126,8 +126,21 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     currentSub = OWNER_SUB;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     jest.restoreAllMocks();
+    // #935: rename and default-station audits write after the response. Let
+    // them land before the next test's teardown deletes the org, or a late
+    // insert trips the audit_log → organizations foreign key mid-teardown.
+    let last = -1;
+    for (let i = 0; i < 40; i++) {
+      const [{ n }] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.organizationId, fx.orgId));
+      if (n === last) break;
+      last = n;
+      await new Promise((r) => setTimeout(r, 75));
+    }
   });
 
   const patch = (body: unknown, orgId = fx.orgId) =>

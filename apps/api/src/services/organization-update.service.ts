@@ -45,6 +45,9 @@ export interface OrganizationUpdateResult {
   previousName: string;
   /** #935: the default station the write replaced, for its audit entry. */
   previousDefaultStationId: string | null;
+  /** #935: that station's name, read under the row lock when the patch sets
+   *  the default (null otherwise, or when there was none). */
+  previousDefaultStationName: string | null;
 }
 
 export class OrganizationUpdateService {
@@ -72,6 +75,19 @@ export class OrganizationUpdateService {
 
       await options.beforeWrite?.(tx);
 
+      // #935: the replaced default's name as of this change, read under the
+      // lock (a station delete clears the default under the same lock, so it
+      // can't be gone yet). Only when the patch touches the default.
+      const previousDefaultStationName =
+        patch.defaultStationId !== undefined && current.defaultStationId
+          ? ((
+              await DbService.repository.stations.findById(
+                current.defaultStationId,
+                tx
+              )
+            )?.name ?? null)
+          : null;
+
       // The patch is the parsed request, so it holds only the keys sent.
       const organization = (await DbService.repository.organizations.update(
         orgId,
@@ -82,55 +98,35 @@ export class OrganizationUpdateService {
         organization: organization as Organization,
         previousName: current.name,
         previousDefaultStationId: current.defaultStationId ?? null,
+        previousDefaultStationName,
       };
     });
   }
 
   /**
    * #935: record a default-station change as `org.update` with `{ field:
-   * "defaultStationId", from, to, fromName, toName }`. The names are taken as
-   * of the change, so Activity can name the stations for every reader and an
-   * entry outlives a station's rename or delete. A caller that already has a
-   * name passes it (a station being deleted no longer reads back). Post-commit
-   * and fail-open: a failed name lookup records the entry without the name.
+   * "defaultStationId", from, to, fromName, toName }`. The caller passes the
+   * names it read inside the change's own transaction, so they're the names
+   * as of the change; this does no lookup, so it can't name another org's
+   * station. Post-commit and fail-open, like every audit write.
    */
   static async auditDefaultStationChange(
     context: AuditRequestContext,
     organizationId: string,
-    from: string | null,
-    to: string | null,
-    known: { fromName?: string; toName?: string } = {}
+    change: {
+      from: string | null;
+      to: string | null;
+      fromName: string | null;
+      toName: string | null;
+    }
   ): Promise<void> {
-    const nameOf = async (id: string | null, knownName?: string) => {
-      if (!id) return null;
-      if (knownName !== undefined) return knownName;
-      try {
-        return (await DbService.repository.stations.findById(id))?.name ?? null;
-      } catch (error) {
-        logger.warn(
-          {
-            organizationId,
-            stationId: id,
-            error: error instanceof Error ? error.message : "Unknown error",
-          },
-          "Failed to read a station name for the default-station audit entry"
-        );
-        return null;
-      }
-    };
     await AuditService.record({
       ...context,
       organizationId,
       action: "org.update",
       targetType: "organization",
       targetId: organizationId,
-      metadata: {
-        field: "defaultStationId",
-        from,
-        to,
-        fromName: await nameOf(from, known.fromName),
-        toName: await nameOf(to, known.toName),
-      },
+      metadata: { field: "defaultStationId", ...change },
     });
   }
 

@@ -20,16 +20,16 @@
 - **A. Resolve names when Activity renders** (join stations by id). Needs a lookup per page, a permission decision per viewer, and a fallback once a station is deleted.
 - **B. Store the names in the entry at write time.** Metadata `{ field: "defaultStationId", from, to, fromName, toName }`: ids plus the names as they were. Activity renders from the entry alone.
 
-**Chosen: B.** An audit entry records what happened, so the name as of the change is the right one. It shows to every Activity reader without a per-station check (as decided: names show regardless of station access; opening a station still follows the viewer's own access, and an unreadable one answers 404). It survives the station's deletion. One change to the issue text: a station deleted since still shows its name, not "a deleted station". That fallback only applies to an entry missing a name. The new keys are additive to #907's shape; `field`/`from`/`to` mean the same thing.
+**Chosen: B.** An audit entry records what happened, so the name as of the change is the right one. It shows to every Activity reader without a per-station check (as decided: names show regardless of station access; opening a station still follows the viewer's own access, and an unreadable one answers 404). It survives the station's deletion. One change to the issue text: a station deleted since still shows its name. The names are read inside the change's own transaction (the PATCH's row lock, the delete's station lock), so they're exact; an entry without a name (odd or legacy) reads a neutral "a station". The new keys are additive to #907's shape; `field`/`from`/`to` mean the same thing.
 
 ## Plan — 1 slice
 
 **Files**
-- `organization-update.service.ts`: `apply` also returns `previousDefaultStationId` (from the locked row).
-- `organization.router.ts`: after `apply`, when `defaultStationId` was sent and differs from `previousDefaultStationId`, look up both stations' names (`stations.findById`; the previous default is always live, since deleting a station clears it) and record `org.update` `{ field: "defaultStationId", from, to, fromName, toName }`. Post-commit and fail-open, like the rename. A name change and a station change in one PATCH write two entries.
-- `station.router.ts`: the delete's `updateWhere` returns the cleared row; when one came back, record `org.update` `{ field: "defaultStationId", from: <id>, to: null, fromName: <station name>, toName: null }` with the deleting caller's audit context, after commit.
+- `organization-update.service.ts`: `apply` also returns `previousDefaultStationId` and, when the patch touches the default, that station's name, both read under the row lock. `auditDefaultStationChange(context, orgId, { from, to, fromName, toName })` records the entry and does no lookup (code review: a post-commit lookup could record a later name, and an unscoped one could name another org's station).
+- `organization.router.ts`: `assertStation` keeps the new station's name (it already loads it under the lock); after `apply`, when `defaultStationId` was sent and differs from the previous one, record `{ field: "defaultStationId", from, to, fromName, toName }`. Post-commit and fail-open, like the rename. A name change and a station change in one PATCH write two entries.
+- `station.router.ts`: inside the delete's transaction, lock the station row and keep its name; when the `updateWhere` cleared the default, record `{ field: "defaultStationId", from: <id>, to: null, fromName: <name>, toName: null }` with the deleting caller's audit context, after commit.
 - `audit-log.model.ts`: widen the `org.update` comment to name the new keys.
-- `audit-summary.util.ts`: `field: "defaultStationId"` → `Default station set to "B"` (from null), `changed from "A" to "B"`, `cleared (was "A")` (to null); a missing name reads `a deleted station`.
+- `audit-summary.util.ts`: `field: "defaultStationId"` → `Default station set to "B"` (from null), `changed from "A" to "B"`, `cleared (was "A")` (to null); a missing name reads `a station`.
 - `@openapi` text on the PATCH route: a default-station change is audited too.
 
 **Tests** (`npm run test:unit`, `npm run test:integration` in each package)

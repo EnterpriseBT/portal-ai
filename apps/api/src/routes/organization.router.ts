@@ -242,6 +242,8 @@ organizationRouter.patch(
       // checked under the org row lock, so a station deleted concurrently
       // (whose delete clears the default under the same lock) can't be
       // written as the default.
+      // #935: the new default's name, read here under the lock for the audit.
+      let nextDefaultStationName: string | null = null;
       const assertStation =
         defaultStationId !== undefined && defaultStationId !== null
           ? async (tx: DbClient) => {
@@ -264,13 +266,18 @@ organizationRouter.patch(
                   "Station not found or does not belong to this organization"
                 );
               }
+              nextDefaultStationName = station.name;
             }
           : undefined;
 
-      const { organization, previousName, previousDefaultStationId } =
-        await OrganizationUpdateService.apply(id, parsed.data, userId, {
-          beforeWrite: assertStation,
-        });
+      const {
+        organization,
+        previousName,
+        previousDefaultStationId,
+        previousDefaultStationName,
+      } = await OrganizationUpdateService.apply(id, parsed.data, userId, {
+        beforeWrite: assertStation,
+      });
 
       // #907: post-commit and fail-open, only when the name actually changed.
       if (name !== undefined && organization.name !== previousName) {
@@ -289,8 +296,8 @@ organizationRouter.patch(
       }
 
       // #935: the same entry for a default-station change, with the stations'
-      // names as of the change so Activity can name them for every reader,
-      // whether or not they can read the station.
+      // names read inside the change's transaction, so Activity names them as
+      // of the change for every reader, whether or not they can read them.
       const nextDefaultStationId = organization.defaultStationId ?? null;
       if (
         defaultStationId !== undefined &&
@@ -299,8 +306,12 @@ organizationRouter.patch(
         void OrganizationUpdateService.auditDefaultStationChange(
           auditContextFromRequest(req),
           id,
-          previousDefaultStationId,
-          nextDefaultStationId
+          {
+            from: previousDefaultStationId,
+            to: nextDefaultStationId,
+            fromName: previousDefaultStationName,
+            toName: nextDefaultStationName,
+          }
         );
       }
 

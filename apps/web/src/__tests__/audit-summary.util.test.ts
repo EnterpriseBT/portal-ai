@@ -65,12 +65,12 @@ describe("auditActionSummary — default station (#935)", () => {
     ).toBe('Default station cleared (was "Main")');
   });
 
-  it("an entry missing a name reads 'a deleted station'", () => {
+  it("an entry missing a name reads a neutral 'a station'", () => {
     expect(
       auditActionSummary(entry({ from: "st-a", to: "st-b", toName: "Sales" }))
-    ).toBe('Default station changed from a deleted station to "Sales"');
+    ).toBe('Default station changed from a station to "Sales"');
     expect(auditActionSummary(entry({ from: "st-a", to: null }))).toBe(
-      "Default station cleared (was a deleted station)"
+      "Default station cleared (was a station)"
     );
   });
 
