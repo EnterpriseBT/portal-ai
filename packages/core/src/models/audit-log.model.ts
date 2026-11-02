@@ -24,7 +24,9 @@ export const AUDIT_ACTIONS = [
   "auth.login",
   "org.create",
   "org.delete",
-  /** #907: an org field changed; metadata `{ field, from, to }`. */
+  /** #907: an org field changed; metadata `{ field, from, to }`. #935: a
+   *  `defaultStationId` change adds `fromName`/`toName`, the stations' names
+   *  as of the change. */
   "org.update",
   "member.add",
   "member.remove",

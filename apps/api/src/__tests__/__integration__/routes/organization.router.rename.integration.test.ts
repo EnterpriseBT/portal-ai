@@ -12,7 +12,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -126,8 +126,21 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     currentSub = OWNER_SUB;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     jest.restoreAllMocks();
+    // #935: rename and default-station audits write after the response. Let
+    // them land before the next test's teardown deletes the org, or a late
+    // insert trips the audit_log → organizations foreign key mid-teardown.
+    let last = -1;
+    for (let i = 0; i < 40; i++) {
+      const [{ n }] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.organizationId, fx.orgId));
+      if (n === last) break;
+      last = n;
+      await new Promise((r) => setTimeout(r, 75));
+    }
   });
 
   const patch = (body: unknown, orgId = fx.orgId) =>
@@ -287,6 +300,144 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     // The audit write would run after the response; give it time to land.
     await new Promise((r) => setTimeout(r, 300));
     expect(await auditRows()).toHaveLength(0);
+  });
+
+  // ── Default-station audit (#935) ────────────────────────────────────
+
+  describe("default-station changes", () => {
+    let otherStationId: string;
+
+    const insertStation = async (organizationId: string, name: string) => {
+      const id = generateId();
+      await db.insert(schema.stations).values({
+        id,
+        organizationId,
+        name,
+        description: null,
+        created: Date.now(),
+        createdBy: fx.ownerId,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      return id;
+    };
+
+    const stationRows = async () =>
+      (await auditRows()).filter(
+        (row) =>
+          (row.metadata as { field?: string } | null)?.field ===
+          "defaultStationId"
+      );
+
+    const settle = () => new Promise((r) => setTimeout(r, 300));
+
+    beforeEach(async () => {
+      otherStationId = await insertStation(fx.orgId, "Sales");
+    });
+
+    it("setting it from none records from null to the station, with its name", async () => {
+      await db
+        .update(schema.organizations)
+        .set({ defaultStationId: null })
+        .where(eq(schema.organizations.id, fx.orgId));
+      currentSub = ADMIN_SUB;
+
+      expect((await patch({ defaultStationId: stationId })).status).toBe(200);
+
+      const rows = await eventually(async () => {
+        const r = await stationRows();
+        return r.length ? r : null;
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows![0]).toMatchObject({
+        userId: adminId,
+        targetType: "organization",
+        targetId: fx.orgId,
+        metadata: {
+          field: "defaultStationId",
+          from: null,
+          to: stationId,
+          fromName: null,
+          toName: "Default station",
+        },
+      });
+    });
+
+    it("changing it records both stations by id and name", async () => {
+      expect((await patch({ defaultStationId: otherStationId })).status).toBe(
+        200
+      );
+
+      const rows = await eventually(async () => {
+        const r = await stationRows();
+        return r.length ? r : null;
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows![0].metadata).toEqual({
+        field: "defaultStationId",
+        from: stationId,
+        to: otherStationId,
+        fromName: "Default station",
+        toName: "Sales",
+      });
+    });
+
+    it("clearing it records from the station to null", async () => {
+      expect((await patch({ defaultStationId: null })).status).toBe(200);
+
+      const rows = await eventually(async () => {
+        const r = await stationRows();
+        return r.length ? r : null;
+      });
+      expect(rows![0].metadata).toEqual({
+        field: "defaultStationId",
+        from: stationId,
+        to: null,
+        fromName: "Default station",
+        toName: null,
+      });
+    });
+
+    it("re-saving the same station records nothing", async () => {
+      expect((await patch({ defaultStationId: stationId })).status).toBe(200);
+      await settle();
+      expect(await stationRows()).toHaveLength(0);
+    });
+
+    it("a refused change records nothing", async () => {
+      currentSub = MEMBER_SUB;
+      expect((await patch({ defaultStationId: otherStationId })).status).toBe(
+        403
+      );
+
+      currentSub = OWNER_SUB;
+      const foreign = await insertStation(fx.otherOrgId, "Elsewhere");
+      const res = await patch({ defaultStationId: foreign });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+
+      await settle();
+      expect(await stationRows()).toHaveLength(0);
+      expect((await orgRow()).defaultStationId).toBe(stationId);
+    });
+
+    it("a name and a station change in one request record one entry each", async () => {
+      expect(
+        (await patch({ name: "Acme Corp", defaultStationId: otherStationId }))
+          .status
+      ).toBe(200);
+
+      const rows = await eventually(async () => {
+        const r = await auditRows();
+        return r.length >= 2 ? r : null;
+      });
+      expect(rows).toHaveLength(2);
+      expect(
+        rows!.map((r) => (r.metadata as { field: string }).field).sort()
+      ).toEqual(["defaultStationId", "name"]);
+    });
   });
 
   // ── Stripe ──────────────────────────────────────────────────────────

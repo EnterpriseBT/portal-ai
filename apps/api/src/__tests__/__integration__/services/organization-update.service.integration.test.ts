@@ -75,26 +75,32 @@ describe("OrganizationUpdateService.apply (#907)", () => {
   });
 
   it("writes a name alone, leaving the default station, and returns the replaced name", async () => {
-    const { organization, previousName } =
+    const { organization, previousName, previousDefaultStationId } =
       await OrganizationUpdateService.apply(
         orgId,
         { name: "Acme Corp" },
         userId
       );
     expect(previousName).toBe("Acme");
+    // #935: the default it replaced (here unchanged) comes back too; its name
+    // is only read when the patch touches the default.
+    expect(previousDefaultStationId).toBe(stationId);
     expect(organization.name).toBe("Acme Corp");
     expect(organization.defaultStationId).toBe(stationId);
     expect(organization.updatedBy).toBe(userId);
   });
 
-  it("writes a station alone, leaving the name", async () => {
-    const { organization } = await OrganizationUpdateService.apply(
-      orgId,
-      { defaultStationId: null },
-      userId
-    );
+  it("writes a station alone, leaving the name, and returns the replaced station's name", async () => {
+    const { organization, previousDefaultStationName } =
+      await OrganizationUpdateService.apply(
+        orgId,
+        { defaultStationId: null },
+        userId
+      );
     expect(organization.name).toBe("Acme");
     expect(organization.defaultStationId).toBeNull();
+    // #935: read under the row lock, for the audit entry.
+    expect(previousDefaultStationName).toBe("Default station");
   });
 
   it("answers 404 for a deleted organization", async () => {

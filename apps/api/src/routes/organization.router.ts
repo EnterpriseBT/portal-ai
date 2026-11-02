@@ -148,7 +148,8 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *       `defaultStationId` needs class write on station, and a non-null station
  *       must be in the org and readable (`null` clears it). At least one field
  *       is required. A rename is audited as `org.update` and, best effort,
- *       copied to the org's Stripe customer.
+ *       copied to the org's Stripe customer. A default-station change is
+ *       audited as `org.update` too, with the stations' ids and names.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -241,6 +242,8 @@ organizationRouter.patch(
       // checked under the org row lock, so a station deleted concurrently
       // (whose delete clears the default under the same lock) can't be
       // written as the default.
+      // #935: the new default's name, read here under the lock for the audit.
+      let nextDefaultStationName: string | null = null;
       const assertStation =
         defaultStationId !== undefined && defaultStationId !== null
           ? async (tx: DbClient) => {
@@ -263,13 +266,18 @@ organizationRouter.patch(
                   "Station not found or does not belong to this organization"
                 );
               }
+              nextDefaultStationName = station.name;
             }
           : undefined;
 
-      const { organization, previousName } =
-        await OrganizationUpdateService.apply(id, parsed.data, userId, {
-          beforeWrite: assertStation,
-        });
+      const {
+        organization,
+        previousName,
+        previousDefaultStationId,
+        previousDefaultStationName,
+      } = await OrganizationUpdateService.apply(id, parsed.data, userId, {
+        beforeWrite: assertStation,
+      });
 
       // #907: post-commit and fail-open, only when the name actually changed.
       if (name !== undefined && organization.name !== previousName) {
@@ -285,6 +293,26 @@ organizationRouter.patch(
           },
         });
         void OrganizationUpdateService.syncStripeCustomerName(id);
+      }
+
+      // #935: the same entry for a default-station change, with the stations'
+      // names read inside the change's transaction, so Activity names them as
+      // of the change for every reader, whether or not they can read them.
+      const nextDefaultStationId = organization.defaultStationId ?? null;
+      if (
+        defaultStationId !== undefined &&
+        nextDefaultStationId !== previousDefaultStationId
+      ) {
+        void OrganizationUpdateService.auditDefaultStationChange(
+          auditContextFromRequest(req),
+          id,
+          {
+            from: previousDefaultStationId,
+            to: nextDefaultStationId,
+            fromName: previousDefaultStationName,
+            toName: nextDefaultStationName,
+          }
+        );
       }
 
       return HttpService.success<OrganizationUpdateResponse>(res, {

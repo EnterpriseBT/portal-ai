@@ -24,6 +24,7 @@ import { StationAttachmentService } from "../services/station-attachment.service
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
+import { OrganizationUpdateService } from "../services/organization-update.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -911,7 +912,7 @@ stationRouter.delete(
       // #621: deleting a station requires resource.delete — its creator (own),
       // or owner/admin. A read-write grantee cannot delete a shared station.
       // #713: one the caller can't read answers 404, like its GET.
-      ObjectAccessService.loadForVerb(
+      const station = ObjectAccessService.loadForVerb(
         await PermissionService.loadSet(ctx),
         organizationId,
         "station",
@@ -920,7 +921,7 @@ stationRouter.delete(
         () => new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
       );
 
-      await DbService.transaction(async (tx) => {
+      const clearedDefault = await DbService.transaction(async (tx) => {
         // #907: take the org row lock first. A default-station PATCH holds it
         // while it checks the station and writes the default, so the two
         // serialize: either the PATCH sees this delete and refuses, or this
@@ -963,8 +964,16 @@ stationRouter.delete(
           );
         }
 
+        // #935: the station's name as of its delete, for the clear's audit
+        // entry: locked here, so a rename can't land between this and the
+        // soft delete below.
+        const deleting = await DbService.repository.stations.findByIdForUpdate(
+          id,
+          tx
+        );
+
         // Clear the org's defaultStationId if it points to this station
-        await DbService.repository.organizations.updateWhere(
+        const cleared = await DbService.repository.organizations.updateWhere(
           and(
             eq(organizations.id, organizationId),
             eq(organizations.defaultStationId, id)
@@ -987,8 +996,21 @@ stationRouter.delete(
         );
 
         await DbService.repository.stations.softDelete(id, userId, tx);
+        return cleared.length > 0
+          ? { name: deleting?.name ?? station.name }
+          : null;
       });
       logger.info({ id }, "Station soft-deleted");
+
+      // #935: the automatic clear is a default-station change like any other,
+      // attributed to whoever deleted the station. Post-commit, fail-open.
+      if (clearedDefault) {
+        void OrganizationUpdateService.auditDefaultStationChange(
+          auditContextFromRequest(req),
+          organizationId,
+          { from: id, to: null, fromName: clearedDefault.name, toName: null }
+        );
+      }
 
       return HttpService.success(res, { id });
     } catch (error) {

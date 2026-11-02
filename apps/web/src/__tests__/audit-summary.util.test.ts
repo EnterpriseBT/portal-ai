@@ -34,3 +34,48 @@ describe("auditActionSummary (#907)", () => {
     ).toBeNull();
   });
 });
+
+describe("auditActionSummary — default station (#935)", () => {
+  const entry = (metadata: Record<string, unknown>) => ({
+    action: "org.update" as const,
+    metadata: { field: "defaultStationId", ...metadata },
+  });
+
+  it("set from none", () => {
+    expect(
+      auditActionSummary(
+        entry({ from: null, to: "st-b", fromName: null, toName: "Sales" })
+      )
+    ).toBe('Default station set to "Sales"');
+  });
+
+  it("changed", () => {
+    expect(
+      auditActionSummary(
+        entry({ from: "st-a", to: "st-b", fromName: "Main", toName: "Sales" })
+      )
+    ).toBe('Default station changed from "Main" to "Sales"');
+  });
+
+  it("cleared", () => {
+    expect(
+      auditActionSummary(
+        entry({ from: "st-a", to: null, fromName: "Main", toName: null })
+      )
+    ).toBe('Default station cleared (was "Main")');
+  });
+
+  it("an entry missing a name reads a neutral 'a station'", () => {
+    expect(
+      auditActionSummary(entry({ from: "st-a", to: "st-b", toName: "Sales" }))
+    ).toBe('Default station changed from a station to "Sales"');
+    expect(auditActionSummary(entry({ from: "st-a", to: null }))).toBe(
+      "Default station cleared (was a station)"
+    );
+  });
+
+  it("returns null when the ids are malformed or nothing changed", () => {
+    expect(auditActionSummary(entry({ from: 1, to: "st-b" }))).toBeNull();
+    expect(auditActionSummary(entry({ from: null, to: null }))).toBeNull();
+  });
+});

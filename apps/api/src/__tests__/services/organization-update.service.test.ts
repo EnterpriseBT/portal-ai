@@ -1,6 +1,7 @@
 /**
- * Unit tests for `OrganizationUpdateService.syncStripeCustomerName` (#907):
- * the post-commit, best-effort Stripe name sync. `apply` runs against the real
+ * Unit tests for `OrganizationUpdateService.syncStripeCustomerName` (#907),
+ * the post-commit, best-effort Stripe name sync, and
+ * `auditDefaultStationChange` (#935). `apply` runs against the real
  * database in the integration suite.
  */
 
@@ -19,8 +20,20 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
 
 const mockFindById =
   jest.fn<(id: string) => Promise<Record<string, unknown> | undefined>>();
+const mockStationFindById =
+  jest.fn<(id: string) => Promise<Record<string, unknown> | undefined>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { organizations: { findById: mockFindById } } },
+  DbService: {
+    repository: {
+      organizations: { findById: mockFindById },
+      stations: { findById: mockStationFindById },
+    },
+  },
+}));
+
+const mockRecord = jest.fn<(event: unknown) => Promise<void>>();
+jest.unstable_mockModule("../../services/audit.service.js", () => ({
+  AuditService: { record: mockRecord },
 }));
 
 const mockWarn = jest.fn();
@@ -42,6 +55,48 @@ beforeEach(() => {
   mockUpdateCustomerName.mockReset().mockResolvedValue(undefined);
   mockWarn.mockReset();
   mockFindById.mockReset().mockResolvedValue(storedOrg("cus_1"));
+  mockRecord.mockReset().mockResolvedValue(undefined);
+  mockStationFindById
+    .mockReset()
+    .mockImplementation(async (id: string) =>
+      id === "st-a"
+        ? { id, name: "Main" }
+        : id === "st-b"
+          ? { id, name: "Sales" }
+          : undefined
+    );
+});
+
+describe("OrganizationUpdateService.auditDefaultStationChange (#935)", () => {
+  it("records org.update with the change exactly as given, reading nothing", async () => {
+    const context = {
+      userId: "user-1",
+      organizationId: "org-1",
+      sourceIp: "127.0.0.1",
+      userAgent: "jest",
+    };
+
+    await OrganizationUpdateService.auditDefaultStationChange(
+      context,
+      "org-1",
+      { from: "st-a", to: "st-b", fromName: "Main", toName: "Sales" }
+    );
+
+    expect(mockRecord).toHaveBeenCalledWith({
+      ...context,
+      action: "org.update",
+      targetType: "organization",
+      targetId: "org-1",
+      metadata: {
+        field: "defaultStationId",
+        from: "st-a",
+        to: "st-b",
+        fromName: "Main",
+        toName: "Sales",
+      },
+    });
+    expect(mockStationFindById).not.toHaveBeenCalled();
+  });
 });
 
 describe("OrganizationUpdateService.syncStripeCustomerName (#907)", () => {

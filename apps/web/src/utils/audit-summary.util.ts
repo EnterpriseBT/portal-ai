@@ -13,6 +13,26 @@ export function auditActionSummary(
     const { field, from, to } = entry.metadata ?? {};
     if (field === "name" && typeof from === "string" && typeof to === "string")
       return `Renamed from "${from}" to "${to}"`;
+    if (field === "defaultStationId")
+      return defaultStationSummary(entry.metadata ?? {});
   }
   return null;
+}
+
+const isStationId = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+
+/** #935: the stations are named as they were when the change was recorded.
+ *  Every write captures the names, so a missing one is only an odd or legacy
+ *  entry, which reads a neutral "a station" rather than guessing why. */
+function defaultStationSummary(
+  metadata: Record<string, unknown>
+): string | null {
+  const { from, to, fromName, toName } = metadata;
+  if (!isStationId(from) || !isStationId(to) || from === to) return null;
+  const named = (name: unknown) =>
+    typeof name === "string" ? `"${name}"` : "a station";
+  if (from === null) return `Default station set to ${named(toName)}`;
+  if (to === null) return `Default station cleared (was ${named(fromName)})`;
+  return `Default station changed from ${named(fromName)} to ${named(toName)}`;
 }
