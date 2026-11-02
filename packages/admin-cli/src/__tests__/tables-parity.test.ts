@@ -18,6 +18,8 @@ import { organizations as apiOrganizations } from "../../../../apps/api/src/db/s
 import { users as apiUsers } from "../../../../apps/api/src/db/schema/users.table.js";
 import { organizationUsers as apiOrganizationUsers } from "../../../../apps/api/src/db/schema/organization-users.table.js";
 import { tiers as apiTiers } from "../../../../apps/api/src/db/schema/tiers.table.js";
+import { stations as apiStations } from "../../../../apps/api/src/db/schema/stations.table.js";
+import { auditLog as apiAuditLog } from "../../../../apps/api/src/db/schema/audit-log.table.js";
 
 function assertSubset(cliTable: PgTable, apiTable: PgTable): void {
   const c = getTableConfig(cliTable);
@@ -45,4 +47,8 @@ describe("CLI table defs subset-match apps/api's schema", () => {
   it("organization_users", () =>
     assertSubset(cli.organizationUsers, apiOrganizationUsers));
   it("tiers (existence-check subset)", () => assertSubset(cli.tiers, apiTiers));
+  // #936: org update validates a default station and records org.update.
+  it("stations (name + org subset)", () =>
+    assertSubset(cli.stations, apiStations));
+  it("audit_log", () => assertSubset(cli.auditLog, apiAuditLog));
 });

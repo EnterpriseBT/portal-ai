@@ -9,7 +9,7 @@
  * query building only.
  */
 
-import { bigint, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 
 /** Mirrors apps/api/src/db/schema/base.columns.ts (parity-pinned). */
 const base = {
@@ -55,4 +55,26 @@ export const organizationUsers = pgTable("organization_users", {
 export const tiers = pgTable("tiers", {
   ...base,
   slug: text("slug").notNull(),
+});
+
+/** #936: subset — what org update needs to validate a default station and
+ *  name it in the audit entry. */
+export const stations = pgTable("stations", {
+  ...base,
+  organizationId: text("organization_id").notNull(),
+  name: text("name").notNull(),
+});
+
+/** #936: org update records the app's `org.update` entries (#907, #935). */
+export const auditLog = pgTable("audit_log", {
+  ...base,
+  organizationId: text("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  outcome: text("outcome").notNull(),
+  sourceIp: text("source_ip"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 });

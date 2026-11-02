@@ -3,7 +3,10 @@
  * the app-data failure modes. Consumers branch on `code` / exit codes 8–9.
  */
 
-export type AdminCliErrorCode = "ADMIN_NOT_FOUND" | "ADMIN_CONFLICT";
+export type AdminCliErrorCode =
+  | "ADMIN_NOT_FOUND"
+  | "ADMIN_CONFLICT"
+  | "ADMIN_INVALID_INPUT";
 
 export class AdminCliError extends Error {
   readonly code: AdminCliErrorCode;
@@ -19,6 +22,14 @@ export class AdminCliError extends Error {
 export class AdminNotFoundError extends AdminCliError {
   constructor(message: string) {
     super("ADMIN_NOT_FOUND", message);
+  }
+}
+
+/** #936: input the app would refuse (an invalid org name, an empty update).
+ *  A usage error: exit 2. */
+export class AdminInvalidInputError extends AdminCliError {
+  constructor(message: string) {
+    super("ADMIN_INVALID_INPUT", message);
   }
 }
 

@@ -7,6 +7,7 @@
 import { envBanner, type EnvironmentDefinition } from "@portalai/cli-env";
 
 export const EXIT_CODES: Record<string, number> = {
+  ADMIN_INVALID_INPUT: 2,
   ENV_NOT_CONFIGURED: 3,
   ENV_NOT_AUTHORIZED: 4,
   ENV_CONFIRMATION_REQUIRED: 5,

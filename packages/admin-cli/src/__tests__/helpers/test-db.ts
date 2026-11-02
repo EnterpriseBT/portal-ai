@@ -62,6 +62,35 @@ CREATE TABLE tiers (
   deleted_by text,
   slug text NOT NULL
 );
+CREATE TABLE stations (
+  id text PRIMARY KEY,
+  created bigint NOT NULL,
+  created_by text NOT NULL,
+  updated bigint,
+  updated_by text,
+  deleted bigint,
+  deleted_by text,
+  organization_id text NOT NULL,
+  name text NOT NULL
+);
+CREATE TABLE audit_log (
+  id text PRIMARY KEY,
+  created bigint NOT NULL,
+  created_by text NOT NULL,
+  updated bigint,
+  updated_by text,
+  deleted bigint,
+  deleted_by text,
+  organization_id text NOT NULL,
+  user_id text NOT NULL,
+  action text NOT NULL,
+  target_type text,
+  target_id text,
+  outcome text NOT NULL,
+  source_ip text,
+  user_agent text,
+  metadata jsonb
+);
 `;
 
 export interface TestDb {

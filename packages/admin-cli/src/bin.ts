@@ -170,8 +170,8 @@ export function buildProgram(): Command {
     .option("--timezone <tz>")
     .option("--default-station-id <id>")
     .action(async (id: string, o: GlobalOpts) =>
-      execute(o, async (def) => ({
-        org: await orgUpdate(
+      execute(o, async (def) => {
+        const result = await orgUpdate(
           def,
           id,
           {
@@ -182,8 +182,17 @@ export function buildProgram(): Command {
               : {}),
           },
           flags(o)
-        ),
-      }))
+        );
+        // #936: the Stripe customer keeps the old name until the operator runs
+        // the step (portalai holds no Stripe credential). --json carries it as
+        // `stripe`; human output also warns on stderr.
+        if (result.stripe && !o.json) {
+          process.stderr.write(
+            `warning: the Stripe customer still has the old name — run:\n  ${result.stripe.command}\n`
+          );
+        }
+        return result;
+      })
     );
 
   common(
