@@ -22,19 +22,20 @@ Why B closes the window: `organizations.update` is an `UPDATE … RETURNING`. Un
 - **C before S:** the returned name is the new one. It differs from the name sent, so checkout syncs it.
 - **C after S:** the rename's sync runs after C, sees `stripe_customer_id`, and syncs it.
 
-There's no third ordering, so no extra read is needed. The sync is `OrganizationUpdateService.syncStripeCustomerName(org.id)`, reused as is. It re-reads and sends the current name, never throws, and logs the same warning on failure, so a Stripe error can't fail the checkout.
+There's no third ordering, so no extra read is needed. The checkout sends the returned name to **the customer it just created** (`StripeService.updateCustomerName(customerId, stored.name)`), not through the rename's `syncStripeCustomerName`, which re-reads `stripe_customer_id` from the row: with two first checkouts in flight (two tabs), that row can already hold the other checkout's customer. It logs an info line when it fires, and on a Stripe failure the rename's own "reconcile manually" warning; it never fails the checkout.
 
 ## Plan — one slice
 
 **Files**
-- Edit: `apps/api/src/services/billing.service.ts`. Keep the name sent to `createCustomer`, read `name` from the row `organizations.update` returns, and when they differ `await OrganizationUpdateService.syncStripeCustomerName(org.id)` before minting the session. Add a comment on why the returned row is fresh.
+- Edit: `apps/api/src/services/billing.service.ts`. Keep the name sent to `createCustomer`, read `name` from the row `organizations.update` returns, and when they differ log it and `await StripeService.updateCustomerName(customerId, stored.name)` in its own try/catch before minting the session. Add a comment on why the returned row is fresh.
 
 **Tests**
 - `apps/api/src/__tests__/services/billing.service.endpoints.test.ts` (`npm run test:unit`):
-  - the returned row carries a different name → the sync runs with the org id;
-  - same name → no sync;
+  - the returned row carries a different name → the new customer gets that name;
+  - the name sync fails → the checkout still returns its session;
+  - same name, or no row returned → no sync;
   - an existing customer → no update and no sync.
-- `apps/api/src/__tests__/__integration__/routes/billing.router.integration.test.ts` (`npm run test:integration`): deterministic, same pattern as the #907 station-delete test. A second connection locks the org row and renames it, uncommitted. `POST /api/billing/checkout` starts, is still pending after 500ms, then the rename commits. Expect the checkout to return 200, `createCustomer` to have been called with the old name, and `updateCustomerName(cus, "<new name>")`. Stripe calls are spied, as the suite already does.
+- `apps/api/src/__tests__/__integration__/routes/billing.router.integration.test.ts` (`npm run test:integration`): deterministic, same pattern as the #907 station-delete test. A second connection locks the org row and renames it, uncommitted. `POST /api/billing/checkout` starts; once `createCustomer` has been called the request is still pending, then the rename commits. Expect the checkout to return 200, `createCustomer` to have been called with the old name, and `updateCustomerName(cus, "<new name>")`. Stripe calls are spied, as the suite already does.
 - `npm run lint`, `npm run type-check`.
 
 ## Smoke (manual, against your dev stack)
@@ -44,11 +45,12 @@ There's no third ordering, so no extra read is needed. The sync is `Organization
    - click a plan in Settings → Subscription & Billing (the checkout request hangs);
    - `commit;`.
 
-   Checkout opens. `stripe customers retrieve <cus>` shows the name `Renamed Mid Checkout`.
-2. **No rename, no extra call:** a first checkout on another fresh org with no concurrent rename. The customer has the org's name, and the API log shows no extra Stripe call or warning.
+   Checkout opens. The API log shows "Organization renamed during customer creation — syncing the Stripe customer name", and `stripe customers retrieve <cus>` shows the name `Renamed Mid Checkout`.
+2. **No rename, no extra call:** a first checkout on another fresh org with no concurrent rename. The customer has the org's name, and the API log shows neither that line nor a warning.
 3. **Existing customer:** checkout for an org that already has a customer and no subscription works as before.
 
 ## Out of scope
 
-- Duplicate subscriptions when the webhook is late (#939).
+- Duplicate subscriptions when the webhook is late, and two concurrent first checkouts each creating a customer (#939).
+- Two syncs reaching Stripe out of order (a checkout's and a later rename's): cosmetic, already true of two renames.
 - Backfilling customers already left with a stale name (reconcile manually in Stripe; none are known).

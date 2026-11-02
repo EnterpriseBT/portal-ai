@@ -18,6 +18,8 @@ const mockCreatePortalSession =
   jest.fn<(args: unknown) => Promise<{ url: string }>>();
 const mockGetPrice = jest.fn<(id: string) => Promise<unknown>>();
 const mockFetchSubscription = jest.fn<(id: string) => Promise<unknown>>();
+const mockUpdateCustomerName =
+  jest.fn<(customerId: string, name: string) => Promise<void>>();
 
 jest.unstable_mockModule("../../services/stripe.service.js", () => ({
   StripeService: {
@@ -27,6 +29,7 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
     createPortalSession: mockCreatePortalSession,
     getPrice: mockGetPrice,
     fetchSubscription: mockFetchSubscription,
+    updateCustomerName: mockUpdateCustomerName,
   },
 }));
 
@@ -35,7 +38,9 @@ const mockFindBySlug =
 const mockFindSelectableForOrg =
   jest.fn<(orgId: string) => Promise<Record<string, unknown>[]>>();
 const mockOrgUpdate =
-  jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>();
+  jest.fn<
+    (...args: unknown[]) => Promise<Record<string, unknown> | undefined>
+  >();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -83,18 +88,6 @@ jest.unstable_mockModule("../../environment.js", () => ({
     CORS_ORIGIN: ["http://app.test"],
   },
 }));
-
-// #938: checkout reuses the rename's best-effort Stripe name sync.
-const mockSyncStripeCustomerName =
-  jest.fn<(organizationId: string) => Promise<void>>();
-jest.unstable_mockModule(
-  "../../services/organization-update.service.js",
-  () => ({
-    OrganizationUpdateService: {
-      syncStripeCustomerName: mockSyncStripeCustomerName,
-    },
-  })
-);
 
 const { BillingService } = await import("../../services/billing.service.js");
 
@@ -185,7 +178,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue([standardTier, proTier]);
   mockOrgUpdate.mockReset().mockResolvedValue({ name: "Acme Corp" });
-  mockSyncStripeCustomerName.mockReset().mockResolvedValue(undefined);
+  mockUpdateCustomerName.mockReset().mockResolvedValue(undefined);
   mockFetchSubscription
     .mockReset()
     .mockResolvedValue({ items: { data: [{ id: "si_1" }] } });
@@ -325,14 +318,39 @@ describe("BillingService.createCheckout happy path", () => {
     expect(mockCreateCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Acme Corp" })
     );
-    expect(mockSyncStripeCustomerName).toHaveBeenCalledWith("org-1");
+    expect(mockUpdateCustomerName).toHaveBeenCalledWith(
+      "cus_new",
+      "Renamed Corp"
+    );
+    expect(mockCreateCheckoutSession).toHaveBeenCalled();
+  });
+
+  it("still returns the session when the name sync fails", async () => {
+    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+    mockUpdateCustomerName.mockRejectedValue(new Error("stripe down"));
+
+    const result = await BillingService.createCheckout(
+      orgFixture(),
+      OWNER,
+      "pro"
+    );
+
+    expect(result).toEqual({ url: "https://checkout.stripe.com/c/session" });
+  });
+
+  it("doesn't sync the Stripe name when the id write returns no row", async () => {
+    mockOrgUpdate.mockResolvedValue(undefined);
+
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
     expect(mockCreateCheckoutSession).toHaveBeenCalled();
   });
 
   it("doesn't sync the Stripe name when the stored name is the one sent", async () => {
     await BillingService.createCheckout(orgFixture(), OWNER, "pro");
 
-    expect(mockSyncStripeCustomerName).not.toHaveBeenCalled();
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
   });
 
   it("doesn't sync the Stripe name for an existing customer", async () => {
@@ -342,7 +360,8 @@ describe("BillingService.createCheckout happy path", () => {
       "pro"
     );
 
-    expect(mockSyncStripeCustomerName).not.toHaveBeenCalled();
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
   });
 
   it("502 BILLING_CHECKOUT_FAILED when the Stripe session call fails", async () => {

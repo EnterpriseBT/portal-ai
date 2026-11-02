@@ -14,7 +14,6 @@ import { CommercialEventModelFactory } from "@portalai/core/models";
 import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
-import { OrganizationUpdateService } from "./organization-update.service.js";
 import { TierService } from "./tier.service.js";
 import { RebuildDispatchService } from "./rebuild-dispatch.service.js";
 import { ApiError } from "./http.service.js";
@@ -280,10 +279,28 @@ export class BillingService {
         // #938: a rename committed since `org` was read found no customer to
         // sync. This UPDATE waits for a rename holding the row and returns the
         // committed name, so a mismatch here is exactly that case; a rename
-        // committing after it sees the customer id and syncs itself. Best
-        // effort: the sync logs a failure and never throws.
+        // committing after it sees the customer id and syncs itself. The name
+        // goes to the customer this checkout created, never one re-read from
+        // the row, which a concurrent first checkout may have overwritten.
+        // Best effort, like the rename's own sync: a failure never fails the
+        // checkout.
         if (stored && stored.name !== org.name) {
-          await OrganizationUpdateService.syncStripeCustomerName(org.id);
+          logger.info(
+            { organizationId: org.id, stripeCustomerId: customerId },
+            "Organization renamed during customer creation — syncing the Stripe customer name"
+          );
+          try {
+            await StripeService.updateCustomerName(customerId, stored.name);
+          } catch (error) {
+            logger.warn(
+              {
+                organizationId: org.id,
+                stripeCustomerId: customerId,
+                error: error instanceof Error ? error.message : "Unknown error",
+              },
+              "Failed to update the Stripe customer name after an organization rename — reconcile manually"
+            );
+          }
         }
       }
 

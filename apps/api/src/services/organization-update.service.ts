@@ -9,8 +9,9 @@
  *
  * `syncStripeCustomerName` runs after commit and is best effort: the rename is
  * the record of truth, and a stale Stripe name is cosmetic and logged for
- * manual reconciliation. It sends the org's name as stored when it runs, so
- * two renames whose syncs finish out of order still leave Stripe current.
+ * manual reconciliation. It sends the org's name as stored when it runs, which
+ * narrows, but doesn't close, the window in which two syncs reaching Stripe
+ * out of order leave it with the older name.
  */
 
 import type { Organization } from "@portalai/core/models";
@@ -84,7 +85,7 @@ export class OrganizationUpdateService {
    * Post-commit, best effort. A no-op without a Stripe customer or when Stripe
    * isn't configured; a failure is logged and never thrown. A rename that
    * lands while the first checkout is creating the customer is synced by that
-   * checkout (`BillingService.createCheckout`, #938).
+   * checkout itself (`BillingService.createCheckout`, #938).
    */
   static async syncStripeCustomerName(organizationId: string): Promise<void> {
     if (!StripeService.isConfigured()) return;

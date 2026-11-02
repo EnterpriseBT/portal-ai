@@ -319,7 +319,7 @@ describe("Billing router", () => {
 
       const renamer = postgres(process.env.DATABASE_URL!, { max: 1 });
       let settled = false;
-      let checkout!: Promise<request.Response>;
+      let checkout: Promise<request.Response> | undefined;
       try {
         await renamer.begin(async (tx) => {
           // What a rename does under OrganizationUpdateService.apply.
@@ -333,16 +333,21 @@ describe("Billing router", () => {
               settled = true;
               return res;
             });
-          await new Promise((r) => setTimeout(r, 500));
+          // Commit only once the checkout has read the org and sent its name
+          // to Stripe, so the rename lands between that read and the id write.
+          const deadline = Date.now() + 10_000;
+          while (customerSpy.mock.calls.length === 0) {
+            if (settled || Date.now() > deadline) {
+              throw new Error("checkout never reached customer creation");
+            }
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          await new Promise((r) => setTimeout(r, 100));
           // The customer id write is blocked behind the uncommitted rename.
           expect(settled).toBe(false);
         });
-      } finally {
-        await renamer.end();
-      }
 
-      try {
-        const res = await checkout;
+        const res = await checkout!;
         expect(res.status).toBe(200);
         expect(customerSpy).toHaveBeenCalledWith(
           expect.objectContaining({ name: before.name })
@@ -357,6 +362,10 @@ describe("Billing router", () => {
           .where(eq(schema.organizations.id, orgId));
         expect(after.stripeCustomerId).toBe("cus_race_938");
       } finally {
+        await renamer.end();
+        // Let a request left running by a failed assertion finish against the
+        // spies before restoring them, so it can't reach the real Stripe client.
+        await checkout?.catch(() => undefined);
         customerSpy.mockRestore();
         sessionSpy.mockRestore();
         nameSpy.mockRestore();
