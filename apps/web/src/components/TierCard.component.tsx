@@ -5,12 +5,13 @@ import Link from "@mui/material/Link";
 import WorkspacePremium from "@mui/icons-material/WorkspacePremium";
 import {
   Box,
-  Button,
   Card,
   CardContent,
   Divider,
+  GatedButton,
   Stack,
   Typography,
+  type ActionGate,
 } from "@portalai/core/ui";
 
 import { SUPPORT_MAILTO } from "../utils/contact.util";
@@ -43,6 +44,9 @@ export interface TierCardUIProps {
   isPending: boolean;
   /** Invoked with the tier slug for a `subscribe` tier (new subscription). */
   onSubscribe: (tierSlug: string) => void;
+  /** #939: gates Subscribe (not Switch) — disabled while a payment from a
+   *  just-finished checkout is still processing. Omitted = allow. */
+  subscribeGate?: ActionGate;
   /** #260: whether the org already has a subscription — flips the CTA on a
    *  non-current priced tier from "Subscribe" to "Switch to this plan". */
   isSubscribed?: boolean;
@@ -64,6 +68,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   onSubscribe,
   isSubscribed = false,
   onSwitch,
+  subscribeGate,
 }) => {
   const { policy, cta } = tier;
   // An upgrade teaser for a custom tier presents generically: no specific
@@ -195,9 +200,10 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
           {/* #691: plan changes need billing.manage; without it there's no
               button (the billing page says why, once). */}
           {cta === "subscribe" && !isCurrentPlan && canManageBilling && (
-            <Button
+            <GatedButton
               type="button"
               variant="contained"
+              gate={isSubscribed ? undefined : subscribeGate}
               disabled={isPending}
               onClick={() =>
                 isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
@@ -208,7 +214,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
                 : isSubscribed
                   ? "Switch to this plan"
                   : "Subscribe"}
-            </Button>
+            </GatedButton>
           )}
 
           {cta === "contact" && (

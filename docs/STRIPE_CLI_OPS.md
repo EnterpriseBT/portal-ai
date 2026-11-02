@@ -53,7 +53,20 @@ stripe products list --limit 10
 
 ## Correlating events to server-side outcomes
 
-The app records every webhook at `POST /api/webhooks/stripe` (`apps/api/src/routes/webhook.router.ts`) into the **`stripe_events`** table, one row per `event_id`, with an `outcome` of `applied | noop | unmatched | ignored | foreign`. To debug "Stripe says delivered, nothing changed": find the event via `stripe events retrieve <id>`, then check the ledger row's `outcome` (e.g. `foreign` = a subscription owned by another env/account; `unmatched` = no org for that customer). The Stripe dashboard's webhook-endpoint delivery log is the vendor-side record of delivery attempts.
+The app records every webhook at `POST /api/webhooks/stripe` (`apps/api/src/routes/webhook.router.ts`) into the **`commercial_events`** table (`source = 'stripe'`), one row per event id, with an `outcome` of `applied | noop | unmatched | ignored | duplicate_subscription` (`foreign` is the marketplace rail's; Stripe events converge per customer since #939). To debug "Stripe says delivered, nothing changed": find the event via `stripe events retrieve <id>`, then check the ledger row's `outcome` (`unmatched` = no org for that customer). The Stripe dashboard's webhook-endpoint delivery log is the vendor-side record of delivery attempts.
+
+A plan converged by the checkout return page instead of a webhook (`POST /api/billing/sync`) is recorded as `type = 'billing.sync'`, `external_id = 'sync:<uuid>'`, and only when it changed the org.
+
+### A customer with more than one live subscription (#939)
+
+The app never cancels a subscription on its own. When a customer has more than one live subscription (`active`, `trialing`, `past_due`), the org follows the one it tracks (or the newest live one), the event is recorded with `outcome = 'duplicate_subscription'`, and the API logs `Customer has more than one live Stripe subscription — cancel the extra one in Stripe`. To resolve one:
+
+```bash
+stripe subscriptions list --customer <cus-id> --status all   # find the live ones
+# the org tracks organizations.stripe_subscription_id; cancel and refund the others in the dashboard
+```
+
+Checkout refuses a new subscription while the customer has one Stripe can still bill, and expires older open Checkout sessions, so new duplicates need two tabs paying within seconds of each other.
 
 ## Price + lookup-key config (require a write key — not agent-auto)
 

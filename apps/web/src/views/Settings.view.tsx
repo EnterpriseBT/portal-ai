@@ -35,6 +35,7 @@ import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { formatUsageValue } from "../utils/usage-format.util";
@@ -66,11 +67,16 @@ export const SettingsView = () => {
   const queryClient = useQueryClient();
 
   const toast = useToast();
+  // #939: the checkout return converges the plan from Stripe itself, so the
+  // page is right even when the subscription webhook is late or failing.
+  const { mutateAsync: syncBilling } = sdk.billing.sync();
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   // Checkout return handling (#176): Stripe redirects back to
-  // /settings?billing={success,cancelled}. The webhook is the tier writer —
-  // the redirect only refreshes the org cache and tells the user what
-  // happened, then strips the param so a reload doesn't re-toast.
+  // /settings?tab=billing&billing={success,cancelled}. On success the page
+  // asks the API to converge the plan from Stripe now (#939) instead of
+  // trusting the webhook to have landed, then refreshes the org cache and
+  // says what happened. The param is stripped so a reload doesn't re-run it.
   //
   // #293: the message used to be derived in a useState initializer to avoid
   // setState-in-effect. Raising a toast is imperative, so it moves into the
@@ -83,13 +89,29 @@ export const SettingsView = () => {
     if (!billing) return;
 
     if (billing === "success") {
-      // The webhook already wrote the tier — just refresh the org cache.
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.organizations.root,
-      });
-      toast.success(
-        "Subscription confirmed — your plan updates within a few seconds"
-      );
+      // #783: an effect reads the mutation's promise, never its hook state.
+      syncBilling({})
+        .then(({ subscription }) => {
+          if (subscription === "live") {
+            toast.success("Subscription confirmed");
+          } else {
+            setPaymentProcessing(true);
+          }
+        })
+        .catch((error: unknown) => {
+          toast.error(
+            serverErrorMessage(
+              error,
+              "Couldn't confirm your subscription with Stripe yet."
+            )
+          );
+          setPaymentProcessing(true);
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.organizations.root,
+          });
+        });
     }
     if (billing === "cancelled") {
       toast.info("Checkout cancelled — your plan is unchanged");
@@ -102,7 +124,7 @@ export const SettingsView = () => {
       "",
       `${window.location.pathname}${query ? `?${query}` : ""}`
     );
-  }, [queryClient, toast]);
+  }, [queryClient, toast, syncBilling]);
   // Small screens + tablets stack each field/value pair vertically; desktop
   // (md+) shows them side-by-side. Layout is the view's call, not the list's.
   const stackVertically = useMediaQuery(theme.breakpoints.down("md"));
@@ -511,7 +533,9 @@ export const SettingsView = () => {
           <PageSection title="Subscription & Billing" variant="outlined">
             {/* Mounted only while active so the billing queries don't fire
               behind the other tabs. */}
-            {tabsProps.value === 2 && <SubscriptionBilling />}
+            {tabsProps.value === 2 && (
+              <SubscriptionBilling paymentProcessing={paymentProcessing} />
+            )}
           </PageSection>
         </TabPanel>
         {canManageMembers && (

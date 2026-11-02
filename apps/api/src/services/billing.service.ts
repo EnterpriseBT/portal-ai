@@ -577,8 +577,10 @@ export class BillingService {
         const session = await StripeService.createCheckoutSession({
           customerId,
           priceId,
-          successUrl: `${settingsUrl()}?billing=success`,
-          cancelUrl: `${settingsUrl()}?billing=cancelled`,
+          // #939: land on the billing tab, where a still-processing payment
+          // is shown.
+          successUrl: `${settingsUrl()}?tab=billing&billing=success`,
+          cancelUrl: `${settingsUrl()}?tab=billing&billing=cancelled`,
           organizationId: org.id,
         });
         return { url: session.url };

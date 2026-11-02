@@ -332,8 +332,8 @@ describe("BillingService.createCheckout happy path", () => {
         customerId: "cus_new",
         priceId: "price_pro",
         organizationId: "org-1",
-        successUrl: "http://app.test/settings?billing=success",
-        cancelUrl: "http://app.test/settings?billing=cancelled",
+        successUrl: "http://app.test/settings?tab=billing&billing=success",
+        cancelUrl: "http://app.test/settings?tab=billing&billing=cancelled",
       })
     );
   });
