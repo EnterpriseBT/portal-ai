@@ -121,8 +121,31 @@ describe("org update — the Stripe name step", () => {
       action: "update_customer_name",
       customerId: "cus_1",
       name: "Acme Corp",
-      command: "stripe customers update cus_1 --name 'Acme Corp'",
+      command:
+        "stripe customers update 'cus_1' --name='Acme Corp' --project-name app-dev",
     });
+  });
+
+  it("selects the env's Stripe account, and live mode only in prod", async () => {
+    mockStore.updateOrg.mockResolvedValue(renamed("cus_1"));
+
+    const localOut = await orgUpdate(local, "o-1", { name: "Acme Corp" }, {});
+    expect(localOut.stripe?.command).toBe(
+      "stripe customers update 'cus_1' --name='Acme Corp'"
+    );
+
+    // The cli-env mock registers local + app-dev only; prod differs by name
+    // and kind, which is all the Stripe step reads.
+    const prod = { ...appDev, name: "prod", kind: "production" as const };
+    const prodOut = await orgUpdate(
+      prod,
+      "o-1",
+      { name: "Acme Corp" },
+      { yes: true, confirmProd: true }
+    );
+    expect(prodOut.stripe?.command).toBe(
+      "stripe customers update 'cus_1' --name='Acme Corp' --project-name prod --live"
+    );
   });
 
   it("quotes a name with an apostrophe for the shell", async () => {
@@ -139,7 +162,7 @@ describe("org update — the Stripe name step", () => {
     );
 
     expect(out.stripe?.command).toBe(
-      `stripe customers update cus_1 --name 'Bob'\\''s Co'`
+      `stripe customers update 'cus_1' --name='Bob'\\''s Co' --project-name app-dev`
     );
   });
 
@@ -165,7 +188,7 @@ describe("org update — the Stripe name step", () => {
     expect(out.stripe).toBeUndefined();
   });
 
-  it("the local operator audit lists only the fields that changed", async () => {
+  it("the local operator audit records the fields asked for and the ones that changed", async () => {
     mockStore.updateOrg.mockResolvedValue(renamed("cus_1"));
     await orgUpdate(
       appDev,
@@ -176,8 +199,42 @@ describe("org update — the Stripe name step", () => {
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         command: "org update",
-        args: expect.objectContaining({ fields: ["name"] }),
+        args: {
+          orgId: "o-1",
+          requested: ["name", "timezone"],
+          changed: ["name"],
+        },
       })
+    );
+  });
+
+  // The app's PATCH rules for a name (#907): trimmed, 1–120 characters, one
+  // line. A refusal is a usage error (exit 2) before anything runs.
+  it.each([
+    ["a blank name", "   "],
+    ["a 121-character name", "a".repeat(121)],
+    ["a name with a line break", "Acme\nCorp"],
+  ])("%s is ADMIN_INVALID_INPUT and nothing runs", async (_label, name) => {
+    const p = orgUpdate(appDev, "o-1", { name }, { yes: true });
+    await expect(p).rejects.toMatchObject({ code: "ADMIN_INVALID_INPUT" });
+    expect(createDbAdminStoreMock).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("an update with no fields is ADMIN_INVALID_INPUT", async () => {
+    await expect(
+      orgUpdate(appDev, "o-1", {}, { yes: true })
+    ).rejects.toMatchObject({ code: "ADMIN_INVALID_INPUT" });
+    expect(createDbAdminStoreMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the name trimmed, as the app stores it", async () => {
+    mockStore.updateOrg.mockResolvedValue(renamed(null));
+    await orgUpdate(appDev, "o-1", { name: "  Acme Corp  " }, { yes: true });
+    expect(mockStore.updateOrg).toHaveBeenCalledWith(
+      "o-1",
+      { name: "Acme Corp" },
+      SUB
     );
   });
 });

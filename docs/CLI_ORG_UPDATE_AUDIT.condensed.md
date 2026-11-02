@@ -20,7 +20,8 @@
 - **Write `audit_log` from the store.** Chosen. `updateOrg` runs in a transaction: lock the org row, read its name and default, validate a new default station against the org and read its name, write the patch, then insert one `org.update` row per field that actually changed. The shapes are #907's and #935's exactly, plus `via: "portalai"`. Entries commit with the change, so the CLI is stricter than the app's post-commit, fail-open write. There's no request to fail, and a rename shouldn't land unaudited.
 - **Actor.** `user_id` is the operator's `users.id` when their session `sub` matches a user's `auth0_id`; otherwise the operator string itself (the `sub`, or the OS username locally). Activity then shows who, and an unmatched operator still reads as something meaningful.
 - **Default-station check.** A `--default-station-id` that isn't a live station in that org is refused with `ADMIN_NOT_FOUND` (exit 8) and nothing is written. Today the CLI writes any id, including another org's, which the app's PATCH refuses.
-- **Stripe.** When the name changed and the org has a `stripe_customer_id`, the result carries `stripe: { action: "update_customer_name", customerId, name, command: "stripe customers update <cus> --name '<new>'" }`. Human output prints it as a warning. Exit 0.
+- **Stripe.** When the name changed and the org has a `stripe_customer_id`, the result carries `stripe: { action: "update_customer_name", customerId, name, command }`. The command is `stripe customers update '<cus>' --name='<new>'`, targeting the env's account (`--project-name <env>`, plus `--live` in prod; code review). Human output prints it as a warning. Exit 0.
+- **Input (code review).** `--name` follows the app's rule (trimmed, 1–120 chars, one line); an empty update or an invalid name is `ADMIN_INVALID_INPUT` (exit 2). A no-op writes nothing.
 
 ## Plan — 1 slice
 

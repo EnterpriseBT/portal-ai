@@ -208,20 +208,15 @@ export function createAdminStore(
           }
         }
 
-        const [row] = await tx
-          .update(organizations)
-          .set({ ...patch, updated: Date.now(), updatedBy: actor })
-          .where(eq(organizations.id, id))
-          .returning();
-        const org = row as Organization;
-
+        // What would actually change; a no-op writes nothing, so the row
+        // isn't stamped as edited by an operator who changed nothing.
         const changes: OrgChanges = {};
-        if (patch.name !== undefined && org.name !== current.name)
-          changes.name = { from: current.name, to: org.name };
-        if (patch.timezone !== undefined && org.timezone !== current.timezone)
-          changes.timezone = { from: current.timezone, to: org.timezone };
+        if (patch.name !== undefined && patch.name !== current.name)
+          changes.name = { from: current.name, to: patch.name };
+        if (patch.timezone !== undefined && patch.timezone !== current.timezone)
+          changes.timezone = { from: current.timezone, to: patch.timezone };
         const from = current.defaultStationId ?? null;
-        const to = org.defaultStationId ?? null;
+        const to = patch.defaultStationId ?? null;
         if (patch.defaultStationId !== undefined && to !== from)
           changes.defaultStationId = {
             from,
@@ -229,6 +224,15 @@ export function createAdminStore(
             fromName: await stationName(from),
             toName,
           };
+        if (Object.keys(changes).length === 0)
+          return { org: current as Organization, changes };
+
+        const [row] = await tx
+          .update(organizations)
+          .set({ ...patch, updated: Date.now(), updatedBy: actor })
+          .where(eq(organizations.id, id))
+          .returning();
+        const org = row as Organization;
 
         // The same entries the app records (#907 name, #935 default station),
         // committed with the change, attributed to the operator's user when
@@ -247,17 +251,19 @@ export function createAdminStore(
             .where(and(eq(users.auth0Id, actor), isNull(users.deleted)))
             .limit(1);
           const now = Date.now();
+          // Actor and creator are the same principal, as the app records them.
+          const principal = operatorUser?.id ?? actor;
           await tx.insert(auditLog).values(
             audited.map((metadata) => ({
               id: randomUUID(),
               created: now,
-              createdBy: actor,
+              createdBy: principal,
               updated: null,
               updatedBy: null,
               deleted: null,
               deletedBy: null,
               organizationId: id,
-              userId: operatorUser?.id ?? actor,
+              userId: principal,
               action: "org.update",
               targetType: "organization",
               targetId: id,

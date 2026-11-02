@@ -238,13 +238,19 @@ describe("updateOrg — audit_log", () => {
     });
   });
 
-  it("an unchanged value records nothing", async () => {
-    await store.updateOrg(
+  it("an unchanged value records nothing and doesn't stamp the row", async () => {
+    const out = await store.updateOrg(
       "o-1",
       { name: "Acme", defaultStationId: "st-a" },
       "actor-1"
     );
+    expect(out.changes).toEqual({});
     expect(await entries()).toHaveLength(0);
+    const [row] = await t.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, "o-1"));
+    expect(row.updatedBy).toBeNull();
   });
 
   it("a name and a station change record one entry each", async () => {
@@ -290,7 +296,9 @@ describe("updateOrg — audit_log", () => {
 
     await store.updateOrg("o-1", { name: "Acme Corp" }, "auth0|op");
 
-    expect((await entries())[0].userId).toBe("u-op");
+    const [entry] = await entries();
+    expect(entry.userId).toBe("u-op");
+    expect(entry.createdBy).toBe("u-op");
   });
 });
 

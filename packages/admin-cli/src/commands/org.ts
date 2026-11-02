@@ -8,7 +8,9 @@ import type { EnvironmentDefinition } from "@portalai/cli-env";
 import type { Organization } from "@portalai/core/models";
 
 import type { ListOrgsOptions, OrgPatch } from "../store.js";
-import { AdminConflictError } from "../errors.js";
+import { OrganizationUpdateRequestSchema } from "@portalai/core/contracts";
+
+import { AdminConflictError, AdminInvalidInputError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
 
 export function orgList(
@@ -43,21 +45,58 @@ export interface OrgUpdateOutput {
 /** POSIX single-quote a value for the printed shell command. */
 const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
+/** The env's Stripe account and mode (docs/STRIPE_CLI_OPS.md): a named
+ *  profile per AWS env, live mode only in prod; local uses the default. */
+const stripeTarget = (def: EnvironmentDefinition) =>
+  def.kind === "development"
+    ? ""
+    : ` --project-name ${def.name}${def.kind === "production" ? " --live" : ""}`;
+
+/** #936: the app's PATCH rules for a name and station id (#907), so the CLI
+ *  can't write what the app would refuse. Returns the patch as stored (the
+ *  name trimmed). */
+function validatePatch(patch: OrgPatch): OrgPatch {
+  if (Object.keys(patch).length === 0) {
+    throw new AdminInvalidInputError(
+      "Nothing to update: pass --name, --timezone or --default-station-id"
+    );
+  }
+  if (patch.name === undefined && patch.defaultStationId === undefined)
+    return patch;
+  const parsed = OrganizationUpdateRequestSchema.safeParse({
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.defaultStationId !== undefined
+      ? { defaultStationId: patch.defaultStationId }
+      : {}),
+  });
+  if (!parsed.success) {
+    throw new AdminInvalidInputError(
+      parsed.error.issues[0]?.message ?? "Invalid organization update"
+    );
+  }
+  return {
+    ...patch,
+    ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+  };
+}
+
 export async function orgUpdate(
   def: EnvironmentDefinition,
   id: string,
   patch: OrgPatch,
   flags: MutateFlags
 ): Promise<OrgUpdateOutput> {
+  const valid = validatePatch(patch);
   const operator = await beginMutation(def, flags, false);
   // #936: the store records the app's org.update entries in the same
   // transaction; this line is the operator's own local record.
   const { org, changes } = await withStore(def, (s) =>
-    s.updateOrg(id, patch, operator)
+    s.updateOrg(id, valid, operator)
   );
   await audit(def, operator, "org update", {
     orgId: id,
-    fields: Object.keys(changes),
+    requested: Object.keys(valid),
+    changed: Object.keys(changes),
   });
 
   const customerId = org.stripeCustomerId;
@@ -68,7 +107,7 @@ export async function orgUpdate(
       action: "update_customer_name",
       customerId,
       name: org.name,
-      command: `stripe customers update ${customerId} --name ${shellQuote(org.name)}`,
+      command: `stripe customers update ${shellQuote(customerId)} --name=${shellQuote(org.name)}${stripeTarget(def)}`,
     },
   };
 }
