@@ -431,7 +431,13 @@ export class BillingService {
       stripeSubscriptionId: string | null;
       organizationId: string | null;
       resultingTier: string | null;
-      outcome: "applied" | "noop" | "unmatched" | "ignored" | "foreign";
+      outcome:
+        | "applied"
+        | "noop"
+        | "unmatched"
+        | "ignored"
+        | "foreign"
+        | "duplicate_subscription";
     }
   ) {
     return new CommercialEventModelFactory()

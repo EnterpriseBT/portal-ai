@@ -180,6 +180,19 @@ describe("CommercialEventsRepository Integration Tests", () => {
     expect(inserted).toBe(true);
   });
 
+  // #939: a customer with more than one live subscription is flagged on the row.
+  it("accepts a duplicate-subscription row", async () => {
+    const inserted = await repo.insertIfNew(
+      eventRow({
+        externalId: `evt_${generateId()}`,
+        stripeSubscriptionId: "sub_governing",
+        outcome: "duplicate_subscription",
+      }) as never,
+      db
+    );
+    expect(inserted).toBe(true);
+  });
+
   it("accepts an unmatched event with null org linkage", async () => {
     const inserted = await repo.insertIfNew(
       eventRow({

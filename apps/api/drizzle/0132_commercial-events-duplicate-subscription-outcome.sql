@@ -1,0 +1,3 @@
+-- destructive-ok: widening the outcome CHECK to admit 'duplicate_subscription'; the new (superset) CHECK is re-added below, so every existing row still satisfies it (#939).
+ALTER TABLE "commercial_events" DROP CONSTRAINT "commercial_events_outcome_check";--> statement-breakpoint
+ALTER TABLE "commercial_events" ADD CONSTRAINT "commercial_events_outcome_check" CHECK ("commercial_events"."outcome" IN ('applied', 'noop', 'unmatched', 'ignored', 'foreign', 'duplicate_subscription'));

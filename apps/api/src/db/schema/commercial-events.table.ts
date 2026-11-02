@@ -36,7 +36,14 @@ export const commercialEvents = pgTable(
     // sync by type-checks.ts; DDL stays plain text — the CHECK below is the
     // DB-level guard).
     outcome: text("outcome", {
-      enum: ["applied", "noop", "unmatched", "ignored", "foreign"],
+      enum: [
+        "applied",
+        "noop",
+        "unmatched",
+        "ignored",
+        "foreign",
+        "duplicate_subscription",
+      ],
     }).notNull(),
   },
   (t) => [
@@ -52,7 +59,7 @@ export const commercialEvents = pgTable(
     ),
     check(
       "commercial_events_outcome_check",
-      sql`${t.outcome} IN ('applied', 'noop', 'unmatched', 'ignored', 'foreign')`
+      sql`${t.outcome} IN ('applied', 'noop', 'unmatched', 'ignored', 'foreign', 'duplicate_subscription')`
     ),
   ]
 );

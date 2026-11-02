@@ -30,6 +30,8 @@ export type CommercialEventSource = z.infer<typeof CommercialEventSourceSchema>;
  * - `ignored` — an event type we verified but don't handle
  * - `foreign` — event for an entitlement the org doesn't track, while it
  *   tracks a different one (#230); recorded, not applied
+ * - `duplicate_subscription` — the customer has more than one live Stripe
+ *   subscription (#939); the plan converged on one, the others need a person
  */
 export const CommercialEventOutcomeSchema = z.enum([
   "applied",
@@ -37,6 +39,7 @@ export const CommercialEventOutcomeSchema = z.enum([
   "unmatched",
   "ignored",
   "foreign",
+  "duplicate_subscription",
 ]);
 export type CommercialEventOutcome = z.infer<
   typeof CommercialEventOutcomeSchema
