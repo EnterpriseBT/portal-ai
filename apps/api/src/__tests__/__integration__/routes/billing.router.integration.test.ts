@@ -299,6 +299,80 @@ describe("Billing router", () => {
     });
   });
 
+  // ── #938: a rename racing the first checkout ────────────────────────
+
+  describe("POST /api/billing/checkout — rename during customer creation", () => {
+    it("waits for a rename holding the org row, then syncs the Stripe name", async () => {
+      const [before] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, orgId));
+      const customerSpy = jest
+        .spyOn(StripeService, "createCustomer")
+        .mockResolvedValue({ id: "cus_race_938" });
+      const sessionSpy = jest
+        .spyOn(StripeService, "createCheckoutSession")
+        .mockResolvedValue({ url: "https://checkout.stripe.com/c/race" });
+      const nameSpy = jest
+        .spyOn(StripeService, "updateCustomerName")
+        .mockResolvedValue(undefined);
+
+      const renamer = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let settled = false;
+      let checkout: Promise<request.Response> | undefined;
+      try {
+        await renamer.begin(async (tx) => {
+          // What a rename does under OrganizationUpdateService.apply.
+          await tx`select id from organizations where id = ${orgId} for update`;
+          await tx`update organizations set name = 'Renamed Mid Checkout' where id = ${orgId}`;
+
+          checkout = request(app)
+            .post("/api/billing/checkout")
+            .send({ tier: PRO_SLUG })
+            .then((res) => {
+              settled = true;
+              return res;
+            });
+          // Commit only once the checkout has read the org and sent its name
+          // to Stripe, so the rename lands between that read and the id write.
+          const deadline = Date.now() + 10_000;
+          while (customerSpy.mock.calls.length === 0) {
+            if (settled || Date.now() > deadline) {
+              throw new Error("checkout never reached customer creation");
+            }
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          await new Promise((r) => setTimeout(r, 100));
+          // The customer id write is blocked behind the uncommitted rename.
+          expect(settled).toBe(false);
+        });
+
+        const res = await checkout!;
+        expect(res.status).toBe(200);
+        expect(customerSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ name: before.name })
+        );
+        expect(nameSpy).toHaveBeenCalledWith(
+          "cus_race_938",
+          "Renamed Mid Checkout"
+        );
+        const [after] = await db
+          .select()
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, orgId));
+        expect(after.stripeCustomerId).toBe("cus_race_938");
+      } finally {
+        await renamer.end();
+        // Let a request left running by a failed assertion finish against the
+        // spies before restoring them, so it can't reach the real Stripe client.
+        await checkout?.catch(() => undefined);
+        customerSpy.mockRestore();
+        sessionSpy.mockRestore();
+        nameSpy.mockRestore();
+      }
+    });
+  });
+
   // ── #260: in-app plan switch via the portal ─────────────────────────
   describe("POST /api/billing/portal — switch flow", () => {
     let portalSpy!: ReturnType<typeof jest.spyOn>;

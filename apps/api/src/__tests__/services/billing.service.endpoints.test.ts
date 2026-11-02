@@ -18,6 +18,8 @@ const mockCreatePortalSession =
   jest.fn<(args: unknown) => Promise<{ url: string }>>();
 const mockGetPrice = jest.fn<(id: string) => Promise<unknown>>();
 const mockFetchSubscription = jest.fn<(id: string) => Promise<unknown>>();
+const mockUpdateCustomerName =
+  jest.fn<(customerId: string, name: string) => Promise<void>>();
 
 jest.unstable_mockModule("../../services/stripe.service.js", () => ({
   StripeService: {
@@ -27,6 +29,7 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
     createPortalSession: mockCreatePortalSession,
     getPrice: mockGetPrice,
     fetchSubscription: mockFetchSubscription,
+    updateCustomerName: mockUpdateCustomerName,
   },
 }));
 
@@ -35,7 +38,9 @@ const mockFindBySlug =
 const mockFindSelectableForOrg =
   jest.fn<(orgId: string) => Promise<Record<string, unknown>[]>>();
 const mockOrgUpdate =
-  jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>();
+  jest.fn<
+    (...args: unknown[]) => Promise<Record<string, unknown> | undefined>
+  >();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -172,7 +177,8 @@ beforeEach(() => {
   mockFindSelectableForOrg
     .mockReset()
     .mockResolvedValue([standardTier, proTier]);
-  mockOrgUpdate.mockReset().mockResolvedValue({});
+  mockOrgUpdate.mockReset().mockResolvedValue({ name: "Acme Corp" });
+  mockUpdateCustomerName.mockReset().mockResolvedValue(undefined);
   mockFetchSubscription
     .mockReset()
     .mockResolvedValue({ items: { data: [{ id: "si_1" }] } });
@@ -300,6 +306,62 @@ describe("BillingService.createCheckout happy path", () => {
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cus_existing" })
     );
+  });
+
+  // #938: a rename that commits while the customer is being created leaves
+  // Stripe with the old name; the row the id write returns shows it.
+  it("syncs the Stripe name when the org was renamed during customer creation", async () => {
+    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockCreateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Acme Corp" })
+    );
+    expect(mockUpdateCustomerName).toHaveBeenCalledWith(
+      "cus_new",
+      "Renamed Corp"
+    );
+    expect(mockCreateCheckoutSession).toHaveBeenCalled();
+  });
+
+  it("still returns the session when the name sync fails", async () => {
+    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+    mockUpdateCustomerName.mockRejectedValue(new Error("stripe down"));
+
+    const result = await BillingService.createCheckout(
+      orgFixture(),
+      OWNER,
+      "pro"
+    );
+
+    expect(result).toEqual({ url: "https://checkout.stripe.com/c/session" });
+  });
+
+  it("doesn't sync the Stripe name when the id write returns no row", async () => {
+    mockOrgUpdate.mockResolvedValue(undefined);
+
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
+    expect(mockCreateCheckoutSession).toHaveBeenCalled();
+  });
+
+  it("doesn't sync the Stripe name when the stored name is the one sent", async () => {
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
+  });
+
+  it("doesn't sync the Stripe name for an existing customer", async () => {
+    await BillingService.createCheckout(
+      orgFixture({ stripeCustomerId: "cus_existing" }),
+      OWNER,
+      "pro"
+    );
+
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateCustomerName).not.toHaveBeenCalled();
   });
 
   it("502 BILLING_CHECKOUT_FAILED when the Stripe session call fails", async () => {
