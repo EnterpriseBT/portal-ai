@@ -46,7 +46,7 @@ The change is a billing write path with new Stripe reads and one new route, so �
 - [ ] Delete org A while `<OTHER>` has an active subscription — expected SAFE: only subscriptions on A's customer are cancelled; `<OTHER>`'s subscription stays `active`. — backend + browser
 
 ## §6 — State & lifecycle abuse
-- [ ] Stripe customer deleted out from under the org: `stripe customers delete <cus> --confirm`, keep `stripe_customer_id` on the org, then click Subscribe and open the return page — expected SAFE: checkout `502 BILLING_CHECKOUT_FAILED`, sync `502 BILLING_SYNC_FAILED` (fixed copy, no Stripe error text leaked); no 500; nothing written. — backend + browser
+- [ ] Stripe customer deleted out from under the org: `stripe customers delete <cus> --confirm`, keep `stripe_customer_id` on the org, then click Subscribe and open the return page — expected SAFE: checkout `502 BILLING_CHECKOUT_FAILED` (fixed copy, no Stripe error text leaked); sync `200 {"subscription":"none"}` (Stripe lists a deleted customer's subscriptions as empty) with the tier unchanged; no 500; nothing written. The org can't check out again until an operator clears the dead `stripe_customer_id` (pre-existing). — backend + browser
 - [ ] Resubscribe after cancelling: cancel the paid subscription (`stripe subscriptions cancel <sub> --confirm`, webhook up) so the org reverts to Standard, then Subscribe again — expected SAFE: allowed (an ended subscription doesn't block); pays into one new subscription. — manual
 - [ ] Managed org with a leftover live subscription: on an org with an active Plus subscription, `npx portalai org set-tier <org> enterprise --env local --yes --allow-stripe-desync`, then open `/settings?tab=billing&billing=success` — expected: the plan follows Stripe (Plus), the same rule the webhook applies; the operator's flag says they accept the desync. Record what the page shows; a revert here is by design, not a finding.
 - [ ] Sync with a token minted before the org was deleted: capture `OWNER_TOKEN`, delete the org from Settings → Danger zone, replay `curl -X POST $U/sync -H "Authorization: Bearer $OWNER_TOKEN"` — expected SAFE: `404` (no current org) or a sync of the user's *other* current org, never a write to the tombstoned row. — backend
@@ -60,7 +60,8 @@ The change is a billing write path with new Stripe reads and one new route, so �
 ## Findings
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk; empty when every probe held)_ | | | |
+| §4 member opens the return link | 403 toast plus "Your payment is being processed…" alert on a paid plan: any sync error turned the alert on | low (UI copy; the server refused, nothing written) | fixed-in-PR: a permission refusal shows only its toast; the alert stays for Stripe/network failures |
+| §6 deleted Stripe customer: sync | `200 none` instead of the 502 first written here; nothing written | none (the expectation was wrong) | probe corrected |
 
 ## Sign-off
 - [ ] Every probe walked; findings resolved or waived-with-reason

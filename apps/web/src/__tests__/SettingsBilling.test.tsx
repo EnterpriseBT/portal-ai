@@ -216,6 +216,30 @@ describe("checkout return handling", () => {
     ).not.toBeInTheDocument();
   });
 
+  // #939 adversarial §4: a caller without billing.manage opening the return
+  // link is refused; that's not a payment in progress.
+  it("a permission refusal toasts it and shows no processing alert", async () => {
+    mockSync.mockRejectedValue(
+      Object.assign(new Error("You don't have permission to manage billing."), {
+        code: "PERMISSION_DENIED",
+      })
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText("You don't have permission to manage billing.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+  });
+
   it("a failed sync toasts the error and still shows the processing alert", async () => {
     mockSync.mockRejectedValue(
       Object.assign(

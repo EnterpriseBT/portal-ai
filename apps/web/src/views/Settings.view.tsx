@@ -35,7 +35,10 @@ import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
-import { serverErrorMessage } from "../utils/permission-denied.util";
+import {
+  isPermissionDenied,
+  serverErrorMessage,
+} from "../utils/permission-denied.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { formatUsageValue } from "../utils/usage-format.util";
@@ -110,7 +113,11 @@ export const SettingsView = () => {
               "Couldn't confirm your subscription with Stripe yet."
             )
           );
-          setPaymentProcessing(true);
+          // A refusal (no billing.manage) isn't a payment in progress; only
+          // a failure to reach Stripe leaves the outcome unknown.
+          if (!isPermissionDenied((error as { code?: string } | null)?.code)) {
+            setPaymentProcessing(true);
+          }
         })
         .finally(() => {
           queryClient.invalidateQueries({
