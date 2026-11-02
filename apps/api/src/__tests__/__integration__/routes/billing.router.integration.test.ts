@@ -373,6 +373,77 @@ describe("Billing router", () => {
     });
   });
 
+  // ── #939: Stripe's state and one checkout at a time ─────────────────
+  describe("POST /api/billing/checkout — duplicate subscriptions", () => {
+    let spies: ReturnType<typeof jest.spyOn>[] = [];
+
+    afterEach(() => {
+      for (const spy of spies) spy.mockRestore();
+      spies = [];
+    });
+
+    it("serialises two first checkouts: one customer, and the second expires the first's session", async () => {
+      // Slow customer creation keeps the first checkout holding the lock
+      // while the second arrives.
+      const customerSpy = jest
+        .spyOn(StripeService, "createCustomer")
+        .mockImplementation(async () => {
+          await new Promise((r) => setTimeout(r, 300));
+          return { id: "cus_939" };
+        });
+      const sessionSpy = jest
+        .spyOn(StripeService, "createCheckoutSession")
+        .mockResolvedValue({ url: "https://checkout.stripe.com/c/939" });
+      const listSubsSpy = jest
+        .spyOn(StripeService, "listSubscriptions")
+        .mockResolvedValue([]);
+      const listOpenSpy = jest
+        .spyOn(StripeService, "listOpenCheckoutSessions")
+        .mockResolvedValue(["cs_first_tab"]);
+      const expireSpy = jest
+        .spyOn(StripeService, "expireCheckoutSession")
+        .mockResolvedValue(true);
+      spies = [customerSpy, sessionSpy, listSubsSpy, listOpenSpy, expireSpy];
+
+      const [first, second] = await Promise.all([
+        request(app).post("/api/billing/checkout").send({ tier: PRO_SLUG }),
+        request(app).post("/api/billing/checkout").send({ tier: PRO_SLUG }),
+      ]);
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(customerSpy).toHaveBeenCalledTimes(1);
+      expect(listSubsSpy).toHaveBeenCalledWith("cus_939");
+      expect(expireSpy).toHaveBeenCalledWith("cs_first_tab");
+      expect(sessionSpy).toHaveBeenCalledTimes(2);
+      const [after] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, orgId));
+      expect(after.stripeCustomerId).toBe("cus_939");
+    });
+
+    it("409s when Stripe lists a live subscription the webhook never recorded", async () => {
+      await db
+        .update(schema.organizations)
+        .set({ stripeCustomerId: "cus_paid_939" })
+        .where(eq(schema.organizations.id, orgId));
+      const listSubsSpy = jest
+        .spyOn(StripeService, "listSubscriptions")
+        .mockResolvedValue([{ id: "sub_paid", status: "active" } as never]);
+      const sessionSpy = jest.spyOn(StripeService, "createCheckoutSession");
+      spies = [listSubsSpy, sessionSpy];
+
+      const res = await request(app)
+        .post("/api/billing/checkout")
+        .send({ tier: PRO_SLUG });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.BILLING_ALREADY_SUBSCRIBED);
+      expect(sessionSpy).not.toHaveBeenCalled();
+    });
+  });
+
   // ── #260: in-app plan switch via the portal ─────────────────────────
   describe("POST /api/billing/portal — switch flow", () => {
     let portalSpy!: ReturnType<typeof jest.spyOn>;

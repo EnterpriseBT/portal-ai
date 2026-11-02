@@ -10,12 +10,14 @@
  */
 
 import type Stripe from "stripe";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { CommercialEventModelFactory } from "@portalai/core/models";
 import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
 import { TierService } from "./tier.service.js";
 import { RebuildDispatchService } from "./rebuild-dispatch.service.js";
+import { BILLING_CHECKOUT_LOCK_NAMESPACE } from "./sync-lock.service.js";
 import { ApiError } from "./http.service.js";
 import {
   PermissionService,
@@ -26,6 +28,8 @@ import { environment } from "../environment.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { OrganizationSelect } from "../db/schema/zod.js";
+import { organizations } from "../db/schema/index.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import type { GrantResolution } from "./tier-grant.service.js";
 
 const logger = createLogger({ module: "billing-service" });
@@ -361,8 +365,9 @@ export class BillingService {
    * Mint a hosted Checkout session for `tierSlug` (owner-only). Guards, in
    * contract order: configured 503 → owner 403 → not already subscribed
    * 409 (Q1) → not managed-custom 409 (D5, server-blocked) → tier
-   * exists+selectable 404 → priced 400 → lazy customer (D7) → session.
-   * Stripe API failure → 502.
+   * exists+selectable 404 → priced 400 → under the per-org checkout lock
+   * (#939): no live subscription in Stripe 409 → expire open sessions or
+   * lazily create the customer (D7) → session. Stripe failure → 502.
    */
   static async createCheckout(
     org: OrganizationSelect,
@@ -417,59 +422,82 @@ export class BillingService {
       );
     }
 
-    try {
-      // Lazy customer creation (D7) — persisted before the session so a
-      // failed checkout never re-creates the customer.
-      let customerId = org.stripeCustomerId;
-      if (!customerId) {
-        const customer = await StripeService.createCustomer({
-          organizationId: org.id,
-          name: org.name,
-        });
-        customerId = customer.id;
-        const stored = await DbService.repository.organizations.update(org.id, {
-          stripeCustomerId: customerId,
-          updated: Date.now(),
-          updatedBy: caller.userId,
-        });
-        // #938: a rename committed since `org` was read found no customer to
-        // sync. This UPDATE waits for a rename holding the row and returns the
-        // committed name, so a mismatch here is exactly that case; a rename
-        // committing after it sees the customer id and syncs itself. The name
-        // goes to the customer this checkout created, never one re-read from
-        // the row, which a concurrent first checkout may have overwritten.
-        // Best effort, like the rename's own sync: a failure never fails the
-        // checkout.
-        if (stored && stored.name !== org.name) {
-          logger.info(
-            { organizationId: org.id, stripeCustomerId: customerId },
-            "Organization renamed during customer creation — syncing the Stripe customer name"
-          );
-          try {
-            await StripeService.updateCustomerName(customerId, stored.name);
-          } catch (error) {
-            logger.warn(
-              {
-                organizationId: org.id,
-                stripeCustomerId: customerId,
-                error: error instanceof Error ? error.message : "Unknown error",
-              },
-              "Failed to update the Stripe customer name after an organization rename — reconcile manually"
-            );
-          }
-        }
+    const priceId = tier.stripePriceId;
+    // #939: one checkout at a time per org, for the whole read-Stripe →
+    // expire → create sequence; otherwise two tabs each find nothing and
+    // each mint a payable session. A transaction-scoped advisory lock, not
+    // the org row lock, so renames and default-station writes don't wait on
+    // Stripe. The transaction commits whatever it wrote: a Stripe failure is
+    // returned, not thrown, so a new customer id persists (D7) and a retry
+    // never re-creates the customer.
+    const result = await DbService.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${BILLING_CHECKOUT_LOCK_NAMESPACE}::int, hashtext(${org.id}))`
+      );
+      // The row as of the lock: a checkout that held it before us may have
+      // stored the customer, and the webhook may have stored a subscription.
+      const current =
+        (await DbService.repository.organizations.findById(org.id, tx)) ?? org;
+      if (current.stripeSubscriptionId) {
+        throw new ApiError(
+          409,
+          ApiCode.BILLING_ALREADY_SUBSCRIBED,
+          "The organization already has a subscription — manage it in the billing portal"
+        );
       }
 
-      return await StripeService.createCheckoutSession({
-        customerId,
-        priceId: tier.stripePriceId,
-        successUrl: `${settingsUrl()}?billing=success`,
-        cancelUrl: `${settingsUrl()}?billing=cancelled`,
-        organizationId: org.id,
-      });
-    } catch (err) {
+      try {
+        let customerId = current.stripeCustomerId;
+        if (customerId) {
+          // #939: the column is written by the webhook, which may be late or
+          // failing — Stripe's own state is what says the org already pays.
+          const subscriptions =
+            await StripeService.listSubscriptions(customerId);
+          if (
+            subscriptions.some((sub) =>
+              BLOCKING_SUBSCRIPTION_STATUSES.has(sub.status)
+            )
+          ) {
+            return { refused: true as const };
+          }
+          // The newest checkout wins: an older tab's session can no longer be
+          // paid, so two sessions can't both create a subscription.
+          for (const id of await StripeService.listOpenCheckoutSessions(
+            customerId
+          )) {
+            await StripeService.expireCheckoutSession(id);
+          }
+        } else {
+          customerId = await BillingService.createAndStoreCustomer(
+            current,
+            caller,
+            tx
+          );
+        }
+
+        const session = await StripeService.createCheckoutSession({
+          customerId,
+          priceId,
+          successUrl: `${settingsUrl()}?billing=success`,
+          cancelUrl: `${settingsUrl()}?billing=cancelled`,
+          organizationId: org.id,
+        });
+        return { url: session.url };
+      } catch (failure) {
+        return { failure };
+      }
+    });
+
+    if ("refused" in result) {
+      throw new ApiError(
+        409,
+        ApiCode.BILLING_ALREADY_SUBSCRIBED,
+        "The organization already has a subscription in Stripe — manage it in the billing portal"
+      );
+    }
+    if ("failure" in result) {
       logger.error(
-        { err, organizationId: org.id, tierSlug },
+        { err: result.failure, organizationId: org.id, tierSlug },
         "Stripe checkout session creation failed"
       );
       throw new ApiError(
@@ -478,6 +506,90 @@ export class BillingService {
         "Could not start checkout — please try again"
       );
     }
+    return { url: result.url };
+  }
+
+  /**
+   * Lazy customer creation (D7), under the checkout lock. The id is stored
+   * only while none is (#939): a writer that skipped the lock can't orphan a
+   * customer silently — the loser deletes its own and uses the stored one.
+   */
+  private static async createAndStoreCustomer(
+    org: OrganizationSelect,
+    caller: PermissionContext,
+    tx: DbClient
+  ): Promise<string> {
+    const { id: customerId } = await StripeService.createCustomer({
+      organizationId: org.id,
+      name: org.name,
+    });
+    const [stored] = await DbService.repository.organizations.updateWhere(
+      and(
+        eq(organizations.id, org.id),
+        isNull(organizations.stripeCustomerId)
+      )!,
+      {
+        stripeCustomerId: customerId,
+        updated: Date.now(),
+        updatedBy: caller.userId,
+      },
+      tx
+    );
+
+    if (!stored) {
+      logger.warn(
+        { organizationId: org.id, stripeCustomerId: customerId },
+        "Another checkout stored a Stripe customer first — deleting the one this checkout created"
+      );
+      await StripeService.deleteCustomer(customerId).catch((error) => {
+        logger.warn(
+          {
+            organizationId: org.id,
+            stripeCustomerId: customerId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to delete an unused Stripe customer — delete it manually"
+        );
+      });
+      const winner = await DbService.repository.organizations.findById(
+        org.id,
+        tx
+      );
+      if (!winner?.stripeCustomerId) {
+        throw new Error(
+          "Organization has no Stripe customer after a lost write"
+        );
+      }
+      return winner.stripeCustomerId;
+    }
+
+    // #938: a rename committed since `org` was read found no customer to
+    // sync. This UPDATE waits for a rename holding the row and returns the
+    // committed name, so a mismatch here is exactly that case; a rename
+    // committing after it sees the customer id and syncs itself. The name
+    // goes to the customer this checkout created, never one re-read from
+    // the row, which a concurrent first checkout may have overwritten.
+    // Best effort, like the rename's own sync: a failure never fails the
+    // checkout.
+    if (stored.name !== org.name) {
+      logger.info(
+        { organizationId: org.id, stripeCustomerId: customerId },
+        "Organization renamed during customer creation — syncing the Stripe customer name"
+      );
+      try {
+        await StripeService.updateCustomerName(customerId, stored.name);
+      } catch (error) {
+        logger.warn(
+          {
+            organizationId: org.id,
+            stripeCustomerId: customerId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to update the Stripe customer name after an organization rename — reconcile manually"
+        );
+      }
+    }
+    return customerId;
   }
 
   /**

@@ -84,6 +84,15 @@ export const JOB_LOCK_NAMESPACE = 0x4a4f_424c;
  */
 export const VIEW_DEPS_LOCK_NAMESPACE = 0x5644_4550;
 
+/**
+ * Namespace for the per-organization checkout lock (#939). A checkout holds
+ * it (transaction-scoped) across reading the customer's Stripe state,
+ * expiring open sessions and creating its own, so two checkouts can't both
+ * find nothing and both mint a payable session. Distinct from every other
+ * namespace. `0x4243_484b` is ASCII "BCHK".
+ */
+export const BILLING_CHECKOUT_LOCK_NAMESPACE = 0x4243_484b;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };
