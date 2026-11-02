@@ -48,6 +48,12 @@ RUN NPM_CPU=$(echo "$TARGETARCH" | sed 's/amd64/x64/') && \
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# The version /api/health reports. ECS also sets these on the task, but an
+# install that runs the image as-is (the Helm chart, #946) has only these.
+ARG BUILD_VERSION=dev
+ARG BUILD_SHA=local
+ENV BUILD_VERSION=$BUILD_VERSION \
+    BUILD_SHA=$BUILD_SHA
 
 # Patch OS packages to the latest in the pinned Alpine release, then install
 # runtime tools. `apk upgrade` keeps the base layer's OS packages (e.g. openssl)
