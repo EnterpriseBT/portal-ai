@@ -94,8 +94,13 @@ export const SettingsView = () => {
         .then(({ subscription }) => {
           if (subscription === "live") {
             toast.success("Subscription confirmed");
-          } else {
+          } else if (subscription === "pending") {
             setPaymentProcessing(true);
+          } else {
+            // Nothing in Stripe blocks a new checkout, so nothing to hold.
+            toast.info(
+              "Stripe hasn't confirmed a subscription yet — if you paid, reload this page in a minute"
+            );
           }
         })
         .catch((error: unknown) => {

@@ -208,8 +208,10 @@ export class BillingService {
    * #939: converge an org from its customer's current subscriptions. The
    * caller supplies how its ledger row is identified (`row`): a webhook keys
    * it on the Stripe event, a sync on its own id. A caller that already
-   * listed the customer's `subscriptions` passes them. Builds the resolution
-   * only; the caller writes it.
+   * listed the customer's `subscriptions` passes them, and one inside a
+   * transaction passes its `client`, so the price index doesn't take a
+   * second pooled connection. Builds the resolution only; the caller writes
+   * it.
    */
   static async resolveCustomer(
     org: Pick<
@@ -219,7 +221,8 @@ export class BillingService {
     customerId: string,
     fallback: Stripe.Subscription | null,
     row: (fields: EventRowFields) => EventRow,
-    subscriptions?: Stripe.Subscription[]
+    subscriptions?: Stripe.Subscription[],
+    client?: DbClient
   ): Promise<GrantResolution & { outcome: "grant" }> {
     subscriptions ??= await StripeService.listSubscriptions(customerId);
     const { basis, governingCount } =
@@ -236,13 +239,24 @@ export class BillingService {
             priceId: basis.items.data[0]?.price?.id ?? null,
             billingCycleAnchor: basis.billing_cycle_anchor,
           },
-          await DbService.repository.tiers.priceIndex(),
+          await DbService.repository.tiers.priceIndex(client),
           org.tier
         )
-      : { tier: DEFAULT_TIER, subscriptionLive: false, anchorDay: null };
+      : // Nothing to go by (a sync for a customer with no subscription, or
+        // one whose tracked subscription isn't listed): leave the org as it
+        // is. Only a subscription's own end reverts the plan, so a tier an
+        // operator set by hand survives.
+        {
+          tier: org.tier,
+          subscriptionLive: org.stripeSubscriptionId != null,
+          anchorDay: org.billingAnchorDay,
+        };
 
-    const nextSubscriptionId =
-      basis && derived.subscriptionLive ? basis.id : null;
+    const nextSubscriptionId = basis
+      ? derived.subscriptionLive
+        ? basis.id
+        : null
+      : org.stripeSubscriptionId;
     const changed =
       org.tier !== derived.tier ||
       org.stripeSubscriptionId !== nextSubscriptionId ||
@@ -336,7 +350,8 @@ export class BillingService {
         customerId,
         null,
         BillingService.syncRow,
-        subscriptions
+        subscriptions,
+        tx
       );
       if (!resolution.changed) return locked.tier;
       await DbService.repository.commercialEvents.insertIfNew(
@@ -526,7 +541,8 @@ export class BillingService {
     // expire → create sequence; otherwise two tabs each find nothing and
     // each mint a payable session. A transaction-scoped advisory lock, not
     // the org row lock, so renames and default-station writes don't wait on
-    // Stripe. The transaction commits whatever it wrote: a Stripe failure is
+    // it — except on a first checkout, where storing the customer id
+    // row-locks the org until the session call returns (about a second). The transaction commits whatever it wrote: a Stripe failure is
     // returned, not thrown, so a new customer id persists (D7) and a retry
     // never re-creates the customer.
     const result = await DbService.transaction(async (tx) => {
@@ -547,7 +563,22 @@ export class BillingService {
 
       try {
         let customerId = current.stripeCustomerId;
-        if (customerId) {
+        let createdNow = false;
+        if (!customerId) {
+          ({ customerId, created: createdNow } =
+            await BillingService.createAndStoreCustomer(current, caller, tx));
+        }
+        if (!createdNow) {
+          // The newest checkout wins: expire the older tabs' sessions first,
+          // so none can complete after the subscription check below. One
+          // that can no longer be expired was just paid — refuse.
+          for (const id of await StripeService.listOpenCheckoutSessions(
+            customerId
+          )) {
+            if (!(await StripeService.expireCheckoutSession(id))) {
+              return { refused: true as const };
+            }
+          }
           // #939: the column is written by the webhook, which may be late or
           // failing — Stripe's own state is what says the org already pays.
           const subscriptions =
@@ -559,19 +590,6 @@ export class BillingService {
           ) {
             return { refused: true as const };
           }
-          // The newest checkout wins: an older tab's session can no longer be
-          // paid, so two sessions can't both create a subscription.
-          for (const id of await StripeService.listOpenCheckoutSessions(
-            customerId
-          )) {
-            await StripeService.expireCheckoutSession(id);
-          }
-        } else {
-          customerId = await BillingService.createAndStoreCustomer(
-            current,
-            caller,
-            tx
-          );
         }
 
         const session = await StripeService.createCheckoutSession({
@@ -619,7 +637,7 @@ export class BillingService {
     org: OrganizationSelect,
     caller: PermissionContext,
     tx: DbClient
-  ): Promise<string> {
+  ): Promise<{ customerId: string; created: boolean }> {
     const { id: customerId } = await StripeService.createCustomer({
       organizationId: org.id,
       name: org.name,
@@ -661,7 +679,9 @@ export class BillingService {
           "Organization has no Stripe customer after a lost write"
         );
       }
-      return winner.stripeCustomerId;
+      // An existing customer: the caller runs its subscription and open-
+      // session checks against it.
+      return { customerId: winner.stripeCustomerId, created: false };
     }
 
     // #938: a rename committed since `org` was read found no customer to
@@ -690,7 +710,7 @@ export class BillingService {
         );
       }
     }
-    return customerId;
+    return { customerId, created: true };
   }
 
   /**

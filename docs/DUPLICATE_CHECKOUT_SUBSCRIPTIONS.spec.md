@@ -75,7 +75,7 @@ static syncRow(fields: EventRowFields): EventRow;
 **`createCheckout` order** (steps 1–6 unchanged: configured, `billing.manage`, tracked id → 409, managed tier, tier lookup, price). Then one `DbService.transaction(tx => …)`:
 1. `SELECT pg_advisory_xact_lock(BILLING_CHECKOUT_LOCK_NAMESPACE, hashtext(org.id))`.
 2. Re-read the org in `tx`; a tracked subscription id → `409 BILLING_ALREADY_SUBSCRIBED`.
-3. With a customer: `listSubscriptions`; any blocking status → `409 BILLING_ALREADY_SUBSCRIBED`, message "The organization already has a subscription in Stripe — manage it in the billing portal". Then expire every open session from `listOpenCheckoutSessions`.
+3. With an existing customer (including one a lost write in step 4 lands on): expire every open session from `listOpenCheckoutSessions` first, and refuse with `409 BILLING_ALREADY_SUBSCRIBED` if one can no longer be expired (it was just paid). Then `listSubscriptions`; any blocking status → `409 BILLING_ALREADY_SUBSCRIBED`, message "The organization already has a subscription in Stripe — manage it in the billing portal". (Order changed in code review: listing first let a session paid in between slip through.)
 4. Without one: `createCustomer`, then `organizations.updateWhere(and(eq(id), isNull(stripeCustomerId)), {…}, tx)`. No row → `deleteCustomer` (best effort, `warn` on failure) and use the stored id. A row → the #938 name check, unchanged.
 5. `createCheckoutSession`. A Stripe error in steps 3–5 is returned as `{ failure }`, so the transaction commits; the caller then throws `502 BILLING_CHECKOUT_FAILED`. An `ApiError` (step 2–3's 409) is thrown and rolls back nothing that needs keeping.
 

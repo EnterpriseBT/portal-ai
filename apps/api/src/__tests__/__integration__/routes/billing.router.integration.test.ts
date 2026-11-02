@@ -431,8 +431,11 @@ describe("Billing router", () => {
       const listSubsSpy = jest
         .spyOn(StripeService, "listSubscriptions")
         .mockResolvedValue([{ id: "sub_paid", status: "active" } as never]);
+      const listOpenSpy = jest
+        .spyOn(StripeService, "listOpenCheckoutSessions")
+        .mockResolvedValue([]);
       const sessionSpy = jest.spyOn(StripeService, "createCheckoutSession");
-      spies = [listSubsSpy, sessionSpy];
+      spies = [listSubsSpy, listOpenSpy, sessionSpy];
 
       const res = await request(app)
         .post("/api/billing/checkout")

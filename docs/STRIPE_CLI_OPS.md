@@ -59,7 +59,7 @@ A plan converged by the checkout return page instead of a webhook (`POST /api/bi
 
 ### A customer with more than one live subscription (#939)
 
-The app never cancels a subscription on its own. When a customer has more than one live subscription (`active`, `trialing`, `past_due`), the org follows the one it tracks (or the newest live one), the event is recorded with `outcome = 'duplicate_subscription'`, and the API logs `Customer has more than one live Stripe subscription — cancel the extra one in Stripe`. To resolve one:
+The app never cancels a subscription on its own. When a customer has more than one live subscription (`active`, `trialing`, `past_due`), the org follows the one it tracks (or the newest live one), the event is recorded with `outcome = 'duplicate_subscription'` (whether or not it changed the plan: a non-null `resulting_tier` on that row means it did, so a query for applied grants reads `outcome = 'applied' OR resulting_tier IS NOT NULL`), and the API logs `Customer has more than one live Stripe subscription — cancel the extra one in Stripe`. To resolve one:
 
 ```bash
 stripe subscriptions list --customer <cus-id> --status all   # find the live ones

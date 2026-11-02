@@ -394,6 +394,9 @@ describe("BillingService.createCheckout happy path", () => {
 
     expect(mockDeleteCustomer).toHaveBeenCalledWith("cus_new");
     expect(mockUpdateCustomerName).not.toHaveBeenCalled();
+    // The winner is an existing customer, so it gets the same checks.
+    expect(mockListOpenCheckoutSessions).toHaveBeenCalledWith("cus_winner");
+    expect(mockListSubscriptions).toHaveBeenCalledWith("cus_winner");
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cus_winner" })
     );
@@ -499,9 +502,38 @@ describe("BillingService.createCheckout happy path", () => {
 
     expect(mockExpireCheckoutSession).toHaveBeenCalledWith("cs_tab1");
     expect(mockExpireCheckoutSession).toHaveBeenCalledWith("cs_tab2");
+    // Expired before the subscription check, so no older session can
+    // complete after it.
+    expect(mockExpireCheckoutSession.mock.invocationCallOrder[1]).toBeLessThan(
+      mockListSubscriptions.mock.invocationCallOrder[0]
+    );
     expect(mockExpireCheckoutSession.mock.invocationCallOrder[1]).toBeLessThan(
       mockCreateCheckoutSession.mock.invocationCallOrder[0]
     );
+  });
+
+  it("409 when an open session was paid before it could be expired", async () => {
+    mockListOpenCheckoutSessions.mockResolvedValue(["cs_paying"]);
+    mockExpireCheckoutSession.mockResolvedValue(false);
+
+    await expect(
+      BillingService.createCheckout(
+        orgFixture({ stripeCustomerId: "cus_existing" }),
+        OWNER,
+        "pro"
+      )
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "BILLING_ALREADY_SUBSCRIBED",
+    });
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("a brand-new customer skips the Stripe subscription and session reads", async () => {
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockListOpenCheckoutSessions).not.toHaveBeenCalled();
+    expect(mockListSubscriptions).not.toHaveBeenCalled();
   });
 
   it("fails closed: 502 and no session when Stripe can't list subscriptions", async () => {
@@ -584,6 +616,8 @@ describe("BillingService.syncFromStripe", () => {
 
     expect(result).toEqual({ tier: "pro", subscription: "live" });
     expect(mockOrgFindByIdForUpdate).toHaveBeenCalledWith("org-1", TX);
+    // On the transaction's connection, not a second pooled one.
+    expect(mockPriceIndex).toHaveBeenCalledWith(TX);
     expect(mockOrgUpdate).toHaveBeenCalledWith(
       "org-1",
       expect.objectContaining({
@@ -648,6 +682,22 @@ describe("BillingService.syncFromStripe", () => {
         OWNER
       )
     ).resolves.toEqual({ tier: "standard", subscription: "none" });
+  });
+
+  it("a customer with no subscriptions leaves a hand-set plan alone", async () => {
+    mockListSubscriptions.mockResolvedValue([]);
+    mockOrgFindByIdForUpdate.mockResolvedValue(
+      orgFixture({ tier: "enterprise", stripeCustomerId: "cus_1" })
+    );
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ tier: "enterprise", stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "enterprise", subscription: "none" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).not.toHaveBeenCalled();
   });
 
   it("502 BILLING_SYNC_FAILED when Stripe can't be read", async () => {

@@ -198,6 +198,24 @@ describe("checkout return handling", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("no subscription in Stripe says so and leaves Subscribe alone", async () => {
+    mockSync.mockResolvedValue({ tier: "standard", subscription: "none" });
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText(/stripe hasn't confirmed a subscription yet/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+  });
+
   it("a failed sync toasts the error and still shows the processing alert", async () => {
     mockSync.mockRejectedValue(
       Object.assign(
