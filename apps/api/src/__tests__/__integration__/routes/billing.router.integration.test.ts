@@ -299,6 +299,71 @@ describe("Billing router", () => {
     });
   });
 
+  // ── #938: a rename racing the first checkout ────────────────────────
+
+  describe("POST /api/billing/checkout — rename during customer creation", () => {
+    it("waits for a rename holding the org row, then syncs the Stripe name", async () => {
+      const [before] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, orgId));
+      const customerSpy = jest
+        .spyOn(StripeService, "createCustomer")
+        .mockResolvedValue({ id: "cus_race_938" });
+      const sessionSpy = jest
+        .spyOn(StripeService, "createCheckoutSession")
+        .mockResolvedValue({ url: "https://checkout.stripe.com/c/race" });
+      const nameSpy = jest
+        .spyOn(StripeService, "updateCustomerName")
+        .mockResolvedValue(undefined);
+
+      const renamer = postgres(process.env.DATABASE_URL!, { max: 1 });
+      let settled = false;
+      let checkout!: Promise<request.Response>;
+      try {
+        await renamer.begin(async (tx) => {
+          // What a rename does under OrganizationUpdateService.apply.
+          await tx`select id from organizations where id = ${orgId} for update`;
+          await tx`update organizations set name = 'Renamed Mid Checkout' where id = ${orgId}`;
+
+          checkout = request(app)
+            .post("/api/billing/checkout")
+            .send({ tier: PRO_SLUG })
+            .then((res) => {
+              settled = true;
+              return res;
+            });
+          await new Promise((r) => setTimeout(r, 500));
+          // The customer id write is blocked behind the uncommitted rename.
+          expect(settled).toBe(false);
+        });
+      } finally {
+        await renamer.end();
+      }
+
+      try {
+        const res = await checkout;
+        expect(res.status).toBe(200);
+        expect(customerSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ name: before.name })
+        );
+        expect(nameSpy).toHaveBeenCalledWith(
+          "cus_race_938",
+          "Renamed Mid Checkout"
+        );
+        const [after] = await db
+          .select()
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, orgId));
+        expect(after.stripeCustomerId).toBe("cus_race_938");
+      } finally {
+        customerSpy.mockRestore();
+        sessionSpy.mockRestore();
+        nameSpy.mockRestore();
+      }
+    });
+  });
+
   // ── #260: in-app plan switch via the portal ─────────────────────────
   describe("POST /api/billing/portal — switch flow", () => {
     let portalSpy!: ReturnType<typeof jest.spyOn>;

@@ -84,6 +84,18 @@ jest.unstable_mockModule("../../environment.js", () => ({
   },
 }));
 
+// #938: checkout reuses the rename's best-effort Stripe name sync.
+const mockSyncStripeCustomerName =
+  jest.fn<(organizationId: string) => Promise<void>>();
+jest.unstable_mockModule(
+  "../../services/organization-update.service.js",
+  () => ({
+    OrganizationUpdateService: {
+      syncStripeCustomerName: mockSyncStripeCustomerName,
+    },
+  })
+);
+
 const { BillingService } = await import("../../services/billing.service.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
@@ -172,7 +184,8 @@ beforeEach(() => {
   mockFindSelectableForOrg
     .mockReset()
     .mockResolvedValue([standardTier, proTier]);
-  mockOrgUpdate.mockReset().mockResolvedValue({});
+  mockOrgUpdate.mockReset().mockResolvedValue({ name: "Acme Corp" });
+  mockSyncStripeCustomerName.mockReset().mockResolvedValue(undefined);
   mockFetchSubscription
     .mockReset()
     .mockResolvedValue({ items: { data: [{ id: "si_1" }] } });
@@ -300,6 +313,36 @@ describe("BillingService.createCheckout happy path", () => {
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cus_existing" })
     );
+  });
+
+  // #938: a rename that commits while the customer is being created leaves
+  // Stripe with the old name; the row the id write returns shows it.
+  it("syncs the Stripe name when the org was renamed during customer creation", async () => {
+    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockCreateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Acme Corp" })
+    );
+    expect(mockSyncStripeCustomerName).toHaveBeenCalledWith("org-1");
+    expect(mockCreateCheckoutSession).toHaveBeenCalled();
+  });
+
+  it("doesn't sync the Stripe name when the stored name is the one sent", async () => {
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockSyncStripeCustomerName).not.toHaveBeenCalled();
+  });
+
+  it("doesn't sync the Stripe name for an existing customer", async () => {
+    await BillingService.createCheckout(
+      orgFixture({ stripeCustomerId: "cus_existing" }),
+      OWNER,
+      "pro"
+    );
+
+    expect(mockSyncStripeCustomerName).not.toHaveBeenCalled();
   });
 
   it("502 BILLING_CHECKOUT_FAILED when the Stripe session call fails", async () => {

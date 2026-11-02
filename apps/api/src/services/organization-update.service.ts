@@ -82,7 +82,9 @@ export class OrganizationUpdateService {
 
   /**
    * Post-commit, best effort. A no-op without a Stripe customer or when Stripe
-   * isn't configured; a failure is logged and never thrown.
+   * isn't configured; a failure is logged and never thrown. A rename that
+   * lands while the first checkout is creating the customer is synced by that
+   * checkout (`BillingService.createCheckout`, #938).
    */
   static async syncStripeCustomerName(organizationId: string): Promise<void> {
     if (!StripeService.isConfigured()) return;
