@@ -758,6 +758,34 @@ describe("Station Router", () => {
   });
 
   describe("DELETE /api/stations/:id", () => {
+    // #935: the audit write runs after the response; poll for `expected`
+    // rows (or let a no-op settle) before reading.
+    const defaultStationAuditRows = async (
+      organizationId: string,
+      expected: number
+    ) => {
+      const read = () =>
+        (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(schema.auditLog)
+          .where(eq(schema.auditLog.organizationId, organizationId))
+          .then((rows) =>
+            rows.filter(
+              (row) =>
+                row.action === "org.update" &&
+                (row.metadata as { field?: string } | null)?.field ===
+                  "defaultStationId"
+            )
+          );
+      const deadline = Date.now() + (expected ? 5_000 : 300);
+      for (;;) {
+        const rows = await read();
+        if ((expected && rows.length >= expected) || Date.now() > deadline)
+          return rows;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+
     it("soft-deletes a station", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -894,7 +922,7 @@ describe("Station Router", () => {
     });
 
     it("clears org defaultStationId when the default station is deleted", async () => {
-      const { organizationId } = await seedUserAndOrg(
+      const { organizationId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
@@ -917,6 +945,23 @@ describe("Station Router", () => {
         .from(organizations)
         .where(eq(organizations.id, organizationId));
       expect(org.defaultStationId).toBeNull();
+
+      // #935: the automatic clear is audited, attributed to the deleter.
+      const rows = await defaultStationAuditRows(organizationId, 1);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        userId,
+        action: "org.update",
+        targetType: "organization",
+        targetId: organizationId,
+        metadata: {
+          field: "defaultStationId",
+          from: station.id,
+          to: null,
+          fromName: station.name,
+          toName: null,
+        },
+      });
     });
 
     it("does not clear org defaultStationId when a non-default station is deleted", async () => {
@@ -943,6 +988,7 @@ describe("Station Router", () => {
         .from(organizations)
         .where(eq(organizations.id, organizationId));
       expect(org.defaultStationId).toBe(defaultStation.id);
+      expect(await defaultStationAuditRows(organizationId, 0)).toHaveLength(0);
     });
 
     it("returns 404 for unknown station", async () => {

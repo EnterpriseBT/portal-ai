@@ -75,13 +75,15 @@ describe("OrganizationUpdateService.apply (#907)", () => {
   });
 
   it("writes a name alone, leaving the default station, and returns the replaced name", async () => {
-    const { organization, previousName } =
+    const { organization, previousName, previousDefaultStationId } =
       await OrganizationUpdateService.apply(
         orgId,
         { name: "Acme Corp" },
         userId
       );
     expect(previousName).toBe("Acme");
+    // #935: the default it replaced (here unchanged) comes back too.
+    expect(previousDefaultStationId).toBe(stationId);
     expect(organization.name).toBe("Acme Corp");
     expect(organization.defaultStationId).toBe(stationId);
     expect(organization.updatedBy).toBe(userId);

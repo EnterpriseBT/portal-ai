@@ -139,6 +139,31 @@ describe("AuditLogActivityUI (#596)", () => {
     ).toBeInTheDocument();
   });
 
+  it("#935: shows a default-station change naming both stations", () => {
+    render(
+      <AuditLogActivityUI
+        {...uiProps}
+        entries={[
+          entry({
+            action: "org.update",
+            targetType: "organization",
+            targetId: "org-1",
+            metadata: {
+              field: "defaultStationId",
+              from: "st-a",
+              to: "st-b",
+              fromName: "Main",
+              toName: "Sales",
+            },
+          }),
+        ]}
+      />
+    );
+    expect(
+      screen.getByText('Default station changed from "Main" to "Sales"')
+    ).toBeInTheDocument();
+  });
+
   it("shows the empty state when there are no entries", () => {
     render(<AuditLogActivityUI {...uiProps} entries={[]} />);
     expect(

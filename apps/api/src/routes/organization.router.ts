@@ -148,7 +148,8 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *       `defaultStationId` needs class write on station, and a non-null station
  *       must be in the org and readable (`null` clears it). At least one field
  *       is required. A rename is audited as `org.update` and, best effort,
- *       copied to the org's Stripe customer.
+ *       copied to the org's Stripe customer. A default-station change is
+ *       audited as `org.update` too, with the stations' ids and names.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -266,7 +267,7 @@ organizationRouter.patch(
             }
           : undefined;
 
-      const { organization, previousName } =
+      const { organization, previousName, previousDefaultStationId } =
         await OrganizationUpdateService.apply(id, parsed.data, userId, {
           beforeWrite: assertStation,
         });
@@ -285,6 +286,22 @@ organizationRouter.patch(
           },
         });
         void OrganizationUpdateService.syncStripeCustomerName(id);
+      }
+
+      // #935: the same entry for a default-station change, with the stations'
+      // names as of the change so Activity can name them for every reader,
+      // whether or not they can read the station.
+      const nextDefaultStationId = organization.defaultStationId ?? null;
+      if (
+        defaultStationId !== undefined &&
+        nextDefaultStationId !== previousDefaultStationId
+      ) {
+        void OrganizationUpdateService.auditDefaultStationChange(
+          auditContextFromRequest(req),
+          id,
+          previousDefaultStationId,
+          nextDefaultStationId
+        );
       }
 
       return HttpService.success<OrganizationUpdateResponse>(res, {

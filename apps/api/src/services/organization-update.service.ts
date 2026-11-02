@@ -22,6 +22,8 @@ import { StripeService } from "./stripe.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+import type { AuditRequestContext } from "../utils/audit-context.util.js";
+import { AuditService } from "./audit.service.js";
 
 const logger = createLogger({ module: "organization-update" });
 
@@ -41,13 +43,15 @@ export interface OrganizationUpdateOptions {
 export interface OrganizationUpdateResult {
   organization: Organization;
   previousName: string;
+  /** #935: the default station the write replaced, for its audit entry. */
+  previousDefaultStationId: string | null;
 }
 
 export class OrganizationUpdateService {
   /**
    * One transaction: lock the row, read its name, write only the present
-   * fields plus `updated`/`updatedBy`, and return the row with the name it
-   * replaced. A missing or deleted org is `404 ORGANIZATION_NOT_FOUND`.
+   * fields plus `updated`/`updatedBy`, and return the row with the name and
+   * default station it replaced. A missing or deleted org is `404 ORGANIZATION_NOT_FOUND`.
    */
   static async apply(
     orgId: string,
@@ -77,7 +81,56 @@ export class OrganizationUpdateService {
       return {
         organization: organization as Organization,
         previousName: current.name,
+        previousDefaultStationId: current.defaultStationId ?? null,
       };
+    });
+  }
+
+  /**
+   * #935: record a default-station change as `org.update` with `{ field:
+   * "defaultStationId", from, to, fromName, toName }`. The names are taken as
+   * of the change, so Activity can name the stations for every reader and an
+   * entry outlives a station's rename or delete. A caller that already has a
+   * name passes it (a station being deleted no longer reads back). Post-commit
+   * and fail-open: a failed name lookup records the entry without the name.
+   */
+  static async auditDefaultStationChange(
+    context: AuditRequestContext,
+    organizationId: string,
+    from: string | null,
+    to: string | null,
+    known: { fromName?: string; toName?: string } = {}
+  ): Promise<void> {
+    const nameOf = async (id: string | null, knownName?: string) => {
+      if (!id) return null;
+      if (knownName !== undefined) return knownName;
+      try {
+        return (await DbService.repository.stations.findById(id))?.name ?? null;
+      } catch (error) {
+        logger.warn(
+          {
+            organizationId,
+            stationId: id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to read a station name for the default-station audit entry"
+        );
+        return null;
+      }
+    };
+    await AuditService.record({
+      ...context,
+      organizationId,
+      action: "org.update",
+      targetType: "organization",
+      targetId: organizationId,
+      metadata: {
+        field: "defaultStationId",
+        from,
+        to,
+        fromName: await nameOf(from, known.fromName),
+        toName: await nameOf(to, known.toName),
+      },
     });
   }
 

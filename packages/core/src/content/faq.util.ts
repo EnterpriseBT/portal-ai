@@ -232,7 +232,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Where can I see who changed what?",
     answer:
-      "Settings → Activity lists the organization's security-relevant actions — sign-ins, invitations, member and role changes, shares, and policy edits — with who did each one and when. It's visible to anyone with permission to read the audit log, and entries are kept for about 24 months.",
+      "Settings → Activity lists the organization's security-relevant actions — sign-ins, invitations, member and role changes, shares, policy edits, and organization settings such as a rename or a new default station — with who did each one and when. It's visible to anyone with permission to read the audit log, and entries are kept for about 24 months.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Activity Log"],
   },
