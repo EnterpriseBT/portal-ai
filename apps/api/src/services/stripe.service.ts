@@ -111,6 +111,53 @@ export class StripeService {
     await StripeService.client().customers.update(customerId, { name });
   }
 
+  /** #939: every subscription on the customer, newest first. One page of 100
+   *  is the bound: a customer with more is itself the anomaly. */
+  static async listSubscriptions(
+    customerId: string
+  ): Promise<Stripe.Subscription[]> {
+    const page = await StripeService.client().subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 100,
+    });
+    return page.data;
+  }
+
+  /** #939: ids of the customer's Checkout sessions still open for payment. */
+  static async listOpenCheckoutSessions(customerId: string): Promise<string[]> {
+    const page = await StripeService.client().checkout.sessions.list({
+      customer: customerId,
+      status: "open",
+      limit: 100,
+    });
+    return page.data.map((session) => session.id);
+  }
+
+  /** #939: expire an open Checkout session. False when it stopped being open
+   *  meanwhile (Stripe refuses with a 400); anything else throws. */
+  static async expireCheckoutSession(id: string): Promise<boolean> {
+    try {
+      await StripeService.client().checkout.sessions.expire(id);
+      return true;
+    } catch (error) {
+      const stripeError = error as { type?: string; statusCode?: number };
+      if (
+        stripeError.type === "StripeInvalidRequestError" &&
+        stripeError.statusCode === 400
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /** #939: delete a customer this request created but lost the race to
+   *  store. Throws so the caller can log. */
+  static async deleteCustomer(id: string): Promise<void> {
+    await StripeService.client().customers.del(id);
+  }
+
   /** Mint a hosted Checkout session (D4 — SAQ-A; the webhook, never this
    *  redirect, writes the tier). */
   static async createCheckoutSession(args: {
@@ -127,6 +174,9 @@ export class StripeService {
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       metadata: { organizationId: args.organizationId },
+      // #939: name the org on the subscription too, so a duplicate found in
+      // the dashboard traces back without a customer lookup.
+      subscription_data: { metadata: { organizationId: args.organizationId } },
       // #217: Stripe Tax. Safe to enable before registrations exist
       // (nothing is collected until one activates); the address is
       // required so Tax can determine jurisdiction, and customer_update

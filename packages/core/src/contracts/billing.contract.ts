@@ -73,3 +73,19 @@ export type BillingCheckoutResponse = z.infer<
 /** Response payload for `POST /api/billing/portal` — hosted portal URL. */
 export const BillingPortalResponseSchema = z.object({ url: z.string() });
 export type BillingPortalResponse = z.infer<typeof BillingPortalResponseSchema>;
+
+/** Request body for `POST /api/billing/sync` (#939) — nothing to send. */
+// #745: an unknown key is a 400 naming it, not silently dropped.
+export const BillingSyncRequestSchema = z.object({}).strict();
+export type BillingSyncRequest = z.infer<typeof BillingSyncRequestSchema>;
+
+/** Response payload for `POST /api/billing/sync` (#939): the org's plan after
+ *  converging from Stripe, and what the customer's subscriptions amount to.
+ *  `live` — one governs the plan; `pending` — only ones that block a new
+ *  checkout without granting (e.g. `incomplete`, payment still processing);
+ *  `none` — nothing blocks a new checkout. */
+export const BillingSyncResponseSchema = z.object({
+  tier: z.string(),
+  subscription: z.enum(["live", "pending", "none"]),
+});
+export type BillingSyncResponse = z.infer<typeof BillingSyncResponseSchema>;

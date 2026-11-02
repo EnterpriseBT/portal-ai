@@ -1,7 +1,13 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
-import { Box, Button, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Stack,
+  Typography,
+  type ActionGate,
+} from "@portalai/core/ui";
 import Link from "@mui/material/Link";
 
 import { SALES_MAILTO } from "../utils/contact.util";
@@ -94,7 +100,13 @@ export interface SubscriptionBillingUIProps {
   /** True while a checkout/portal session is being minted. */
   isPending: boolean;
   serverError: ServerError | null;
+  /** #939: a checkout just returned but Stripe hasn't confirmed the payment
+   *  yet — say so, and hold Subscribe so it can't start a second one. */
+  paymentProcessing?: boolean;
 }
+
+/** #939: why Subscribe is held after a checkout whose payment is pending. */
+export const PAYMENT_PROCESSING_REASON = "Your payment is being processed";
 
 export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   state,
@@ -108,6 +120,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   onManage,
   isPending,
   serverError,
+  paymentProcessing = false,
 }) => {
   // On a custom plan (a `contact` tier is the org's current plan), show ONLY
   // that card — a custom-plan customer doesn't self-serve to the other tiers.
@@ -117,6 +130,9 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   // Sorted for display (#260): free → priced-ascending → contact, so the grid
   // reads Standard → Plus → Pro → Enterprise regardless of DB creation order.
   const currentTier = tiers.find((t) => t.slug === currentTierSlug);
+  const subscribeGate: ActionGate | undefined = paymentProcessing
+    ? { kind: "disable", reason: PAYMENT_PROCESSING_REASON }
+    : undefined;
   const displayTiers =
     currentTier?.cta === "contact"
       ? [currentTier]
@@ -134,6 +150,13 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
       <Typography variant="body1">
         Current plan: <strong>{currentTierName}</strong>
       </Typography>
+
+      {paymentProcessing && (
+        <Alert severity="info">
+          Your payment is being processed — this page updates when it completes.
+          Reload to check again.
+        </Alert>
+      )}
 
       {state === "managed" && (
         <Alert severity="info">
@@ -181,6 +204,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
                 onSubscribe={onSubscribe}
                 isSubscribed={state === "subscribed"}
                 onSwitch={onSwitch}
+                subscribeGate={subscribeGate}
               />
             ))}
           </Box>
@@ -216,7 +240,15 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
 // ── Container ────────────────────────────────────────────────────────
 
-export const SubscriptionBilling: React.FC = () => {
+export interface SubscriptionBillingProps {
+  /** #939: set by Settings when the checkout return's sync found the
+   *  payment still processing. */
+  paymentProcessing?: boolean;
+}
+
+export const SubscriptionBilling: React.FC<SubscriptionBillingProps> = ({
+  paymentProcessing = false,
+}) => {
   const organizationResult = sdk.organizations.current();
   const tiersResult = sdk.billing.tiers();
   // #257: source the current tier's policy. Deliberately NOT in the DataResult
@@ -299,6 +331,7 @@ export const SubscriptionBilling: React.FC = () => {
             serverError={toServerError(
               checkoutMutation.error ?? portalMutation.error
             )}
+            paymentProcessing={paymentProcessing}
           />
         );
       }}

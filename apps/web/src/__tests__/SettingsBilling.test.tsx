@@ -12,6 +12,8 @@ const mockProfile = jest.fn();
 const mockCurrent = jest.fn();
 const mockUsage = jest.fn();
 const mockBillingTiers = jest.fn();
+// #939: the checkout return converges the plan from Stripe.
+const mockSync = jest.fn<(body: unknown) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -45,6 +47,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
         error: null,
       }),
       portal: () => ({ mutateAsync: jest.fn(), isPending: false, error: null }),
+      sync: () => ({ mutateAsync: mockSync, isPending: false, error: null }),
     },
   },
 }));
@@ -144,27 +147,122 @@ beforeEach(() => {
   mockUsage.mockReturnValue(loaded(usageData));
   mockBillingTiers.mockReturnValue(loaded(tiersData));
   window.history.replaceState(null, "", "/settings");
+  mockSync
+    .mockReset()
+    .mockResolvedValue({ tier: "standard", subscription: "live" });
 });
 
 // ── case 33 ──────────────────────────────────────────────────────────
 
 describe("checkout return handling", () => {
-  it("?billing=success → toast + invalidateQueries(organizations.root), param stripped", async () => {
-    window.history.replaceState(null, "", "/settings?billing=success");
+  it("?billing=success → syncs once, toasts on a live plan, invalidates organizations.root, strips the param", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
     const queryClient = new QueryClient();
     const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
 
     render(<SettingsView />, { queryClient });
 
     await waitFor(() =>
-      expect(
-        screen.getByText(/subscription confirmed — your plan updates/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText("Subscription confirmed")).toBeInTheDocument()
     );
+    expect(mockSync).toHaveBeenCalledTimes(1);
+    expect(mockSync).toHaveBeenCalledWith({});
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: queryKeys.organizations.root,
     });
-    expect(window.location.search).not.toContain("billing");
+    expect(window.location.search).not.toContain("billing=");
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("a pending payment shows the processing alert on the billing tab", async () => {
+    mockSync.mockResolvedValue({ tier: "standard", subscription: "pending" });
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText(/your payment is being processed/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Subscription confirmed")
+    ).not.toBeInTheDocument();
+  });
+
+  it("no subscription in Stripe says so and leaves Subscribe alone", async () => {
+    mockSync.mockResolvedValue({ tier: "standard", subscription: "none" });
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText(/stripe hasn't confirmed a subscription yet/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+  });
+
+  // #939 adversarial §4: a caller without billing.manage opening the return
+  // link is refused; that's not a payment in progress.
+  it("a permission refusal toasts it and shows no processing alert", async () => {
+    mockSync.mockRejectedValue(
+      Object.assign(new Error("You don't have permission to manage billing."), {
+        code: "PERMISSION_DENIED",
+      })
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText("You don't have permission to manage billing.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("a failed sync toasts the error and still shows the processing alert", async () => {
+    mockSync.mockRejectedValue(
+      Object.assign(
+        new Error("Could not reach Stripe — your plan will update shortly"),
+        {
+          code: "BILLING_SYNC_FAILED",
+        }
+      )
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=billing&billing=success"
+    );
+
+    render(<SettingsView />);
+
+    expect(
+      await screen.findByText(/could not reach stripe/i)
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/your payment is being processed/i)
+    ).toBeInTheDocument();
   });
 
   it("?billing=cancelled → neutral toast, no invalidation", async () => {
@@ -180,6 +278,7 @@ describe("checkout return handling", () => {
       ).toBeInTheDocument()
     );
     expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(mockSync).not.toHaveBeenCalled();
   });
 
   it("renders no toast without the param", () => {

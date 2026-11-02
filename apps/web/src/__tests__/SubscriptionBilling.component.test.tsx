@@ -32,8 +32,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 const { render, screen, waitFor, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { SubscriptionBilling, SubscriptionBillingUI } =
-  await import("../components/SubscriptionBilling.component");
+const {
+  SubscriptionBilling,
+  SubscriptionBillingUI,
+  PAYMENT_PROCESSING_REASON,
+} = await import("../components/SubscriptionBilling.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -117,6 +120,44 @@ const baseUIProps = {
   isPending: false,
   serverError: null,
 };
+
+// ── #939: a payment still processing after checkout ──────────────────
+
+describe("SubscriptionBillingUI — payment processing", () => {
+  it("shows the processing alert and holds Subscribe with the reason", async () => {
+    const onSubscribe = jest.fn();
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        onSubscribe={onSubscribe}
+        paymentProcessing
+      />
+    );
+
+    expect(
+      screen.getByText(/your payment is being processed — this page updates/i)
+    ).toBeInTheDocument();
+    const subscribe = screen.getByRole("button", { name: /subscribe/i });
+    expect(subscribe).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(subscribe);
+    expect(onSubscribe).not.toHaveBeenCalled();
+    await userEvent.hover(subscribe);
+    expect(
+      await screen.findByRole("tooltip", { name: PAYMENT_PROCESSING_REASON })
+    ).toBeInTheDocument();
+  });
+
+  it("shows neither without a pending payment", () => {
+    render(<SubscriptionBillingUI {...baseUIProps} />);
+
+    expect(
+      screen.queryByText(/your payment is being processed/i)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /subscribe/i })
+    ).not.toHaveAttribute("aria-disabled");
+  });
+});
 
 // ── case 28: unsubscribed owner ──────────────────────────────────────
 

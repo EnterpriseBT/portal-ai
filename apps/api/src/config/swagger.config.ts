@@ -68,6 +68,8 @@ import {
   BillingCheckoutResponseSchema,
   BillingPortalRequestSchema,
   BillingPortalResponseSchema,
+  BillingSyncRequestSchema,
+  BillingSyncResponseSchema,
   UsageLedgerListResponseSchema,
   AuditLogListResponseSchema,
   PublicSitePriceSchema,
@@ -498,6 +500,14 @@ const billingSchemas: Record<string, unknown> = {
   ),
   BillingPortalResponse: z.toJSONSchema(
     BillingPortalResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingSyncRequest: z.toJSONSchema(
+    BillingSyncRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingSyncResponse: z.toJSONSchema(
+    BillingSyncResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };

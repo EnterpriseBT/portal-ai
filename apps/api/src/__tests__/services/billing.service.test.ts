@@ -8,6 +8,7 @@
  */
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import type Stripe from "stripe";
 
 const mockInsertIfNew = jest.fn<(row: unknown) => Promise<boolean>>();
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -129,6 +130,19 @@ describe("BillingService.deriveTierFromSubscription", () => {
     }
   );
 
+  // #939: an incomplete subscription is unpaid — Stripe creates it before the
+  // first payment and sends `created` straight away. Tracking it would show
+  // the org as subscribed (Switch/Manage) for a payment that may never come.
+  it("incomplete keeps the current tier and is not tracked", () => {
+    expect(
+      BillingService.deriveTierFromSubscription(
+        sub({ status: "incomplete" }),
+        priceIndex,
+        "standard"
+      )
+    ).toEqual({ tier: "standard", subscriptionLive: false, anchorDay: null });
+  });
+
   it("an unrecognized status keeps the current tier (never grants, never revokes)", () => {
     expect(
       BillingService.deriveTierFromSubscription(
@@ -163,6 +177,75 @@ describe("BillingService.deriveTierFromSubscription", () => {
 });
 
 // ── #311 slice 4: price events fan out to a site rebuild ─────────────
+
+// #939: which of a customer's subscriptions governs the org's plan.
+describe("BillingService.selectGoverningSubscription", () => {
+  const sub = (id: string, status: string, created: number) =>
+    ({ id, status, created }) as unknown as Stripe.Subscription;
+
+  it("keeps the tracked subscription while it is live", () => {
+    const result = BillingService.selectGoverningSubscription(
+      [sub("sub_new", "active", 200), sub("sub_tracked", "past_due", 100)],
+      "sub_tracked",
+      null
+    );
+    expect(result.basis?.id).toBe("sub_tracked");
+    expect(result.governingCount).toBe(2);
+  });
+
+  it("moves to the newest live subscription once the tracked one has ended", () => {
+    const result = BillingService.selectGoverningSubscription(
+      [
+        sub("sub_tracked", "canceled", 300),
+        sub("sub_b", "active", 200),
+        sub("sub_a", "trialing", 100),
+      ],
+      "sub_tracked",
+      null
+    );
+    expect(result.basis?.id).toBe("sub_b");
+    expect(result.governingCount).toBe(2);
+  });
+
+  it("never lets an incomplete subscription govern", () => {
+    const result = BillingService.selectGoverningSubscription(
+      [sub("sub_pending", "incomplete", 200)],
+      null,
+      null
+    );
+    expect(result.basis).toBeNull();
+    expect(result.governingCount).toBe(0);
+  });
+
+  it("with nothing live, falls back to the tracked subscription so its end reverts the plan", () => {
+    const result = BillingService.selectGoverningSubscription(
+      [sub("sub_tracked", "canceled", 100)],
+      "sub_tracked",
+      sub("sub_event", "canceled", 50)
+    );
+    expect(result.basis?.id).toBe("sub_tracked");
+    expect(result.governingCount).toBe(0);
+  });
+
+  it("with nothing live or tracked, falls back to the event's subscription", () => {
+    const result = BillingService.selectGoverningSubscription(
+      [],
+      null,
+      sub("sub_event", "incomplete", 50)
+    );
+    expect(result.basis?.id).toBe("sub_event");
+  });
+
+  it("prefers the listed copy of a subscription over the fallback", () => {
+    const listed = sub("sub_1", "active", 100);
+    const result = BillingService.selectGoverningSubscription(
+      [listed],
+      "sub_1",
+      sub("sub_1", "canceled", 100)
+    );
+    expect(result.basis).toBe(listed);
+  });
+});
 
 describe("BillingService.recordIgnoredEvent — site-rebuild fan-out (#311)", () => {
   /** A verified Stripe event of `type`, shaped like the webhook's payload. */

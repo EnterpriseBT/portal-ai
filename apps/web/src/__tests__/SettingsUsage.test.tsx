@@ -9,6 +9,11 @@ const mockUsageLedger = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // Checkout-return sync (#939) — inert stub; behavior is covered by
+    // SettingsBilling.test.tsx.
+    billing: {
+      sync: () => ({ mutateAsync: jest.fn(), isPending: false, error: null }),
+    },
     auth: { profile: mockProfile, logout: () => ({ logout: jest.fn() }) },
     organizations: {
       current: mockCurrent,

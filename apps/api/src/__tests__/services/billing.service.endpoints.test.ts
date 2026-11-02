@@ -18,6 +18,12 @@ const mockCreatePortalSession =
   jest.fn<(args: unknown) => Promise<{ url: string }>>();
 const mockGetPrice = jest.fn<(id: string) => Promise<unknown>>();
 const mockFetchSubscription = jest.fn<(id: string) => Promise<unknown>>();
+const mockListSubscriptions =
+  jest.fn<(customerId: string) => Promise<unknown[]>>();
+const mockListOpenCheckoutSessions =
+  jest.fn<(customerId: string) => Promise<string[]>>();
+const mockExpireCheckoutSession = jest.fn<(id: string) => Promise<boolean>>();
+const mockDeleteCustomer = jest.fn<(id: string) => Promise<void>>();
 const mockUpdateCustomerName =
   jest.fn<(customerId: string, name: string) => Promise<void>>();
 
@@ -30,28 +36,53 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
     getPrice: mockGetPrice,
     fetchSubscription: mockFetchSubscription,
     updateCustomerName: mockUpdateCustomerName,
+    listSubscriptions: mockListSubscriptions,
+    listOpenCheckoutSessions: mockListOpenCheckoutSessions,
+    expireCheckoutSession: mockExpireCheckoutSession,
+    deleteCustomer: mockDeleteCustomer,
   },
 }));
 
 const mockFindBySlug =
   jest.fn<(slug: string) => Promise<Record<string, unknown> | undefined>>();
+const mockPriceIndex = jest.fn<() => Promise<Map<string, string>>>();
 const mockFindSelectableForOrg =
   jest.fn<(orgId: string) => Promise<Record<string, unknown>[]>>();
-const mockOrgUpdate =
+// #939: checkout re-reads the org and stores a new customer id with a
+// conditional write, both inside its locked transaction.
+const mockOrgFindById =
   jest.fn<
     (...args: unknown[]) => Promise<Record<string, unknown> | undefined>
   >();
+const mockOrgUpdateWhere =
+  jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>[]>>();
+const mockExecute = jest.fn<(query: unknown) => Promise<unknown>>();
+// #939: the sync locks the org row, then writes the plan and a ledger row.
+const mockOrgFindByIdForUpdate =
+  jest.fn<
+    (...args: unknown[]) => Promise<Record<string, unknown> | undefined>
+  >();
+const mockOrgUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockInsertIfNew = jest.fn<(...args: unknown[]) => Promise<boolean>>();
+const TX = { execute: mockExecute };
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
-      organizations: { update: mockOrgUpdate },
+      organizations: {
+        findById: mockOrgFindById,
+        findByIdForUpdate: mockOrgFindByIdForUpdate,
+        update: mockOrgUpdate,
+        updateWhere: mockOrgUpdateWhere,
+      },
+      commercialEvents: { insertIfNew: mockInsertIfNew },
       tiers: {
         findBySlug: mockFindBySlug,
         findSelectableForOrg: mockFindSelectableForOrg,
+        priceIndex: mockPriceIndex,
       },
     },
-    transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
   },
 }));
 
@@ -86,6 +117,8 @@ jest.unstable_mockModule("../../environment.js", () => ({
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
     CORS_ORIGIN: ["http://app.test"],
+    // #939: the sync's ledger row is created by the system actor.
+    SYSTEM_ID: "system-test",
   },
 }));
 
@@ -177,7 +210,17 @@ beforeEach(() => {
   mockFindSelectableForOrg
     .mockReset()
     .mockResolvedValue([standardTier, proTier]);
-  mockOrgUpdate.mockReset().mockResolvedValue({ name: "Acme Corp" });
+  mockOrgFindById.mockReset().mockResolvedValue(undefined);
+  mockOrgUpdateWhere.mockReset().mockResolvedValue([{ name: "Acme Corp" }]);
+  mockExecute.mockReset().mockResolvedValue([]);
+  mockOrgFindByIdForUpdate.mockReset().mockResolvedValue(undefined);
+  mockOrgUpdate.mockReset().mockResolvedValue({});
+  mockInsertIfNew.mockReset().mockResolvedValue(true);
+  mockPriceIndex.mockReset().mockResolvedValue(new Map([["price_pro", "pro"]]));
+  mockListSubscriptions.mockReset().mockResolvedValue([]);
+  mockListOpenCheckoutSessions.mockReset().mockResolvedValue([]);
+  mockExpireCheckoutSession.mockReset().mockResolvedValue(true);
+  mockDeleteCustomer.mockReset().mockResolvedValue(undefined);
   mockUpdateCustomerName.mockReset().mockResolvedValue(undefined);
   mockFetchSubscription
     .mockReset()
@@ -279,17 +322,18 @@ describe("BillingService.createCheckout happy path", () => {
       organizationId: "org-1",
       name: "Acme Corp",
     });
-    expect(mockOrgUpdate).toHaveBeenCalledWith(
-      "org-1",
-      expect.objectContaining({ stripeCustomerId: "cus_new" })
+    expect(mockOrgUpdateWhere).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ stripeCustomerId: "cus_new" }),
+      TX
     );
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
         customerId: "cus_new",
         priceId: "price_pro",
         organizationId: "org-1",
-        successUrl: "http://app.test/settings?billing=success",
-        cancelUrl: "http://app.test/settings?billing=cancelled",
+        successUrl: "http://app.test/settings?tab=billing&billing=success",
+        cancelUrl: "http://app.test/settings?tab=billing&billing=cancelled",
       })
     );
   });
@@ -302,7 +346,7 @@ describe("BillingService.createCheckout happy path", () => {
     );
 
     expect(mockCreateCustomer).not.toHaveBeenCalled();
-    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockOrgUpdateWhere).not.toHaveBeenCalled();
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cus_existing" })
     );
@@ -311,7 +355,7 @@ describe("BillingService.createCheckout happy path", () => {
   // #938: a rename that commits while the customer is being created leaves
   // Stripe with the old name; the row the id write returns shows it.
   it("syncs the Stripe name when the org was renamed during customer creation", async () => {
-    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+    mockOrgUpdateWhere.mockResolvedValue([{ name: "Renamed Corp" }]);
 
     await BillingService.createCheckout(orgFixture(), OWNER, "pro");
 
@@ -326,7 +370,7 @@ describe("BillingService.createCheckout happy path", () => {
   });
 
   it("still returns the session when the name sync fails", async () => {
-    mockOrgUpdate.mockResolvedValue({ name: "Renamed Corp" });
+    mockOrgUpdateWhere.mockResolvedValue([{ name: "Renamed Corp" }]);
     mockUpdateCustomerName.mockRejectedValue(new Error("stripe down"));
 
     const result = await BillingService.createCheckout(
@@ -338,13 +382,24 @@ describe("BillingService.createCheckout happy path", () => {
     expect(result).toEqual({ url: "https://checkout.stripe.com/c/session" });
   });
 
-  it("doesn't sync the Stripe name when the id write returns no row", async () => {
-    mockOrgUpdate.mockResolvedValue(undefined);
+  // #939: the id is stored only while none is; a lost write means another
+  // checkout stored its customer first.
+  it("a lost customer-id write deletes its own customer and uses the stored one", async () => {
+    mockOrgUpdateWhere.mockResolvedValue([]);
+    mockOrgFindById
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ stripeCustomerId: "cus_winner" });
 
     await BillingService.createCheckout(orgFixture(), OWNER, "pro");
 
+    expect(mockDeleteCustomer).toHaveBeenCalledWith("cus_new");
     expect(mockUpdateCustomerName).not.toHaveBeenCalled();
-    expect(mockCreateCheckoutSession).toHaveBeenCalled();
+    // The winner is an existing customer, so it gets the same checks.
+    expect(mockListOpenCheckoutSessions).toHaveBeenCalledWith("cus_winner");
+    expect(mockListSubscriptions).toHaveBeenCalledWith("cus_winner");
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: "cus_winner" })
+    );
   });
 
   it("doesn't sync the Stripe name when the stored name is the one sent", async () => {
@@ -360,8 +415,152 @@ describe("BillingService.createCheckout happy path", () => {
       "pro"
     );
 
-    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockOrgUpdateWhere).not.toHaveBeenCalled();
     expect(mockUpdateCustomerName).not.toHaveBeenCalled();
+  });
+
+  // ── #939: Stripe's state, not only the webhook-written column ─────
+  it("takes the per-org checkout lock before anything else", async () => {
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+    expect(mockExecute.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCreateCustomer.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("409 when the re-read row already tracks a subscription", async () => {
+    mockOrgFindById.mockResolvedValue(
+      orgFixture({ stripeCustomerId: "cus_1", stripeSubscriptionId: "sub_1" })
+    );
+
+    await expect(
+      BillingService.createCheckout(orgFixture(), OWNER, "pro")
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "BILLING_ALREADY_SUBSCRIBED",
+    });
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("uses the customer a checkout that held the lock first stored", async () => {
+    mockOrgFindById.mockResolvedValue(
+      orgFixture({ stripeCustomerId: "cus_first" })
+    );
+
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockCreateCustomer).not.toHaveBeenCalled();
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: "cus_first" })
+    );
+  });
+
+  it.each(["active", "trialing", "past_due", "incomplete", "unpaid", "paused"])(
+    "409 (not 502) when Stripe lists a %s subscription the webhook hasn't recorded",
+    async (status) => {
+      mockListSubscriptions.mockResolvedValue([{ id: "sub_late", status }]);
+
+      await expect(
+        BillingService.createCheckout(
+          orgFixture({ stripeCustomerId: "cus_existing" }),
+          OWNER,
+          "pro"
+        )
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "BILLING_ALREADY_SUBSCRIBED",
+      });
+      expect(mockListSubscriptions).toHaveBeenCalledWith("cus_existing");
+      expect(mockCreateCheckoutSession).not.toHaveBeenCalled();
+    }
+  );
+
+  it("allows checkout when every subscription has ended", async () => {
+    mockListSubscriptions.mockResolvedValue([
+      { id: "sub_old", status: "canceled" },
+      { id: "sub_abandoned", status: "incomplete_expired" },
+    ]);
+
+    await expect(
+      BillingService.createCheckout(
+        orgFixture({ stripeCustomerId: "cus_existing" }),
+        OWNER,
+        "pro"
+      )
+    ).resolves.toEqual({ url: "https://checkout.stripe.com/c/session" });
+  });
+
+  it("expires the customer's open sessions before creating a new one", async () => {
+    mockListOpenCheckoutSessions.mockResolvedValue(["cs_tab1", "cs_tab2"]);
+
+    await BillingService.createCheckout(
+      orgFixture({ stripeCustomerId: "cus_existing" }),
+      OWNER,
+      "pro"
+    );
+
+    expect(mockExpireCheckoutSession).toHaveBeenCalledWith("cs_tab1");
+    expect(mockExpireCheckoutSession).toHaveBeenCalledWith("cs_tab2");
+    // Expired before the subscription check, so no older session can
+    // complete after it.
+    expect(mockExpireCheckoutSession.mock.invocationCallOrder[1]).toBeLessThan(
+      mockListSubscriptions.mock.invocationCallOrder[0]
+    );
+    expect(mockExpireCheckoutSession.mock.invocationCallOrder[1]).toBeLessThan(
+      mockCreateCheckoutSession.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("409 when an open session was paid before it could be expired", async () => {
+    mockListOpenCheckoutSessions.mockResolvedValue(["cs_paying"]);
+    mockExpireCheckoutSession.mockResolvedValue(false);
+
+    await expect(
+      BillingService.createCheckout(
+        orgFixture({ stripeCustomerId: "cus_existing" }),
+        OWNER,
+        "pro"
+      )
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "BILLING_ALREADY_SUBSCRIBED",
+    });
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("a brand-new customer skips the Stripe subscription and session reads", async () => {
+    await BillingService.createCheckout(orgFixture(), OWNER, "pro");
+
+    expect(mockListOpenCheckoutSessions).not.toHaveBeenCalled();
+    expect(mockListSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("fails closed: 502 and no session when Stripe can't list subscriptions", async () => {
+    mockListSubscriptions.mockRejectedValue(new Error("stripe down"));
+
+    await expect(
+      BillingService.createCheckout(
+        orgFixture({ stripeCustomerId: "cus_existing" }),
+        OWNER,
+        "pro"
+      )
+    ).rejects.toMatchObject({ status: 502, code: "BILLING_CHECKOUT_FAILED" });
+    expect(mockCreateCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps a new customer's id when the session call then fails", async () => {
+    mockCreateCheckoutSession.mockRejectedValue(new Error("stripe down"));
+
+    await expect(
+      BillingService.createCheckout(orgFixture(), OWNER, "pro")
+    ).rejects.toMatchObject({ status: 502, code: "BILLING_CHECKOUT_FAILED" });
+    // Returned, not thrown, inside the transaction — so the write commits.
+    expect(mockOrgUpdateWhere).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ stripeCustomerId: "cus_new" }),
+      TX
+    );
   });
 
   it("502 BILLING_CHECKOUT_FAILED when the Stripe session call fails", async () => {
@@ -374,6 +573,142 @@ describe("BillingService.createCheckout happy path", () => {
         "pro"
       )
     ).rejects.toMatchObject({ status: 502, code: "BILLING_CHECKOUT_FAILED" });
+  });
+});
+
+// ── #939: POST /api/billing/sync ─────────────────────────────────────
+
+describe("BillingService.syncFromStripe", () => {
+  const liveSub = (overrides: Record<string, unknown> = {}) => ({
+    id: "sub_paid",
+    status: "active",
+    created: 100,
+    billing_cycle_anchor: Date.UTC(2026, 6, 15) / 1000,
+    items: { data: [{ price: { id: "price_pro" } }] },
+    ...overrides,
+  });
+
+  it("503 when unconfigured, 403 without billing.manage", async () => {
+    mockIsConfigured.mockReturnValue(false);
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), OWNER)
+    ).rejects.toMatchObject({ status: 503 });
+    mockIsConfigured.mockReturnValue(true);
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), MEMBER)
+    ).rejects.toMatchObject({ status: 403, code: "PERMISSION_DENIED" });
+  });
+
+  it("no customer → none, without calling Stripe", async () => {
+    await expect(
+      BillingService.syncFromStripe(orgFixture(), OWNER)
+    ).resolves.toEqual({ tier: "standard", subscription: "none" });
+    expect(mockListSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("live: a paid subscription the webhook never recorded converges the plan", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub()]);
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "pro", subscription: "live" });
+    expect(mockOrgFindByIdForUpdate).toHaveBeenCalledWith("org-1", TX);
+    // On the transaction's connection, not a second pooled one.
+    expect(mockPriceIndex).toHaveBeenCalledWith(TX);
+    expect(mockOrgUpdate).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        tier: "pro",
+        stripeSubscriptionId: "sub_paid",
+      }),
+      TX
+    );
+    expect(mockInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "stripe",
+        type: "billing.sync",
+        externalId: expect.stringMatching(/^sync:/),
+        outcome: "applied",
+        resultingTier: "pro",
+      }),
+      TX
+    );
+  });
+
+  it("an org already converged writes nothing", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub()]);
+    mockOrgFindByIdForUpdate.mockResolvedValue(
+      orgFixture({
+        tier: "pro",
+        stripeCustomerId: "cus_1",
+        stripeSubscriptionId: "sub_paid",
+        billingAnchorDay: 15,
+      })
+    );
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "pro", subscription: "live" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).not.toHaveBeenCalled();
+  });
+
+  it("pending: an incomplete subscription grants nothing yet", async () => {
+    mockListSubscriptions.mockResolvedValue([
+      liveSub({ status: "incomplete" }),
+    ]);
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "standard", subscription: "pending" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("none: only ended subscriptions", async () => {
+    mockListSubscriptions.mockResolvedValue([liveSub({ status: "canceled" })]);
+
+    await expect(
+      BillingService.syncFromStripe(
+        orgFixture({ stripeCustomerId: "cus_1" }),
+        OWNER
+      )
+    ).resolves.toEqual({ tier: "standard", subscription: "none" });
+  });
+
+  it("a customer with no subscriptions leaves a hand-set plan alone", async () => {
+    mockListSubscriptions.mockResolvedValue([]);
+    mockOrgFindByIdForUpdate.mockResolvedValue(
+      orgFixture({ tier: "enterprise", stripeCustomerId: "cus_1" })
+    );
+
+    const result = await BillingService.syncFromStripe(
+      orgFixture({ tier: "enterprise", stripeCustomerId: "cus_1" }),
+      OWNER
+    );
+
+    expect(result).toEqual({ tier: "enterprise", subscription: "none" });
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).not.toHaveBeenCalled();
+  });
+
+  it("502 BILLING_SYNC_FAILED when Stripe can't be read", async () => {
+    mockListSubscriptions.mockRejectedValue(new Error("stripe down"));
+
+    await expect(
+      BillingService.syncFromStripe(
+        orgFixture({ stripeCustomerId: "cus_1" }),
+        OWNER
+      )
+    ).rejects.toMatchObject({ status: 502, code: "BILLING_SYNC_FAILED" });
   });
 });
 

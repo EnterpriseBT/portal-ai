@@ -83,7 +83,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I upgrade my plan?",
     answer:
-      "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
+      "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. When you return from checkout, the Subscription & Billing tab confirms the payment with Stripe and shows your new plan; if the payment is still processing, it says so, and Subscribe stays unavailable so you can't pay twice. Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Subscription Plan", "Billing Portal"],
   },

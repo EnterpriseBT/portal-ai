@@ -5,6 +5,8 @@ import {
   BillingCheckoutRequestSchema,
   BillingCheckoutResponseSchema,
   BillingPortalResponseSchema,
+  BillingSyncRequestSchema,
+  BillingSyncResponseSchema,
 } from "../../contracts/billing.contract.js";
 import { TierPolicySchema } from "../../models/tier.model.js";
 
@@ -144,6 +146,31 @@ describe("billing request/response contracts", () => {
       }).success
     ).toBe(true);
     expect(BillingCheckoutResponseSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+// #939: the checkout return converges the plan from Stripe.
+describe("Billing sync contracts", () => {
+  it("the request is an empty, strict body", () => {
+    expect(BillingSyncRequestSchema.safeParse({}).success).toBe(true);
+    expect(BillingSyncRequestSchema.safeParse({ tier: "pro" }).success).toBe(
+      false
+    );
+  });
+
+  it("the response names the tier and a live | pending | none subscription", () => {
+    for (const subscription of ["live", "pending", "none"]) {
+      expect(
+        BillingSyncResponseSchema.safeParse({ tier: "plus", subscription })
+          .success
+      ).toBe(true);
+    }
+    expect(
+      BillingSyncResponseSchema.safeParse({
+        tier: "plus",
+        subscription: "active",
+      }).success
+    ).toBe(false);
   });
 });
 

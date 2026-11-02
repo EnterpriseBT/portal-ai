@@ -4,6 +4,8 @@ import type {
   BillingCheckoutResponse,
   BillingPortalRequest,
   BillingPortalResponse,
+  BillingSyncRequest,
+  BillingSyncResponse,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -35,6 +37,15 @@ export const billing = {
   portal: () =>
     useAuthMutation<BillingPortalResponse, BillingPortalRequest>({
       url: "/api/billing/portal",
+      method: "POST",
+    }),
+  /** #939: converge the org's plan from Stripe now, on return from
+   *  checkout, rather than waiting on the webhook. The variables ARE the
+   *  body (`{}`). Consumers invalidate `organizations.root` after it
+   *  resolves; `subscription` says whether a payment is still processing. */
+  sync: () =>
+    useAuthMutation<BillingSyncResponse, BillingSyncRequest>({
+      url: "/api/billing/sync",
       method: "POST",
     }),
 };

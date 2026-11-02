@@ -460,6 +460,7 @@ describe("OrganizationDeleteService integration tests", () => {
   describe("Stripe subscription cancellation (#176 case 18)", () => {
     let target!: PopulatedOrg;
     let stripeCancelSpy!: ReturnType<typeof jest.spyOn>;
+    let stripeListSpy!: ReturnType<typeof jest.spyOn>;
 
     beforeEach(async () => {
       await teardownOrg(db);
@@ -471,6 +472,16 @@ describe("OrganizationDeleteService integration tests", () => {
       stripeCancelSpy = jest
         .spyOn(StripeService, "cancelSubscription")
         .mockResolvedValue(undefined as never);
+      // #939: delete cancels every subscription on the customer that can
+      // still bill. By default the customer has just the tracked one.
+      stripeListSpy = jest
+        .spyOn(StripeService, "listSubscriptions")
+        .mockImplementation(async (customerId: string) => [
+          {
+            id: customerId.replace(/^cus_/, ""),
+            status: "active",
+          } as never,
+        ]);
     });
 
     afterEach(async () => {
@@ -522,6 +533,38 @@ describe("OrganizationDeleteService integration tests", () => {
         .from(schema.organizations)
         .where(eq(schema.organizations.id, target.orgId));
       expect(orgRow!.deleted).not.toBeNull();
+    });
+
+    it("cancels every subscription that can still bill, including a duplicate (#939)", async () => {
+      await linkSubscription("sub_del_3");
+      stripeListSpy.mockResolvedValue([
+        { id: "sub_del_3", status: "active" },
+        { id: "sub_dup", status: "past_due" },
+        { id: "sub_old", status: "canceled" },
+      ] as never);
+
+      await OrganizationDeleteService.deleteOrganization(
+        target.orgId,
+        target.ownerUserId
+      );
+
+      expect(stripeListSpy).toHaveBeenCalledWith("cus_sub_del_3");
+      expect(stripeCancelSpy).toHaveBeenCalledTimes(2);
+      expect(stripeCancelSpy).toHaveBeenCalledWith("sub_del_3");
+      expect(stripeCancelSpy).toHaveBeenCalledWith("sub_dup");
+    });
+
+    it("falls back to the tracked subscription when Stripe can't list (#939)", async () => {
+      await linkSubscription("sub_del_4");
+      stripeListSpy.mockRejectedValue(new Error("stripe down") as never);
+
+      await OrganizationDeleteService.deleteOrganization(
+        target.orgId,
+        target.ownerUserId
+      );
+
+      expect(stripeCancelSpy).toHaveBeenCalledTimes(1);
+      expect(stripeCancelSpy).toHaveBeenCalledWith("sub_del_4");
     });
 
     it("makes no Stripe call for an unsubscribed org", async () => {
