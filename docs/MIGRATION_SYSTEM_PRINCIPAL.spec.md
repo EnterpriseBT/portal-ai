@@ -162,7 +162,7 @@ No seed change. Seeds already write `SystemUtilities.id.system`.
 
 - **A runner that doesn't pass the setting.** The migrate fails closed and the deploy's migrate step goes red. The fix is to pass the setting; no data was changed.
 - **A table the sweep shouldn't touch.** Caught by test cases 5–6, plus the exclusion comment. A wrong rewrite is undone by a new forward migration. Before-state values: the #952 audit, plus the literal itself (every rewritten value was `'SYSTEM'` or `'system'`).
-- **Lock time during deploy.** The swept tables are small: ~556 prod rows, with seq scans on non-excluded tables. The largest table is excluded.
+- **Lock time during deploy (accepted).** Drizzle applies the pending batch in one transaction, so 0133 seq-scans every swept table (including `portal_messages`, `jobs`, `wide_table_columns`, `map_dissolve_geometries`) and holds row locks on each rewritten row until commit. ECS migrates before the service update, so the old API is serving meanwhile, and a write to a rewritten `organizations`/`stations`/`roles` row waits for the commit. At prod's ~556 rows that's expected to be seconds. Accepted as a conscious cost of keeping the repair atomic with the batch. The largest table (`entity_records`) is excluded. (Recorded from code review.)
 - **The `tsx` runner for local `db:migrate`.** If it misbehaves locally, `db:migrate:ci` (`node dist/...`) after a build is the same runner.
 
 ## Files touched

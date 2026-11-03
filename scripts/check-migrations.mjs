@@ -111,11 +111,21 @@ const PRINCIPAL_ACK = /--\s*principal-literal-ok:\s*\S/i;
  * Pure rule (#952): the lines of `sql` that write `'SYSTEM'` / `'system'`
  * outside a comment, unless acknowledged on that line or the line above.
  */
+/** Index of the line's `--` comment, ignoring a `--` inside a string literal. */
+function commentStart(line) {
+  let inString = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "'") inString = !inString; // '' toggles twice: still in
+    else if (!inString && line[i] === "-" && line[i + 1] === "-") return i;
+  }
+  return -1;
+}
+
 export function findPrincipalLiterals(sql) {
   const lines = sql.split("\n");
   const hits = [];
   for (let i = 0; i < lines.length; i++) {
-    const idx = lines[i].indexOf("--");
+    const idx = commentStart(lines[i]);
     const code = idx === -1 ? lines[i] : lines[i].slice(0, idx);
     if (!PRINCIPAL_LITERAL.test(code)) continue;
     const ack =
@@ -187,6 +197,18 @@ const FIXTURES = [
   },
   {
     rule: "principal",
+    name: "a `--` inside a string doesn't hide a later literal",
+    sql: `INSERT INTO "t" ("note", "created_by") VALUES ('a--b', 'SYSTEM');`,
+    expect: 1,
+  },
+  {
+    rule: "principal",
+    name: "a literal inside a trailing comment passes",
+    sql: `UPDATE "t" SET "x" = 1; -- was 'SYSTEM' before #952`,
+    expect: 0,
+  },
+  {
+    rule: "principal",
     name: "portalai_system_id() passes",
     sql: `INSERT INTO "t" ("id", "created_by") VALUES ('x', portalai_system_id());`,
     expect: 0,
@@ -226,7 +248,9 @@ function runRealTree() {
       }
     }
   }
+  let ok = true;
   if (principal.length > 0) {
+    ok = false;
     console.error(
       `lint:migrations: ${principal.length} literal system principal(s) in new migrations:\n` +
         principal.join("\n") +
@@ -234,7 +258,6 @@ function runRealTree() {
         `Write created_by as portalai_system_id(). For a 'system' that isn't a principal\n` +
         `(e.g. kind = 'system'), add \`-- principal-literal-ok: <reason>\` on the line or the line above.`
     );
-    return false;
   }
   if (problems.length > 0) {
     console.error(
@@ -243,8 +266,9 @@ function runRealTree() {
         `\n\nEach is irreversible against a customer's data on upgrade (forward-only).\n` +
         `If intended, add \`-- destructive-ok: <reason>\` on the statement or the line above.`
     );
-    return false;
+    ok = false;
   }
+  if (!ok) return false;
   console.log(
     `lint:migrations: no unacknowledged destructive DDL in migrations > ${BASELINE_MAX_MIGRATION_INDEX}, ` +
       `no literal system principal in migrations > ${PRINCIPAL_BASELINE_MAX_MIGRATION_INDEX}`
