@@ -22,6 +22,7 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { SeatService } from "../../../services/seat.service.js";
+import { Auth0Service } from "../../../services/auth0.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { ApiError } from "../../../services/http.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -439,7 +440,7 @@ describe("SeatService Integration Tests", () => {
 
     const res = await SeatService.acceptByToken(
       invitee.auth0Id,
-      "Bearer x",
+      { authorization: "Bearer x", issuer: undefined },
       token,
       AUDIT
     );
@@ -454,11 +455,45 @@ describe("SeatService Integration Tests", () => {
 
     // Re-accepting the (now consumed) token fails.
     await expect(
-      SeatService.acceptByToken(invitee.auth0Id, "Bearer x", token, AUDIT)
+      SeatService.acceptByToken(
+        invitee.auth0Id,
+        { authorization: "Bearer x", issuer: undefined },
+        token,
+        AUDIT
+      )
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
 
     await new Promise((r) => setTimeout(r, 60));
     expect(await auditRows("member.invite.accept")).toHaveLength(1);
+  });
+
+  // #950: a brand-new invitee on an OIDC install is created from the profile
+  // at their token's own issuer, not Auth0's.
+  it("acceptByToken fetches a new invitee's profile from the token's issuer", async () => {
+    await setSeatCap(null);
+    const inv = await SeatService.invite(
+      owner,
+      { email: "oidc-joiner@x.com", role: "member" },
+      AUDIT
+    );
+    const token = inv.inviteUrl!.split("token=")[1];
+    const sub = `kc|${generateId()}`;
+    const iss = "http://auth.portalai.localhost/realms/portalai";
+    const spy = jest
+      .spyOn(Auth0Service, "getAuth0UserProfile")
+      .mockResolvedValue({ sub, email: "oidc-joiner@x.com", name: "Joiner" });
+    try {
+      const res = await SeatService.acceptByToken(
+        sub,
+        { authorization: "Bearer kc-token", issuer: iss },
+        token,
+        AUDIT
+      );
+      expect(res.role).toBe("member");
+      expect(spy).toHaveBeenCalledWith("kc-token", iss);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("acceptByToken: 404 on unknown token, 410 on expired", async () => {
@@ -471,7 +506,7 @@ describe("SeatService Integration Tests", () => {
     await expect(
       SeatService.acceptByToken(
         invitee.auth0Id,
-        "Bearer x",
+        { authorization: "Bearer x", issuer: undefined },
         "bogus-token",
         AUDIT
       )
@@ -488,7 +523,12 @@ describe("SeatService Integration Tests", () => {
       .set({ expiresAt: Date.now() - 1 })
       .where(eq(schema.invitations.id, inv.id));
     await expect(
-      SeatService.acceptByToken(invitee.auth0Id, "Bearer x", token, AUDIT)
+      SeatService.acceptByToken(
+        invitee.auth0Id,
+        { authorization: "Bearer x", issuer: undefined },
+        token,
+        AUDIT
+      )
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_EXPIRED });
   });
 

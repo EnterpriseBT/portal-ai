@@ -70,7 +70,10 @@ describe("Auth0Service", () => {
         json: () => Promise.resolve(mockProfile),
       } as globalThis.Response);
 
-      const profile = await Auth0Service.getAuth0UserProfile("valid-token");
+      const profile = await Auth0Service.getAuth0UserProfile(
+        "valid-token",
+        undefined
+      );
 
       expect(profile).toEqual(mockProfile);
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -93,11 +96,11 @@ describe("Auth0Service", () => {
       } as globalThis.Response);
 
       await expect(
-        Auth0Service.getAuth0UserProfile("invalid-token")
+        Auth0Service.getAuth0UserProfile("invalid-token", undefined)
       ).rejects.toThrow(ApiError);
 
       try {
-        await Auth0Service.getAuth0UserProfile("invalid-token");
+        await Auth0Service.getAuth0UserProfile("invalid-token", undefined);
       } catch (error) {
         expect((error as ApiError).status).toBe(401);
         expect((error as ApiError).code).toBe(ApiCode.AUTH_UPSTREAM_ERROR);
@@ -113,11 +116,11 @@ describe("Auth0Service", () => {
       } as globalThis.Response);
 
       await expect(
-        Auth0Service.getAuth0UserProfile("some-token")
+        Auth0Service.getAuth0UserProfile("some-token", undefined)
       ).rejects.toThrow(ApiError);
 
       try {
-        await Auth0Service.getAuth0UserProfile("some-token");
+        await Auth0Service.getAuth0UserProfile("some-token", undefined);
       } catch (error) {
         expect((error as ApiError).status).toBe(503);
       }
@@ -128,9 +131,9 @@ describe("Auth0Service", () => {
         .spyOn(globalThis, "fetch")
         .mockRejectedValue(new Error("Network failure"));
 
-      await expect(Auth0Service.getAuth0UserProfile("token")).rejects.toThrow(
-        "Network failure"
-      );
+      await expect(
+        Auth0Service.getAuth0UserProfile("token", undefined)
+      ).rejects.toThrow("Network failure");
     });
   });
 
