@@ -45,6 +45,7 @@ import { OrganizationUpdateService } from "../services/organization-update.servi
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
+import { tokenIssuer } from "../utils/token-issuer.util.js";
 
 import type { Request } from "../types/request.js";
 
@@ -982,7 +983,7 @@ organizationRouter.post(
       const audit = auditContextFromRequest(req);
       const result = await SeatService.acceptByToken(
         auth0Id,
-        req.headers.authorization,
+        { authorization: req.headers.authorization, issuer: tokenIssuer(req) },
         parsed.data.token,
         { sourceIp: audit.sourceIp, userAgent: audit.userAgent }
       );

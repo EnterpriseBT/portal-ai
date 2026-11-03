@@ -45,6 +45,16 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "seat" });
 
 /** Post-commit audit context supplied by the route (`ip` / `user-agent`). */
+/**
+ * The caller's access token, for creating a brand-new invitee from their
+ * profile: the raw Authorization header and the token's `iss` (`tokenIssuer`),
+ * so an OIDC install's token is read at its own issuer (#950).
+ */
+export interface CallerToken {
+  authorization: string | undefined;
+  issuer: string | undefined;
+}
+
 export interface SeatAuditContext {
   sourceIp: string | null;
   userAgent: string | null;
@@ -358,13 +368,13 @@ export class SeatService {
    */
   static async acceptByToken(
     auth0Sub: string,
-    authorizationHeader: string | undefined,
+    caller: CallerToken,
     token: string,
     auditCtx: SeatAuditContext
   ): Promise<AcceptInvitationResponse> {
     // Resolve or create the caller's user — a brand-new invitee may accept
     // before any other authed request has provisioned them.
-    const user = await SeatService.resolveCaller(auth0Sub, authorizationHeader);
+    const user = await SeatService.resolveCaller(auth0Sub, caller);
 
     const now = SystemUtilities.utc.now().getTime();
     const tokenHash = SeatService.hashToken(token);
@@ -780,12 +790,13 @@ export class SeatService {
    *  (a brand-new invitee accepting before anything else provisioned them). */
   private static async resolveCaller(
     auth0Sub: string,
-    authorizationHeader: string | undefined
+    caller: CallerToken
   ): Promise<UserSelect> {
     const existing = await DbService.repository.users.findByAuth0Id(auth0Sub);
     if (existing) return existing;
     const profile = await Auth0Service.getAuth0UserProfile(
-      Auth0Service.getAccessToken(authorizationHeader)
+      Auth0Service.getAccessToken(caller.authorization),
+      caller.issuer
     );
     const { user } = await DbService.repository.users.findOrCreateByAuth0Id(
       new UserModelFactory()

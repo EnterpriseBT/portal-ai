@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 
 import { ApplicationService } from "../services/application.service.js";
 import { Auth0Service } from "../services/auth0.service.js";
+import { tokenIssuer } from "../utils/token-issuer.util.js";
 import { SsoConfig } from "../config/sso.config.js";
 import { DbService } from "../services/db.service.js";
 import { ApiError } from "../services/http.service.js";
@@ -72,9 +73,7 @@ export const getApplicationMetadata = async (
         async () => {
           const profile = await Auth0Service.getAuth0UserProfile(
             Auth0Service.getAccessToken(req.headers.authorization),
-            typeof req.auth?.payload.iss === "string"
-              ? req.auth.payload.iss
-              : undefined
+            tokenIssuer(req)
           );
           return {
             email: profile.email ?? null,
@@ -115,9 +114,7 @@ export const getApplicationMetadata = async (
       async () => {
         const profile = await Auth0Service.getAuth0UserProfile(
           Auth0Service.getAccessToken(req.headers.authorization),
-          typeof req.auth?.payload.iss === "string"
-            ? req.auth.payload.iss
-            : undefined
+          tokenIssuer(req)
         );
         return {
           email: profile.email ?? null,

@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from "express";
 import { createLogger } from "../utils/logger.util.js";
 import { Auth0Service } from "../services/auth0.service.js";
+import { tokenIssuer } from "../utils/token-issuer.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import {
@@ -81,18 +82,19 @@ profileRouter.get(
       const accessToken = Auth0Service.getAccessToken(
         req.headers.authorization
       );
-      const profile = await Auth0Service.getAuth0UserProfile(accessToken).catch(
-        (error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.PROFILE_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch profile from Auth0"
-          );
-        }
-      );
+      const profile = await Auth0Service.getAuth0UserProfile(
+        accessToken,
+        tokenIssuer(req)
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.PROFILE_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch profile from Auth0"
+        );
+      });
       const validatedProfile = Auth0UserProfileSchema.safeParse(profile);
       if (!validatedProfile.success) {
         return next(

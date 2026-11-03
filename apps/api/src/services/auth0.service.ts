@@ -83,12 +83,14 @@ export class Auth0Service {
    * known Auth0 `userinfo` directly (no discovery round-trip); a non-Auth0
    * issuer resolves its endpoint via OIDC discovery (#577).
    * @param accessToken - The user's access token
-   * @param issuer - The token's `iss` claim (optional; defaults to Auth0)
+   * @param issuer - The token's `iss` claim, from `tokenIssuer(req)`;
+   *   `undefined` means the default Auth0 issuer. Required (#950): an omitted
+   *   issuer silently sent an OIDC install's token to Auth0's userinfo.
    * @returns The user's profile information
    */
   public static async getAuth0UserProfile(
     accessToken: string,
-    issuer?: string
+    issuer: string | undefined
   ): Promise<Auth0UserProfile> {
     const userInfoUrl =
       !issuer || issuer === Auth0Service.defaultAuth0Issuer()

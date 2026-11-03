@@ -5,8 +5,17 @@ import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { Auth0UserProfile } from "@portalai/core/contracts";
 
 // Mock the auth middleware so the real app can be imported without JWT config
+// An `x-test-iss` header stands in for a verified token's `iss` claim (#950).
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
-  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
+  jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
+    const iss = req.headers["x-test-iss"];
+    if (typeof iss === "string") {
+      (req as unknown as { auth: unknown }).auth = {
+        payload: { sub: "kc-user", iss },
+      };
+    }
+    next();
+  },
 }));
 
 // Mock Auth0Service
@@ -83,6 +92,25 @@ describe("Profile Router", () => {
       beforeEach(() => {
         mockedAuth0Service.hasAccessToken.mockReturnValue(true);
         mockedAuth0Service.getAccessToken.mockReturnValue("valid-token");
+      });
+
+      // #950: an OIDC install's token isn't Auth0's; omitting its issuer sent
+      // the fetch to https://undefined/userinfo (500 PROFILE_FETCH_FAILED).
+      it("fetches the profile from the token's own issuer", async () => {
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(mockProfile);
+        mockedUsersRepo.findByAuth0Id.mockResolvedValue(undefined);
+        const iss = "http://auth.portalai.localhost/realms/portalai";
+
+        const res = await request(app)
+          .get("/api/profile")
+          .set("Authorization", "Bearer valid-token")
+          .set("x-test-iss", iss);
+
+        expect(res.status).toBe(200);
+        expect(mockedAuth0Service.getAuth0UserProfile).toHaveBeenCalledWith(
+          "valid-token",
+          iss
+        );
       });
 
       it("should return 200 with the user profile and lastLogin", async () => {
