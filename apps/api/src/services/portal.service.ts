@@ -256,7 +256,7 @@ function handleToolError(ctx: StreamContext, chunk: any): void {
       {
         toolName,
         toolCallId,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       },
       "Tool threw during a portal turn"
     );
@@ -876,7 +876,7 @@ export class PortalService {
             err instanceof Error
               ? err.message
               : String(err ?? "Unknown AI error");
-          logger.error({ portalId, error: message }, "AI stream error chunk");
+          logger.error({ portalId, error: err }, "AI stream error chunk");
           sse.sendError(message);
           return;
         } else if (chunk.type === "finish") {
@@ -895,7 +895,7 @@ export class PortalService {
         error instanceof Error
           ? error.message
           : "An error occurred during streaming";
-      logger.error({ portalId, error: message }, "AI stream error");
+      logger.error({ portalId, error }, "AI stream error");
       sse.sendError(message);
       return;
     }

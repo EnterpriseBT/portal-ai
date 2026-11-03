@@ -172,10 +172,7 @@ entityTagAssignmentRouter.get(
         tags: tags as unknown as EntityTagAssignmentListResponsePayload["tags"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list entity tag assignments"
-      );
+      logger.error({ error }, "Failed to list entity tag assignments");
       return next(
         error instanceof ApiError
           ? error
@@ -362,10 +359,7 @@ entityTagAssignmentRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create entity tag assignment"
-      );
+      logger.error({ error }, "Failed to create entity tag assignment");
       return next(
         error instanceof ApiError
           ? error
@@ -480,10 +474,7 @@ entityTagAssignmentRouter.delete(
 
       return HttpService.success(res, { id: assignmentId });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity tag assignment"
-      );
+      logger.error({ error }, "Failed to delete entity tag assignment");
       return next(
         error instanceof ApiError
           ? error

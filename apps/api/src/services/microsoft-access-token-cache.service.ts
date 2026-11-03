@@ -217,7 +217,7 @@ async function markInstanceErrored(
       logger.warn(
         {
           connectorInstanceId,
-          err: updateErr instanceof Error ? updateErr.message : updateErr,
+          err: updateErr,
         },
         "Failed to update connector instance status after refresh failure"
       );

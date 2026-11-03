@@ -90,10 +90,7 @@ healthRouter.get("/", (_req: Request, res: Response, next: NextFunction) => {
     logger.info("Health check OK");
     return HttpService.success(res, payload);
   } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      "Health check failed"
-    );
+    logger.error({ error }, "Health check failed");
     return next(
       new ApiError(500, ApiCode.HEALTH_CHECK_FAILED, "Health check failed")
     );

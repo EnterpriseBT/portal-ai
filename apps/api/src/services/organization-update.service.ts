@@ -150,7 +150,7 @@ export class OrganizationUpdateService {
         {
           organizationId,
           stripeCustomerId,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
         },
         "Failed to update the Stripe customer name after an organization rename — reconcile manually"
       );

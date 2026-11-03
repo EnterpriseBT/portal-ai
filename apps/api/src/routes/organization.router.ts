@@ -319,10 +319,7 @@ organizationRouter.patch(
         organization,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update organization"
-      );
+      logger.error({ error }, "Failed to update organization");
       return next(
         error instanceof ApiError
           ? error
@@ -490,10 +487,7 @@ organizationRouter.delete(
 
       return HttpService.success<OrganizationDeleteResponse>(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete organization"
-      );
+      logger.error({ error }, "Failed to delete organization");
       return next(
         error instanceof ApiError
           ? error
@@ -1094,10 +1088,7 @@ organizationRouter.get(
         ...(await orgRoleFields(userId, result.organization.id)),
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch current organization"
-      );
+      logger.error({ error }, "Failed to fetch current organization");
       return next(
         error instanceof ApiError
           ? error
@@ -1355,10 +1346,7 @@ organizationRouter.get(
         usage,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch organization usage"
-      );
+      logger.error({ error }, "Failed to fetch organization usage");
       return next(
         error instanceof ApiError
           ? error
@@ -1490,10 +1478,7 @@ organizationRouter.get(
         total,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch usage ledger"
-      );
+      logger.error({ error }, "Failed to fetch usage ledger");
       return next(
         error instanceof ApiError
           ? error
@@ -1635,10 +1620,7 @@ organizationRouter.get(
         total,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch audit log"
-      );
+      logger.error({ error }, "Failed to fetch audit log");
       return next(
         error instanceof ApiError
           ? error

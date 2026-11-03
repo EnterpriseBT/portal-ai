@@ -447,7 +447,7 @@ export class BillingService {
           {
             eventId: event.id,
             type: event.type,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Site-rebuild dispatch threw; webhook unaffected"
         );
@@ -673,7 +673,7 @@ export class BillingService {
           {
             organizationId: org.id,
             stripeCustomerId: customerId,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Failed to delete an unused Stripe customer — delete it manually"
         );
@@ -712,7 +712,7 @@ export class BillingService {
           {
             organizationId: org.id,
             stripeCustomerId: customerId,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Failed to update the Stripe customer name after an organization rename — reconcile manually"
         );

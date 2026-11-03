@@ -221,10 +221,7 @@ export const WorkbookCacheService = {
     try {
       return JSON.parse(payload) as SessionMeta;
     } catch (err) {
-      logger.warn(
-        { prefix, err: err instanceof Error ? err.message : err },
-        "Session meta failed JSON.parse — evicting"
-      );
+      logger.warn({ prefix, err }, "Session meta failed JSON.parse — evicting");
       await redis.del(metaKey(prefix));
       return null;
     }

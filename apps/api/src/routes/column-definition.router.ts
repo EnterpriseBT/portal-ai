@@ -216,10 +216,7 @@ columnDefinitionRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list column definitions"
-      );
+      logger.error({ error }, "Failed to list column definitions");
       return next(
         error instanceof ApiError
           ? error
@@ -340,10 +337,7 @@ columnDefinitionRouter.get(
         } as unknown as ColumnDefinitionGetResponsePayload["columnDefinition"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch column definition"
-      );
+      logger.error({ error }, "Failed to fetch column definition");
       return next(
         error instanceof ApiError
           ? error
@@ -505,10 +499,7 @@ columnDefinitionRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create column definition"
-      );
+      logger.error({ error }, "Failed to create column definition");
       return next(
         error instanceof ApiError
           ? error
@@ -849,10 +840,7 @@ columnDefinitionRouter.patch(
           columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update column definition"
-      );
+      logger.error({ error }, "Failed to update column definition");
       return next(
         error instanceof ApiError
           ? error
@@ -977,10 +965,7 @@ columnDefinitionRouter.get(
         entityRecords,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch column definition impact"
-      );
+      logger.error({ error }, "Failed to fetch column definition impact");
       return next(
         error instanceof ApiError
           ? error
@@ -1074,7 +1059,7 @@ columnDefinitionRouter.get(
       return HttpService.success(res, { runningJobs });
     } catch (error) {
       logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error },
         "Failed to fetch running jobs for column definition"
       );
       return next(
@@ -1211,10 +1196,7 @@ columnDefinitionRouter.delete(
 
       return HttpService.success(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete column definition"
-      );
+      logger.error({ error }, "Failed to delete column definition");
       return next(
         error instanceof ApiError
           ? error

@@ -47,10 +47,11 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
   },
 }));
 
+const mockLogError = jest.fn();
 jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   createLogger: () => ({
     info: jest.fn(),
-    error: jest.fn(),
+    error: mockLogError,
     warn: jest.fn(),
     debug: jest.fn(),
   }),
@@ -294,6 +295,12 @@ describe("getApplicationMetadata", () => {
     const { req, res, next } = createMocks({ sub: "auth0|abc123" });
 
     await getApplicationMetadata(req, res, next);
+
+    // #948: the Error itself, so the serializer keeps its message and stack;
+    // its message as a string logged as {"type":"string"}.
+    const [fields] = mockLogError.mock.calls.at(-1) as [{ error: unknown }];
+    expect(fields.error).toBeInstanceOf(Error);
+    expect((fields.error as Error).message).toBe("DB connection failed");
 
     expect(next).toHaveBeenCalledWith(
       expect.objectContaining({

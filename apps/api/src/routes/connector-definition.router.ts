@@ -186,10 +186,7 @@ connectorDefinitionRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list connector definitions"
-      );
+      logger.error({ error }, "Failed to list connector definitions");
       return next(
         error instanceof ApiError
           ? error
@@ -295,10 +292,7 @@ connectorDefinitionRouter.get(
         connectorDefinition,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch connector definition"
-      );
+      logger.error({ error }, "Failed to fetch connector definition");
       return next(
         error instanceof ApiError
           ? error

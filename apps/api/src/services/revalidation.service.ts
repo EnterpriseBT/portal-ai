@@ -64,7 +64,7 @@ export class RevalidationService {
         {
           connectorEntityId,
           code: error instanceof ApiError ? error.code : undefined,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         },
         "Revalidation after an edit was not queued"
       );

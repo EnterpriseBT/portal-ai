@@ -270,10 +270,7 @@ stationRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to list stations"
-      );
+      logger.error({ error }, "Failed to list stations");
       return next(
         error instanceof ApiError
           ? error
@@ -419,10 +416,7 @@ stationRouter.get(
         } as unknown as StationGetResponsePayload["station"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to fetch station"
-      );
+      logger.error({ error }, "Failed to fetch station");
       return next(
         error instanceof ApiError
           ? error
@@ -609,10 +603,7 @@ stationRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to create station"
-      );
+      logger.error({ error }, "Failed to create station");
       return next(
         error instanceof ApiError
           ? error
@@ -836,10 +827,7 @@ stationRouter.patch(
         } as unknown as StationUpdateResponsePayload["station"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to update station"
-      );
+      logger.error({ error }, "Failed to update station");
       return next(
         error instanceof ApiError
           ? error
@@ -1014,10 +1002,7 @@ stationRouter.delete(
 
       return HttpService.success(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to delete station"
-      );
+      logger.error({ error }, "Failed to delete station");
       return next(
         error instanceof ApiError
           ? error

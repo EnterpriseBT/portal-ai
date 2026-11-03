@@ -24,6 +24,7 @@ const saasEnv = {
   STRIPE_WEBHOOK_SECRET: "whsec_x",
   OIDC_ISSUER: "",
   OIDC_AUDIENCE: "",
+  SYSTEM_ID: "SYSTEM",
 };
 
 const residencyEnv = {
@@ -32,6 +33,7 @@ const residencyEnv = {
   STRIPE_WEBHOOK_SECRET: undefined,
   OIDC_ISSUER: "https://idp.customer.example",
   OIDC_AUDIENCE: "https://api.customer.example",
+  SYSTEM_ID: "SYSTEM",
 };
 
 describe("parseDeployMode", () => {
@@ -108,6 +110,31 @@ describe("assertDeployModeConsistency", () => {
     expect(() =>
       assertDeployModeConsistency({ ...saasEnv, DEPLOY_MODE: "prod" })
     ).toThrow(DeployModeConfigError);
+  });
+});
+
+// #948: without SYSTEM_ID the API booted and failed only at the first user
+// creation (every sign-in answered 500).
+describe("SYSTEM_ID", () => {
+  it.each([
+    ["saas", saasEnv],
+    ["residency", residencyEnv],
+  ])("refuses an empty or blank SYSTEM_ID in %s", (_mode, env) => {
+    for (const SYSTEM_ID of [undefined, "", "   "]) {
+      expect(() => assertDeployModeConsistency({ ...env, SYSTEM_ID })).toThrow(
+        /SYSTEM_ID is required/
+      );
+    }
+  });
+
+  // Prod's is a UUID by design (PROD_PROVISIONING.runbook.md), so any
+  // non-empty value boots.
+  it("accepts any non-empty SYSTEM_ID", () => {
+    const env = {
+      ...saasEnv,
+      SYSTEM_ID: "5f0c2a7e-0000-4000-8000-000000000000",
+    };
+    expect(() => assertDeployModeConsistency(env)).not.toThrow();
   });
 });
 

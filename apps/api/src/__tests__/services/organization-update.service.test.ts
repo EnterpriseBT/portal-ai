@@ -138,7 +138,7 @@ describe("OrganizationUpdateService.syncStripeCustomerName (#907)", () => {
       expect.objectContaining({
         organizationId: "org-1",
         stripeCustomerId: "cus_1",
-        error: "stripe down",
+        error: expect.objectContaining({ message: "stripe down" }),
       }),
       expect.stringContaining("reconcile manually")
     );

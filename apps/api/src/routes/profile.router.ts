@@ -130,10 +130,7 @@ profileRouter.get(
         userId: user?.id ?? null,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch user profile"
-      );
+      logger.error({ error }, "Failed to fetch user profile");
       return next(
         error instanceof ApiError
           ? error

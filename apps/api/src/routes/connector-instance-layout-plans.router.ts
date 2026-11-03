@@ -147,7 +147,7 @@ connectorInstanceLayoutPlansRouter.post(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           connectorInstanceId: req.params.connectorInstanceId,
         },
         "Layout plan interpret failed"
@@ -241,7 +241,7 @@ connectorInstanceLayoutPlansRouter.get(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           connectorInstanceId: req.params.connectorInstanceId,
         },
         "Layout plan fetch failed"
@@ -352,7 +352,7 @@ connectorInstanceLayoutPlansRouter.get(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           connectorInstanceId: req.params.connectorInstanceId,
         },
         "Layout plan edit-context fetch failed"
@@ -475,7 +475,7 @@ connectorInstanceLayoutPlansRouter.patch(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           connectorInstanceId: req.params.connectorInstanceId,
           planId: req.params.planId,
         },
@@ -678,7 +678,7 @@ connectorInstanceLayoutPlansRouter.post(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           connectorInstanceId: req.params.connectorInstanceId,
           planId: req.params.planId,
         },

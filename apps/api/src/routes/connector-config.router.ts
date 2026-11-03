@@ -86,10 +86,7 @@ connectorConfigRouter.get(
       res.setHeader("Cache-Control", "private, max-age=60");
       return HttpService.success<ConnectorConfigResponse>(res, parsed.data);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to assemble connector config"
-      );
+      logger.error({ error }, "Failed to assemble connector config");
       return next(
         new ApiError(
           500,

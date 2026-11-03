@@ -205,10 +205,7 @@ jobsRouter.get(
 
       return HttpService.success<JobListResponsePayload>(res, result);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list jobs"
-      );
+      logger.error({ error }, "Failed to list jobs");
       return next(
         error instanceof ApiError
           ? error
@@ -307,10 +304,7 @@ jobsRouter.get(
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch job"
-      );
+      logger.error({ error }, "Failed to fetch job");
       return next(
         error instanceof ApiError
           ? error
@@ -416,10 +410,7 @@ jobsRouter.post(
 
       return HttpService.success<JobCancelResponsePayload>(res, { job });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to cancel job"
-      );
+      logger.error({ error }, "Failed to cancel job");
       return next(
         error instanceof ApiError
           ? error

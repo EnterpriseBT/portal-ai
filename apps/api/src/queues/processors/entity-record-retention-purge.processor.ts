@@ -89,7 +89,7 @@ async function dropLeftoverWideTables(cutoffMs: number): Promise<number> {
         logger.warn(
           {
             connectorEntityId,
-            error: error instanceof Error ? error.message : String(error),
+            error,
           },
           "Could not drop a deleted entity's wide table; next run retries"
         );

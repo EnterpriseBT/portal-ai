@@ -765,7 +765,7 @@ export const FileUploadSessionService = {
         logger.warn(
           {
             s3Key: row.s3Key,
-            err: err instanceof Error ? err.message : err,
+            err,
           },
           "Sweeper: failed to delete S3 object"
         );
@@ -803,7 +803,7 @@ export const FileUploadSessionService = {
         logger.warn(
           {
             s3Key: upload.s3Key,
-            err: err instanceof Error ? err.message : err,
+            err,
           },
           "Failed to delete S3 object on commit"
         );

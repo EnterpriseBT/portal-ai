@@ -361,18 +361,14 @@ export class SeedService {
   async seed() {
     const { tx, commit, rollback } = await DbService.createTransactionClient();
     try {
-      await this.seedTiers(tx).catch((error) => {
-        console.error("Error seeding tiers:", error);
-        throw error; // Rethrow to trigger rollback
-      });
-      await this.seedConnectorDefinitions(tx).catch((error) => {
-        console.error("Error seeding connector definitions:", error);
-        throw error; // Rethrow to trigger rollback
-      });
+      await this.seedTiers(tx);
+      await this.seedConnectorDefinitions(tx);
       await commit();
     } catch (error) {
-      console.error("Error during seeding:", error);
       await rollback();
+      // Rethrow so every caller fails: `db/seed.ts` exits 1 and `db:upgrade`
+      // reports UPGRADE FAILED (#948). Swallowing it let a broken seed exit 0.
+      throw error;
     }
   }
 

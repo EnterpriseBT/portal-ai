@@ -8,7 +8,7 @@ import {
   UPGRADE_LOCK_NAMESPACE,
 } from "../services/sync-lock.service.js";
 import { SeedService } from "../services/seed.service.js";
-import { createLogger } from "../utils/logger.util.js";
+import { createLogger, errorSummary } from "../utils/logger.util.js";
 import { runMigrations } from "./db-migrate.js";
 
 const logger = createLogger({ module: "db-upgrade" });
@@ -40,8 +40,6 @@ export interface UpgradeSummary {
   acquiredLock: boolean;
   /** `drizzle.__drizzle_migrations` row-count delta across the migrate step. */
   migrationsApplied: number;
-  /** the global bootstrap seed step completed. */
-  seedOk: boolean;
   durationMs: number;
 }
 
@@ -83,16 +81,16 @@ async function countAppliedMigrations(): Promise<number> {
 export const DEFAULT_UPGRADE_STEPS: UpgradeSteps = {
   countMigrations: countAppliedMigrations,
   migrate: runMigrations,
-  // `SeedService.seed()` is bootstrap-idempotent (insert-if-absent) and swallows
-  // its own errors with a rollback; `seedOk` therefore means "the seed step
-  // completed". Migration failure is the fail-closed signal that gates the exit.
+  // `SeedService.seed()` is bootstrap-idempotent (insert-if-absent) and rolls
+  // back then rethrows on failure (#948), so a failed seed rejects `runUpgrade`
+  // like a failed migrate: UPGRADE FAILED and a non-zero exit.
   seed: () => new SeedService().seed(),
   withLock: withUpgradeLock,
 };
 
 /**
  * Acquire the upgrade lock, then migrate → seed. Returns a summary; throws if
- * migrate (or an injected seed) fails, in which case the lock is released by
+ * migrate or seed fails, in which case the lock is released by
  * `withAdvisoryLock`'s `finally` and the entrypoint exits non-zero.
  */
 export async function runUpgrade(
@@ -113,7 +111,6 @@ export async function runUpgrade(
     return {
       acquiredLock: false,
       migrationsApplied: 0,
-      seedOk: false,
       durationMs: Date.now() - start,
     };
   }
@@ -121,7 +118,6 @@ export async function runUpgrade(
   const summary: UpgradeSummary = {
     acquiredLock: true,
     migrationsApplied: outcome.value,
-    seedOk: true,
     durationMs: Date.now() - start,
   };
   logger.info(
@@ -139,11 +135,14 @@ if (
 ) {
   runUpgrade()
     .then((summary) => {
-      // Fail-closed: a skipped (lock-held) or unseeded upgrade is not a success.
-      process.exit(summary.acquiredLock && summary.seedOk ? 0 : 1);
+      // Fail-closed: a skipped (lock-held) upgrade is not a success. A failed
+      // migrate or seed rejects instead (#948).
+      process.exit(summary.acquiredLock ? 0 : 1);
     })
     .catch((error) => {
-      logger.error({ error }, `UPGRADE FAILED: ${(error as Error).message}`);
+      // errorSummary, not error.message: a seed's DrizzleQueryError message is
+      // its SQL and bound values (#948).
+      logger.error({ error }, `UPGRADE FAILED: ${errorSummary(error)}`);
       process.exit(1);
     });
 }

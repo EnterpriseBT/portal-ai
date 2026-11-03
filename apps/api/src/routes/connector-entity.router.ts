@@ -280,10 +280,7 @@ connectorEntityRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list connector entities"
-      );
+      logger.error({ error }, "Failed to list connector entities");
       return next(
         error instanceof ApiError
           ? error
@@ -409,10 +406,7 @@ connectorEntityRouter.get(
         } as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch connector entity"
-      );
+      logger.error({ error }, "Failed to fetch connector entity");
       return next(
         error instanceof ApiError
           ? error
@@ -505,7 +499,7 @@ connectorEntityRouter.get(
       return HttpService.success(res, { runningJobs });
     } catch (error) {
       logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error },
         "Failed to fetch running jobs for connector entity"
       );
       return next(
@@ -656,7 +650,7 @@ connectorEntityRouter.post(
         logger.error(
           {
             connectorEntityId: connectorEntity.id,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Wide-table reconciliation failed after connector_entity create"
         );
@@ -688,10 +682,7 @@ connectorEntityRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create connector entity"
-      );
+      logger.error({ error }, "Failed to create connector entity");
       return next(
         error instanceof ApiError
           ? error
@@ -852,10 +843,7 @@ connectorEntityRouter.patch(
           updated as unknown as ConnectorEntityPatchResponsePayload["connectorEntity"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update connector entity"
-      );
+      logger.error({ error }, "Failed to update connector entity");
       return next(
         error instanceof ApiError
           ? error
@@ -1001,10 +989,7 @@ connectorEntityRouter.get(
         curatedViews,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch connector entity impact"
-      );
+      logger.error({ error }, "Failed to fetch connector entity impact");
       return next(
         error instanceof ApiError
           ? error
@@ -1168,10 +1153,7 @@ connectorEntityRouter.delete(
         recordsJobId,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete connector entity"
-      );
+      logger.error({ error }, "Failed to delete connector entity");
       return next(
         error instanceof ApiError
           ? error

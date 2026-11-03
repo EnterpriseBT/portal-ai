@@ -512,10 +512,7 @@ entityRecordRouter.get(
         nextCursor,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list entity records"
-      );
+      logger.error({ error }, "Failed to list entity records");
       return next(
         error instanceof ApiError
           ? error
@@ -586,10 +583,7 @@ entityRecordRouter.get(
         total,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to count entity records"
-      );
+      logger.error({ error }, "Failed to count entity records");
       return next(
         error instanceof ApiError
           ? error
@@ -682,10 +676,7 @@ entityRecordRouter.get(
         columns,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to get entity record"
-      );
+      logger.error({ error }, "Failed to get entity record");
       return next(
         error instanceof ApiError
           ? error
@@ -913,10 +904,7 @@ entityRecordRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create entity record"
-      );
+      logger.error({ error }, "Failed to create entity record");
       return next(
         error instanceof ApiError
           ? error
@@ -1132,10 +1120,7 @@ entityRecordRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to import entity records"
-      );
+      logger.error({ error }, "Failed to import entity records");
       return next(
         error instanceof ApiError
           ? error
@@ -1224,10 +1209,7 @@ entityRecordRouter.post(
 
       return HttpService.success(res, { job }, 202);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to enqueue revalidation job"
-      );
+      logger.error({ error }, "Failed to enqueue revalidation job");
       return next(
         error instanceof ApiError
           ? error
@@ -1432,10 +1414,7 @@ entityRecordRouter.patch(
           updated as unknown as EntityRecordPatchResponsePayload["record"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update entity record"
-      );
+      logger.error({ error }, "Failed to update entity record");
       return next(
         error instanceof ApiError
           ? error
@@ -1588,10 +1567,7 @@ entityRecordRouter.delete(
         id: recordId,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity record"
-      );
+      logger.error({ error }, "Failed to delete entity record");
       return next(
         error instanceof ApiError
           ? error
@@ -1703,10 +1679,7 @@ entityRecordRouter.delete(
 
       return HttpService.success(res, { job }, 202);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity records"
-      );
+      logger.error({ error }, "Failed to delete entity records");
       return next(
         error instanceof ApiError
           ? error

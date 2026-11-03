@@ -23,6 +23,7 @@ import {
   type UpgradeSteps,
 } from "../../../scripts/db-upgrade.js";
 import { runMigrations } from "../../../scripts/db-migrate.js";
+import { SeedService } from "../../../services/seed.service.js";
 
 describe("db:upgrade — runUpgrade", () => {
   // ── Case 1 — happy path against the (already-migrated) test DB ─────
@@ -31,7 +32,6 @@ describe("db:upgrade — runUpgrade", () => {
     const summary = await runUpgrade();
 
     expect(summary.acquiredLock).toBe(true);
-    expect(summary.seedOk).toBe(true);
     // Already migrated by global setup → a re-run applies nothing.
     expect(summary.migrationsApplied).toBe(0);
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
@@ -45,7 +45,6 @@ describe("db:upgrade — runUpgrade", () => {
 
     expect(second.acquiredLock).toBe(true);
     expect(second.migrationsApplied).toBe(0);
-    expect(second.seedOk).toBe(true);
   });
 
   // ── Case 3 — lock already held ⇒ skip, no migrate/seed ────────────
@@ -88,6 +87,25 @@ describe("db:upgrade — runUpgrade", () => {
 
     await expect(runUpgrade(failingSteps)).rejects.toThrow("migrate boom");
     expect(seed).not.toHaveBeenCalled();
+
+    // Lock was released despite the throw → a normal run acquires again.
+    const after = await runUpgrade();
+    expect(after.acquiredLock).toBe(true);
+  });
+
+  // ── Case 4b — a seed failure fails the upgrade (#948) ──────────────
+
+  it("fails the upgrade when the default seed step fails", async () => {
+    const spy = jest
+      .spyOn(SeedService.prototype, "seedTiers")
+      .mockRejectedValue(new Error("seed boom"));
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(runUpgrade()).rejects.toThrow("seed boom");
+    } finally {
+      spy.mockRestore();
+      quiet.mockRestore();
+    }
 
     // Lock was released despite the throw → a normal run acquires again.
     const after = await runUpgrade();

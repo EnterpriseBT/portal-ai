@@ -211,10 +211,7 @@ entityGroupRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list entity groups"
-      );
+      logger.error({ error }, "Failed to list entity groups");
       return next(
         error instanceof ApiError
           ? error
@@ -352,10 +349,7 @@ entityGroupRouter.get(
         } as unknown as EntityGroupGetResponsePayload["entityGroup"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch entity group"
-      );
+      logger.error({ error }, "Failed to fetch entity group");
       return next(
         error instanceof ApiError
           ? error
@@ -510,10 +504,7 @@ entityGroupRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create entity group"
-      );
+      logger.error({ error }, "Failed to create entity group");
       return next(
         error instanceof ApiError
           ? error
@@ -673,10 +664,7 @@ entityGroupRouter.patch(
           entityGroup as unknown as EntityGroupUpdateResponsePayload["entityGroup"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update entity group"
-      );
+      logger.error({ error }, "Failed to update entity group");
       return next(
         error instanceof ApiError
           ? error
@@ -773,10 +761,7 @@ entityGroupRouter.get(
         entityGroupMembers: members.length,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch entity group impact"
-      );
+      logger.error({ error }, "Failed to fetch entity group impact");
       return next(
         error instanceof ApiError
           ? error
@@ -903,10 +888,7 @@ entityGroupRouter.delete(
         cascaded,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity group"
-      );
+      logger.error({ error }, "Failed to delete entity group");
       return next(
         error instanceof ApiError
           ? error
@@ -1105,10 +1087,7 @@ entityGroupRouter.get(
         results,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to resolve entity group"
-      );
+      logger.error({ error }, "Failed to resolve entity group");
       return next(
         error instanceof ApiError
           ? error

@@ -307,10 +307,7 @@ connectorInstanceRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list connector instances"
-      );
+      logger.error({ error }, "Failed to list connector instances");
       return next(
         error instanceof ApiError
           ? error
@@ -470,10 +467,7 @@ connectorInstanceRouter.get(
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch connector instance"
-      );
+      logger.error({ error }, "Failed to fetch connector instance");
       return next(
         error instanceof ApiError
           ? error
@@ -595,10 +589,7 @@ connectorInstanceRouter.get(
         curatedViews,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch connector instance impact"
-      );
+      logger.error({ error }, "Failed to fetch connector instance impact");
       return next(
         error instanceof ApiError
           ? error
@@ -685,7 +676,7 @@ connectorInstanceRouter.get(
       return HttpService.success(res, { runningJobs });
     } catch (error) {
       logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error },
         "Failed to fetch running jobs for connector instance"
       );
       return next(
@@ -925,10 +916,7 @@ connectorInstanceRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create connector instance"
-      );
+      logger.error({ error }, "Failed to create connector instance");
       return next(
         error instanceof ApiError
           ? error
@@ -1027,10 +1015,7 @@ connectorInstanceRouter.post(
       );
       return HttpService.success(res, result, 200);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "probe-endpoint-draft failed"
-      );
+      logger.error({ error }, "probe-endpoint-draft failed");
       return next(
         error instanceof ApiError
           ? error
@@ -1122,10 +1107,7 @@ connectorInstanceRouter.post(
       );
       return HttpService.success(res, result, 200);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "preview-endpoint-page failed"
-      );
+      logger.error({ error }, "preview-endpoint-page failed");
       return next(
         error instanceof ApiError
           ? error
@@ -1321,10 +1303,7 @@ connectorInstanceRouter.post(
           )
         );
       }
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "suggest-transform failed"
-      );
+      logger.error({ error }, "suggest-transform failed");
       return next(
         error instanceof ApiError
           ? error
@@ -1586,10 +1565,7 @@ connectorInstanceRouter.delete(
         recordsJobId: recordsJob?.id ?? null,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete connector instance"
-      );
+      logger.error({ error }, "Failed to delete connector instance");
       return next(
         error instanceof ApiError
           ? error
@@ -1768,10 +1744,7 @@ connectorInstanceRouter.patch(
           : null,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update connector instance"
-      );
+      logger.error({ error }, "Failed to update connector instance");
       return next(
         error instanceof ApiError
           ? error
@@ -2005,10 +1978,7 @@ connectorInstanceRouter.post(
       // A refusal (an ApiError) is logged by the app's error handler; only
       // an unexpected failure is this route's to report (#772).
       if (!(error instanceof ApiError)) {
-        logger.error(
-          { error: error instanceof Error ? error.message : "Unknown error" },
-          "Failed to run test-connection"
-        );
+        logger.error({ error }, "Failed to run test-connection");
       }
       return next(
         error instanceof ApiError
@@ -2111,10 +2081,7 @@ connectorInstanceRouter.post(
       // A refusal (an ApiError) is logged by the app's error handler; only
       // an unexpected failure is this route's to report (#772).
       if (!(error instanceof ApiError)) {
-        logger.error(
-          { error: error instanceof Error ? error.message : "Unknown error" },
-          "Failed to enqueue sync job"
-        );
+        logger.error({ error }, "Failed to enqueue sync job");
       }
       return next(
         error instanceof ApiError

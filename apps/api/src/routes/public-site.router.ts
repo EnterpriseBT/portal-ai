@@ -123,10 +123,7 @@ publicSiteRouter.get(
       res.set("Cache-Control", "public, max-age=60, s-maxage=300");
       return HttpService.success<PublicSiteConfigResponse>(res, parsed.data);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to serve public site config"
-      );
+      logger.error({ error }, "Failed to serve public site config");
       return next(
         error instanceof ApiError
           ? error
