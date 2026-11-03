@@ -65,7 +65,15 @@ export interface DeployModeEnv {
   STRIPE_WEBHOOK_SECRET?: string;
   OIDC_ISSUER: string;
   OIDC_AUDIENCE: string;
+  SYSTEM_ID: string | undefined;
 }
+
+/**
+ * The value the migrations write as the system principal (0065, 0066, 0080
+ * insert the literal `'SYSTEM'`), so rows the seed writes under another value
+ * don't match the rows the migrations wrote.
+ */
+export const EXPECTED_SYSTEM_ID = "SYSTEM";
 
 /**
  * Fail-closed boot guard: throws `DeployModeConfigError` if the mode is
@@ -80,6 +88,15 @@ export function assertDeployModeConsistency(
 ): void {
   const mode = parseDeployMode(env.DEPLOY_MODE);
   const problems: string[] = [];
+
+  // Every mode (#948): without it the API boots and fails only at the first
+  // user creation, so every sign-in answers 500.
+  if (!env.SYSTEM_ID) {
+    problems.push(
+      "SYSTEM_ID is required: the system principal for platform-created rows " +
+        `(set it to "${EXPECTED_SYSTEM_ID}")`
+    );
+  }
 
   if (mode === "residency") {
     if (env.STRIPE_SECRET_KEY || env.STRIPE_WEBHOOK_SECRET) {
@@ -102,4 +119,22 @@ export function assertDeployModeConsistency(
       `DEPLOY_MODE=${mode} config is inconsistent:\n- ${problems.join("\n- ")}`
     );
   }
+}
+
+/**
+ * A boot warning when `SYSTEM_ID` is set to something other than the value
+ * the migrations write, or `null`. A warning, not a refusal (#948): the SaaS
+ * environments' values live in SSM and refusing an unconfirmed one would stop
+ * the API from booting. Pure; defaults to the real `environment`.
+ */
+export function systemIdWarning(
+  env: Pick<DeployModeEnv, "SYSTEM_ID"> = environment
+): string | null {
+  if (!env.SYSTEM_ID || env.SYSTEM_ID === EXPECTED_SYSTEM_ID) return null;
+  return (
+    `SYSTEM_ID is "${env.SYSTEM_ID}", not "${EXPECTED_SYSTEM_ID}": the ` +
+    "migrations write system-owned rows as " +
+    `"${EXPECTED_SYSTEM_ID}", so those rows won't read as system-owned ` +
+    "(created_by_system)"
+  );
 }

@@ -13,6 +13,7 @@ import {
   parseDeployMode,
   assertDeployModeConsistency,
   DeployModeConfigError,
+  systemIdWarning,
   isSaas,
   isResidency,
 } from "../../config/deploy-mode.js";
@@ -24,6 +25,7 @@ const saasEnv = {
   STRIPE_WEBHOOK_SECRET: "whsec_x",
   OIDC_ISSUER: "",
   OIDC_AUDIENCE: "",
+  SYSTEM_ID: "SYSTEM",
 };
 
 const residencyEnv = {
@@ -32,6 +34,7 @@ const residencyEnv = {
   STRIPE_WEBHOOK_SECRET: undefined,
   OIDC_ISSUER: "https://idp.customer.example",
   OIDC_AUDIENCE: "https://api.customer.example",
+  SYSTEM_ID: "SYSTEM",
 };
 
 describe("parseDeployMode", () => {
@@ -108,6 +111,31 @@ describe("assertDeployModeConsistency", () => {
     expect(() =>
       assertDeployModeConsistency({ ...saasEnv, DEPLOY_MODE: "prod" })
     ).toThrow(DeployModeConfigError);
+  });
+});
+
+// #948: without SYSTEM_ID the API booted and failed only at the first user
+// creation (every sign-in answered 500).
+describe("SYSTEM_ID", () => {
+  it.each([
+    ["saas", saasEnv],
+    ["residency", residencyEnv],
+  ])("refuses an empty SYSTEM_ID in %s", (_mode, env) => {
+    for (const SYSTEM_ID of [undefined, ""]) {
+      expect(() => assertDeployModeConsistency({ ...env, SYSTEM_ID })).toThrow(
+        /SYSTEM_ID is required/
+      );
+    }
+  });
+
+  it("boots with a SYSTEM_ID other than SYSTEM, and warns", () => {
+    const env = { ...saasEnv, SYSTEM_ID: "OTHER" };
+    expect(() => assertDeployModeConsistency(env)).not.toThrow();
+    expect(systemIdWarning(env)).toMatch(/SYSTEM_ID is "OTHER"/);
+  });
+
+  it("does not warn for SYSTEM", () => {
+    expect(systemIdWarning(saasEnv)).toBeNull();
   });
 });
 
