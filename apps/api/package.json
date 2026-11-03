@@ -25,7 +25,7 @@
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
     "test:integration": "NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=6144' jest --config jest.integration.config.js --maxWorkers=1${INTEGRATION_SHARD:+ --shard=$INTEGRATION_SHARD --json --outputFile=jest-integration-report.json}",
     "db:generate": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs generate",
-    "db:migrate": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs migrate",
+    "db:migrate": "dotenv -e .env -- tsx src/scripts/db-migrate.ts",
     "db:migrate:ci": "node dist/scripts/db-migrate.js",
     "db:upgrade": "dotenv -e .env -- tsx src/scripts/db-upgrade.ts",
     "db:upgrade:ci": "node dist/scripts/db-upgrade.js",

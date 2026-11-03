@@ -8,12 +8,18 @@
  * side-effect is entrypoint-guarded, so importing here opens no DB connection.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import { jest, describe, it, expect } from "@jest/globals";
 
 import type { DbPasswordResolver } from "../../db/credentials.util.js";
+import { environment } from "../../environment.js";
 import {
   buildMigrationClientOptions,
   buildProvisionClientOptions,
+  MIGRATION_SYSTEM_ID_SETTING,
+  migrationsFolder,
   planMigrations,
 } from "../../scripts/db-migrate.js";
 
@@ -45,6 +51,48 @@ describe("buildMigrationClientOptions (#505)", () => {
   it("uses a single connection for the one-shot task", () => {
     const opts = buildMigrationClientOptions(makeResolver(async () => "pw"));
     expect(opts.max).toBe(1);
+  });
+});
+
+// #952: data migrations read the environment's system principal from this
+// setting (`portalai_system_id()`), never a literal.
+describe("buildMigrationClientOptions system principal (#952)", () => {
+  const resolver = makeResolver(async () => "pw");
+
+  it("passes the system id as portalai.system_id beside the reader role", () => {
+    const opts = buildMigrationClientOptions(resolver, "reader", "sys-uuid");
+    expect(MIGRATION_SYSTEM_ID_SETTING).toBe("portalai.system_id");
+    expect(opts.connection).toEqual({
+      "portalai.sql_reader_role": "reader",
+      "portalai.system_id": "sys-uuid",
+    });
+  });
+
+  it("defaults the id from SYSTEM_ID", () => {
+    const opts = buildMigrationClientOptions(resolver);
+    expect(opts.connection["portalai.system_id"]).toBe(environment.SYSTEM_ID);
+  });
+
+  it.each([[undefined], [""], ["  "]])(
+    "refuses a missing system id (%p)",
+    (systemId) => {
+      const saved = environment.SYSTEM_ID;
+      environment.SYSTEM_ID = systemId;
+      try {
+        expect(() => buildMigrationClientOptions(resolver)).toThrow(
+          /SYSTEM_ID is required/
+        );
+      } finally {
+        environment.SYSTEM_ID = saved;
+      }
+    }
+  );
+
+  it("resolves the migrations folder to apps/api/drizzle", () => {
+    expect(migrationsFolder.replace(/\\/g, "/")).toMatch(/apps\/api\/drizzle$/);
+    expect(existsSync(join(migrationsFolder, "meta", "_journal.json"))).toBe(
+      true
+    );
   });
 });
 
@@ -101,7 +149,7 @@ describe("migration plan (#660 PR 2)", () => {
       makeResolver(async () => "pw"),
       "custom_reader"
     );
-    expect(opts.connection).toEqual({
+    expect(opts.connection).toMatchObject({
       "portalai.sql_reader_role": "custom_reader",
     });
   });

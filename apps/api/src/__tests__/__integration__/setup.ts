@@ -50,7 +50,14 @@ export default async function globalSetup() {
   process.env.AUTH_API_RATE_LIMIT_PER_MIN ??= "1000000";
   process.env.AUTH_TILE_RATE_LIMIT_PER_MIN ??= "1000000";
 
-  const connection = postgres(databaseUrl, { max: 1 });
+  // #952: the same startup setting db-migrate passes
+  // (MIGRATION_SYSTEM_ID_SETTING, scripts/db-migrate.ts), so 0133's
+  // portalai_system_id() reads this run's principal. A literal here, not the
+  // import: globalSetup stays free of the API's environment module.
+  const connection = postgres(databaseUrl, {
+    max: 1,
+    connection: { "portalai.system_id": process.env.SYSTEM_ID! },
+  });
   const db = drizzle(connection);
 
   try {
