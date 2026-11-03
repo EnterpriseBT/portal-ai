@@ -51,14 +51,87 @@ Install images built from the last release tag (`v1.1.2`), then `helm upgrade --
 
 ## Smoke (manual, against your Docker Desktop cluster)
 
-1. Docker Desktop → Kubernetes enabled; `kubectl get nodes` from the devcontainer shows `Ready`.
-2. Traefik installed, CoreDNS rewrite applied; from a throwaway pod, `nslookup auth.portalai.localhost` resolves to Traefik's service.
-3. Build `v1.1.2` API + web images; `helm install` with bundled deps, `deployMode=residency`, `bundledIssuer.enabled=true`, ingress on, nothing else. Every image pulls; the migrate job waits for the bundled DB and applies; the API logs `portal-sql.reader-role-ok`; all pods `Ready`.
-4. Create a user in Keycloak; open `http://portalai.localhost`, sign in through Keycloak, land in the app with an organization.
-5. Create a station (a write succeeds); upload a small CSV through the file import (presigned PUT to MinIO succeeds, records appear).
-6. Build this branch's images; `helm upgrade --atomic`; `kubectl logs job/<release>-upgrade` shows `UPGRADE COMPLETE`; the station and records are still there.
-7. `helm upgrade --atomic` with a nonexistent image tag fails, rolls back, and the app keeps serving the previous release.
-8. `npm run lint:helm` passes.
+Branch `chore/946-local-helm-install`, PR [#947](https://github.com/EnterpriseBT/portal-ai/pull/947). Untagged steps are agent-walkable through the in-container browser with the `:80` forwarder (chart README → Local evaluation cluster); `— backend` is kubectl/helm from the devcontainer; `— manual` needs your Mac's browser. Every box starts unchecked.
+
+**Preflight**
+- [ ] Docker Desktop → Kubernetes enabled; README steps 1–3 done (kubeconfig copy, Traefik `42.0.0`, CoreDNS rewrite). — backend
+- [ ] Images built (README step 4): `portalai-api:1.1.2` + `portalai-web:1.1.2` from tag `v1.1.2`, and this branch's as `portalai-api:946` + `portalai-web:946`. — backend
+- [ ] Reset: `helm uninstall portalai -n portalai; kubectl delete ns portalai` (the namespace takes the PVCs with it). — backend
+
+**Steps**
+1. [ ] `kubectl get nodes` shows `docker-desktop` `Ready`; `kubectl run dns --rm -i --restart=Never --image=busybox:1.37 -- nslookup auth.portalai.localhost` answers Traefik's ClusterIP. — backend
+2. [ ] `helm install` with `v1.1.2` images and the README step 5 values (`deployMode: residency`, bundled issuer, ingress, `objectStorage.publicHost`), `--wait`, completes. Every pod is `Ready`, `portalai-migrate` and `portalai-seed` are `Complete`, and no pod pulls a `bitnami*` or `minio` image (`kubectl -n portalai get pods -o jsonpath='{..image}'`). — backend
+3. [ ] `kubectl -n portalai logs deploy/portalai-api -c api | grep portal-sql.reader-role-ok` matches. In psql, `select count(*) from connector_definitions` = 5. `s3.bucket.list` on `portalai-s3-0` lists `portalai-uploads`. `kubectl -n portalai get cm,secret | grep hook` is empty. — backend
+4. [ ] Create a user at `http://auth.portalai.localhost/admin/` (realm `portalai`, email verified, non-temporary password). — manual
+5. [ ] Open `http://portalai.localhost` **from the Mac's browser**, sign in through Keycloak, and land on the dashboard showing "My Organization" with "My Station". — manual
+6. [ ] Stations → New Station → Name "Helm smoke 946" → Create. The card appears.
+7. [ ] Connectors → Catalog → File Upload → upload a 3-row CSV, drag the region over all its cells, click **+ Add row axis**, create a new entity, Interpret, Commit plan. Network shows `PUT http://s3.portalai.localhost/portalai-uploads/…` → 200. The entity has 3 records with their fields.
+8. [ ] `helm upgrade --atomic` to the `946` images. `kubectl -n portalai logs job/portalai-upgrade` shows `UPGRADE COMPLETE (migrations: 1, seed: ok)`. The station and records remain, `/api/health` reports the branch version, and no hook ConfigMap/Secret is left. — backend
+9. [ ] `helm upgrade --atomic --timeout 2m` with `image.*.tag=does-not-exist` fails and reports `Rollback to <n>`. A `curl` loop on `http://portalai.localhost/api/health` stays 200 throughout. A later good upgrade replaces the failed upgrade Job. — backend
+10. [ ] `npm run lint:helm` passes. Each of these is refused at render: `--set migrate.enabled=false` (bundled DB), `--set bundledIssuer.host=auth.example.com:8443`, `--set config.SYSTEM_ID=other`. — backend
+11. [ ] After `helm uninstall`, `kubectl -n portalai delete job,configmap,secret,pvc -l app.kubernetes.io/instance=portalai` leaves nothing of the release. — backend
+
+**Acceptance → step:** README from scratch, running and reachable → 1–3, 5 · Keycloak sign-in + org + write → 4–6 · `reader-role-ok` → 3 · upgrade `UPGRADE COMPLETE` + data intact → 8 · failing upgrade rolls back and keeps serving → 9 · first install needs no workaround → 2 · maintained images only → 2. Uploads (decision) → 7. Review fixes → 3, 9–11.
+
+**Sign-off**
+- [ ] Every step above verified against my own Docker Desktop cluster — <date, name>
+
+Bug template: Step · Expected · Got · Repro · Identifiers (release revision, pod/job names).
+
+## Adversarial (probes against the same cluster)
+
+How the install breaks, not whether it works. Same preflight and tags as Smoke; `T` = a user access token from the `portalai` realm. In-browser token capture: the SPA's `/api` requests carry it. Every box starts unchecked.
+
+**§1 Boundary & malformed values** (render-time; `helm template … <flag>`)
+- [ ] `--set objectStorage.bucket='a;rm -rf /'` and `--set bundledIssuer.realm='x"}'` → schema refusal; nothing renders into the bucket Job's shell or the realm JSON. — backend
+- [ ] `--set bundledIssuer.enabled=true` with `ingress.enabled=false` → refused ("needs the chart's ingress"). — backend
+- [ ] `--set minio.enabled=true` → refused (the schema rejects `minio`). — backend
+- [ ] `--set config.SYSTEM_ID=SYSTEM` renders `SYSTEM_ID` once; `config.SYSTEM_ID=other` is refused. — backend
+
+**§2 Auth boundaries (bundled Keycloak + API)**
+- [ ] A token from Keycloak's `master` realm (admin-cli) sent to `GET /api/organization/current` → `401`, issuer mismatch. — backend
+- [ ] A `portalai`-realm token with no `portalai-api` audience (e.g. an ID token in the Bearer header) → `401`. — backend
+- [ ] Open `…/realms/portalai/protocol/openid-connect/auth?client_id=portalai-web&redirect_uri=http://evil.example&response_type=code&code_challenge=x&code_challenge_method=S256` → Keycloak "Invalid parameter: redirect_uri"; no code is issued.
+- [ ] `POST …/realms/portalai/protocol/openid-connect/token` with `grant_type=password` for the portalai-web client → refused (direct access grants are off). — backend
+- [ ] The login page shows no "Register" link, and `…/registrations?client_id=portalai-web` doesn't offer sign-up.
+
+**§3 Object storage boundaries**
+- [ ] Unsigned `curl http://s3.portalai.localhost/portalai-uploads/<a key from step 7>` → `403`/`AccessDenied`. — backend
+- [ ] With the app's own keys (`portalai-s3` Secret), `CreateBucket other` and `ListBuckets` → denied; Get/Put inside `portalai-uploads` → allowed. — backend
+- [ ] A presigned PUT URL replayed after `X-Amz-Expires` (30 min), or with its host changed → `403`. — backend
+- [ ] The ingress exposes only S3: `curl -H 'Host: s3.portalai.localhost' http://<traefik>/` reaches the gateway; the master `:9333` and filer `:8888` are not on any ingress host. — backend
+
+**§4 Single-org residency (tenant shape)**
+- [ ] A second Keycloak user signs in → joins the existing "My Organization" as **member**, not a new org or an owner (`organization_users.role`). — manual
+- [ ] That member's Settings shows no owner-only actions, and a direct API call to an owner-only route → `403 PERMISSION_DENIED`. — backend
+
+**§5 State & lifecycle**
+- [ ] `kubectl delete pod portalai-postgresql-0 portalai-redis-0 portalai-s3-0` mid-session → the pods return; stations, records and the uploaded object survive; the API's readiness recovers with no restart. — backend
+- [ ] Disable the user in Keycloak → its refresh fails and the SPA returns to sign-in; signing in again is refused. — manual
+- [ ] Kill the upgrade Job's pod mid-run (`kubectl delete pod -l app.kubernetes.io/component=upgrade`) → the Job retries; the final log shows `UPGRADE COMPLETE`; `drizzle.__drizzle_migrations` has no duplicate rows. — backend
+- [ ] Two `helm upgrade`s started together → the second is refused ("another operation … in progress"); the release ends `deployed`. — backend
+- [ ] `helm upgrade --set objectStorage.bucket=renamed-uploads` → the SeaweedFS pod rolls, the hook creates `renamed-uploads`, and a new upload lands there. — backend
+
+**§6 Misuse sequences**
+- [ ] Open the app at `http://localhost` (Traefik's default host) rather than `portalai.localhost` → no app route; never a half-signed-in state.
+- [ ] Install without `objectStorage.publicHost` → the install notes say uploads need it; an upload fails visibly in the dialog, never silently. — backend
+- [ ] Set `postgresql.auth.password` to a new value after install, then upgrade → it fails as the README documents (auth error in the upgrade job) and `--atomic` rolls back. Recovery per the README (`ALTER ROLE`, then set the value) succeeds. — backend
+
+Concurrency & races sit in §5 (a killed upgrade Job, two concurrent upgrades). The app's own write races are outside this change, which ships no app code beyond the image's version env.
+
+**Findings**
+
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §5 renamed bucket | Pod rolled and the identity followed (old bucket 403), but every write to `renamed-uploads` answered 500 "No writable volumes and no free volumes left": `weed server`'s default 8 slots were all taken (7 internal + 1 for the first bucket) | med | fixed-in-PR (322c43e9: slots from free disk at 512 MB volumes, `check-helm` scenario); re-walked: put/get/delete on the renamed bucket OK, 7 volumes grown |
+| §3 ListBuckets with the app's keys | Allowed, but returns only `portalai-uploads` (SeaweedFS filters to buckets the identity can act on); CreateBucket/DeleteBucket denied 403 | — | expected-safe variant: nothing outside the bucket is disclosed |
+| §5 disabled Keycloak user | Refresh refused (`invalid_grant`, "User disabled"), fresh sign-in refused; an access token issued before the disable keeps working until it expires (≤ 5 min, `exp − iat = 300`) | low | waived: inherent to stateless JWTs; the realm's 5-minute access-token lifetime bounds it |
+| §6 DB password changed after install | Failed as documented (`password authentication failed for user "portalai"`), `--atomic` rolled back, app stayed ready; the hook's retries made the failure take ~3 min | — | expected (README limit); recovery per README verified |
+
+**Sign-off**
+- [ ] Every probe walked; findings fixed in-PR or waived with a reason — <date, name>
+
+Bug template: Section · Probe · Expected (safe) · Got · Repro · Identifiers (release revision, pod/job names, user id).
 
 ## Live run — 2026-11-02 (Docker Desktop Kubernetes v1.36.1, arm64)
 
