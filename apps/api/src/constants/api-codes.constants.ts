@@ -46,6 +46,12 @@ export enum ApiCode {
    *  credentials). Logged at fatal; the process exits non-zero. No HTTP
    *  surface — the app refuses to start. */
   DEPLOY_MODE_CONFIG_INVALID = "DEPLOY_MODE_CONFIG_INVALID",
+  /** #956: SYSTEM_ID differs from the principal the database recorded. */
+  SYSTEM_ID_MISMATCH = "SYSTEM_ID_MISMATCH",
+  /** #956: the boot's system-principal check couldn't run (DB error). */
+  SYSTEM_PRINCIPAL_CHECK_FAILED = "SYSTEM_PRINCIPAL_CHECK_FAILED",
+  /** #956: the database predates 0134, so nothing is recorded to check. */
+  SYSTEM_PRINCIPAL_UNRECORDED = "SYSTEM_PRINCIPAL_UNRECORDED",
 
   // Health
   HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED",

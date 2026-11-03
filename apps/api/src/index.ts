@@ -1,6 +1,15 @@
+import type { Worker } from "bullmq";
+
 import { app } from "./app.js";
 import { environment } from "./environment.js";
 import { connectDatabase, closeDatabase } from "./db/index.js";
+import { reserveConnection } from "./db/client.js";
+import {
+  ensureSystemPrincipal,
+  hasSystemPrincipalTable,
+  SystemPrincipalMismatchError,
+  type SqlRunner,
+} from "./db/system-principal.util.js";
 import { logger } from "./utils/logger.util.js";
 import { closeRedis } from "./utils/redis.util.js";
 import { gracefulShutdown } from "./utils/shutdown.util.js";
@@ -24,9 +33,13 @@ import {
   isResidency,
 } from "./config/deploy-mode.js";
 import { publicUrlWarnings } from "./utils/public-url.util.js";
+import { requireSystemId } from "./utils/system.util.js";
 
-const jobsWorker = createJobsWorker(processors);
-const maintenanceWorker = createMaintenanceWorker();
+// Created in start() after the boot guards (#956 review): a BullMQ worker
+// starts pulling jobs as soon as it's constructed, so one built at module load
+// would run jobs (writing createdBy) in a task about to refuse to boot.
+let jobsWorker: Worker | null = null;
+let maintenanceWorker: Worker | null = null;
 
 // #391: an unhandled promise rejection crashes Node by default, and the
 // job pipeline has legitimate fire-and-forget promises (e.g.
@@ -92,6 +105,44 @@ async function start() {
 
   await connectDatabase();
 
+  // #956: SYSTEM_ID is write-once. Under any other principal than the one the
+  // database recorded, every platform row would read as no one's, so refuse to
+  // boot, naming both. Records it first when nothing is recorded yet. A
+  // database that predates 0134 (a local `npm run dev` before `db:migrate`)
+  // has nothing to check against: warn, and boot.
+  const systemId = requireSystemId(environment.SYSTEM_ID);
+  try {
+    const conn = await reserveConnection();
+    try {
+      const run: SqlRunner = (text, params) =>
+        conn.unsafe(text, params as never[]);
+      if (await hasSystemPrincipalTable(run)) {
+        await ensureSystemPrincipal(run, systemId);
+      } else {
+        logger.warn(
+          { code: ApiCode.SYSTEM_PRINCIPAL_UNRECORDED },
+          "system_principal is missing (run db:migrate): SYSTEM_ID is unchecked until it exists"
+        );
+      }
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    const mismatch = err instanceof SystemPrincipalMismatchError;
+    logger.fatal(
+      {
+        err,
+        code: mismatch
+          ? ApiCode.SYSTEM_ID_MISMATCH
+          : ApiCode.SYSTEM_PRINCIPAL_CHECK_FAILED,
+      },
+      mismatch
+        ? "SYSTEM_ID doesn't match the database's system principal — refusing to start"
+        : "Couldn't check SYSTEM_ID against the database — refusing to start"
+    );
+    process.exit(1);
+  }
+
   // Wide-table boot drift check — guarantees every live connector_entity
   // has a correctly-shaped `er__<id>` table before the HTTP listener
   // accepts traffic. Throws on the first unfixable drift; we exit non-
@@ -107,6 +158,10 @@ async function start() {
     );
     process.exit(1);
   }
+
+  // Every boot guard has passed: only now take jobs.
+  jobsWorker = createJobsWorker(processors);
+  maintenanceWorker = createMaintenanceWorker();
 
   // #897: Express 5 hands the server's 'error' event (EADDRINUSE, EACCES) to
   // this callback; Express 4 let it crash the process. Exit either way.
@@ -192,7 +247,7 @@ async function shutdown() {
   await gracefulShutdown({
     server: server || undefined,
     closeWorker: async () => {
-      await Promise.all([jobsWorker.close(), maintenanceWorker.close()]);
+      await Promise.all([jobsWorker?.close(), maintenanceWorker?.close()]);
     },
     closeQueue: async () => {
       await Promise.all([closeJobsQueue(), closeMaintenanceQueue()]);

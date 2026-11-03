@@ -237,7 +237,7 @@ node -e "console.log(require('crypto').randomUUID())" | portalops vars set SYSTE
 
 > **`SYSTEM_ID` is the system-actor id.** `SystemUtilities.id.system` returns it, and it is written as `createdBy` / `updatedBy` on platform-initiated rows only: platform seeds and org-provisioned defaults, billing and identity housekeeping, and wide-table and map materializations. It is never written on an object a user or an agent session created (#641); `system-principal.guard.test.ts` holds the list. Outside prod it is the literal sentinel `"SYSTEM"`; prod gets a UUID so system-attributed rows are traceable to this environment. Every writer reads it from here (#952): the API, the migrations (`db-migrate.js` passes it as the `portalai.system_id` setting, which data migrations read through `portalai_system_id()`), and the CLI's spawned scripts (`portalai demo seed` and friends inject it from this parameter).
 >
-> **Write-once in intent.** Changing it re-attributes only *future* writes — existing rows keep whichever value minted them — so treat it as write-once and verify with a readback:
+> **Write-once, enforced (#956).** Changing it would re-attribute only *future* writes — existing rows keep whichever value minted them — so the database records the principal it was provisioned with (`system_principal`, migration 0134), and both the migrate step and the API boot refuse any other value (`SYSTEM_ID_MISMATCH`, naming both). Set it once, before the first migrate, and verify with a readback:
 >
 > ```bash
 > aws ssm get-parameter --name /portalai/$ENV/system-id --query Parameter.Value --output text

@@ -12,5 +12,7 @@ export default defineConfig({
   // not modelled in static Drizzle schema; without this filter, both
   // `introspect` and `generate` try to drop them. See
   // docs/ENTITY_RECORDS_WIDE_TABLE_PHASE_1.spec.md.
-  tablesFilter: ["!er__*"],
+  // `system_principal` (#956, migration 0134) is raw SQL with no Drizzle
+  // table, so `db:push` would read it as drift and drop it.
+  tablesFilter: ["!er__*", "!system_principal"],
 });
