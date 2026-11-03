@@ -44,7 +44,6 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "seat" });
 
-/** Post-commit audit context supplied by the route (`ip` / `user-agent`). */
 /**
  * The caller's access token, for creating a brand-new invitee from their
  * profile: the raw Authorization header and the token's `iss` (`tokenIssuer`),
@@ -55,6 +54,7 @@ export interface CallerToken {
   issuer: string | undefined;
 }
 
+/** Post-commit audit context supplied by the route (`ip` / `user-agent`). */
 export interface SeatAuditContext {
   sourceIp: string | null;
   userAgent: string | null;

@@ -22,6 +22,10 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+// The real class: `../utils/application.util.js` loads SeatService (and its
+// Auth0Service) statically, before the module mock below registers, so the
+// accept path calls this one and a test spies on it directly.
+import { Auth0Service as RealAuth0Service } from "../../../services/auth0.service.js";
 import {
   generateId,
   createUser,
@@ -34,9 +38,12 @@ import {
 const AUTH0_ID = "auth0|seats-caller";
 
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
+  // `x-test-sub` / `x-test-iss` stand in for another verified token (#950).
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
     if (req.headers.authorization) {
-      req.auth = { payload: { sub: AUTH0_ID } } as never;
+      const sub = req.headers["x-test-sub"] ?? AUTH0_ID;
+      const iss = req.headers["x-test-iss"];
+      req.auth = { payload: { sub, iss } } as never;
     }
     next();
   },
@@ -87,6 +94,47 @@ describe("Organization seats routes (#584)", () => {
       .update(schema.organizations)
       .set({ tier: slug })
       .where(eq(schema.organizations.id, org.id));
+  }
+
+  /** A separate inviter org with a pending member invite for `email`. */
+  async function pendingInvite(email: string) {
+    const inviter = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(inviter as never);
+    const orgB = createOrganization(inviter.id);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(orgB as never);
+    await seedRbacForOrg(asDrizzle(), orgB.id);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(orgB.id, inviter.id, { role: "owner" }) as never
+      );
+    const token = `tok-${generateId()}`;
+    await asDrizzle()
+      .insert(schema.invitations)
+      .values({
+        id: generateId(),
+        created: Date.now(),
+        createdBy: inviter.id,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+        organizationId: orgB.id,
+        email,
+        role: "member",
+        tokenHash: crypto.createHash("sha256").update(token).digest("hex"),
+        status: "pending",
+        expiresAt: Date.now() + 3_600_000,
+        invitedByUserId: inviter.id,
+        acceptedByUserId: null,
+        acceptedAt: null,
+      } as never);
+
+    return { orgId: orgB.id, token };
   }
 
   beforeEach(async () => {
@@ -194,49 +242,39 @@ describe("Organization seats routes (#584)", () => {
 
   it("accept: POST /invitations/accept binds the caller to the invited org", async () => {
     await seed("owner"); // AUTH0_ID is a member of org A (email caller@x.com)
-    // A separate inviter org with a pending invite for the caller's email.
-    const inviter = createUser(`auth0|${generateId()}`);
-    await asDrizzle()
-      .insert(schema.users)
-      .values(inviter as never);
-    const orgB = createOrganization(inviter.id);
-    await asDrizzle()
-      .insert(schema.organizations)
-      .values(orgB as never);
-    await seedRbacForOrg(asDrizzle(), orgB.id);
-    await asDrizzle()
-      .insert(schema.organizationUsers)
-      .values(
-        createOrganizationUser(orgB.id, inviter.id, { role: "owner" }) as never
-      );
-    const token = `tok-${generateId()}`;
-    await asDrizzle()
-      .insert(schema.invitations)
-      .values({
-        id: generateId(),
-        created: Date.now(),
-        createdBy: inviter.id,
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-        organizationId: orgB.id,
-        email: "caller@x.com",
-        role: "member",
-        tokenHash: crypto.createHash("sha256").update(token).digest("hex"),
-        status: "pending",
-        expiresAt: Date.now() + 3_600_000,
-        invitedByUserId: inviter.id,
-        acceptedByUserId: null,
-        acceptedAt: null,
-      } as never);
+    const { orgId: inviterOrgId, token } = await pendingInvite("caller@x.com");
 
     const res = await auth(
       request(app).post("/api/organization/invitations/accept").send({ token })
     );
     expect(res.status).toBe(200);
-    expect(res.body.payload.organization.id).toBe(orgB.id);
+    expect(res.body.payload.organization.id).toBe(inviterOrgId);
     expect(res.body.payload.role).toBe("member");
+  });
+
+  // #950: a brand-new invitee on an OIDC install is created from the profile
+  // at the token's own issuer; the route must pass it through.
+  it("accept: a new invitee's profile is fetched from the token's issuer", async () => {
+    const { orgId: inviterOrgId, token } = await pendingInvite("kc-new@x.com");
+    const sub = `kc|${generateId()}`;
+    const iss = "http://auth.portalai.localhost/realms/portalai";
+    const spy = jest
+      .spyOn(RealAuth0Service, "getAuth0UserProfile")
+      .mockResolvedValue({ sub, email: "kc-new@x.com" });
+    try {
+      const res = await auth(
+        request(app)
+          .post("/api/organization/invitations/accept")
+          .set("x-test-sub", sub)
+          .set("x-test-iss", iss)
+          .send({ token })
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.payload.organization.id).toBe(inviterOrgId);
+      expect(spy).toHaveBeenCalledWith("test", iss);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("accept: unknown token → 404", async () => {
