@@ -23,6 +23,7 @@ import {
   type UpgradeSteps,
 } from "../../../scripts/db-upgrade.js";
 import { runMigrations } from "../../../scripts/db-migrate.js";
+import { SeedService } from "../../../services/seed.service.js";
 
 describe("db:upgrade — runUpgrade", () => {
   // ── Case 1 — happy path against the (already-migrated) test DB ─────
@@ -92,6 +93,26 @@ describe("db:upgrade — runUpgrade", () => {
     // Lock was released despite the throw → a normal run acquires again.
     const after = await runUpgrade();
     expect(after.acquiredLock).toBe(true);
+  });
+
+  // ── Case 4b — a seed failure fails the upgrade (#948) ──────────────
+
+  it("fails the upgrade when the default seed step fails", async () => {
+    const spy = jest
+      .spyOn(SeedService.prototype, "seedTiers")
+      .mockRejectedValue(new Error("seed boom"));
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(runUpgrade()).rejects.toThrow("seed boom");
+    } finally {
+      spy.mockRestore();
+      quiet.mockRestore();
+    }
+
+    // Lock was released despite the throw → a normal run acquires again.
+    const after = await runUpgrade();
+    expect(after.acquiredLock).toBe(true);
+    expect(after.seedOk).toBe(true);
   });
 
   // ── Case 5 — migrate delegates to the resolver-aware runMigrations ─

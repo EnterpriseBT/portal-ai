@@ -6,7 +6,14 @@
  * including transaction commit/rollback behaviour.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
@@ -170,6 +177,30 @@ describe("SeedService Integration Tests", () => {
 
       expect(fileUploadAfter).toBeDefined();
       expect(fileUploadAfter?.id).toBe(fileUploadBefore?.id);
+    });
+
+    // #948: a failed seed used to log, roll back and resolve, so
+    // `db/seed.ts` printed success and exited 0.
+    it("rejects when a step fails and leaves none of its rows", async () => {
+      const real = SeedService.prototype.seedConnectorDefinitions;
+      const spy = jest
+        .spyOn(SeedService.prototype, "seedConnectorDefinitions")
+        .mockImplementation(async function (this: SeedService, tx) {
+          await real.call(this, tx);
+          throw new Error("connector definitions boom");
+        });
+      const quiet = jest.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(seedService.seed()).rejects.toThrow(
+          "connector definitions boom"
+        );
+      } finally {
+        spy.mockRestore();
+        quiet.mockRestore();
+      }
+
+      const rows = await connectorDefsRepo.findMany(undefined, {}, db);
+      expect(rows).toHaveLength(0);
     });
   });
 

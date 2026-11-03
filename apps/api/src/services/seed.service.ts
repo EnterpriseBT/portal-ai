@@ -371,8 +371,10 @@ export class SeedService {
       });
       await commit();
     } catch (error) {
-      console.error("Error during seeding:", error);
       await rollback();
+      // Rethrow so every caller fails: `db/seed.ts` exits 1 and `db:upgrade`
+      // reports UPGRADE FAILED (#948). Swallowing it let a broken seed exit 0.
+      throw error;
     }
   }
 

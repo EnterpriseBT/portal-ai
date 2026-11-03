@@ -83,9 +83,9 @@ async function countAppliedMigrations(): Promise<number> {
 export const DEFAULT_UPGRADE_STEPS: UpgradeSteps = {
   countMigrations: countAppliedMigrations,
   migrate: runMigrations,
-  // `SeedService.seed()` is bootstrap-idempotent (insert-if-absent) and swallows
-  // its own errors with a rollback; `seedOk` therefore means "the seed step
-  // completed". Migration failure is the fail-closed signal that gates the exit.
+  // `SeedService.seed()` is bootstrap-idempotent (insert-if-absent) and rolls
+  // back then rethrows on failure (#948), so a failed seed rejects `runUpgrade`
+  // like a failed migrate: UPGRADE FAILED and a non-zero exit.
   seed: () => new SeedService().seed(),
   withLock: withUpgradeLock,
 };
