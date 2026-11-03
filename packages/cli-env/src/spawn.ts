@@ -5,11 +5,13 @@
  * The app owns its provisioning / reset / seed semantics; the CLI owns env
  * resolution, guards, session and audit. So the CLIs spawn the app's OWN
  * npm scripts with `DATABASE_URL` (and, for AWS envs, the env's
- * `ENCRYPTION_KEY`) injected from the env connection rather than importing
- * anything out of `apps/api` — there is no cross-package runtime import in
- * either direction. The encryption key matters because a script that writes an
- * encrypted field must use the target env's key, or the env's app can't read
- * it back.
+ * `ENCRYPTION_KEY` and `SYSTEM_ID`) injected from the env connection rather
+ * than importing anything out of `apps/api` — there is no cross-package runtime
+ * import in either direction. The encryption key matters because a script that
+ * writes an encrypted field must use the target env's key, or the env's app
+ * can't read it back. The system id matters because platform rows must carry
+ * the target env's principal, or its `created_by_system` grants miss them
+ * (#952).
  *
  * Injection wins over the script's own `dotenv -e .env` prefix: dotenv does
  * not overwrite a variable already present in the environment, so
@@ -21,7 +23,7 @@
 
 import { spawn } from "node:child_process";
 
-import { getSecret } from "./aws.js";
+import { getParam, getSecret } from "./aws.js";
 import { resolveEnvConnection } from "./connection.js";
 import { EnvInfraError } from "./errors.js";
 import type { EnvironmentDefinition } from "./registry.js";
@@ -75,8 +77,13 @@ export async function runApiScript(
     // read: demo-seed's toolpack signing_secret did exactly this in prod).
     // Wins over the script's `dotenv -e .env` for the same reason DATABASE_URL
     // does. Local envs have no Secrets Manager and keep the `.env` key as-is.
+    // The env's SYSTEM_ID too, from SSM (#952): the principal platform rows
+    // carry. Taken from the operator's `.env` ("SYSTEM"), a prod `demo seed`
+    // labeled the whole Demo org as no one's for `created_by_system`, since
+    // prod's principal is a UUID. A failed read throws before anything spawns.
     if (def.aws) {
       injected.ENCRYPTION_KEY = await getSecret(def, "encryption-key");
+      injected.SYSTEM_ID = await getParam(def, "system-id");
     }
     const result = await spawner(
       ["run", "--workspace", "@portalai/api", script, "--", ...scriptArgs],

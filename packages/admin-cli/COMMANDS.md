@@ -29,6 +29,8 @@ Session = an active `portalai login` device-flow session for the env. Every muta
 
 Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
 
+Spawned app scripts (`org create`, `org reset`, `seed org`, `demo seed`, `demo reset`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. A failed read stops the command before anything runs.
+
 ---
 
 ### `portalai login --env <env>` / `portalai logout --env <env>`

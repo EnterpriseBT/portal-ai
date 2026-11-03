@@ -12,12 +12,14 @@ const resolveEnvConnectionMock =
   jest.fn<(name: string) => Promise<Record<string, unknown>>>();
 const getSecretMock =
   jest.fn<(def: unknown, name: string) => Promise<string>>();
+const getParamMock = jest.fn<(def: unknown, name: string) => Promise<string>>();
 
 jest.unstable_mockModule("../connection.js", () => ({
   resolveEnvConnection: resolveEnvConnectionMock,
 }));
 jest.unstable_mockModule("../aws.js", () => ({
   getSecret: getSecretMock,
+  getParam: getParamMock,
 }));
 
 const { runApiScript } = await import("../spawn.js");
@@ -41,6 +43,7 @@ beforeEach(() => {
   nextResult = { code: 0, stdout: "", stderr: "" };
   disposeMock.mockReset().mockResolvedValue(undefined);
   getSecretMock.mockReset().mockResolvedValue("env-encryption-key");
+  getParamMock.mockReset().mockResolvedValue("env-system-id");
   dbMock
     .mockReset()
     .mockResolvedValue({ connectionString: "postgresql://u:p@host:5432/db" });
@@ -103,6 +106,32 @@ describe("runApiScript", () => {
 
     expect(getSecretMock).not.toHaveBeenCalled();
     expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBeUndefined();
+  });
+
+  // #952: without it a script wrote the operator's local SYSTEM_ID ("SYSTEM"),
+  // which labeled prod's whole Demo org as no one's for created_by_system.
+  it("injects the env's SYSTEM_ID for AWS envs (so platform rows carry the target env's principal)", async () => {
+    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+
+    expect(getParamMock).toHaveBeenCalledWith(appDev, "system-id");
+    expect(spawnerCalls[0].env.SYSTEM_ID).toBe("env-system-id");
+  });
+
+  it("does NOT inject SYSTEM_ID for local (the .env value is used as-is)", async () => {
+    await runApiScript(local, "db:demo:seed", [], spawner as never);
+
+    expect(getParamMock).not.toHaveBeenCalled();
+    expect(spawnerCalls[0].env.SYSTEM_ID).toBeUndefined();
+  });
+
+  it("fails before spawning when the env's SYSTEM_ID can't be read", async () => {
+    getParamMock.mockRejectedValue(new Error("AccessDenied"));
+
+    await expect(
+      runApiScript(appDev, "db:demo:seed", [], spawner as never)
+    ).rejects.toThrow("AccessDenied");
+    expect(spawnerCalls).toHaveLength(0);
+    expect(disposeMock).toHaveBeenCalled();
   });
 
   it("returns the script's stdout", async () => {

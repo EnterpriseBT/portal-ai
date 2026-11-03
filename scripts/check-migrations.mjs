@@ -25,6 +25,15 @@
  * embedded synthetic fixtures on every invocation, then against the real tree.
  * `--self-test` runs only the fixtures.
  *
+ * A second rule (#952): a new migration may not write the system principal as
+ * a literal. Data migrations once wrote 'SYSTEM' or 'system' as `created_by`,
+ * but the principal is the environment's SYSTEM_ID (prod's is a UUID), so
+ * `created_by_system` grants never matched those rows. Write
+ * `portalai_system_id()` (0133) instead. A legitimate `'system'` (a policy or
+ * role `kind`) passes with `-- principal-literal-ok: <reason>` on its line or
+ * the line above. Migrations up to 0133 (history, and the repair itself) are
+ * grandfathered.
+ *
  * Usage: npm run lint:migrations [-- --self-test]
  */
 
@@ -41,6 +50,9 @@ const MIGRATIONS_DIR = path.join(REPO_ROOT, "apps", "api", "drizzle");
  * enforced. This never needs bumping — new files always sort above it.
  */
 const BASELINE_MAX_MIGRATION_INDEX = 95;
+
+/** #952: history and the repair (0133) predate the principal-literal rule. */
+const PRINCIPAL_BASELINE_MAX_MIGRATION_INDEX = 133;
 
 /** Destructive DDL patterns, matched case-insensitively per statement-line. */
 const DESTRUCTIVE = [
@@ -89,6 +101,41 @@ export function findViolations(sql) {
   return violations;
 }
 
+/** The system principal written as a literal, exact case (#952). */
+const PRINCIPAL_LITERAL = /'(?:SYSTEM|system)'/;
+
+/** A non-empty `-- principal-literal-ok: <reason>` acknowledgment. */
+const PRINCIPAL_ACK = /--\s*principal-literal-ok:\s*\S/i;
+
+/**
+ * Pure rule (#952): the lines of `sql` that write `'SYSTEM'` / `'system'`
+ * outside a comment, unless acknowledged on that line or the line above.
+ */
+/** Index of the line's `--` comment, ignoring a `--` inside a string literal. */
+function commentStart(line) {
+  let inString = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "'") inString = !inString; // '' toggles twice: still in
+    else if (!inString && line[i] === "-" && line[i + 1] === "-") return i;
+  }
+  return -1;
+}
+
+export function findPrincipalLiterals(sql) {
+  const lines = sql.split("\n");
+  const hits = [];
+  for (let i = 0; i < lines.length; i++) {
+    const idx = commentStart(lines[i]);
+    const code = idx === -1 ? lines[i] : lines[i].slice(0, idx);
+    if (!PRINCIPAL_LITERAL.test(code)) continue;
+    const ack =
+      (idx !== -1 && PRINCIPAL_ACK.test(lines[i].slice(idx))) ||
+      (i > 0 && PRINCIPAL_ACK.test(lines[i - 1]));
+    if (!ack) hits.push({ line: i + 1, text: lines[i].trim() });
+  }
+  return hits;
+}
+
 /** Numeric index from a `NNNN_name.sql` basename, or null. */
 function migrationIndex(basename) {
   const m = /^(\d{4})_/.exec(basename);
@@ -123,12 +170,56 @@ const FIXTURES = [
     sql: `INSERT INTO "t" ("note") VALUES ('remember to DROP TABLE later');`,
     expect: 0,
   },
+  // #952: the principal-literal rule.
+  {
+    rule: "principal",
+    name: "a 'SYSTEM' creator in VALUES fails",
+    sql: `INSERT INTO "t" ("id", "created_by") VALUES ('x', 'SYSTEM');`,
+    expect: 1,
+  },
+  {
+    rule: "principal",
+    name: "a 'system' creator from SELECT fails",
+    sql: `INSERT INTO "t" ("id", "created_by")\nSELECT o.id, 'system' FROM "organizations" o;`,
+    expect: 1,
+  },
+  {
+    rule: "principal",
+    name: "an acknowledged kind = 'system' passes",
+    sql: `-- principal-literal-ok: a policy kind, not a creator\nWHERE p."kind" = 'system'`,
+    expect: 0,
+  },
+  {
+    rule: "principal",
+    name: "an empty-reason principal ack fails",
+    sql: `WHERE p."kind" = 'system' -- principal-literal-ok:`,
+    expect: 1,
+  },
+  {
+    rule: "principal",
+    name: "a `--` inside a string doesn't hide a later literal",
+    sql: `INSERT INTO "t" ("note", "created_by") VALUES ('a--b', 'SYSTEM');`,
+    expect: 1,
+  },
+  {
+    rule: "principal",
+    name: "a literal inside a trailing comment passes",
+    sql: `UPDATE "t" SET "x" = 1; -- was 'SYSTEM' before #952`,
+    expect: 0,
+  },
+  {
+    rule: "principal",
+    name: "portalai_system_id() passes",
+    sql: `INSERT INTO "t" ("id", "created_by") VALUES ('x', portalai_system_id());`,
+    expect: 0,
+  },
 ];
 
 function runSelfTest() {
   const failures = [];
   for (const f of FIXTURES) {
-    const got = findViolations(f.sql).length;
+    const rule = f.rule === "principal" ? findPrincipalLiterals : findViolations;
+    const got = rule(f.sql).length;
     if (got !== f.expect) failures.push(`  ✗ ${f.name}: expected ${f.expect} violation(s), got ${got}`);
   }
   if (failures.length > 0) {
@@ -143,6 +234,7 @@ function runSelfTest() {
 function runRealTree() {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
   const problems = [];
+  const principal = [];
   for (const file of files) {
     const idx = migrationIndex(file);
     if (idx === null || idx <= BASELINE_MAX_MIGRATION_INDEX) continue; // grandfathered
@@ -150,6 +242,22 @@ function runRealTree() {
     for (const v of findViolations(sql)) {
       problems.push(`  ${file}:${v.line}  [${v.keyword}]  ${v.text}`);
     }
+    if (idx > PRINCIPAL_BASELINE_MAX_MIGRATION_INDEX) {
+      for (const v of findPrincipalLiterals(sql)) {
+        principal.push(`  ${file}:${v.line}  ${v.text}`);
+      }
+    }
+  }
+  let ok = true;
+  if (principal.length > 0) {
+    ok = false;
+    console.error(
+      `lint:migrations: ${principal.length} literal system principal(s) in new migrations:\n` +
+        principal.join("\n") +
+        `\n\nThe principal is the environment's SYSTEM_ID, not 'SYSTEM'/'system' (#952).\n` +
+        `Write created_by as portalai_system_id(). For a 'system' that isn't a principal\n` +
+        `(e.g. kind = 'system'), add \`-- principal-literal-ok: <reason>\` on the line or the line above.`
+    );
   }
   if (problems.length > 0) {
     console.error(
@@ -158,9 +266,13 @@ function runRealTree() {
         `\n\nEach is irreversible against a customer's data on upgrade (forward-only).\n` +
         `If intended, add \`-- destructive-ok: <reason>\` on the statement or the line above.`
     );
-    return false;
+    ok = false;
   }
-  console.log(`lint:migrations: no unacknowledged destructive DDL in migrations > ${BASELINE_MAX_MIGRATION_INDEX}`);
+  if (!ok) return false;
+  console.log(
+    `lint:migrations: no unacknowledged destructive DDL in migrations > ${BASELINE_MAX_MIGRATION_INDEX}, ` +
+      `no literal system principal in migrations > ${PRINCIPAL_BASELINE_MAX_MIGRATION_INDEX}`
+  );
   return true;
 }
 

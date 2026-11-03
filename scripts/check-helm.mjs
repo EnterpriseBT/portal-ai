@@ -117,7 +117,7 @@ const rejectScenarios = [
   {
     // #946: the migrations write 'SYSTEM' as the system principal (0065,
     // 0080), so any other id splits system ownership in two.
-    name: "a SYSTEM_ID other than the migrations' (#946)",
+    name: "a SYSTEM_ID other than the chart's (#946)",
     args: [
       "template",
       "p",
@@ -602,7 +602,7 @@ const scenarios = [
       [
         // Found on the live install: without it the API creates no users
         // (createdBy undefined), so every first sign-in answered 500.
-        "SYSTEM_ID is the migrations' system principal, once (#946)",
+        "SYSTEM_ID is the chart's system principal, once (#946)",
         (out) => {
           const ids = configValues(out, "SYSTEM_ID");
           return ids.length === 1 && ids[0] === "SYSTEM";

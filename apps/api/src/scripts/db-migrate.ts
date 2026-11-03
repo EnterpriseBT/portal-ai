@@ -13,6 +13,7 @@ import {
   type DbPasswordResolver,
 } from "../db/credentials.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { requireSystemId } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "db-migrate" });
 
@@ -34,10 +35,17 @@ const logger = createLogger({ module: "db-migrate" });
  *  in the runtime image and `apps/api/drizzle` when run from source — the
  *  migrations live two levels up from the compiled/source script in every
  *  layout (in-image, local `dist`, local `tsx`). */
-const migrationsFolder = join(
+export const migrationsFolder = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../drizzle"
 );
+
+/**
+ * #952: the startup setting that carries `SYSTEM_ID` to the migrations.
+ * `portalai_system_id()` (0133) reads it and raises when it's empty, so every
+ * runner must pass it: this file, and the integration global setup.
+ */
+export const MIGRATION_SYSTEM_ID_SETTING = "portalai.system_id";
 
 /**
  * postgres-js options that route the password through the #500 resolver rather
@@ -47,7 +55,8 @@ const migrationsFolder = join(
  */
 export function buildMigrationClientOptions(
   resolver: DbPasswordResolver,
-  readerRole: string = environment.PORTAL_SQL_READER_ROLE
+  readerRole: string = environment.PORTAL_SQL_READER_ROLE,
+  systemId: string = requireSystemId(environment.SYSTEM_ID)
 ): {
   max: number;
   password: () => Promise<string>;
@@ -57,8 +66,13 @@ export function buildMigrationClientOptions(
     max: 1,
     password: () => resolver.resolve(),
     // #660: migration 0118 names the reader role from this setting, so the
-    // role it creates is the one the API will SET ROLE to.
-    connection: { "portalai.sql_reader_role": readerRole },
+    // role it creates is the one the API will SET ROLE to. #952: data
+    // migrations write the environment's system principal from the other
+    // (`portalai_system_id()`, 0133), never a literal.
+    connection: {
+      "portalai.sql_reader_role": readerRole,
+      [MIGRATION_SYSTEM_ID_SETTING]: systemId,
+    },
   };
 }
 
@@ -159,6 +173,9 @@ async function provisionReaderRole(
 }
 
 export async function runMigrations(): Promise<void> {
+  // Before any connection: a migrate without a principal fails here, naming
+  // SYSTEM_ID, rather than inside 0133 (#952).
+  const systemId = requireSystemId(environment.SYSTEM_ID);
   const plan = planMigrations(environment);
   if (plan.provision) await provisionReaderRole(plan.provision);
 
@@ -169,7 +186,14 @@ export async function runMigrations(): Promise<void> {
     ttlMs: environment.DB_PASSWORD_CACHE_TTL_MS,
   });
 
-  const sql = postgres(target.url, buildMigrationClientOptions(resolver));
+  const sql = postgres(
+    target.url,
+    buildMigrationClientOptions(
+      resolver,
+      environment.PORTAL_SQL_READER_ROLE,
+      systemId
+    )
+  );
   try {
     logger.info({ migrationsFolder }, "Running database migrations…");
     await migrate(drizzle(sql), { migrationsFolder });
