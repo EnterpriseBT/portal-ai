@@ -44,7 +44,7 @@ Chosen: **(c)**. The helper is `tokenIssuer(req)` in its own module, `utils/toke
 ## Smoke (manual, against your dev stack)
 
 1. **Auth0, no regression.** With `npm run dev`, sign in at http://localhost:3000 and open the Profile tab. It loads your name and email, and `GET /api/profile` answers 200.
-2. **OIDC, the fix.** Rebuild the API image from this branch: `docker build -f apps/api/Dockerfile --build-arg BUILD_VERSION=950 -t portalai-api:950 .`. Then run `helm upgrade portalai deploy/helm/portalai -n portalai -f <your install's values file> --set image.api.tag=950`.
+2. **OIDC, the fix.** Rebuild the API image from this branch: `docker build -f apps/api/Dockerfile --build-arg BUILD_VERSION=950 -t portalai-api:950 .`. Then run `helm upgrade portalai deploy/helm/portalai -n portalai -f <your install's values file> --set-string image.api.tag=950` (a bare `--set` reads 950 as a number, which the chart schema refuses).
    - Sign in at http://portalai.localhost as `walk946` and open the Profile tab.
    - It loads, `GET /api/profile` answers 200, and `kubectl logs -n portalai deploy/portalai-api` shows no `PROFILE_FETCH_FAILED`.
 
