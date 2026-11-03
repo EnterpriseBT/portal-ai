@@ -40,6 +40,9 @@ operator's changes in the admin console survive restarts and upgrades.
       "id.token.claim" "false"
       "introspection.token.claim" "true")))
 }}
+{{- /* sslRequired: "external" refuses http from a non-private client IP,
+which an install without ingress TLS can only serve, so it is "none" there
+(#946 review). The realm is imported once; a change reaches new installs. */ -}}
 {{- $realm := dict
   "realm" $kc.realm
   "enabled" true
@@ -47,7 +50,7 @@ operator's changes in the admin console survive restarts and upgrades.
   "loginWithEmailAllowed" true
   "duplicateEmailsAllowed" false
   "resetPasswordAllowed" false
-  "sslRequired" "external"
+  "sslRequired" (ternary "external" "none" .Values.ingress.tls.enabled)
   "clients" (list $client)
 }}
 apiVersion: v1

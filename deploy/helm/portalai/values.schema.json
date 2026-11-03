@@ -61,7 +61,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "bucket": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" },
-        "publicHost": { "type": "string", "pattern": "^[A-Za-z0-9.-]*(:[0-9]+)?$" }
+        "publicHost": { "type": "string", "pattern": "^[A-Za-z0-9.-]*$" }
       }
     },
     "bundledIssuer": {
@@ -69,7 +69,7 @@
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
-        "host": { "type": "string", "pattern": "^[A-Za-z0-9.-]*(:[0-9]+)?$" },
+        "host": { "type": "string", "pattern": "^[A-Za-z0-9.-]*$" },
         "realm": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
         "clientId": { "type": "string", "minLength": 1 },
         "audience": { "type": "string", "minLength": 1 }

@@ -157,18 +157,18 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
 | `redis.external.url` | `""` | Managed Redis URL. `rediss://` connects over TLS (#852). |
 | `redis.external.tls.caSecret.{name,key}` | `""`,`ca.crt` | Secret holding a private CA's PEM for a `rediss://` URL; reaches the API as `REDIS_TLS_CA`. Leave empty when the cert chains to a public root. |
 | `objectStorage.enabled` | `true` | Bundle SeaweedFS as the S3 store. `false` → `objectStorage.external.*`. |
-| `objectStorage.publicHost` | `""` | The object store's public hostname, served by the chart's ingress. **Uploads need it**: browsers PUT to presigned URLs, which carry this host. |
+| `objectStorage.publicHost` | `""` | The object store's public hostname (no port), served by the chart's ingress. **Uploads need it**: browsers PUT to presigned URLs, which carry this host. |
 | `objectStorage.bucket` | `portalai-uploads` | Bundled bucket, created by a post-install/post-upgrade Job. |
 | `objectStorage.auth.accessKey` / `.secretKey` | `portalai` / `""` | The app's S3 credentials, scoped to the bucket. The secret key is generated on first install and kept in the `<release>-portalai-s3` Secret unless set. |
 | `objectStorage.external.*` | see values | External S3 endpoint/region/bucket/path style. Credentials come from `secrets` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) or the pod's cloud identity. |
-| `migrate.enabled` | `true` | Run first-install migrations: a `pre-install` hook with an external DB; with the bundled DB, a Job that waits for it (the API and seed wait for its migrations). |
+| `migrate.enabled` | `true` | Run first-install migrations: a `pre-install` hook with an external DB; with the bundled DB, a Job that waits for it (the API and seed wait for its migrations). A first install with the bundled DB refuses `false`, since nothing else can migrate it. |
 | `seed.enabled` | `true` | Run first-install global seeds as a `post-install` hook Job. |
 | `upgrade.enabled` | `true` | On `helm upgrade`, run migrations + seeds as one advisory-locked `pre-upgrade` hook Job (`db:upgrade`). |
 | `ingress.enabled` | `false` | Route `/api` → API, `/` → web on `ingress.host`. |
 | `ingress.className` | `""` | IngressClass. |
 | `ingress.tls.enabled` / `.secretName` | `false` / `""` | TLS via a (cert-manager-issued) secret. |
 | `bundledIssuer.enabled` | `false` | Deploy Keycloak as the OIDC issuer, with a `portalai` realm and SPA client imported at start; `oidc.*` default from it (an explicit `oidc.*` value wins). Needs `ingress.enabled` + `ingress.host`. |
-| `bundledIssuer.host` | `""` | The issuer's public hostname, served by the chart's ingress. Browsers and the API pods must both resolve it. |
+| `bundledIssuer.host` | `""` | The issuer's public hostname (no port), served by the chart's ingress. Browsers and the API pods must both resolve it. |
 | `bundledIssuer.realm` / `.clientId` / `.audience` | `portalai` / `portalai-web` / `portalai-api` | Realm, SPA client and the access token `aud` the API validates. |
 | `bundledIssuer.admin.username` / `.password` | `admin` / `""` | Keycloak's bootstrap admin. The password is generated on first install and kept in the `<release>-portalai-keycloak` Secret unless set. |
 
@@ -195,12 +195,40 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
   `<release>-portalai-hook-config` and `-hook-secret`, rendered from the same
   values just before them. A value added or changed by an upgrade reaches that
   upgrade's migrations. With `existingSecret`, the jobs read your Secret
-  directly, so update it before the upgrade.
+  directly, so update it before the upgrade. Helm deletes the copies once the
+  hooks succeed; a failed run keeps them until the next one.
+- **What `helm uninstall` leaves.** Hook objects aren't part of the release:
+  the last migrate, seed and upgrade Jobs (kept for their logs) and, after a
+  failed upgrade, the hook copies of the env. The bundled deps' volumes stay
+  too, as with any StatefulSet. To remove everything:
+  `kubectl -n <ns> delete job,configmap,secret,pvc -l app.kubernetes.io/instance=<release>`.
+- **Bundled passwords are set on first start.** Postgres applies
+  `postgresql.auth.password` / `.postgresPassword` only when it initializes an
+  empty volume, and Keycloak applies `bundledIssuer.admin.password` only when it
+  bootstraps. Changing one after install updates the chart's Secrets but not
+  the service, and the app or jobs then fail to authenticate. To rotate, change
+  the password in the service first (`ALTER ROLE`, Keycloak's admin console),
+  then set the value.
+- **Generated passwords need `lookup`.** An empty password is generated once
+  and kept by reading the existing Secret back, which works under
+  `helm install`/`upgrade` against a cluster. `helm template`, `--dry-run` and
+  GitOps renderers (Argo CD, Flux in template mode) can't read the cluster, so
+  they draw a new value on every render. There, set
+  `postgresql.auth.postgresPassword`, `objectStorage.auth.secretKey` and
+  `bundledIssuer.admin.password` explicitly (e.g. from a sealed or external
+  secret).
 - **First install with the bundled DB.** The bundled DB is part of the
   release, so it doesn't exist during `pre-install`. The migration therefore
   runs as a plain Job that waits for the DB, and the API pods and the seed
   hook wait for its migrations before they start. `helm install --wait` works
   as usual. With an external DB the migration is a `pre-install` hook.
+- **Bundled issuer over http.** Without ingress TLS the `portalai` realm
+  accepts plain http (`sslRequired: none`); with TLS it requires https for
+  non-private clients. Keycloak's own `master` realm, which serves the admin
+  console, always requires https for non-private clients, so on an http
+  install reach the console from a private network or with
+  `kubectl port-forward`. The realm is imported once, so a later TLS change
+  doesn't alter it.
 - **Bundled issuer users.** The realm has no self-registration: create each
   user in Keycloak's admin console (`https://<bundledIssuer.host>/admin/`, the
   install notes print how to read the admin password) and mark the email

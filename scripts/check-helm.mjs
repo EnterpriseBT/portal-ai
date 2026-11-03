@@ -82,6 +82,39 @@ const BUNDLED_ISSUER_ARGS = [
  */
 const rejectScenarios = [
   {
+    // #946 review: the api pods wait for the bundled DB's first migration,
+    // which only the migrate job runs, so this would hang forever.
+    name: "bundled DB with migrate disabled on install (#946)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, "--set", "migrate.enabled=false"],
+    error: /migrate\.enabled=false needs an external DB/,
+  },
+  {
+    // #946 review: Ingress rules[].host can't carry a port.
+    name: "a bundled issuer host with a port (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...BUNDLED_ISSUER_ARGS,
+      "--set",
+      "bundledIssuer.host=auth.example.com:8443",
+    ],
+    error: /bundledIssuer[\s\S]*host/,
+  },
+  {
+    name: "an object storage public host with a port (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "objectStorage.publicHost=s3.example.com:9000",
+    ],
+    error: /publicHost/,
+  },
+  {
     // #946: the migrations write 'SYSTEM' as the system principal (0065,
     // 0080), so any other id splits system ownership in two.
     name: "a SYSTEM_ID other than the migrations' (#946)",
@@ -251,9 +284,14 @@ const dataOf = (doc) => doc.slice(doc.search(/^(?:data|stringData):$/m));
 // hook-scoped copies that exist, with this render's values, before it runs.
 const hookEnvIsCurrent = (out, secretName) => {
   const cm = manifest(out, "ConfigMap", "p-portalai-hook-config");
+  // Deleted once the phase succeeds (#946 review): a hook object outlives
+  // `helm uninstall`, and the Secret carries credentials.
   const isEarlyHook = (doc) =>
     doc.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
-    doc.includes('"helm.sh/hook-weight": "-10"');
+    doc.includes('"helm.sh/hook-weight": "-10"') &&
+    doc.includes(
+      '"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded\n'
+    );
   const secretOk =
     secretName === "p-portalai-hook-secret"
       ? isEarlyHook(manifest(out, "Secret", secretName)) &&
@@ -495,6 +533,58 @@ const scenarios = [
       [
         "no PUBLIC_API_BASE_URL without an ingress or config (#891)",
         (out) => publicApiUrls(out).length === 0,
+      ],
+      [
+        // #946 review: with the object-storage component the s3 Service
+        // selected the Job's pod (Ready, listening on nothing) as an endpoint.
+        "bucket Job's pod isn't selected by the s3 Service (#946)",
+        (out) => {
+          const job = manifest(out, "Job", "p-portalai-s3-bucket");
+          return (
+            job !== "" &&
+            !/app\.kubernetes\.io\/component: object-storage\n/.test(job) &&
+            job.includes("app.kubernetes.io/component: object-storage-bucket\n")
+          );
+        },
+      ],
+      [
+        // #946 review: the checksum hashed only the secret key, so renaming
+        // the bucket (which the identity is scoped to) never restarted the
+        // server, which reads s3.json only at start.
+        "object storage rolls when its identity's bucket changes (#946)",
+        (out) => {
+          const sum = (o) =>
+            /checksum\/identities: (\S+)/.exec(
+              manifest(o, "StatefulSet", "p-portalai-s3")
+            )?.[1];
+          const renamed = run([
+            "template",
+            "p",
+            CHART,
+            ...IMAGE_ARGS,
+            "--set",
+            "objectStorage.bucket=renamed-uploads",
+            "--set",
+            "objectStorage.auth.secretKey=fixed",
+          ]);
+          const same = run([
+            "template",
+            "p",
+            CHART,
+            ...IMAGE_ARGS,
+            "--set",
+            "objectStorage.auth.secretKey=fixed",
+          ]);
+          return !!sum(same) && sum(same) !== sum(renamed);
+        },
+      ],
+      [
+        // #946 review: a word match took portalai-uploads-old for the bucket.
+        "bucket Job matches the bucket name exactly (#946)",
+        (out) =>
+          manifest(out, "Job", "p-portalai-s3-bucket").includes(
+            `awk '{print $1}' | grep -qxF "portalai-uploads"`
+          ),
       ],
       [
         // Found on the live install: without it the API creates no users
@@ -923,12 +1013,49 @@ const scenarios = [
     ],
   },
   {
-    name: "hooks disabled",
+    // #946 review: "external" refuses plain http from a public client IP,
+    // so sign-in was impossible on any http install but a private network.
+    name: "bundled issuer realm's TLS requirement follows ingress TLS (#946)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, ...BUNDLED_ISSUER_ARGS],
+    assertions: [
+      [
+        "http ingress: sslRequired none",
+        (out) =>
+          /"sslRequired": "none"/.test(
+            manifest(out, "ConfigMap", "p-portalai-keycloak-realm")
+          ),
+      ],
+      [
+        "TLS ingress: sslRequired external",
+        () =>
+          /"sslRequired": "external"/.test(
+            manifest(
+              run([
+                "template",
+                "p",
+                CHART,
+                ...IMAGE_ARGS,
+                ...BUNDLED_ISSUER_ARGS,
+                "--set",
+                "ingress.tls.enabled=true",
+                "--set",
+                "ingress.tls.secretName=tls",
+              ]),
+              "ConfigMap",
+              "p-portalai-keycloak-realm"
+            )
+          ),
+      ],
+    ],
+  },
+  {
+    name: "hooks disabled (external DB)",
     args: [
       "template",
       "p",
       CHART,
       ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
       "--set",
       "migrate.enabled=false",
       "--set",

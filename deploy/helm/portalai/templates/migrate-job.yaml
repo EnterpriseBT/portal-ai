@@ -9,6 +9,12 @@ that waits for the DB; the api pods and the seed wait for its migrations
 (`portalai.waitForMigrations`). A hook would deadlock `helm install --wait`,
 which runs post-install hooks only after the waiting pods are ready.
 */ -}}
+{{- /* #946: the bundled DB is created by this release, so on a first install
+nothing else can migrate it before the api pods (which wait for the
+migrations) start: refuse the combination rather than hang. */ -}}
+{{- if and .Values.postgresql.enabled (not .Values.migrate.enabled) .Release.IsInstall }}
+{{- fail "migrate.enabled=false needs an external DB (postgresql.enabled=false) on install: the api pods wait for the bundled DB's first migration, which only the migrate job runs" }}
+{{- end }}
 {{- if .Values.migrate.enabled }}
 {{- $bundled := .Values.postgresql.enabled }}
 {{- if or (not $bundled) .Release.IsInstall }}

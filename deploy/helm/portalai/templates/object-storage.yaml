@@ -14,6 +14,7 @@ points at S3 or another S3-compatible store.
 {{- $accessKey := .Values.objectStorage.auth.accessKey }}
 {{- $secretKey := include "portalai.keptSecretValue" (dict "root" . "secret" $name "key" "secret-key" "value" .Values.objectStorage.auth.secretKey) }}
 {{- $identity := dict "name" "portalai" "credentials" (list (dict "accessKey" $accessKey "secretKey" $secretKey)) "actions" (list (printf "Read:%s" $bucket) (printf "Write:%s" $bucket) (printf "List:%s" $bucket) (printf "Tagging:%s" $bucket)) }}
+{{- $identities := dict "identities" (list $identity) | toJson }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -25,7 +26,7 @@ type: Opaque
 stringData:
   access-key: {{ $accessKey | quote }}
   secret-key: {{ $secretKey | quote }}
-  s3.json: {{ dict "identities" (list $identity) | toJson | quote }}
+  s3.json: {{ $identities | quote }}
 ---
 apiVersion: v1
 kind: Service
@@ -69,8 +70,9 @@ spec:
         {{- include "portalai.labels" . | nindent 8 }}
         app.kubernetes.io/component: object-storage
       annotations:
-        # Roll the pod when the credentials change.
-        checksum/identities: {{ $secretKey | sha256sum }}
+        # Roll the pod when its identity changes: the keys or the bucket it is
+        # scoped to. SeaweedFS reads s3.json only at start.
+        checksum/identities: {{ $identities | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -154,7 +156,7 @@ metadata:
   name: {{ $name }}-bucket
   labels:
     {{- include "portalai.labels" . | nindent 4 }}
-    app.kubernetes.io/component: object-storage
+    app.kubernetes.io/component: object-storage-bucket
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "0"
@@ -165,7 +167,9 @@ spec:
     metadata:
       labels:
         {{- include "portalai.labels" . | nindent 8 }}
-        app.kubernetes.io/component: object-storage
+        # Not object-storage: the s3 Service selects that component, and this
+        # pod listens on nothing.
+        app.kubernetes.io/component: object-storage-bucket
     spec:
       restartPolicy: Never
       securityContext:
@@ -183,7 +187,8 @@ spec:
               master={{ $name }}:9333
               for i in $(seq 1 60); do
                 echo "s3.bucket.create -name {{ $bucket }}" | weed shell -master=$master >/dev/null 2>&1
-                if echo "s3.bucket.list" | weed shell -master=$master 2>/dev/null | grep -qw "{{ $bucket }}"; then
+                # The name is each line's first field; match it exactly.
+                if echo "s3.bucket.list" | weed shell -master=$master 2>/dev/null | awk '{print $1}' | grep -qxF {{ $bucket | quote }}; then
                   echo "bucket {{ $bucket }} is ready"; exit 0
                 fi
                 echo "waiting for object storage"; sleep 5

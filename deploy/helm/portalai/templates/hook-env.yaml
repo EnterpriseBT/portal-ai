@@ -5,7 +5,10 @@ on install they don't exist yet, and on upgrade they still hold the previous
 release's values, so a value added or changed by this upgrade (SYSTEM_ID, a
 new DATABASE_URL) would reach the migrations one upgrade late. These copies
 are hooks at a lower weight than the jobs, so they exist with this render's
-values first. Kept between runs (replaced on the next), like the jobs.
+values first. Helm deletes them once the hook phase succeeds (it deletes
+`hook-succeeded` resources after the phase's last hook, so the jobs have run),
+since a hook object outlives `helm uninstall` and the Secret carries
+credentials. A failed phase keeps them for its retry, replaced on the next run.
 */ -}}
 {{- if or .Values.migrate.enabled .Values.upgrade.enabled }}
 apiVersion: v1
@@ -17,7 +20,7 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 data:
   {{- include "portalai.configData" . | nindent 2 }}
 {{- if not .Values.existingSecret }}
@@ -31,7 +34,7 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 type: Opaque
 stringData:
   {{- include "portalai.secretData" . | nindent 2 }}
