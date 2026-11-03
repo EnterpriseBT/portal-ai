@@ -95,7 +95,8 @@ string throughout, so `--set config.SYSTEM_ID=0` is the id "0", not "unset".
 This guards upgrades of a live release only. It reads the release's objects,
 not the database, so a reinstall over a surviving database (an external DB, a
 kept PVC) or a render without `lookup` (`helm template`, GitOps) isn't
-checked; the README says so, and #956 tracks a database-side guard.
+checked here; the database-side guard (#956: migrate and boot refuse a
+principal other than the recorded one) catches those.
 
 Never generated: `portalai.configData` renders twice per release (the config
 ConfigMap and the hooks' copy), and on a first install `lookup` finds neither,

@@ -14,6 +14,12 @@ import {
 } from "../db/credentials.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { requireSystemId } from "../utils/system.util.js";
+import {
+  assertSystemPrincipal,
+  readSystemPrincipal,
+  recordSystemPrincipal,
+  type SqlRunner,
+} from "../db/system-principal.util.js";
 
 const logger = createLogger({ module: "db-migrate" });
 
@@ -195,8 +201,15 @@ export async function runMigrations(): Promise<void> {
     )
   );
   try {
+    const run: SqlRunner = (text, params) =>
+      sql.unsafe(text, params as never[]);
+    // #956: a database provisioned under another principal applies nothing;
+    // a new SYSTEM_ID would strand every platform row (write-once).
+    await assertSystemPrincipal(() => readSystemPrincipal(run), systemId);
     logger.info({ migrationsFolder }, "Running database migrations…");
     await migrate(drizzle(sql), { migrationsFolder });
+    // 0134 records it on first apply; this re-records a table emptied since.
+    await recordSystemPrincipal(run, systemId);
     logger.info("Migrations completed");
   } finally {
     await sql.end();

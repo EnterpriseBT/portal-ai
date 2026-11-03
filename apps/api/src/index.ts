@@ -1,6 +1,13 @@
 import { app } from "./app.js";
 import { environment } from "./environment.js";
 import { connectDatabase, closeDatabase } from "./db/index.js";
+import { reserveConnection } from "./db/client.js";
+import {
+  assertSystemPrincipal,
+  readSystemPrincipal,
+  recordSystemPrincipal,
+  type SqlRunner,
+} from "./db/system-principal.util.js";
 import { logger } from "./utils/logger.util.js";
 import { closeRedis } from "./utils/redis.util.js";
 import { gracefulShutdown } from "./utils/shutdown.util.js";
@@ -24,6 +31,7 @@ import {
   isResidency,
 } from "./config/deploy-mode.js";
 import { publicUrlWarnings } from "./utils/public-url.util.js";
+import { requireSystemId } from "./utils/system.util.js";
 
 const jobsWorker = createJobsWorker(processors);
 const maintenanceWorker = createMaintenanceWorker();
@@ -91,6 +99,30 @@ async function start() {
   }
 
   await connectDatabase();
+
+  // #956: SYSTEM_ID is write-once. Under any other principal than the one the
+  // database recorded, every platform row would read as no one's, so refuse to
+  // boot, naming both. Records it first when nothing is recorded yet.
+  try {
+    const conn = await reserveConnection();
+    try {
+      const run: SqlRunner = (text, params) =>
+        conn.unsafe(text, params as never[]);
+      const systemId = requireSystemId(environment.SYSTEM_ID);
+      await assertSystemPrincipal(() => readSystemPrincipal(run), systemId);
+      if ((await readSystemPrincipal(run)) === null) {
+        await recordSystemPrincipal(run, systemId);
+      }
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    logger.fatal(
+      { err, code: ApiCode.SYSTEM_ID_MISMATCH },
+      "SYSTEM_ID doesn't match the database's system principal — refusing to start"
+    );
+    process.exit(1);
+  }
 
   // Wide-table boot drift check — guarantees every live connector_entity
   // has a correctly-shaped `er__<id>` table before the HTTP listener

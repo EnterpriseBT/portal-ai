@@ -46,6 +46,8 @@ export enum ApiCode {
    *  credentials). Logged at fatal; the process exits non-zero. No HTTP
    *  surface — the app refuses to start. */
   DEPLOY_MODE_CONFIG_INVALID = "DEPLOY_MODE_CONFIG_INVALID",
+  /** #956: SYSTEM_ID differs from the principal the database recorded. */
+  SYSTEM_ID_MISMATCH = "SYSTEM_ID_MISMATCH",
 
   // Health
   HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED",
