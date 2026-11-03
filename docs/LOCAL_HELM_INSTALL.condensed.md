@@ -60,6 +60,21 @@ Install images built from the last release tag (`v1.1.2`), then `helm upgrade --
 7. `helm upgrade --atomic` with a nonexistent image tag fails, rolls back, and the app keeps serving the previous release.
 8. `npm run lint:helm` passes.
 
+## Live run — 2026-11-02 (Docker Desktop Kubernetes v1.36.1, arm64)
+
+All eight smoke steps passed after the fixes below; Traefik chart 42.0.0 (newest older than two weeks).
+
+| Found | Fix |
+|---|---|
+| Bundled-DB migrate wait hung: it runs as uid 1000, absent from the postgres image's passwd, so `pg_isready` without `-U` never attempted a connection | `-U <app user>` (`check-helm` scenario) |
+| Web pod refused: image `USER nginx` is non-numeric, so `runAsNonRoot` can't verify it | `web.podSecurityContext.runAsUser/runAsGroup: 101` (scenario) |
+| Every first sign-in 500'd: the chart never set `SYSTEM_ID`, so user creation failed `createdBy` validation | chart-owned `SYSTEM_ID: "SYSTEM"` (the migrations' literal), any other value refused (scenario + reject) |
+| Hook jobs read stale/missing env: `pre-upgrade` runs before the release ConfigMap/Secret update (the new `SYSTEM_ID` missed that upgrade's seed); an external-DB `pre-install` migrate referenced a ConfigMap/Secret that didn't exist yet | env rendered from shared templates (`_env.tpl`) into hook-scoped copies at weight −10 (scenarios incl. `existingSecret`) |
+| `UPGRADE COMPLETE` unreadable: hook jobs were deleted on success | hook jobs kept until the next run (`before-hook-creation`) |
+| `/api/health` said `dev`: `BUILD_*` set only in the image's build stage (ECS injects them, the chart doesn't) | `ARG`/`ENV` in the API runtime stage |
+
+**App bugs for their own ticket** (not fixed here): `SeedService.seed()` swallows its error and exits 0, so a failed seed reports success (also inside `db:upgrade`); the metadata middleware logs `error.message` under the `error` key, which `sanitizeError` reduces to `{"type":"string"}`, hiding the cause of `METADATA_FETCH_FAILED`; the API boots without `SYSTEM_ID` and fails only at first sign-in.
+
 ## Out of scope
 
 - The staging-account install (EKS, RDS, ElastiCache, S3, mirrored + cosign-verified images): follow-up ticket.

@@ -56,6 +56,79 @@ helm install portalai deploy/helm/portalai \
 
 The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, `redis://` in the clear. A managed Redis with in-transit encryption needs `rediss://`. If its certificate is signed by a private CA, put the CA's PEM in a Secret and name it: `--set redis.external.tls.caSecret.name=<secret>` (key `ca.crt` by default). The API refuses to start with a CA set on a `redis://` URL.
 
+## Local evaluation cluster
+
+A full residency install on one machine: Docker Desktop's Kubernetes, the
+bundled data deps, and the bundled Keycloak as the identity provider (#946).
+
+**Why hostnames, not port-forwards.** The OIDC issuer and the object store
+are each reached by the browser *and* by the API pods, under one URL: the
+token's `iss` must match the issuer the API checks, and a presigned upload
+URL's host is part of its signature. A port-forward gives the browser
+`localhost:<port>`, which inside a pod is the pod itself. So each service gets
+a `*.localhost` name: browsers resolve those to loopback and treat them as a
+secure context (PKCE works over http), Docker Desktop publishes the ingress
+controller's LoadBalancer on localhost:80, and a CoreDNS rewrite sends the
+same names to the ingress controller inside the cluster.
+
+1. **Cluster.** Docker Desktop → Settings → Kubernetes → enable. From this
+   repo's devcontainer, which mounts the host's `~/.kube` read-only at
+   `/root/.kube-host`, point a copy at the host's API server:
+   ```bash
+   mkdir -p ~/.kube
+   sed 's#https://127.0.0.1:6443#https://kubernetes.docker.internal:6443#' \
+     /root/.kube-host/config > ~/.kube/config
+   kubectl get nodes
+   ```
+2. **Ingress controller (Traefik).**
+   ```bash
+   helm repo add traefik https://traefik.github.io/charts
+   helm install traefik traefik/traefik --version 42.0.0 \
+     -n traefik --create-namespace --wait
+   ```
+3. **In-cluster DNS.** Add this block to the CoreDNS Corefile, after
+   `ready` (`kubectl -n kube-system edit cm coredns`), then
+   `kubectl -n kube-system rollout restart deploy/coredns`:
+   ```
+   rewrite stop {
+      name regex (.*\.)?portalai\.localhost\.$ traefik.traefik.svc.cluster.local.
+      answer auto
+   }
+   ```
+   Check from a pod:
+   `kubectl run dns --rm -i --restart=Never --image=busybox:1.37 -- nslookup auth.portalai.localhost`
+   should answer with Traefik's ClusterIP.
+4. **Images.** Build both into Docker Desktop's image store, which the
+   cluster uses directly (no registry):
+   ```bash
+   docker build -f apps/api/Dockerfile --build-arg BUILD_VERSION=<v> -t portalai-api:<v> .
+   docker build -f apps/web/Dockerfile --build-arg BUILD_VERSION=<v> -t portalai-web:<v> .
+   ```
+5. **Install** with a values file like this, plus `secrets` holding
+   `ENCRYPTION_KEY` and `OAUTH_STATE_SECRET` (`openssl rand -base64 32`
+   each) and `ANTHROPIC_API_KEY`:
+   ```yaml
+   image:
+     api: { repository: portalai-api, tag: "<v>", pullPolicy: Never }
+     web: { repository: portalai-web, tag: "<v>", pullPolicy: Never }
+   deployMode: residency
+   ingress: { enabled: true, className: traefik, host: portalai.localhost }
+   bundledIssuer: { enabled: true, host: auth.portalai.localhost }
+   objectStorage: { publicHost: s3.portalai.localhost }
+   ```
+   ```bash
+   helm install portalai deploy/helm/portalai -n portalai --create-namespace \
+     -f local-values.yaml --wait
+   ```
+6. **Sign in.** Create a user at `http://auth.portalai.localhost/admin/`
+   (realm `portalai`, email verified, a non-temporary password), then open
+   `http://portalai.localhost`. The first user becomes the organization's
+   owner; later users join it as members.
+
+A browser running *inside* the devcontainer (the Playwright MCP) resolves
+`*.localhost` to the container itself. Forward the container's port 80 to the
+host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
+
 ## Values reference
 
 | Key | Default | Description |
@@ -65,7 +138,7 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
 | `imagePullSecrets` | `[]` | Pull secrets for a private registry. |
 | `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. A residency install sets `residency` explicitly; the API then refuses to boot without `oidc.issuer`/`.audience` or with central Stripe credentials (`apps/api/src/config/deploy-mode.ts`). |
 | `oidc.issuer` / `.audience` / `.clientId` | `""` | Customer OIDC identity (residency). Reaches the API validator and the web `config.js`. |
-| `config` | `{}` | Non-secret env → ConfigMap (e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`). `WEB_APP_URL` (invite links) and `PUBLIC_API_BASE_URL` (where webhook toolpack runtimes call back) default from `ingress.host`. Without the chart's ingress, set them here. A missing `WEB_APP_URL` refuses invitations; a missing `PUBLIC_API_BASE_URL` only stops webhook tools that stream data in, or return results too large to send inline (`WEBHOOK_CALLBACK_UNCONFIGURED`), so an install without custom webhook toolpacks can leave it. The install notes and a startup warning name either one. |
+| `config` | `{}` | Non-secret env → ConfigMap. `SYSTEM_ID` is set by the chart (`SYSTEM`, the id the migrations write) and any other value is refused. Others, e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`. `WEB_APP_URL` (invite links) and `PUBLIC_API_BASE_URL` (where webhook toolpack runtimes call back) default from `ingress.host`. Without the chart's ingress, set them here. A missing `WEB_APP_URL` refuses invitations; a missing `PUBLIC_API_BASE_URL` only stops webhook tools that stream data in, or return results too large to send inline (`WEBHOOK_CALLBACK_UNCONFIGURED`), so an install without custom webhook toolpacks can leave it. The install notes and a startup warning name either one. |
 | `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `OAUTH_STATE_SECRET`). Never `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` on a residency install: the API refuses to boot with them. |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
@@ -108,11 +181,21 @@ The Redis URL's scheme is the TLS switch (#852): `rediss://` connects over TLS, 
   `upgrade` hook (`pre-upgrade`) runs `db:upgrade` — pending migrations + the
   idempotent global seed, under a session advisory lock so two concurrent passes
   never both migrate. It prints `UPGRADE COMPLETE` and exits non-zero on failure;
-  watch `kubectl logs job/<release>-upgrade`. Prefer `helm upgrade --atomic`: a
-  failed upgrade then rolls the *workloads* back automatically, while the
-  expand-only schema stays valid under the previous image. Migrations are
+  read it with `kubectl logs job/<release>-upgrade`. The job is kept until the
+  next upgrade replaces it, a failed one included, so its log stays readable.
+  Prefer `helm upgrade --atomic`: a failed upgrade then rolls the *workloads*
+  back automatically, while the expand-only schema stays valid under the
+  previous image (on a local cluster, an upgrade to an image that couldn't be
+  pulled failed its hook and rolled back while the app kept serving). Migrations are
   forward-only — a mistake is undone by a new forward migration, never a
   down-migration. Set `upgrade.enabled=false` to fall back to migrate-only.
+- **Hook jobs read their own copy of the env.** A `pre-install` or
+  `pre-upgrade` hook runs before Helm creates or updates the release's
+  ConfigMap and Secret, so the migrate and upgrade jobs load
+  `<release>-portalai-hook-config` and `-hook-secret`, rendered from the same
+  values just before them. A value added or changed by an upgrade reaches that
+  upgrade's migrations. With `existingSecret`, the jobs read your Secret
+  directly, so update it before the upgrade.
 - **First install with the bundled DB.** The bundled DB is part of the
   release, so it doesn't exist during `pre-install`. The migration therefore
   runs as a plain Job that waits for the DB, and the API pods and the seed
