@@ -7,7 +7,9 @@
  * It runs `helm lint` plus `helm template` over a set of value scenarios and
  * checks the rendered manifests string-by-string. Scenarios are added slice by
  * slice: slice 3 pins the api/web skeleton (both probes, non-root, image refs);
- * slice 4 adds the bundled-vs-external data-dep render paths.
+ * slice 4 adds the bundled-vs-external data-dep render paths. Since #946 the
+ * bundled deps are the chart's own templates, not Bitnami subcharts (whose
+ * images are gone), so there is no dependency build and no network access.
  *
  * Fail-open on tooling: if `helm` is not installed the check WARNS and exits 0
  * rather than failing (local runs without helm shouldn't block). CI installs
@@ -48,7 +50,7 @@ const EXTERNAL_ARGS = [
   "--set",
   "redis.enabled=false",
   "--set",
-  "minio.enabled=false",
+  "objectStorage.enabled=false",
   "--set",
   "postgresql.external.host=db.example.com",
   "--set",
@@ -56,7 +58,21 @@ const EXTERNAL_ARGS = [
   "--set",
   "redis.external.url=redis://cache.example.com:6379",
   "--set",
-  "minio.external.endpoint=https://s3.example.com",
+  "objectStorage.external.endpoint=https://s3.example.com",
+];
+
+// #946: a residency install whose users sign in through the bundled Keycloak.
+const BUNDLED_ISSUER_ARGS = [
+  "--set",
+  "deployMode=residency",
+  "--set",
+  "ingress.enabled=true",
+  "--set",
+  "ingress.host=app.example.com",
+  "--set",
+  "bundledIssuer.enabled=true",
+  "--set",
+  "bundledIssuer.host=auth.example.com",
 ];
 
 /**
@@ -65,6 +81,53 @@ const EXTERNAL_ARGS = [
  * for the intended refusal).
  */
 const rejectScenarios = [
+  {
+    // #946 review: the api pods wait for the bundled DB's first migration,
+    // which only the migrate job runs, so this would hang forever.
+    name: "bundled DB with migrate disabled on install (#946)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, "--set", "migrate.enabled=false"],
+    error: /migrate\.enabled=false needs an external DB/,
+  },
+  {
+    // #946 review: Ingress rules[].host can't carry a port.
+    name: "a bundled issuer host with a port (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...BUNDLED_ISSUER_ARGS,
+      "--set",
+      "bundledIssuer.host=auth.example.com:8443",
+    ],
+    error: /bundledIssuer[\s\S]*host/,
+  },
+  {
+    name: "an object storage public host with a port (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "objectStorage.publicHost=s3.example.com:9000",
+    ],
+    error: /publicHost/,
+  },
+  {
+    // #946: the migrations write 'SYSTEM' as the system principal (0065,
+    // 0080), so any other id splits system ownership in two.
+    name: "a SYSTEM_ID other than the migrations' (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "config.SYSTEM_ID=other",
+    ],
+    error: /SYSTEM_ID/,
+  },
   {
     name: "custom basemap without a style URL (#910)",
     args: [
@@ -119,6 +182,38 @@ const rejectScenarios = [
     ],
     error: /basemap[\s\S]*styleUrl/,
   },
+  {
+    // The issuer URL is the browser's and the API's, so it needs a public host.
+    name: "bundled issuer without its host (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "bundledIssuer.enabled=true",
+    ],
+    error: /bundledIssuer\.host/,
+  },
+  {
+    // The realm's redirect URI and web origin are the app's origin.
+    name: "bundled issuer without the app's ingress host (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "bundledIssuer.enabled=true",
+      "--set",
+      "bundledIssuer.host=auth.example.com",
+    ],
+    error: /ingress\.host/,
+  },
 ];
 
 function helmAvailable() {
@@ -132,27 +227,6 @@ function helmAvailable() {
 
 function run(args) {
   return execFileSync("helm", args, { encoding: "utf8" });
-}
-
-/**
- * Fetch the pinned subchart dependencies (Chart.lock). Bitnami's index is
- * needed for the HTTP repo entries; adding it is idempotent. A failure here is
- * fatal — a missing/renamed pinned chart must fail loudly, not silently render
- * without its data deps.
- */
-function buildDependencies() {
-  execFileSync(
-    "helm",
-    [
-      "repo",
-      "add",
-      "bitnami",
-      "https://charts.bitnami.com/bitnami",
-      "--force-update",
-    ],
-    { stdio: "ignore" }
-  );
-  run(["dependency", "build", CHART]);
 }
 
 /** A rendered scenario plus the assertions it must satisfy. */
@@ -185,6 +259,51 @@ const configValues = (out, key) =>
   ].map((m) => m[1]);
 const webAppUrls = (out) => configValues(out, "WEB_APP_URL");
 const publicApiUrls = (out) => configValues(out, "PUBLIC_API_BASE_URL");
+
+// #946: every image a render pulls, so a default install can be checked for
+// unavailable registries (Bitnami's images are gone; MinIO publishes none).
+const images = (out) =>
+  [...out.matchAll(/^\s+image: "?([^"\s]+)"?$/gm)].map((m) => m[1]);
+
+// The init container named `name` in one workload's manifest, if any.
+const hasInitContainer = (doc, name) =>
+  /initContainers:/.test(doc) && doc.includes(`- name: ${name}\n`);
+
+// #946: the ConfigMap/Secret names a workload loads env from (envFrom).
+const envFromNames = (doc) =>
+  [...doc.matchAll(/(?:configMapRef|secretRef):\n\s+name: (\S+)/g)].map(
+    (m) => m[1]
+  );
+
+// #946: a manifest's body from `data:`/`stringData:` on, so two objects can be
+// compared on what they carry rather than their names and annotations.
+const dataOf = (doc) => doc.slice(doc.search(/^(?:data|stringData):$/m));
+
+// #946: a pre-install/pre-upgrade hook runs before Helm creates or updates the
+// release's own ConfigMap and Secret, so a hook job must load its env from
+// hook-scoped copies that exist, with this render's values, before it runs.
+const hookEnvIsCurrent = (out, secretName) => {
+  const cm = manifest(out, "ConfigMap", "p-portalai-hook-config");
+  // Deleted once the phase succeeds (#946 review): a hook object outlives
+  // `helm uninstall`, and the Secret carries credentials.
+  const isEarlyHook = (doc) =>
+    doc.includes('"helm.sh/hook": pre-install,pre-upgrade') &&
+    doc.includes('"helm.sh/hook-weight": "-10"') &&
+    doc.includes(
+      '"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded\n'
+    );
+  const secretOk =
+    secretName === "p-portalai-hook-secret"
+      ? isEarlyHook(manifest(out, "Secret", secretName)) &&
+        dataOf(manifest(out, "Secret", secretName)) ===
+          dataOf(manifest(out, "Secret", "p-portalai-secret"))
+      : manifest(out, "Secret", "p-portalai-hook-secret") === "";
+  return (
+    isEarlyHook(cm) &&
+    dataOf(cm) === dataOf(manifest(out, "ConfigMap", "p-portalai-config")) &&
+    secretOk
+  );
+};
 
 const MIGRATION_USER_ARGS = [
   "--set",
@@ -289,6 +408,36 @@ const notesScenarios = () => {
       ],
     },
     {
+      name: "notes: bundled issuer + public object storage (#946)",
+      args: [
+        ...BUNDLED_ISSUER_ARGS,
+        "--set",
+        "objectStorage.publicHost=s3.example.com",
+      ],
+      assertions: [
+        [
+          "says where to sign in and how to read the admin password",
+          (n) =>
+            flat(n).includes("http://auth.example.com/realms/portalai") &&
+            flat(n).includes("get secret p-portalai-keycloak"),
+        ],
+        [
+          "no uploads warning once the object store has a public host",
+          (n) => !flat(n).includes("File uploads need objectStorage.publicHost"),
+        ],
+      ],
+    },
+    {
+      name: "notes: bundled object storage without a public host (#946)",
+      args: [],
+      assertions: [
+        [
+          "warns that uploads need objectStorage.publicHost",
+          (n) => flat(n).includes("File uploads need objectStorage.publicHost"),
+        ],
+      ],
+    },
+    {
       name: "notes: ingress + empty config.PUBLIC_API_BASE_URL",
       args: [
         "--set",
@@ -386,42 +535,237 @@ const scenarios = [
         (out) => publicApiUrls(out).length === 0,
       ],
       [
+        // #946 review: with the object-storage component the s3 Service
+        // selected the Job's pod (Ready, listening on nothing) as an endpoint.
+        "bucket Job's pod isn't selected by the s3 Service (#946)",
+        (out) => {
+          const job = manifest(out, "Job", "p-portalai-s3-bucket");
+          return (
+            job !== "" &&
+            !/app\.kubernetes\.io\/component: object-storage\n/.test(job) &&
+            job.includes("app.kubernetes.io/component: object-storage-bucket\n")
+          );
+        },
+      ],
+      [
+        // #946 review: the checksum hashed only the secret key, so renaming
+        // the bucket (which the identity is scoped to) never restarted the
+        // server, which reads s3.json only at start.
+        "object storage rolls when its identity's bucket changes (#946)",
+        (out) => {
+          const sum = (o) =>
+            /checksum\/identities: (\S+)/.exec(
+              manifest(o, "StatefulSet", "p-portalai-s3")
+            )?.[1];
+          const renamed = run([
+            "template",
+            "p",
+            CHART,
+            ...IMAGE_ARGS,
+            "--set",
+            "objectStorage.bucket=renamed-uploads",
+            "--set",
+            "objectStorage.auth.secretKey=fixed",
+          ]);
+          const same = run([
+            "template",
+            "p",
+            CHART,
+            ...IMAGE_ARGS,
+            "--set",
+            "objectStorage.auth.secretKey=fixed",
+          ]);
+          return !!sum(same) && sum(same) !== sum(renamed);
+        },
+      ],
+      [
+        // #946 adversarial: `weed server` defaults to 8 volume slots and 30 GB
+        // volumes; its internal collection took 7 and the bucket the last, so a
+        // renamed bucket had nowhere to grow (500 "No writable volumes").
+        "object storage sizes volume slots from its disk (#946)",
+        (out) => {
+          const sts = manifest(out, "StatefulSet", "p-portalai-s3");
+          return (
+            sts.includes("- -volume.max=0\n") &&
+            sts.includes("- -master.volumeSizeLimitMB=512\n")
+          );
+        },
+      ],
+      [
+        // #946 review: a word match took portalai-uploads-old for the bucket.
+        "bucket Job matches the bucket name exactly (#946)",
+        (out) =>
+          manifest(out, "Job", "p-portalai-s3-bucket").includes(
+            `awk '{print $1}' | grep -qxF "portalai-uploads"`
+          ),
+      ],
+      [
+        // Found on the live install: without it the API creates no users
+        // (createdBy undefined), so every first sign-in answered 500.
+        "SYSTEM_ID is the migrations' system principal, once (#946)",
+        (out) => {
+          const ids = configValues(out, "SYSTEM_ID");
+          return ids.length === 1 && ids[0] === "SYSTEM";
+        },
+      ],
+      [
         "api reads env from ConfigMap + Secret",
         (out) =>
           out.includes("configMapRef:") && out.includes("secretRef:"),
       ],
       [
         "bundled DATABASE_URL points at the postgresql service",
-        (out) => /DATABASE_URL: "postgresql:\/\/[^"]*@p-postgresql:5432\//.test(out),
+        (out) =>
+          /DATABASE_URL: "postgresql:\/\/[^"]*@p-portalai-postgresql:5432\//.test(
+            out
+          ),
       ],
       [
-        "bundled REDIS_URL points at the redis master service",
-        (out) => out.includes('REDIS_URL: "redis://p-redis-master:6379"'),
+        "bundled REDIS_URL points at the redis service",
+        (out) => out.includes('REDIS_URL: "redis://p-portalai-redis:6379"'),
       ],
       [
-        "bundled DB uses the PostGIS image override",
-        (out) => out.includes("imresamu/postgis:17-3.5"),
+        "bundled deps are the chart's own StatefulSets (#946)",
+        (out) =>
+          ["p-portalai-postgresql", "p-portalai-redis", "p-portalai-s3"].every(
+            (name) => manifest(out, "StatefulSet", name) !== ""
+          ),
+      ],
+      [
+        "bundled DB runs PostGIS",
+        (out) =>
+          manifest(out, "StatefulSet", "p-portalai-postgresql").includes(
+            'image: "imresamu/postgis:17-3.5"'
+          ),
+      ],
+      [
+        "bundled object storage runs SeaweedFS (#946)",
+        (out) =>
+          manifest(out, "StatefulSet", "p-portalai-s3").includes(
+            'image: "chrislusf/seaweedfs:'
+          ),
+      ],
+      [
+        "no image from Bitnami or MinIO, and none floating on latest (#946)",
+        (out) => {
+          const all = images(out);
+          return (
+            all.length > 0 &&
+            all.every(
+              (img) =>
+                !/(^|\/)(bitnami|bitnamilegacy|minio)\//.test(img) &&
+                /:[^/]+$/.test(img) &&
+                !img.endsWith(":latest")
+            )
+          );
+        },
       ],
       [
         "bundled Redis stays plaintext: no REDIS_TLS_CA (#852)",
         (out) => !out.includes("REDIS_TLS_CA"),
       ],
       [
-        "bundled Redis has a persistent volume claim",
-        (out) => out.includes("kind: PersistentVolumeClaim"),
-      ],
-      ["bundled MinIO renders", (out) => out.includes("p-minio")],
-      [
-        "migrate hook: pre-install only + command",
+        "every bundled dep keeps its data on a volume claim",
         (out) =>
-          out.includes('"helm.sh/hook": pre-install\n') &&
-          out.includes('command: ["node", "dist/scripts/db-migrate.js"]'),
+          ["p-portalai-postgresql", "p-portalai-redis", "p-portalai-s3"].every(
+            (name) =>
+              manifest(out, "StatefulSet", name).includes(
+                "volumeClaimTemplates:"
+              )
+          ),
+      ],
+      [
+        "bundled DB: first-install migrate is a plain Job that waits for the DB, not a pre-install hook (#946)",
+        (out) => {
+          const job = manifest(out, "Job", "p-portalai-migrate");
+          return (
+            job.includes('command: ["node", "dist/scripts/db-migrate.js"]') &&
+            !job.includes('"helm.sh/hook"') &&
+            hasInitContainer(job, "wait-for-db")
+          );
+        },
+      ],
+      [
+        // Found on the live install: the wait runs as uid 1000, which has no
+        // passwd entry in the postgres image, so pg_isready without -U can't
+        // pick a user and never attempts a connection ("no attempt").
+        "bundled DB: the migrate wait names its user (#946)",
+        (out) =>
+          /pg_isready -U portalai /.test(
+            manifest(out, "Job", "p-portalai-migrate")
+          ),
+      ],
+      [
+        // Found on the live install: the image's USER is the name `nginx`,
+        // and runAsNonRoot refuses a non-numeric user it can't verify.
+        "web pod runs as a numeric non-root user (nginx-unprivileged's 101)",
+        (out) =>
+          /runAsUser: 101\n/.test(manifest(out, "Deployment", "p-portalai-web")),
+      ],
+      [
+        "bundled DB: the API and the seed wait for the migrations (#946)",
+        (out) =>
+          hasInitContainer(
+            manifest(out, "Deployment", "p-portalai-api"),
+            "wait-for-migrations"
+          ) &&
+          hasInitContainer(
+            manifest(out, "Job", "p-portalai-seed"),
+            "wait-for-migrations"
+          ),
       ],
       [
         "seed hook: post-install + command",
         (out) =>
           out.includes('"helm.sh/hook": post-install') &&
           out.includes('command: ["node", "dist/db/seed.js"]'),
+      ],
+      [
+        "bundled object storage: a hook creates the bucket (#946)",
+        (out) => {
+          const job = manifest(out, "Job", "p-portalai-s3-bucket");
+          return (
+            job.includes('"helm.sh/hook": post-install,post-upgrade') &&
+            job.includes("s3.bucket.create -name portalai-uploads")
+          );
+        },
+      ],
+      [
+        "bundled object storage: the API signs with its credentials (#946)",
+        (out) => {
+          const api = manifest(out, "Deployment", "p-portalai-api");
+          return ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"].every((key) =>
+            new RegExp(
+              `- name: ${key}\\n\\s+valueFrom:\\n\\s+secretKeyRef:\\n\\s+name: p-portalai-s3\\n`
+            ).test(api)
+          );
+        },
+      ],
+      [
+        "bundled object storage: no public host, so the in-cluster endpoint",
+        (out) =>
+          out.includes('UPLOAD_S3_ENDPOINT: "http://p-portalai-s3:8333"'),
+      ],
+      [
+        // Found on the live install: a value added on upgrade (SYSTEM_ID)
+        // never reached the upgrade's seed, which read the previous release's
+        // ConfigMap.
+        "upgrade job reads hook env that carries this render's values (#946)",
+        (out) =>
+          hookEnvIsCurrent(out, "p-portalai-hook-secret") &&
+          envFromNames(manifest(out, "Job", "p-portalai-upgrade")).join() ===
+            "p-portalai-hook-config,p-portalai-hook-secret",
+      ],
+      [
+        // The README's upgrade signal is the job's log; deleting the job on
+        // success left nothing to read.
+        "hook jobs are kept after success, replaced on the next run (#946)",
+        (out) =>
+          ["p-portalai-upgrade", "p-portalai-seed"].every((job) =>
+            manifest(out, "Job", job).includes(
+              '"helm.sh/hook-delete-policy": before-hook-creation\n'
+            )
+          ),
       ],
       [
         "upgrade hook: pre-upgrade + db-upgrade command",
@@ -435,11 +779,11 @@ const scenarios = [
           ["p-portalai-migrate", "p-portalai-upgrade"].every((job) => {
             const doc = manifest(out, "Job", job);
             return (
-              doc.includes("name: p-postgresql\n") &&
+              doc.includes("name: p-portalai-postgresql\n") &&
               doc.includes("key: postgres-password") &&
               doc.includes("name: MIGRATE_DATABASE_PASSWORD") &&
               doc.includes(
-                'value: "postgresql://postgres@p-postgresql:5432/portalai"'
+                'value: "postgresql://postgres@p-portalai-postgresql:5432/portalai"'
               )
             );
           }),
@@ -562,26 +906,169 @@ const scenarios = [
     ],
   },
   {
-    name: "bundled issuer (keycloak)",
+    name: "bundled issuer (#946)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, ...BUNDLED_ISSUER_ARGS],
+    assertions: [
+      [
+        "Keycloak runs from the official image",
+        (out) =>
+          manifest(out, "StatefulSet", "p-portalai-keycloak").includes(
+            'image: "quay.io/keycloak/keycloak:'
+          ),
+      ],
+      [
+        "Keycloak serves its public host and imports the realm",
+        (out) => {
+          const kc = manifest(out, "StatefulSet", "p-portalai-keycloak");
+          return (
+            kc.includes("--hostname=http://auth.example.com") &&
+            kc.includes("--import-realm")
+          );
+        },
+      ],
+      [
+        "the realm grants the SPA's origin, PKCE and the API audience",
+        (out) => {
+          const realm = JSON.parse(
+            /realm\.json: \|-?\n([\s\S]*?)(?=\n\S|\n---|$)/.exec(
+              manifest(out, "ConfigMap", "p-portalai-keycloak-realm")
+            )?.[1] ?? "null"
+          );
+          const client = realm?.clients?.find(
+            (c) => c.clientId === "portalai-web"
+          );
+          return (
+            realm?.realm === "portalai" &&
+            realm.registrationAllowed === false &&
+            client?.publicClient === true &&
+            client.redirectUris.includes("http://app.example.com") &&
+            client.webOrigins.includes("http://app.example.com") &&
+            client.attributes["pkce.code.challenge.method"] === "S256" &&
+            client.optionalClientScopes.includes("offline_access") &&
+            client.defaultClientScopes.includes("email") &&
+            client.protocolMappers.some(
+              (m) =>
+                m.protocolMapper === "oidc-audience-mapper" &&
+                m.config["included.custom.audience"] === "portalai-api"
+            )
+          );
+        },
+      ],
+      [
+        "OIDC_* default from the bundled issuer",
+        (out) =>
+          configValues(out, "OIDC_ISSUER").join() ===
+            "http://auth.example.com/realms/portalai" &&
+          configValues(out, "OIDC_AUDIENCE").join() === "portalai-api" &&
+          configValues(out, "OIDC_CLIENT_ID").join() === "portalai-web",
+      ],
+      [
+        "the ingress routes the issuer host to Keycloak",
+        (out) =>
+          /host: "auth\.example\.com"[\s\S]*?name: p-portalai-keycloak\n/.test(
+            manifest(out, "Ingress", "p-portalai")
+          ),
+      ],
+    ],
+  },
+  {
+    name: "explicit oidc.* beats the bundled issuer (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...BUNDLED_ISSUER_ARGS,
+      "--set",
+      "oidc.issuer=https://idp.corp.example/realms/x",
+      "--set",
+      "oidc.audience=corp-api",
+      "--set",
+      "oidc.clientId=corp-web",
+    ],
+    assertions: [
+      [
+        "the explicit values render, once each",
+        (out) =>
+          configValues(out, "OIDC_ISSUER").join() ===
+            "https://idp.corp.example/realms/x" &&
+          configValues(out, "OIDC_AUDIENCE").join() === "corp-api" &&
+          configValues(out, "OIDC_CLIENT_ID").join() === "corp-web",
+      ],
+    ],
+  },
+  {
+    name: "bundled object storage on a public host (#946)",
     args: [
       "template",
       "p",
       CHART,
       ...IMAGE_ARGS,
       "--set",
-      "bundledIssuer.enabled=true",
+      "ingress.enabled=true",
+      "--set",
+      "ingress.host=app.example.com",
+      "--set",
+      "objectStorage.publicHost=s3.example.com",
     ],
     assertions: [
-      ["Keycloak subchart renders", (out) => out.includes("keycloak")],
+      [
+        "presigned URLs carry the public host",
+        (out) => out.includes('UPLOAD_S3_ENDPOINT: "http://s3.example.com"'),
+      ],
+      [
+        "the ingress routes it to the object store",
+        (out) =>
+          /host: "s3\.example\.com"[\s\S]*?name: p-portalai-s3\n[\s\S]*?number: 8333/.test(
+            manifest(out, "Ingress", "p-portalai")
+          ),
+      ],
     ],
   },
   {
-    name: "hooks disabled",
+    // #946 review: "external" refuses plain http from a public client IP,
+    // so sign-in was impossible on any http install but a private network.
+    name: "bundled issuer realm's TLS requirement follows ingress TLS (#946)",
+    args: ["template", "p", CHART, ...IMAGE_ARGS, ...BUNDLED_ISSUER_ARGS],
+    assertions: [
+      [
+        "http ingress: sslRequired none",
+        (out) =>
+          /"sslRequired": "none"/.test(
+            manifest(out, "ConfigMap", "p-portalai-keycloak-realm")
+          ),
+      ],
+      [
+        "TLS ingress: sslRequired external",
+        () =>
+          /"sslRequired": "external"/.test(
+            manifest(
+              run([
+                "template",
+                "p",
+                CHART,
+                ...IMAGE_ARGS,
+                ...BUNDLED_ISSUER_ARGS,
+                "--set",
+                "ingress.tls.enabled=true",
+                "--set",
+                "ingress.tls.secretName=tls",
+              ]),
+              "ConfigMap",
+              "p-portalai-keycloak-realm"
+            )
+          ),
+      ],
+    ],
+  },
+  {
+    name: "hooks disabled (external DB)",
     args: [
       "template",
       "p",
       CHART,
       ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
       "--set",
       "migrate.enabled=false",
       "--set",
@@ -596,6 +1083,30 @@ const scenarios = [
           !out.includes("db-migrate.js") &&
           !out.includes("dist/db/seed.js") &&
           !out.includes("db-upgrade.js"),
+      ],
+    ],
+  },
+  {
+    name: "existingSecret (#946)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      ...EXTERNAL_ARGS,
+      "--set",
+      "existingSecret=operator-env",
+    ],
+    assertions: [
+      [
+        "hook jobs read the operator's Secret; no chart copy renders",
+        (out) =>
+          hookEnvIsCurrent(out, "operator-env") &&
+          ["p-portalai-migrate", "p-portalai-upgrade"].every(
+            (job) =>
+              envFromNames(manifest(out, "Job", job)).join() ===
+              "p-portalai-hook-config,operator-env"
+          ),
       ],
     ],
   },
@@ -616,11 +1127,44 @@ const scenarios = [
         (out) => out.includes('UPLOAD_S3_ENDPOINT: "https://s3.example.com"'),
       ],
       [
-        "no bundled subchart objects render",
+        "no bundled dep objects render",
         (out) =>
-          !out.includes("p-postgresql") &&
-          !out.includes("p-redis") &&
-          !out.includes("p-minio"),
+          !out.includes("kind: StatefulSet") &&
+          !out.includes("p-portalai-postgresql") &&
+          !out.includes("p-portalai-redis") &&
+          !out.includes("p-portalai-s3"),
+      ],
+      [
+        "external DB: migrate stays a pre-install hook, with no waits",
+        (out) => {
+          const job = manifest(out, "Job", "p-portalai-migrate");
+          return (
+            job.includes('"helm.sh/hook": pre-install\n') &&
+            !job.includes("initContainers:") &&
+            !manifest(out, "Deployment", "p-portalai-api").includes(
+              "initContainers:"
+            )
+          );
+        },
+      ],
+      [
+        // The release's ConfigMap and Secret don't exist yet during
+        // pre-install, so the migrate hook can't load env from them.
+        "external DB: the pre-install migrate reads the hook env (#946)",
+        (out) =>
+          hookEnvIsCurrent(out, "p-portalai-hook-secret") &&
+          envFromNames(manifest(out, "Job", "p-portalai-migrate")).join() ===
+            "p-portalai-hook-config,p-portalai-hook-secret" &&
+          manifest(out, "Job", "p-portalai-migrate").includes(
+            '"helm.sh/hook-delete-policy": before-hook-creation\n'
+          ),
+      ],
+      [
+        "external object storage: credentials are the operator's, not the chart's",
+        (out) =>
+          !manifest(out, "Deployment", "p-portalai-api").includes(
+            "AWS_ACCESS_KEY_ID"
+          ),
       ],
       [
         "no migration user configured: migrations run as DATABASE_URL (#660)",
@@ -770,19 +1314,6 @@ function main() {
   }
 
   const failures = [];
-
-  // Fetch pinned subchart deps (Chart.lock) before lint/template.
-  try {
-    buildDependencies();
-    console.log("✓ helm dependency build (pinned subcharts)");
-  } catch (err) {
-    console.error(
-      "✗ helm dependency build failed — a pinned subchart could not be " +
-        "fetched (network, or a moved/renamed Bitnami chart):\n" +
-        (err.stderr || err.stdout || err.message)
-    );
-    process.exit(1);
-  }
 
   // helm lint
   try {

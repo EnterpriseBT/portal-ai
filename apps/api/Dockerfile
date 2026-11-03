@@ -100,4 +100,13 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD curl -f http://localhost:3001/api/health || exit 1
 
+# The version /api/health reports. ECS also sets these on the task, but an
+# install that runs the image as-is (the Helm chart, #946) has only these.
+# Last in the stage: the values change every commit, so anything after them
+# would rebuild on every deploy.
+ARG BUILD_VERSION=dev
+ARG BUILD_SHA=local
+ENV BUILD_VERSION=$BUILD_VERSION \
+    BUILD_SHA=$BUILD_SHA
+
 CMD ["node", "--max-old-space-size=3200", "dist/index.js"]

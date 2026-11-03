@@ -1,4 +1,13 @@
 {{- if .Values.ingress.enabled }}
+{{- /* #946: the bundled issuer and object store get their own hosts, since
+       browsers and the API pods must reach each under one public URL. */}}
+{{- $extraHosts := list }}
+{{- if .Values.bundledIssuer.enabled }}
+{{- $extraHosts = append $extraHosts (dict "host" (required "bundledIssuer.host is required with bundledIssuer.enabled: the issuer's public hostname, which browsers and the API pods both resolve" .Values.bundledIssuer.host) "service" (include "portalai.depName" (dict "root" . "dep" "keycloak")) "port" 8080) }}
+{{- end }}
+{{- if and .Values.objectStorage.enabled .Values.objectStorage.publicHost }}
+{{- $extraHosts = append $extraHosts (dict "host" .Values.objectStorage.publicHost "service" (include "portalai.depName" (dict "root" . "dep" "s3")) "port" 8333) }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -17,6 +26,9 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.host | quote }}
+        {{- range $extraHosts }}
+        - {{ .host | quote }}
+        {{- end }}
       secretName: {{ .Values.ingress.tls.secretName | quote }}
   {{- end }}
   rules:
@@ -38,4 +50,16 @@ spec:
                 name: {{ include "portalai.fullname" . }}-web
                 port:
                   number: {{ .Values.web.port }}
+    {{- range $extraHosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .service }}
+                port:
+                  number: {{ .port }}
+    {{- end }}
 {{- end }}

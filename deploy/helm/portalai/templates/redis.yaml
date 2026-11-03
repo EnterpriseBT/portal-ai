@@ -1,0 +1,94 @@
+{{- /*
+#946: the bundled Redis, a single-replica StatefulSet on the official image.
+It is the durable BullMQ store, so it always runs with an append-only file on
+its volume. Auth off: reachable only inside the cluster. Production sets
+redis.enabled=false and points at a managed Redis.
+*/ -}}
+{{- if .Values.redis.enabled }}
+{{- $name := include "portalai.depName" (dict "root" . "dep" "redis") }}
+{{- $selector := include "portalai.selectorLabels" (dict "root" . "component" "redis") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  selector:
+    {{- $selector | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      # The alpine image's `redis` user is uid 999.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          # noeviction is Redis's default and what BullMQ requires; stated so
+          # a config change can't quietly evict queued jobs.
+          args:
+            - --appendonly
+            - "yes"
+            - --dir
+            - /data
+            - --maxmemory-policy
+            - noeviction
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.redis.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}
+{{- end }}

@@ -1,0 +1,205 @@
+{{- /*
+#946: bundled S3-compatible object storage for file uploads: SeaweedFS
+(master + volume + filer + S3 gateway in one `weed server`), a single-replica
+StatefulSet. The app's identity is scoped to its bucket and can't create
+buckets; the bucket Job below creates it through `weed shell` instead.
+Browsers PUT to presigned URLs, so uploads need objectStorage.publicHost (see
+_helpers.tpl s3Endpoint). Production sets objectStorage.enabled=false and
+points at S3 or another S3-compatible store.
+*/ -}}
+{{- if .Values.objectStorage.enabled }}
+{{- $name := include "portalai.depName" (dict "root" . "dep" "s3") }}
+{{- $selector := include "portalai.selectorLabels" (dict "root" . "component" "object-storage") }}
+{{- $bucket := .Values.objectStorage.bucket }}
+{{- $accessKey := .Values.objectStorage.auth.accessKey }}
+{{- $secretKey := include "portalai.keptSecretValue" (dict "root" . "secret" $name "key" "secret-key" "value" .Values.objectStorage.auth.secretKey) }}
+{{- $identity := dict "name" "portalai" "credentials" (list (dict "accessKey" $accessKey "secretKey" $secretKey)) "actions" (list (printf "Read:%s" $bucket) (printf "Write:%s" $bucket) (printf "List:%s" $bucket) (printf "Tagging:%s" $bucket)) }}
+{{- $identities := dict "identities" (list $identity) | toJson }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-storage
+type: Opaque
+stringData:
+  access-key: {{ $accessKey | quote }}
+  secret-key: {{ $secretKey | quote }}
+  s3.json: {{ $identities | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-storage
+spec:
+  selector:
+    {{- $selector | nindent 4 }}
+  ports:
+    - name: s3
+      port: 8333
+      targetPort: s3
+    # The master, for the bucket Job's `weed shell` (it then reaches the filer
+    # at the pod's own address, which the server advertises).
+    - name: master
+      port: 9333
+      targetPort: master
+    - name: master-grpc
+      port: 19333
+      targetPort: master-grpc
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-storage
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        app.kubernetes.io/component: object-storage
+      annotations:
+        # Roll the pod when its identity changes: the keys or the bucket it is
+        # scoped to. SeaweedFS reads s3.json only at start.
+        checksum/identities: {{ $identities | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: seaweedfs
+          image: "{{ .Values.objectStorage.image.repository }}:{{ .Values.objectStorage.image.tag }}"
+          imagePullPolicy: {{ .Values.objectStorage.image.pullPolicy }}
+          command: ["weed"]
+          args:
+            - -logtostderr=true
+            - server
+            - -dir=/data
+            - -ip=$(POD_IP)
+            - -ip.bind=0.0.0.0
+            # Volume slots from free disk / volume size, not the default fixed
+            # 8: the internal collection takes 7, so with 8 a second bucket (a
+            # rename) could never grow (#946). Volumes aren't preallocated, and
+            # the filer chunks objects, so 512 MB volumes cap no upload.
+            - -volume.max=0
+            - -master.volumeSizeLimitMB=512
+            - -s3
+            - -s3.port=8333
+            - -s3.config=/etc/seaweedfs/s3.json
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: s3
+              containerPort: 8333
+            - name: master
+              containerPort: 9333
+            - name: master-grpc
+              containerPort: 19333
+            - name: filer
+              containerPort: 8888
+            - name: filer-grpc
+              containerPort: 18888
+          readinessProbe:
+            tcpSocket:
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: master
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.objectStorage.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: identities
+              mountPath: /etc/seaweedfs
+              readOnly: true
+      volumes:
+        - name: identities
+          secret:
+            secretName: {{ $name }}
+            items:
+              - key: s3.json
+                path: s3.json
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.objectStorage.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.objectStorage.persistence.size }}
+---
+# Creates the upload bucket. Idempotent: an existing bucket passes. A hook on
+# install and upgrade, so a renamed bucket exists before the API uses it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-bucket
+  labels:
+    {{- include "portalai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-storage-bucket
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "portalai.labels" . | nindent 8 }}
+        # Not object-storage: the s3 Service selects that component, and this
+        # pod listens on nothing.
+        app.kubernetes.io/component: object-storage-bucket
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: bucket
+          image: "{{ .Values.objectStorage.image.repository }}:{{ .Values.objectStorage.image.tag }}"
+          imagePullPolicy: {{ .Values.objectStorage.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              master={{ $name }}:9333
+              for i in $(seq 1 60); do
+                echo "s3.bucket.create -name {{ $bucket }}" | weed shell -master=$master >/dev/null 2>&1
+                # The name is each line's first field; match it exactly.
+                if echo "s3.bucket.list" | weed shell -master=$master 2>/dev/null | awk '{print $1}' | grep -qxF {{ $bucket | quote }}; then
+                  echo "bucket {{ $bucket }} is ready"; exit 0
+                fi
+                echo "waiting for object storage"; sleep 5
+              done
+              echo "bucket {{ $bucket }} could not be created"; exit 1
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}

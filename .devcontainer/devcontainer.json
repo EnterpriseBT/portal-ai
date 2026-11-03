@@ -28,7 +28,11 @@
     }
   },
   "mounts": [
-    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached",
+    // The host's kubeconfig, read-only, for Docker Desktop's Kubernetes (#946).
+    // Its server is the host's 127.0.0.1, so kubectl here uses a copy pointed
+    // at kubernetes.docker.internal (deploy/helm/portalai/README.md).
+    "source=${localEnv:HOME}/.kube,target=/root/.kube-host,type=bind,readonly"
   ],
   "customizations": {
     "vscode": {

@@ -55,13 +55,48 @@ if set, else the chart-managed Secret.
 {{- end -}}
 
 {{/*
+A bundled dep's object name (StatefulSet, Service, Secret): <fullname>-<dep>.
+Call with a dict: (dict "root" . "dep" "postgresql")
+*/}}
+{{- define "portalai.depName" -}}
+{{- printf "%s-%s" (include "portalai.fullname" .root) .dep | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+A credential the chart generates once and keeps (#946): the explicit value
+when one is set, else the value already in the release's Secret, else a new
+random one. Render it in exactly ONE Secret and reference that key everywhere
+else, since each call outside an existing Secret draws a fresh value.
+Call with a dict: (dict "root" . "secret" <name> "key" <key> "value" <explicit>)
+*/}}
+{{- define "portalai.keptSecretValue" -}}
+{{- if .value -}}
+{{- .value -}}
+{{- else -}}
+{{- $existing := lookup "v1" "Secret" .root.Release.Namespace .secret -}}
+{{- if and $existing $existing.data (hasKey $existing.data .key) -}}
+{{- index $existing.data .key | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 32 -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The app's public origin (the ingress host), or "" without one.
+*/}}
+{{- define "portalai.publicScheme" -}}
+{{- ternary "https" "http" .Values.ingress.tls.enabled -}}
+{{- end -}}
+
+{{/*
 DATABASE_URL. Composed from the bundled postgresql service when enabled, else
 from postgresql.external.
 */}}
 {{- define "portalai.databaseUrl" -}}
 {{- if .Values.postgresql.enabled -}}
 {{- with .Values.postgresql.auth -}}
-postgresql://{{ .username }}:{{ .password }}@{{ $.Release.Name }}-postgresql:5432/{{ .database }}
+postgresql://{{ .username }}:{{ .password }}@{{ include "portalai.depName" (dict "root" $ "dep" "postgresql") }}:5432/{{ .database }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.postgresql.external -}}
@@ -71,36 +106,88 @@ postgresql://{{ .user }}:{{ .password }}@{{ .host }}:{{ .port }}/{{ .database }}
 {{- end -}}
 
 {{/*
-REDIS_URL. Composed from the bundled redis master service when enabled (auth
-off — evaluation-grade), else from redis.external.url.
+REDIS_URL. The bundled redis service when enabled (auth off, in-cluster
+only — evaluation-grade), else redis.external.url.
 */}}
 {{- define "portalai.redisUrl" -}}
 {{- if .Values.redis.enabled -}}
-redis://{{ .Release.Name }}-redis-master:6379
+redis://{{ include "portalai.depName" (dict "root" . "dep" "redis") }}:6379
 {{- else -}}
 {{- .Values.redis.external.url -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-UPLOAD_S3_ENDPOINT. Bundled MinIO service when enabled, else minio.external.endpoint.
+UPLOAD_S3_ENDPOINT. Bundled: the public host when set (presigned URLs carry
+this host, and browsers PUT to it), else the in-cluster service. External:
+objectStorage.external.endpoint.
 */}}
 {{- define "portalai.s3Endpoint" -}}
-{{- if .Values.minio.enabled -}}
-http://{{ .Release.Name }}-minio:9000
+{{- if .Values.objectStorage.enabled -}}
+{{- if .Values.objectStorage.publicHost -}}
+{{- printf "%s://%s" (include "portalai.publicScheme" .) .Values.objectStorage.publicHost -}}
 {{- else -}}
-{{- .Values.minio.external.endpoint -}}
+{{- printf "http://%s:8333" (include "portalai.depName" (dict "root" . "dep" "s3")) -}}
+{{- end -}}
+{{- else -}}
+{{- .Values.objectStorage.external.endpoint -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-UPLOAD_S3_BUCKET. Bundled default bucket when enabled, else minio.external.bucket.
+UPLOAD_S3_BUCKET. The bundled bucket when enabled, else the external one.
 */}}
 {{- define "portalai.s3Bucket" -}}
-{{- if .Values.minio.enabled -}}
-{{- .Values.minio.defaultBuckets -}}
+{{- if .Values.objectStorage.enabled -}}
+{{- .Values.objectStorage.bucket -}}
 {{- else -}}
-{{- .Values.minio.external.bucket -}}
+{{- .Values.objectStorage.external.bucket -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The bundled issuer's URL: <scheme>://<bundledIssuer.host>/realms/<realm>.
+Refuses a render without the hosts it needs (#946).
+*/}}
+{{- define "portalai.bundledIssuerUrl" -}}
+{{- $host := required "bundledIssuer.host is required with bundledIssuer.enabled: the issuer's public hostname, which browsers and the API pods both resolve" .Values.bundledIssuer.host -}}
+{{- printf "%s://%s/realms/%s" (include "portalai.publicScheme" .) $host .Values.bundledIssuer.realm -}}
+{{- end -}}
+
+{{/*
+The app origin the bundled issuer's client allows (redirect URI + web origin).
+*/}}
+{{- define "portalai.appOrigin" -}}
+{{- if not .Values.ingress.enabled -}}
+{{- fail "bundledIssuer.enabled needs the chart's ingress (ingress.enabled + ingress.host): the realm allows sign-in from the app's public origin" -}}
+{{- end -}}
+{{- $host := required "ingress.host is required with bundledIssuer.enabled: the realm allows sign-in from the app's public origin" .Values.ingress.host -}}
+{{- printf "%s://%s" (include "portalai.publicScheme" .) $host -}}
+{{- end -}}
+
+{{/*
+OIDC_ISSUER / OIDC_AUDIENCE / OIDC_CLIENT_ID: an explicit oidc.* value wins;
+otherwise the bundled issuer's when it is enabled.
+*/}}
+{{- define "portalai.oidcIssuer" -}}
+{{- if .Values.oidc.issuer -}}
+{{- .Values.oidc.issuer -}}
+{{- else if .Values.bundledIssuer.enabled -}}
+{{- include "portalai.bundledIssuerUrl" . -}}
+{{- end -}}
+{{- end -}}
+{{- define "portalai.oidcAudience" -}}
+{{- if .Values.oidc.audience -}}
+{{- .Values.oidc.audience -}}
+{{- else if .Values.bundledIssuer.enabled -}}
+{{- .Values.bundledIssuer.audience -}}
+{{- end -}}
+{{- end -}}
+{{- define "portalai.oidcClientId" -}}
+{{- if .Values.oidc.clientId -}}
+{{- .Values.oidc.clientId -}}
+{{- else if .Values.bundledIssuer.enabled -}}
+{{- .Values.bundledIssuer.clientId -}}
 {{- end -}}
 {{- end -}}
 
@@ -109,20 +196,21 @@ UPLOAD_S3_BUCKET. Bundled default bucket when enabled, else minio.external.bucke
 MIGRATE_DATABASE_URL is a user able to CREATE ROLE, used only to provision the
 restricted SQL reader role (migration 0118's DDL) and grant it to the app user;
 the schema migrations themselves still run as DATABASE_URL, so the app user
-owns every table. Bundled DB: the subchart's `postgres` superuser. External DB:
+owns every table. Bundled DB: its `postgres` superuser. External DB:
 postgresql.external.migrationUser, when set; otherwise nothing is emitted and
 the app user provisions the role itself (it then needs CREATEROLE). The password is passed separately as
 MIGRATE_DATABASE_PASSWORD, never in the URL, so it needs no URL-encoding.
 */}}
 {{- define "portalai.migrationEnv" -}}
 {{- if .Values.postgresql.enabled }}
+{{- $pg := include "portalai.depName" (dict "root" . "dep" "postgresql") }}
 - name: MIGRATE_DATABASE_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ printf "%s-postgresql" .Release.Name }}
+      name: {{ $pg }}
       key: postgres-password
 - name: MIGRATE_DATABASE_URL
-  value: {{ printf "postgresql://postgres@%s-postgresql:5432/%s" .Release.Name .Values.postgresql.auth.database | quote }}
+  value: {{ printf "postgresql://postgres@%s:5432/%s" $pg .Values.postgresql.auth.database | quote }}
 {{- else if .Values.postgresql.external.migrationUser }}
 {{- $ext := .Values.postgresql.external }}
 - name: MIGRATE_DATABASE_PASSWORD
@@ -133,4 +221,32 @@ MIGRATE_DATABASE_PASSWORD, never in the URL, so it needs no URL-encoding.
 - name: MIGRATE_DATABASE_URL
   value: {{ printf "postgresql://%s@%s:%v/%s" ($ext.migrationUser | urlquery) $ext.host $ext.port $ext.database | quote }}
 {{- end }}
+{{- end -}}
+
+{{/*
+#946: bundled DB only. An init container that waits until the first-install
+migrate Job has committed: drizzle applies a run's pending migrations in one
+transaction and records them in drizzle.__drizzle_migrations, so a row there
+means the schema is in place. Runs psql from the bundled DB's image with the
+app's own DATABASE_URL. Call with the root context; `name` is fixed.
+*/}}
+{{- define "portalai.waitForMigrations" -}}
+- name: wait-for-migrations
+  image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+  imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+  command:
+    - sh
+    - -c
+    - |
+      until psql "$DATABASE_URL" -tAc 'select 1 from drizzle.__drizzle_migrations limit 1' 2>/dev/null | grep -q 1; do
+        echo "waiting for the database migrations"; sleep 3
+      done
+  env:
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "portalai.secretName" . }}
+          key: DATABASE_URL
+  securityContext:
+    {{- toYaml .Values.containerSecurityContext | nindent 4 }}
 {{- end -}}

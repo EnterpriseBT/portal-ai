@@ -11,7 +11,7 @@ metadata:
     # after the release is installed, once the DB and schema exist.
     "helm.sh/hook": post-install
     "helm.sh/hook-weight": "5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 6
   template:
@@ -27,6 +27,11 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      # #946: the bundled DB's first-install migrations may still be running.
+      initContainers:
+        {{- include "portalai.waitForMigrations" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: seed
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
