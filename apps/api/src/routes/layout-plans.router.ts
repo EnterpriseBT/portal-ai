@@ -141,10 +141,7 @@ layoutPlansRouter.post(
         payload
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Draft interpret failed"
-      );
+      logger.error({ error }, "Draft interpret failed");
       return next(error instanceof ApiError ? error : interpretFailure(error));
     }
   }
@@ -302,7 +299,7 @@ layoutPlansRouter.post(
     } catch (error) {
       logger.error(
         {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error,
           stack: error instanceof Error ? error.stack : undefined,
         },
         "Draft commit enqueue failed"

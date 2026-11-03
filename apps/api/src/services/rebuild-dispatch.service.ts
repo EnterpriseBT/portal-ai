@@ -79,7 +79,7 @@ export class RebuildDispatchService {
       logger.info({ reason }, "Site-rebuild dispatch accepted");
     } catch (error) {
       logger.warn(
-        { reason, error: error instanceof Error ? error.message : "Unknown" },
+        { reason, error },
         "Site-rebuild dispatch failed to reach GitHub"
       );
     }

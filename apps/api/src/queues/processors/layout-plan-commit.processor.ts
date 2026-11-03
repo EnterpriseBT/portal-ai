@@ -128,8 +128,7 @@ export const layoutPlanCommitProcessor: TypedJobProcessor<
         logger.error(
           {
             jobId,
-            cleanupErr:
-              cleanupErr instanceof Error ? cleanupErr.message : cleanupErr,
+            err: cleanupErr,
           },
           "Failed to rollback after final draft-commit failure (non-fatal)"
         );

@@ -145,10 +145,7 @@ if (isSaas()) {
         return res.status(200).json({ received: true });
       } catch (error) {
         if (error instanceof ApiError) return next(error);
-        logger.error(
-          { error: error instanceof Error ? error.message : "Unknown error" },
-          "Stripe webhook processing failed"
-        );
+        logger.error({ error }, "Stripe webhook processing failed");
         return next(
           new ApiError(
             500,
@@ -243,7 +240,7 @@ webhookRouter.post(
       await validateSnsSignature(message);
     } catch (error) {
       logger.warn(
-        { error: error instanceof Error ? error.message : "unknown" },
+        { error },
         "AWS Marketplace SNS signature verification failed"
       );
       return next(
@@ -283,10 +280,7 @@ webhookRouter.post(
 
       return res.status(200).json({ received: true });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "unknown" },
-        "AWS Marketplace webhook processing failed"
-      );
+      logger.error({ error }, "AWS Marketplace webhook processing failed");
       return next(
         new ApiError(
           500,

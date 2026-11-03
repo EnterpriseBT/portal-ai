@@ -175,10 +175,7 @@ jobEventsRouter.get(
       for (const event of held) deliver(event);
       if (JobModel.isTerminalStatus(current.status)) teardown(true);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to open SSE stream"
-      );
+      logger.error({ error }, "Failed to open SSE stream");
       return next(
         error instanceof ApiError
           ? error

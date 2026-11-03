@@ -250,10 +250,7 @@ fieldMappingRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list field mappings"
-      );
+      logger.error({ error }, "Failed to list field mappings");
       return next(
         error instanceof ApiError
           ? error
@@ -349,10 +346,7 @@ fieldMappingRouter.get(
         } as unknown as FieldMappingGetResponsePayload["fieldMapping"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch field mapping"
-      );
+      logger.error({ error }, "Failed to fetch field mapping");
       return next(
         error instanceof ApiError
           ? error
@@ -575,7 +569,7 @@ fieldMappingRouter.post(
         logger.error(
           {
             connectorEntityId: parsed.data.connectorEntityId,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Wide-table reconciliation failed after field-mapping create"
         );
@@ -599,10 +593,7 @@ fieldMappingRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create field mapping"
-      );
+      logger.error({ error }, "Failed to create field mapping");
       return next(
         error instanceof ApiError
           ? error
@@ -872,7 +863,7 @@ fieldMappingRouter.patch(
         logger.error(
           {
             connectorEntityId: existing.connectorEntityId,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Wide-table reconciliation failed after field-mapping update"
         );
@@ -903,10 +894,7 @@ fieldMappingRouter.patch(
           fieldMapping as unknown as FieldMappingUpdateResponsePayload["fieldMapping"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update field mapping"
-      );
+      logger.error({ error }, "Failed to update field mapping");
       return next(
         error instanceof ApiError
           ? error
@@ -1061,10 +1049,7 @@ fieldMappingRouter.get(
         counterpart: counterpartResult,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to assess field mapping impact"
-      );
+      logger.error({ error }, "Failed to assess field mapping impact");
       return next(
         error instanceof ApiError
           ? error
@@ -1222,7 +1207,7 @@ fieldMappingRouter.delete(
           logger.error(
             {
               connectorEntityId: mappingToDelete.connectorEntityId,
-              error: error instanceof Error ? error.message : "Unknown error",
+              error,
             },
             "Wide-table reconciliation failed after field-mapping delete"
           );
@@ -1246,10 +1231,7 @@ fieldMappingRouter.delete(
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete field mapping"
-      );
+      logger.error({ error }, "Failed to delete field mapping");
       return next(
         error instanceof ApiError
           ? error
@@ -1438,10 +1420,7 @@ fieldMappingRouter.get(
         }
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to validate bidirectional field mapping"
-      );
+      logger.error({ error }, "Failed to validate bidirectional field mapping");
       return next(
         error instanceof ApiError
           ? error

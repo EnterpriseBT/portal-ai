@@ -278,10 +278,7 @@ portalResultsRouter.post(
 
       return HttpService.success(res, { portalResult }, 201);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to pin portal result"
-      );
+      logger.error({ error }, "Failed to pin portal result");
       return next(
         error instanceof ApiError
           ? error
@@ -528,10 +525,7 @@ portalResultsRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to list portal results"
-      );
+      logger.error({ error }, "Failed to list portal results");
       return next(
         error instanceof ApiError
           ? error
@@ -615,10 +609,7 @@ portalResultsRouter.get(
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to get portal result"
-      );
+      logger.error({ error }, "Failed to get portal result");
       return next(
         error instanceof ApiError
           ? error
@@ -744,10 +735,7 @@ portalResultsRouter.patch(
 
       return HttpService.success(res, { portalResult });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to rename portal result"
-      );
+      logger.error({ error }, "Failed to rename portal result");
       return next(
         error instanceof ApiError
           ? error
@@ -840,10 +828,7 @@ portalResultsRouter.delete(
 
       return HttpService.success(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to delete portal result"
-      );
+      logger.error({ error }, "Failed to delete portal result");
       return next(
         error instanceof ApiError
           ? error

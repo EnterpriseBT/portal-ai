@@ -339,7 +339,7 @@ export class OrganizationDeleteService {
           {
             organizationId,
             stripeCustomerId,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Failed to list Stripe subscriptions during organization delete — cancelling the tracked one only"
         );
@@ -358,7 +358,7 @@ export class OrganizationDeleteService {
           {
             organizationId,
             stripeSubscriptionId: id,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Failed to cancel Stripe subscription during organization delete — reconcile manually"
         );
@@ -383,7 +383,7 @@ export class OrganizationDeleteService {
           {
             organizationId,
             s3Key,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Failed to delete S3 object during organization delete"
         );

@@ -116,7 +116,7 @@ export class EntityRecordCountCache {
       return Number.isFinite(parsed) ? parsed : null;
     } catch (error) {
       logger.warn(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error },
         "Count cache read failed; falling back to a live count"
       );
       return null;
@@ -141,10 +141,7 @@ export class EntityRecordCountCache {
         "SET count"
       );
     } catch (error) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Count cache write failed"
-      );
+      logger.warn({ error }, "Count cache write failed");
     }
   }
 
@@ -164,7 +161,7 @@ export class EntityRecordCountCache {
       );
     } catch (error) {
       logger.warn(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error },
         "Count cache invalidation failed; stale totals expire via TTL"
       );
     }

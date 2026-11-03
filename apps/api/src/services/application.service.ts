@@ -323,7 +323,7 @@ export class ApplicationService {
             logger.warn(
               {
                 userId: user.id,
-                error: err instanceof Error ? err.message : "Unknown error",
+                error: err,
               },
               "SSO invite re-check: profile fetch failed; denying"
             );
@@ -495,7 +495,7 @@ export class ApplicationService {
       logger.warn(
         {
           userId: user.id,
-          error: error instanceof Error ? error.message : "unknown",
+          error,
         },
         "recordLoginIfNewSession failed (non-fatal)"
       );

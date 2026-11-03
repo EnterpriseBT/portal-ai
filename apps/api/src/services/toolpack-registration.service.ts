@@ -327,7 +327,7 @@ export class ToolpackRegistrationService {
         throw blockedToApiError(url, err);
       }
       logger.warn(
-        { url, error: err instanceof Error ? err.message : "unknown" },
+        { url, error: err },
         "Metadata fetch failed; proceeding without metadata"
       );
       return null;

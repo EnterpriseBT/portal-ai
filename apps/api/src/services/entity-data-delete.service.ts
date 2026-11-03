@@ -54,7 +54,7 @@ export class EntityDataDeleteService {
       logger.error(
         {
           jobId: job.id,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         },
         "entity_data_delete dispatch failed; the retention purge will reclaim the records"
       );

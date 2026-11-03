@@ -66,7 +66,7 @@ export const requireOrgWritable = async (
   } catch (error) {
     // Fail-open: an inability to resolve the org is not proof of expiry.
     logger.warn(
-      { error: error instanceof Error ? error.message : "unknown" },
+      { error },
       "requireOrgWritable could not resolve the org; allowing the write"
     );
     return next();

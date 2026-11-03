@@ -256,7 +256,7 @@ function handleToolError(ctx: StreamContext, chunk: any): void {
       {
         toolName,
         toolCallId,
-        error: error instanceof Error ? error.message : String(error),
+        error,
       },
       "Tool threw during a portal turn"
     );

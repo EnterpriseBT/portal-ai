@@ -196,7 +196,7 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
               logger.error(
                 {
                   connectorEntityId: entityId,
-                  error: err instanceof Error ? err.message : String(err),
+                  error: err,
                 },
                 "reconcileEntity failed after field_mapping_update"
               );

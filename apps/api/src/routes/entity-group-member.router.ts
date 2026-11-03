@@ -170,10 +170,7 @@ entityGroupMemberRouter.get(
 
       return HttpService.success(res, { members });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list entity group members"
-      );
+      logger.error({ error }, "Failed to list entity group members");
       return next(
         error instanceof ApiError
           ? error
@@ -397,10 +394,7 @@ entityGroupMemberRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create entity group member"
-      );
+      logger.error({ error }, "Failed to create entity group member");
       return next(
         error instanceof ApiError
           ? error
@@ -580,10 +574,7 @@ entityGroupMemberRouter.patch(
           entityGroupMember as unknown as EntityGroupMemberUpdateResponsePayload["entityGroupMember"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update entity group member"
-      );
+      logger.error({ error }, "Failed to update entity group member");
       return next(
         error instanceof ApiError
           ? error
@@ -696,10 +687,7 @@ entityGroupMemberRouter.delete(
 
       return HttpService.success(res, { id: memberId });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity group member"
-      );
+      logger.error({ error }, "Failed to delete entity group member");
       return next(
         error instanceof ApiError
           ? error
@@ -930,10 +918,7 @@ entityGroupMemberRouter.get(
         matchingRecordCount,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to compute overlap"
-      );
+      logger.error({ error }, "Failed to compute overlap");
       return next(
         error instanceof ApiError
           ? error

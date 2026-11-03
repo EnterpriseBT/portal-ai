@@ -213,7 +213,7 @@ export const wideTableSearchIndexSweepProcessor = async (opts?: {
           {
             index: name,
             code: pgCode(error),
-            error: error instanceof Error ? error.message : String(error),
+            error,
           },
           "Search index build failed; the next sweep retries it"
         );

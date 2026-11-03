@@ -338,7 +338,7 @@ export class LayoutPlanDraftService {
         logger.warn(
           {
             connectorInstanceId,
-            err: err instanceof Error ? err.message : err,
+            err,
           },
           "Failed to flip pending → active after commit (non-fatal)"
         );
@@ -351,7 +351,7 @@ export class LayoutPlanDraftService {
         logger.warn(
           {
             uploadSessionId: workbookSource.uploadSessionId,
-            err: err instanceof Error ? err.message : err,
+            err,
           },
           "Failed to mark upload session committed (non-fatal)"
         );
@@ -426,7 +426,7 @@ export class LayoutPlanDraftService {
           logger.warn(
             {
               connectorInstanceId,
-              err: err instanceof Error ? err.message : err,
+              err,
             },
             "Failed to flip pending → error after commit rollback (non-fatal)"
           );
@@ -633,7 +633,7 @@ export class LayoutPlanDraftService {
       return meta?.nulStrippedValues ?? 0;
     } catch (err) {
       logger.warn(
-        { source, err: err instanceof Error ? err.message : err },
+        { source, err },
         "Couldn't read the NUL-stripped count for a commit (non-fatal)"
       );
       return 0;

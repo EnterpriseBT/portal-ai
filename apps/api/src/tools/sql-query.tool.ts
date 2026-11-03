@@ -145,7 +145,7 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
             userId,
           }).catch((err) => {
             logger.info(
-              { stationId, err: err instanceof Error ? err.message : err },
+              { stationId, err },
               "sql_query EXPLAIN probe failed; falling back to sync path"
             );
             return null;

@@ -106,10 +106,7 @@ billingRouter.get(
       const tiers = await BillingService.listBillingTiers(organization.id);
       return HttpService.success<BillingTiersGetResponse>(res, { tiers });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list billing tiers"
-      );
+      logger.error({ error }, "Failed to list billing tiers");
       return next(
         error instanceof ApiError
           ? error
@@ -193,10 +190,7 @@ billingRouter.post(
       );
       return HttpService.success<BillingCheckoutResponse>(res, result);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create checkout session"
-      );
+      logger.error({ error }, "Failed to create checkout session");
       return next(
         error instanceof ApiError
           ? error
@@ -273,10 +267,7 @@ billingRouter.post(
       });
       return HttpService.success<BillingSyncResponse>(res, result);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to sync billing from Stripe"
-      );
+      logger.error({ error }, "Failed to sync billing from Stripe");
       return next(
         error instanceof ApiError
           ? error
@@ -358,10 +349,7 @@ billingRouter.post(
       );
       return HttpService.success<BillingPortalResponse>(res, result);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create portal session"
-      );
+      logger.error({ error }, "Failed to create portal session");
       return next(
         error instanceof ApiError
           ? error

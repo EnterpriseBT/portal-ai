@@ -132,7 +132,7 @@ function tryDecryptRow<
     logger.warn(
       {
         toolpackId: (row as unknown as { id?: string }).id ?? "<unknown>",
-        error: error instanceof Error ? error.message : "Unknown",
+        error,
       },
       "organization_toolpacks row has an undecryptable signing_secret; " +
         "degrading it in the list rather than failing the request (#531)"

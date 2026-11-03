@@ -237,10 +237,7 @@ toolpacksRouter.get(
         total: filtered.length,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to list toolpacks"
-      );
+      logger.error({ error }, "Failed to list toolpacks");
       return next(
         error instanceof ApiError
           ? error
@@ -336,10 +333,7 @@ toolpacksRouter.get(
         },
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to fetch toolpack"
-      );
+      logger.error({ error }, "Failed to fetch toolpack");
       return next(
         error instanceof ApiError
           ? error
@@ -517,10 +511,7 @@ toolpacksRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to register toolpack"
-      );
+      logger.error({ error }, "Failed to register toolpack");
       return next(
         error instanceof ApiError
           ? error
@@ -657,10 +648,7 @@ toolpacksRouter.patch(
         toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack),
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to update toolpack"
-      );
+      logger.error({ error }, "Failed to update toolpack");
       return next(
         error instanceof ApiError
           ? error
@@ -758,10 +746,7 @@ toolpacksRouter.delete(
         affectedStationIds: affected,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to delete toolpack"
-      );
+      logger.error({ error }, "Failed to delete toolpack");
       return next(
         error instanceof ApiError
           ? error
@@ -858,10 +843,7 @@ toolpacksRouter.post(
         toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack),
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to refresh toolpack"
-      );
+      logger.error({ error }, "Failed to refresh toolpack");
       return next(
         error instanceof ApiError
           ? error
@@ -946,10 +928,7 @@ toolpacksRouter.post(
         { id, signingSecret: newSecret, rotatedAt: now }
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to rotate toolpack signing secret"
-      );
+      logger.error({ error }, "Failed to rotate toolpack signing secret");
       return next(
         error instanceof ApiError
           ? error

@@ -587,7 +587,7 @@ apiEndpointsRouter.post(
         logger.error(
           {
             connectorEntityId: result.entity.id,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error,
           },
           "Wide-table provisioning failed after api-endpoint create"
         );
@@ -616,7 +616,7 @@ apiEndpointsRouter.post(
           logger.error(
             {
               connectorEntityId: result.entity.id,
-              error: error instanceof Error ? error.message : "Unknown error",
+              error,
             },
             "Column materialization failed after api-endpoint create"
           );
@@ -1164,10 +1164,7 @@ apiEndpointsRouter.post(
 
       return HttpService.success(res, result, 200);
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to discover columns"
-      );
+      logger.error({ error }, "Failed to discover columns");
       return next(
         error instanceof ApiError
           ? error

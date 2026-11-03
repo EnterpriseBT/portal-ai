@@ -161,10 +161,7 @@ portalRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to create portal"
-      );
+      logger.error({ error }, "Failed to create portal");
       return next(
         error instanceof ApiError
           ? error
@@ -297,10 +294,7 @@ portalRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to list portals"
-      );
+      logger.error({ error }, "Failed to list portals");
       return next(
         error instanceof ApiError
           ? error
@@ -413,10 +407,7 @@ portalRouter.get(
         ...(pinnedBlocks ? { pinnedBlocks } : {}),
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to fetch portal"
-      );
+      logger.error({ error }, "Failed to fetch portal");
       return next(
         error instanceof ApiError
           ? error
@@ -504,10 +495,7 @@ portalRouter.delete(
 
       return HttpService.success(res, { portalId: id, deletedMessages });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to reset portal"
-      );
+      logger.error({ error }, "Failed to reset portal");
       return next(
         error instanceof ApiError
           ? error
@@ -677,10 +665,7 @@ portalRouter.patch(
 
       return HttpService.success(res, { portal });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to update portal"
-      );
+      logger.error({ error }, "Failed to update portal");
       return next(
         error instanceof ApiError
           ? error
@@ -755,10 +740,7 @@ portalRouter.delete(
 
       return HttpService.success(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to delete portal"
-      );
+      logger.error({ error }, "Failed to delete portal");
       return next(
         error instanceof ApiError
           ? error
@@ -849,10 +831,7 @@ portalRouter.post(
 
       return HttpService.success(res, { portalId: id, status: "streaming" });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to add portal message"
-      );
+      logger.error({ error }, "Failed to add portal message");
       return next(
         error instanceof ApiError
           ? error

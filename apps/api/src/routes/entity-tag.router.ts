@@ -159,10 +159,7 @@ entityTagRouter.get(
         offset,
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to list entity tags"
-      );
+      logger.error({ error }, "Failed to list entity tags");
       return next(
         error instanceof ApiError
           ? error
@@ -276,10 +273,7 @@ entityTagRouter.get(
         } as unknown as EntityTagGetResponsePayload["entityTag"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to fetch entity tag"
-      );
+      logger.error({ error }, "Failed to fetch entity tag");
       return next(
         error instanceof ApiError
           ? error
@@ -434,10 +428,7 @@ entityTagRouter.post(
         201
       );
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to create entity tag"
-      );
+      logger.error({ error }, "Failed to create entity tag");
       return next(
         error instanceof ApiError
           ? error
@@ -599,10 +590,7 @@ entityTagRouter.patch(
           entityTag as unknown as EntityTagUpdateResponsePayload["entityTag"],
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to update entity tag"
-      );
+      logger.error({ error }, "Failed to update entity tag");
       return next(
         error instanceof ApiError
           ? error
@@ -717,10 +705,7 @@ entityTagRouter.delete(
 
       return HttpService.success(res, { id });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to delete entity tag"
-      );
+      logger.error({ error }, "Failed to delete entity tag");
       return next(
         error instanceof ApiError
           ? error

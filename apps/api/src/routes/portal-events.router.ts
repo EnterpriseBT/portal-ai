@@ -232,10 +232,7 @@ portalEventsRouter.get(
           ? error.message
           : "Failed to stream portal response";
 
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to stream portal response"
-      );
+      logger.error({ error }, "Failed to stream portal response");
 
       // If SSE headers have already been sent, propagate the error over the
       // event stream so the client can display it. Otherwise fall through to
@@ -350,10 +347,7 @@ portalEventsRouter.get(
         }
       });
     } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to subscribe to portal events"
-      );
+      logger.error({ error }, "Failed to subscribe to portal events");
       return next(error);
     }
   }

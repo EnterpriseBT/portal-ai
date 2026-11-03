@@ -146,10 +146,7 @@ export const getApplicationMetadata = async (
     // missing token, 502 when Auth0 fails) reaches the client as itself. It
     // still fails closed; a 500 would only hide it behind the web's retries.
     if (error instanceof ApiError) return next(error);
-    logger.error(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      "Failed to resolve application metadata"
-    );
+    logger.error({ error }, "Failed to resolve application metadata");
     return next(
       new ApiError(
         500,
