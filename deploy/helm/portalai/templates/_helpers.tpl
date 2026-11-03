@@ -83,6 +83,51 @@ Call with a dict: (dict "root" . "secret" <name> "key" <key> "value" <explicit>)
 {{- end -}}
 
 {{/*
+The install's system principal, SYSTEM_ID (#953): the explicit
+`config.SYSTEM_ID`, else the value already in the release's config ConfigMap,
+else the hooks' copy (left by a failed first install), else "SYSTEM".
+Migrations read it as `portalai.system_id` (#952), so any value works, but it
+is write-once: every platform row carries it, and a change strands them. So an
+explicit value that differs from the install's existing one fails the render,
+and a blank or whitespace-padded one is refused. The value is handled as a
+string throughout, so `--set config.SYSTEM_ID=0` is the id "0", not "unset".
+
+This guards upgrades of a live release only. It reads the release's objects,
+not the database, so a reinstall over a surviving database (an external DB, a
+kept PVC) or a render without `lookup` (`helm template`, GitOps) isn't
+checked; the README says so, and #956 tracks a database-side guard.
+
+Never generated: `portalai.configData` renders twice per release (the config
+ConfigMap and the hooks' copy), and on a first install `lookup` finds neither,
+so a random value would differ between the two.
+*/}}
+{{- define "portalai.systemId" -}}
+{{- $set := hasKey .Values.config "SYSTEM_ID" -}}
+{{- $explicit := ternary (toString (get .Values.config "SYSTEM_ID")) "" $set -}}
+{{- if and $set (eq (trim $explicit) "") -}}
+{{- fail "config.SYSTEM_ID is blank: set the install's system principal (a UUID is recommended) or leave it out for \"SYSTEM\"" -}}
+{{- end -}}
+{{- if ne (trim $explicit) $explicit -}}
+{{- fail (printf "config.SYSTEM_ID %q has surrounding whitespace: the id is stored as given, so set it without" $explicit) -}}
+{{- end -}}
+{{- $existing := "" -}}
+{{- $fullname := include "portalai.fullname" . -}}
+{{- /* The release's config ConfigMap; else the hooks' copy, which a failed
+first install leaves behind after its pre-install hooks already wrote rows. */ -}}
+{{- range $name := list (printf "%s-config" $fullname) (printf "%s-hook-config" $fullname) -}}
+{{- if not $existing -}}
+{{- with lookup "v1" "ConfigMap" $.Release.Namespace $name -}}
+{{- $existing = get (default dict .data) "SYSTEM_ID" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and $set $existing (ne $explicit $existing) -}}
+{{- fail (printf "config.SYSTEM_ID is write-once: this install uses %q; changing it strands every platform row written under it (#953)" $existing) -}}
+{{- end -}}
+{{- coalesce $explicit $existing "SYSTEM" -}}
+{{- end -}}
+
+{{/*
 The app's public origin (the ingress host), or "" without one.
 */}}
 {{- define "portalai.publicScheme" -}}

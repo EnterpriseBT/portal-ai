@@ -115,18 +115,31 @@ const rejectScenarios = [
     error: /publicHost/,
   },
   {
-    // #946: the migrations write 'SYSTEM' as the system principal (0065,
-    // 0080), so any other id splits system ownership in two.
-    name: "a SYSTEM_ID other than the chart's (#946)",
+    // #953: a blank principal would boot no API (#948's guard) and write no
+    // platform rows; refuse it at render, like any other required value.
+    name: "a blank SYSTEM_ID (#953)",
     args: [
       "template",
       "p",
       CHART,
       ...IMAGE_ARGS,
-      "--set",
-      "config.SYSTEM_ID=other",
+      "--set-string",
+      "config.SYSTEM_ID=  ",
     ],
     error: /SYSTEM_ID/,
+  },
+  {
+    // #953 review: the id is stored as given, so " A " would differ from "A".
+    name: "a SYSTEM_ID with surrounding whitespace (#953)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set-string",
+      "config.SYSTEM_ID= a1 ",
+    ],
+    error: /SYSTEM_ID[\s\S]*whitespace/,
   },
   {
     name: "custom basemap without a style URL (#910)",
@@ -254,6 +267,13 @@ const apiHasNoMigrationCreds = (out) => {
 const configValues = (out, key) =>
   [
     ...manifest(out, "ConfigMap", "p-portalai-config").matchAll(
+      new RegExp(`^\\s+${key}: "([^"]*)"$`, "gm")
+    ),
+  ].map((m) => m[1]);
+// #953: a key's values in the hook copy, which the migrate/upgrade hooks read.
+const hookConfigValues = (out, key) =>
+  [
+    ...manifest(out, "ConfigMap", "p-portalai-hook-config").matchAll(
       new RegExp(`^\\s+${key}: "([^"]*)"$`, "gm")
     ),
   ].map((m) => m[1]);
@@ -511,6 +531,54 @@ const scenarios = [
     ],
   },
   {
+    // #953: an install may carry its own principal, as prod does. Both
+    // renders (the API's config and the hooks' copy) must agree, or the
+    // migrate hook writes one principal and the API reads another.
+    name: "an explicit SYSTEM_ID (#953)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "config.SYSTEM_ID=5f0c2a7e-0000-4000-8000-000000000000",
+    ],
+    assertions: [
+      [
+        "the id renders once in the config and hook copies",
+        (out) => {
+          const id = "5f0c2a7e-0000-4000-8000-000000000000";
+          const ids = configValues(out, "SYSTEM_ID");
+          const hook = hookConfigValues(out, "SYSTEM_ID");
+          return (
+            ids.length === 1 && ids[0] === id && hook.length === 1 && hook[0] === id
+          );
+        },
+      ],
+    ],
+  },
+  {
+    // #953 review: a falsy-looking value (`--set config.SYSTEM_ID=0`) once fell
+    // through to "SYSTEM"; it's a string id like any other.
+    name: "a numeric-looking SYSTEM_ID (#953)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "config.SYSTEM_ID=0",
+    ],
+    assertions: [
+      [
+        "renders as given, in both copies",
+        (out) =>
+          configValues(out, "SYSTEM_ID").join() === "0" &&
+          hookConfigValues(out, "SYSTEM_ID").join() === "0",
+      ],
+    ],
+  },
+  {
     name: "defaults (api + web + bundled data deps)",
     args: ["template", "p", CHART, ...IMAGE_ARGS],
     assertions: [
@@ -602,10 +670,16 @@ const scenarios = [
       [
         // Found on the live install: without it the API creates no users
         // (createdBy undefined), so every first sign-in answered 500.
-        "SYSTEM_ID is the chart's system principal, once (#946)",
+        "SYSTEM_ID defaults to SYSTEM, once, in the config and hook copies (#946, #953)",
         (out) => {
           const ids = configValues(out, "SYSTEM_ID");
-          return ids.length === 1 && ids[0] === "SYSTEM";
+          const hook = hookConfigValues(out, "SYSTEM_ID");
+          return (
+            ids.length === 1 &&
+            ids[0] === "SYSTEM" &&
+            hook.length === 1 &&
+            hook[0] === "SYSTEM"
+          );
         },
       ],
       [

@@ -7,16 +7,9 @@ twice, so a value lives in one place.
 {{- define "portalai.configData" -}}
 DEPLOY_MODE: {{ .Values.deployMode | quote }}
 # The system principal: `createdBy` on platform seeds and provisioned
-# defaults (#641); without it the API creates no users (#946). The chart owns
-# it and every install uses "SYSTEM". Migrations read whatever value they're
-# given (the `portalai.system_id` setting, #952), so this is the chart's
-# choice, not a migration constraint; #953 tracks a per-install id.
-{{- with get .Values.config "SYSTEM_ID" }}
-{{- if ne . "SYSTEM" }}
-{{- fail "config.SYSTEM_ID must be \"SYSTEM\": the chart owns the system principal (#953 tracks a per-install id), so leave it out" }}
-{{- end }}
-{{- end }}
-SYSTEM_ID: "SYSTEM"
+# defaults (#641); without it the API creates no users (#946). Write-once, from
+# `portalai.systemId` (#953): an install may set its own, never change it.
+SYSTEM_ID: {{ include "portalai.systemId" . | quote }}
 # Web config.js selects the auth provider from AUTH_PROVIDER; default it from
 # the deploy mode so residency installs get OIDC without a second knob.
 AUTH_PROVIDER: {{ if eq .Values.deployMode "residency" }}"oidc"{{ else }}"auth0"{{ end }}
