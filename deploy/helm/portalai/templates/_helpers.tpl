@@ -83,6 +83,33 @@ Call with a dict: (dict "root" . "secret" <name> "key" <key> "value" <explicit>)
 {{- end -}}
 
 {{/*
+The install's system principal, SYSTEM_ID (#953): the explicit
+`config.SYSTEM_ID`, else the value already in the release's config ConfigMap,
+else "SYSTEM". Migrations read it as `portalai.system_id` (#952), so any value
+works, but it is write-once: every platform row carries it, and a change
+strands them. So an explicit value that differs from the install's existing one
+fails the render, and a blank one is refused.
+
+Never generated: `portalai.configData` renders twice per release (the config
+ConfigMap and the hooks' copy), and on a first install `lookup` finds neither,
+so a random value would differ between the two.
+*/}}
+{{- define "portalai.systemId" -}}
+{{- $explicit := get .Values.config "SYSTEM_ID" -}}
+{{- if and (hasKey .Values.config "SYSTEM_ID") (eq (trim (toString $explicit)) "") -}}
+{{- fail "config.SYSTEM_ID is blank: set the install's system principal (a UUID is recommended) or leave it out for \"SYSTEM\"" -}}
+{{- end -}}
+{{- $existing := "" -}}
+{{- with lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "portalai.fullname" .)) -}}
+{{- $existing = get (default dict .data) "SYSTEM_ID" -}}
+{{- end -}}
+{{- if and $explicit $existing (ne (toString $explicit) $existing) -}}
+{{- fail (printf "config.SYSTEM_ID is write-once: this install uses %q; changing it strands every platform row written under it (#953)" $existing) -}}
+{{- end -}}
+{{- coalesce (toString (default "" $explicit)) $existing "SYSTEM" -}}
+{{- end -}}
+
+{{/*
 The app's public origin (the ingress host), or "" without one.
 */}}
 {{- define "portalai.publicScheme" -}}

@@ -138,7 +138,7 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
 | `imagePullSecrets` | `[]` | Pull secrets for a private registry. |
 | `deployMode` | `saas` | `saas` \| `residency`. Sets `DEPLOY_MODE` (API auth validator) and the web `config.js`. A residency install sets `residency` explicitly; the API then refuses to boot without `oidc.issuer`/`.audience` or with central Stripe credentials (`apps/api/src/config/deploy-mode.ts`). |
 | `oidc.issuer` / `.audience` / `.clientId` | `""` | Customer OIDC identity (residency). Reaches the API validator and the web `config.js`. |
-| `config` | `{}` | Non-secret env → ConfigMap. `SYSTEM_ID` is set by the chart (`SYSTEM`; the chart owns the system principal, and #953 tracks a per-install id) and any other value is refused. Others, e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`. `WEB_APP_URL` (invite links) and `PUBLIC_API_BASE_URL` (where webhook toolpack runtimes call back) default from `ingress.host`. Without the chart's ingress, set them here. A missing `WEB_APP_URL` refuses invitations; a missing `PUBLIC_API_BASE_URL` only stops webhook tools that stream data in, or return results too large to send inline (`WEBHOOK_CALLBACK_UNCONFIGURED`), so an install without custom webhook toolpacks can leave it. The install notes and a startup warning name either one. |
+| `config` | `{}` | Non-secret env → ConfigMap. `SYSTEM_ID` is the install's system principal (see *The system principal is write-once* below): set it once at install, a UUID recommended, or leave it out for `SYSTEM`. Others, e.g. `AUTH0_DOMAIN`, `PUBLIC_API_BASE_URL`, `WEB_APP_URL`, `CORS_ORIGIN`. `WEB_APP_URL` (invite links) and `PUBLIC_API_BASE_URL` (where webhook toolpack runtimes call back) default from `ingress.host`. Without the chart's ingress, set them here. A missing `WEB_APP_URL` refuses invitations; a missing `PUBLIC_API_BASE_URL` only stops webhook tools that stream data in, or return results too large to send inline (`WEBHOOK_CALLBACK_UNCONFIGURED`), so an install without custom webhook toolpacks can leave it. The install notes and a startup warning name either one. |
 | `secrets` | `{}` | Secret env → Secret (e.g. `ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `OAUTH_STATE_SECRET`). Never `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` on a residency install: the API refuses to boot with them. |
 | `existingSecret` | `""` | Use a pre-created Secret instead of rendering one from `secrets`. |
 | `api.replicaCount` / `web.replicaCount` | `1` | Replicas. |
@@ -209,6 +209,18 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
   the service, and the app or jobs then fail to authenticate. To rotate, change
   the password in the service first (`ALTER ROLE`, Keycloak's admin console),
   then set the value.
+- **The system principal is write-once (#953).** `config.SYSTEM_ID` is the
+  id every platform-created row carries as `createdBy` (seeds, provisioned
+  defaults, migration backfills), and the id members' "read what the platform
+  provisioned" grants match. Set it at install, a UUID is recommended so the
+  install's system rows are traceable to it (prod does the same), or leave it
+  out for `SYSTEM`. After that it never changes: an upgrade that sets a
+  different value fails (`config.SYSTEM_ID is write-once…`) before anything is
+  applied, because a new id would strand every row written under the old one.
+  An upgrade that leaves it out keeps the installed value, read back from the
+  release's ConfigMap. Under `helm template` / GitOps (no `lookup`), set it
+  explicitly on every render, or an install that started with a UUID renders
+  `SYSTEM`.
 - **Generated passwords need `lookup`.** An empty password is generated once
   and kept by reading the existing Secret back, which works under
   `helm install`/`upgrade` against a cluster. `helm template`, `--dry-run` and
