@@ -13,7 +13,6 @@ import {
   parseDeployMode,
   assertDeployModeConsistency,
   DeployModeConfigError,
-  systemIdWarning,
   isSaas,
   isResidency,
 } from "../../config/deploy-mode.js";
@@ -128,14 +127,14 @@ describe("SYSTEM_ID", () => {
     }
   });
 
-  it("boots with a SYSTEM_ID other than SYSTEM, and warns", () => {
-    const env = { ...saasEnv, SYSTEM_ID: "OTHER" };
+  // Prod's is a UUID by design (PROD_PROVISIONING.runbook.md), so any
+  // non-empty value boots.
+  it("accepts any non-empty SYSTEM_ID", () => {
+    const env = {
+      ...saasEnv,
+      SYSTEM_ID: "5f0c2a7e-0000-4000-8000-000000000000",
+    };
     expect(() => assertDeployModeConsistency(env)).not.toThrow();
-    expect(systemIdWarning(env)).toMatch(/SYSTEM_ID is "OTHER"/);
-  });
-
-  it("does not warn for SYSTEM", () => {
-    expect(systemIdWarning(saasEnv)).toBeNull();
   });
 });
 

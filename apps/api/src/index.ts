@@ -20,7 +20,6 @@ import { ApiCode } from "./constants/api-codes.constants.js";
 import { SsoConfig } from "./config/sso.config.js";
 import {
   assertDeployModeConsistency,
-  systemIdWarning,
   deployMode,
   isResidency,
 } from "./config/deploy-mode.js";
@@ -76,13 +75,6 @@ async function start() {
       "Deploy-mode config is inconsistent — refusing to start"
     );
     process.exit(1);
-  }
-
-  // #948: an unexpected SYSTEM_ID boots (the SaaS values are unconfirmed) but
-  // says so once.
-  const systemIdNotice = systemIdWarning();
-  if (systemIdNotice) {
-    logger.warn({ code: ApiCode.SYSTEM_ID_UNEXPECTED }, systemIdNotice);
   }
 
   // #891: a missing public URL doesn't stop the API (an install may never use

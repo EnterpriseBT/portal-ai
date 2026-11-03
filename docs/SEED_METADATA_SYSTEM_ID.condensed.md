@@ -27,7 +27,7 @@ Every logger call passes the error object, keeping the key it uses today (`err` 
 
 ## Decision — SYSTEM_ID is required at boot
 
-The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SYSTEM_ID is required: the system principal for platform-created rows"). A value other than `SYSTEM` logs a boot warning but doesn't refuse: the migrations write the literal `'SYSTEM'` (0065, 0066, 0080), but the SaaS value lives in SSM (`/portalai/<env>/system-id`) and isn't verified here. A refusal there would be a prod outage on an unverified assumption. `DeployModeEnv` gains `SYSTEM_ID`.
+The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SYSTEM_ID is required: the system principal for platform-created rows"). Any non-empty value boots, with no warning: prod's is a UUID by design (`docs/PROD_PROVISIONING.runbook.md` step 7), so a warning on a value other than `SYSTEM` would fire on every prod boot. (Drafted as a warning, then dropped during implementation once the runbook turned up.) `DeployModeEnv` gains `SYSTEM_ID`.
 
 ## Plan — 3 slices
 
@@ -35,7 +35,7 @@ The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SY
    - `__tests__/__integration__/services/seed.service.integration.test.ts`: a failing step rejects `seed()` and leaves no partial rows.
    - `__tests__/__integration__/scripts/db-upgrade.integration.test.ts`: a rejecting seed makes `runUpgrade` throw.
    - Run with `npm run test:integration -- --testPathPattern 'seed.service|db-upgrade'`.
-2. **Boot guard.** Files: `config/deploy-mode.ts`. Tests: `__tests__/config/deploy-mode.test.ts`. An empty `SYSTEM_ID` refuses in saas and in residency; a non-`SYSTEM` value warns and boots. Run with `npm run test:unit -- --testPathPattern deploy-mode`.
+2. **Boot guard.** Files: `config/deploy-mode.ts`. Tests: `__tests__/config/deploy-mode.test.ts`. An empty `SYSTEM_ID` refuses in saas and in residency; any non-empty value (a UUID) boots. Run with `npm run test:unit -- --testPathPattern deploy-mode`.
 3. **Log the Error.** Files: `middleware/metadata.middleware.ts` plus the 158 logger calls (mechanical; reviewed per file). New `__tests__/log-error-object.guard.test.ts`, written first and red on today's tree. `__tests__/middleware/metadata.middleware.test.ts`: a non-`ApiError` failure logs an `Error` whose message survives serialization. Run with `npm run test:unit -- --testPathPattern 'log-error-object|metadata.middleware'`, then `npm run lint` and `npm run type-check`.
 
 ## Smoke (manual, against your dev stack)
@@ -44,10 +44,10 @@ The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SY
 2. `SYSTEM_ID= node --env-file=.env dist/db/seed.js` prints the connector-definition error and exits 1 (`echo $?`). With `SYSTEM_ID` set, it exits 0.
 3. `SYSTEM_ID= node --env-file=.env dist/scripts/db-upgrade.js` logs `UPGRADE FAILED: …` and exits 1.
 4. With `npm run dev` running, stop the dev Postgres and load the dashboard. The API's error lines carry `err.message` (e.g. `connect ECONNREFUSED …`) and a stack, not `{"type":"string"}`. Restart Postgres.
-5. `SYSTEM_ID=OTHER node --env-file=.env dist/index.js` boots and logs the `SYSTEM_ID` warning once.
+5. `SYSTEM_ID=5f0c2a7e-0000-4000-8000-000000000000 node --env-file=.env dist/index.js` boots normally (prod's value is a UUID).
 
 ## Out of scope
 
-- Refusing a non-`SYSTEM` `SYSTEM_ID`. That waits until app-dev's and prod's SSM values are confirmed; then the warning becomes a refusal.
+- Migrations 0065, 0066 and 0080 write the literal `'SYSTEM'`, while prod's `SYSTEM_ID` is a UUID, so those rows may not read as `created_by_system` in prod. That's a separate question, not this ticket.
 - Logs already emitted: no backfill of past `{"type":"string"}` lines.
 - The 7 non-logger message carriers (intentional result/row payloads).

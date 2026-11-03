@@ -70,11 +70,6 @@ const ALLOWED_SYSTEM: Array<{ file: string; reason: string }> = [
     reason: "reads it to evaluate created_by_system",
   },
   {
-    file: "config/deploy-mode.ts",
-    reason:
-      "boot check: warns when SYSTEM_ID differs from the literal the migrations write (#948)",
-  },
-  {
     file: "config/swagger.config.ts",
     reason:
       "OpenAPI example createdBy on connector definitions, which are platform seeds",

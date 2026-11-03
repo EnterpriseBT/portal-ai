@@ -127,9 +127,6 @@ export enum ApiCode {
   /** Production has no public `PUBLIC_API_BASE_URL` / `WEB_APP_URL`; logged
    *  once per setting at startup, naming what it breaks (#891). */
   PUBLIC_URL_UNCONFIGURED = "PUBLIC_URL_UNCONFIGURED",
-  /** `SYSTEM_ID` is set to something other than the `SYSTEM` the migrations
-   *  write; logged once at startup, the API still boots (#948). */
-  SYSTEM_ID_UNEXPECTED = "SYSTEM_ID_UNEXPECTED",
   /** A webhook tool that must call back (a streaming pull, or staging a large
    *  result) refused: this server has no public API address (#891). Returned
    *  as a typed tool result. */
