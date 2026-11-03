@@ -579,6 +579,19 @@ const scenarios = [
         },
       ],
       [
+        // #946 adversarial: `weed server` defaults to 8 volume slots and 30 GB
+        // volumes; its internal collection took 7 and the bucket the last, so a
+        // renamed bucket had nowhere to grow (500 "No writable volumes").
+        "object storage sizes volume slots from its disk (#946)",
+        (out) => {
+          const sts = manifest(out, "StatefulSet", "p-portalai-s3");
+          return (
+            sts.includes("- -volume.max=0\n") &&
+            sts.includes("- -master.volumeSizeLimitMB=512\n")
+          );
+        },
+      ],
+      [
         // #946 review: a word match took portalai-uploads-old for the bucket.
         "bucket Job matches the bucket name exactly (#946)",
         (out) =>

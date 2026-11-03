@@ -90,6 +90,12 @@ spec:
             - -dir=/data
             - -ip=$(POD_IP)
             - -ip.bind=0.0.0.0
+            # Volume slots from free disk / volume size, not the default fixed
+            # 8: the internal collection takes 7, so with 8 a second bucket (a
+            # rename) could never grow (#946). Volumes aren't preallocated, and
+            # the filer chunks objects, so 512 MB volumes cap no upload.
+            - -volume.max=0
+            - -master.volumeSizeLimitMB=512
             - -s3
             - -s3.port=8333
             - -s3.config=/etc/seaweedfs/s3.json
