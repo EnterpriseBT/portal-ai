@@ -45,14 +45,21 @@ export async function assertSystemPrincipal(
   }
 }
 
+/** Whether migration 0134 has created the table. */
+export async function hasSystemPrincipalTable(
+  run: SqlRunner
+): Promise<boolean> {
+  const [exists] = await run(
+    "SELECT to_regclass('public.system_principal') IS NOT NULL AS present"
+  );
+  return exists?.present === true;
+}
+
 /** The recorded principal; null before 0134 or when no row is recorded. */
 export async function readSystemPrincipal(
   run: SqlRunner
 ): Promise<string | null> {
-  const [exists] = await run(
-    "SELECT to_regclass('public.system_principal') IS NOT NULL AS present"
-  );
-  if (!exists?.present) return null;
+  if (!(await hasSystemPrincipalTable(run))) return null;
   const [row] = await run("SELECT id FROM system_principal LIMIT 1");
   return typeof row?.id === "string" ? row.id : null;
 }
@@ -62,6 +69,25 @@ export async function readSystemPrincipal(
  * a test truncate re-records rather than leaving the guard off). A no-op when
  * a row exists, matching or not: `assertSystemPrincipal` decides that.
  */
+/**
+ * Assert, record when nothing is recorded, then assert again: a concurrent
+ * first record under another principal (two boots, or a boot racing a
+ * migrate) wins the `ON CONFLICT`, and the re-check refuses the loser rather
+ * than letting it run under an unrecorded id.
+ */
+export async function ensureSystemPrincipal(
+  run: SqlRunner,
+  systemId: string
+): Promise<void> {
+  const read = () => readSystemPrincipal(run);
+  const recorded = await read();
+  await assertSystemPrincipal(async () => recorded, systemId);
+  if (recorded === null) {
+    await recordSystemPrincipal(run, systemId);
+    await assertSystemPrincipal(read, systemId);
+  }
+}
+
 export async function recordSystemPrincipal(
   run: SqlRunner,
   systemId: string

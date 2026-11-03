@@ -29,6 +29,14 @@ The fix records the principal in the database on first migrate, and refuses a mi
 - **Where it's checked.** A shared `assertSystemPrincipal(read, systemId)` reads the row (absent → no check) and throws `SystemPrincipalMismatchError` naming both values when they differ.
   - `runMigrations` checks **before** `migrate()`, guarded on `to_regclass('public.system_principal')`, since the table doesn't exist before 0134. A wrong principal applies no migration.
   - `start()` checks right after `connectDatabase()`: `logger.fatal({ code: SYSTEM_ID_MISMATCH }, …)`, then exit 1.
+- **Refinements from code review:**
+  - Boot catches only a real mismatch as `SYSTEM_ID_MISMATCH`. Any other failure is `SYSTEM_PRINCIPAL_CHECK_FAILED`; both exit 1.
+  - A database without the table (a local `npm run dev` before `db:migrate`) warns `SYSTEM_PRINCIPAL_UNRECORDED` and boots.
+  - `ensureSystemPrincipal` re-checks after recording, so a concurrent first record under another id is refused.
+  - 0134 refuses to record a principal that the existing connector definitions don't carry, so the first guarded release can't record a changed value.
+  - `runMigrations` checks before the reader-role provisioning pass.
+  - The job workers are created after every boot guard, so a refusing task never takes a job.
+  - `drizzle.config.ts` excludes the table from `db:push`.
 - **Not a Drizzle table.** It's raw SQL, like the advisory lock and the migrations journal. It has no model, no repository and no routes, and it holds one value no feature reads.
 
 ## Plan — 1 slice

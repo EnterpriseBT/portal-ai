@@ -15,6 +15,25 @@ CREATE TABLE IF NOT EXISTS "system_principal" (
 	"created" bigint NOT NULL
 );
 --> statement-breakpoint
+-- Before recording, check the principal against the platform rows already
+-- here (#956 review): the release that adds this guard has nothing else to
+-- compare with, and recording a changed SYSTEM_ID would make the guard protect
+-- the wrong one. Connector definitions are seeded by the global seed under the
+-- principal, and nothing else writes them. A fresh database has none yet.
+DO $$
+DECLARE
+  principal text := portalai_system_id();
+  found text;
+BEGIN
+  IF EXISTS (SELECT 1 FROM "connector_definitions")
+     AND NOT EXISTS (SELECT 1 FROM "connector_definitions" WHERE "created_by" = principal)
+  THEN
+    SELECT "created_by" INTO found FROM "connector_definitions" LIMIT 1;
+    RAISE EXCEPTION 'SYSTEM_ID % doesn''t match this database''s platform rows (connector definitions carry %): SYSTEM_ID is write-once (#956)', principal, found;
+  END IF;
+END;
+$$;
+--> statement-breakpoint
 INSERT INTO "system_principal" ("singleton", "id", "created")
 VALUES (true, portalai_system_id(), (extract(epoch from now()) * 1000)::bigint)
 ON CONFLICT ("singleton") DO NOTHING;

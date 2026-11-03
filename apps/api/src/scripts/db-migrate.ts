@@ -16,8 +16,8 @@ import { createLogger } from "../utils/logger.util.js";
 import { requireSystemId } from "../utils/system.util.js";
 import {
   assertSystemPrincipal,
+  ensureSystemPrincipal,
   readSystemPrincipal,
-  recordSystemPrincipal,
   type SqlRunner,
 } from "../db/system-principal.util.js";
 
@@ -183,7 +183,6 @@ export async function runMigrations(): Promise<void> {
   // SYSTEM_ID, rather than inside 0133 (#952).
   const systemId = requireSystemId(environment.SYSTEM_ID);
   const plan = planMigrations(environment);
-  if (plan.provision) await provisionReaderRole(plan.provision);
 
   const target = plan.migrate;
   const resolver = createDbPasswordResolver({
@@ -203,13 +202,16 @@ export async function runMigrations(): Promise<void> {
   try {
     const run: SqlRunner = (text, params) =>
       sql.unsafe(text, params as never[]);
-    // #956: a database provisioned under another principal applies nothing;
-    // a new SYSTEM_ID would strand every platform row (write-once).
+    // #956: a database provisioned under another principal gets nothing
+    // applied, the reader-role provisioning pass included: a new SYSTEM_ID
+    // would strand every platform row (write-once).
     await assertSystemPrincipal(() => readSystemPrincipal(run), systemId);
+    if (plan.provision) await provisionReaderRole(plan.provision);
     logger.info({ migrationsFolder }, "Running database migrations…");
     await migrate(drizzle(sql), { migrationsFolder });
-    // 0134 records it on first apply; this re-records a table emptied since.
-    await recordSystemPrincipal(run, systemId);
+    // 0134 records it on first apply; this re-records a table emptied since,
+    // and re-checks after a concurrent first record.
+    await ensureSystemPrincipal(run, systemId);
     logger.info("Migrations completed");
   } finally {
     await sql.end();
