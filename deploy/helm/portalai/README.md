@@ -225,7 +225,7 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
     value applies unchecked;
   - a reinstall over a database that outlived the release (an external DB, a
     kept PVC, a changed `fullnameOverride`) isn't checked either. Reuse the
-    original value. A database-side guard is tracked separately.
+    original value. A database-side guard is #956.
 - **Generated passwords need `lookup`.** An empty password is generated once
   and kept by reading the existing Secret back, which works under
   `helm install`/`upgrade` against a cluster. `helm template`, `--dry-run` and
