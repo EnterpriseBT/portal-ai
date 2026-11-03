@@ -119,8 +119,8 @@ describe("SYSTEM_ID", () => {
   it.each([
     ["saas", saasEnv],
     ["residency", residencyEnv],
-  ])("refuses an empty SYSTEM_ID in %s", (_mode, env) => {
-    for (const SYSTEM_ID of [undefined, ""]) {
+  ])("refuses an empty or blank SYSTEM_ID in %s", (_mode, env) => {
+    for (const SYSTEM_ID of [undefined, "", "   "]) {
       expect(() => assertDeployModeConsistency({ ...env, SYSTEM_ID })).toThrow(
         /SYSTEM_ID is required/
       );

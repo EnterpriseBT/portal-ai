@@ -6,6 +6,7 @@ import pino from "pino";
 import {
   BASE_REDACT_PATHS,
   createLogger,
+  errorSummary,
   logger,
   sanitizeError,
 } from "../../utils/logger.util.js";
@@ -199,5 +200,53 @@ describe("BASE_REDACT_PATHS", () => {
     const output = lines.join("");
     expect(output).not.toContain(secret);
     expect(output).toContain("[Redacted]");
+  });
+});
+
+// #948: the log message text for an error, under sanitizeError's rules.
+describe("errorSummary", () => {
+  it("keeps a non-DB error's message", () => {
+    expect(errorSummary(new TypeError("bad input"))).toBe(
+      "TypeError: bad input"
+    );
+  });
+
+  it("reduces a DB error to its class and SQLSTATE", () => {
+    const summary = errorSummary(new FakePostgresError());
+    expect(summary).toBe("PostgresError: Database error (23505)");
+    expect(summary).not.toContain("alice@corp.com");
+  });
+
+  it("never prints a DrizzleQueryError's SQL or params", () => {
+    const e = new Error(
+      "Failed query: insert into t values ($1)\nparams: alice"
+    );
+    expect(errorSummary(e)).toBe("Error: Database query failed");
+  });
+
+  it("names only the type of a non-Error", () => {
+    expect(errorSummary("alice@corp.com")).toBe("non-Error thrown (string)");
+  });
+});
+
+describe("BASE_REDACT_PATHS error.* mirror (#948)", () => {
+  it("redacts DB value fields under the error key, as under err", () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _enc, cb) {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const testLogger = pino({ redact: { paths: BASE_REDACT_PATHS } }, stream);
+
+    testLogger.error(
+      { error: { detail: "Key (email)=(alice@corp.com)", query: "select 1" } },
+      "m"
+    );
+
+    const output = lines.join("");
+    expect(output).not.toContain("alice@corp.com");
+    expect(output).not.toContain("select 1");
   });
 });

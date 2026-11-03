@@ -368,7 +368,7 @@ export class DemoSeedService {
         // it was; replacing the station's packs without it would detach it.
         custom = (await DemoSeedService.findDemoToolpack(orgId))?.id ?? null;
         logger.warn(
-          { orgId, baseUrl, err: (err as Error).message, kept: custom },
+          { orgId, baseUrl, err, kept: custom },
           custom
             ? "custom toolpack refresh failed — keeping the registered one"
             : "custom toolpack registration failed — enabling built-ins only"

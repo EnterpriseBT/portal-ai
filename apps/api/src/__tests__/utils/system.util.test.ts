@@ -1,6 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
 import { UUIDv4Factory, DateFactory } from "@portalai/core/utils";
-import { SystemUtilities } from "../../utils/system.util.js";
+import { SystemUtilities, requireSystemId } from "../../utils/system.util.js";
 import { environment } from "../../environment.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -34,6 +34,29 @@ describe("SystemUtilities.id", () => {
     it("system returns the SYSTEM_ID from environment", () => {
       expect(SystemUtilities.id.system).toBe(environment.SYSTEM_ID);
     });
+  });
+});
+
+// #948: every entry point fails with one message, not a createdBy ZodError.
+describe("requireSystemId", () => {
+  it.each([[undefined], [""], ["   "]])("refuses %p", (value) => {
+    expect(() => requireSystemId(value)).toThrow(/SYSTEM_ID is required/);
+  });
+
+  it("returns a set value as-is", () => {
+    const id = "5f0c2a7e-0000-4000-8000-000000000000";
+    expect(requireSystemId(id)).toBe(id);
+  });
+
+  it("reading id.v4 doesn't check SYSTEM_ID", () => {
+    const saved = environment.SYSTEM_ID;
+    environment.SYSTEM_ID = undefined;
+    try {
+      expect(SystemUtilities.id.v4).toBeInstanceOf(UUIDv4Factory);
+      expect(() => SystemUtilities.id.system).toThrow(/SYSTEM_ID is required/);
+    } finally {
+      environment.SYSTEM_ID = saved;
+    }
   });
 });
 

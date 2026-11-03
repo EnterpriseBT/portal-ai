@@ -361,14 +361,8 @@ export class SeedService {
   async seed() {
     const { tx, commit, rollback } = await DbService.createTransactionClient();
     try {
-      await this.seedTiers(tx).catch((error) => {
-        console.error("Error seeding tiers:", error);
-        throw error; // Rethrow to trigger rollback
-      });
-      await this.seedConnectorDefinitions(tx).catch((error) => {
-        console.error("Error seeding connector definitions:", error);
-        throw error; // Rethrow to trigger rollback
-      });
+      await this.seedTiers(tx);
+      await this.seedConnectorDefinitions(tx);
       await commit();
     } catch (error) {
       await rollback();

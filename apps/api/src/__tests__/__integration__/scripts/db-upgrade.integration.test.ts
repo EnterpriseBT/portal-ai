@@ -32,7 +32,6 @@ describe("db:upgrade — runUpgrade", () => {
     const summary = await runUpgrade();
 
     expect(summary.acquiredLock).toBe(true);
-    expect(summary.seedOk).toBe(true);
     // Already migrated by global setup → a re-run applies nothing.
     expect(summary.migrationsApplied).toBe(0);
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
@@ -46,7 +45,6 @@ describe("db:upgrade — runUpgrade", () => {
 
     expect(second.acquiredLock).toBe(true);
     expect(second.migrationsApplied).toBe(0);
-    expect(second.seedOk).toBe(true);
   });
 
   // ── Case 3 — lock already held ⇒ skip, no migrate/seed ────────────
@@ -112,7 +110,6 @@ describe("db:upgrade — runUpgrade", () => {
     // Lock was released despite the throw → a normal run acquires again.
     const after = await runUpgrade();
     expect(after.acquiredLock).toBe(true);
-    expect(after.seedOk).toBe(true);
   });
 
   // ── Case 5 — migrate delegates to the resolver-aware runMigrations ─

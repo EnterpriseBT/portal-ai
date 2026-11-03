@@ -13,6 +13,7 @@
  */
 
 import { environment } from "../environment.js";
+import { SYSTEM_ID_REQUIRED } from "../utils/system.util.js";
 
 export type DeployMode = "saas" | "residency";
 
@@ -84,10 +85,8 @@ export function assertDeployModeConsistency(
 
   // Every mode (#948): without it the API boots and fails only at the first
   // user creation, so every sign-in answers 500.
-  if (!env.SYSTEM_ID) {
-    problems.push(
-      "SYSTEM_ID is required: the system principal for platform-created rows"
-    );
+  if (!env.SYSTEM_ID?.trim()) {
+    problems.push(SYSTEM_ID_REQUIRED);
   }
 
   if (mode === "residency") {

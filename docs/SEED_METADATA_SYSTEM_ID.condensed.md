@@ -27,7 +27,7 @@ Every logger call passes the error object, keeping the key it uses today (`err` 
 
 ## Decision — SYSTEM_ID is required at boot
 
-The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SYSTEM_ID is required: the system principal for platform-created rows"). Any non-empty value boots, with no warning: prod's is a UUID by design (`docs/PROD_PROVISIONING.runbook.md` step 7), so a warning on a value other than `SYSTEM` would fire on every prod boot. (Drafted as a warning, then dropped during implementation once the runbook turned up.) `DeployModeEnv` gains `SYSTEM_ID`.
+The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty or blank ("SYSTEM_ID is required: the system principal for platform-created rows"). `SystemUtilities.id.system` throws the same message, so the seed and upgrade entrypoints name the variable rather than failing `createdBy` validation (added in code review). Any non-empty value boots, with no warning: prod's is a UUID by design (`docs/PROD_PROVISIONING.runbook.md` step 7), so a warning on a value other than `SYSTEM` would fire on every prod boot. (Drafted as a warning, then dropped during implementation once the runbook turned up.) `DeployModeEnv` gains `SYSTEM_ID`.
 
 ## Plan — 3 slices
 
@@ -40,9 +40,9 @@ The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SY
 
 ## Smoke (manual, against your dev stack)
 
-1. In `apps/api`, run `npm run build`, then `SYSTEM_ID= node --env-file=.env dist/index.js`. It refuses to boot, naming `SYSTEM_ID`, with a non-zero exit (not `npm start`, which orphans the process).
-2. `SYSTEM_ID= node --env-file=.env dist/db/seed.js` prints the connector-definition error and exits 1 (`echo $?`). With `SYSTEM_ID` set, it exits 0.
-3. `SYSTEM_ID= node --env-file=.env dist/scripts/db-upgrade.js` logs `UPGRADE FAILED: …` and exits 1.
+1. In `apps/api`, run `npm run build`, then `SYSTEM_ID= node --env-file=.env dist/index.js`, and again with `SYSTEM_ID="  "`. Each refuses to boot, naming `SYSTEM_ID`, with a non-zero exit (not `npm start`, which orphans the process).
+2. The seed fails only on a fresh DB, and only with `SYSTEM_ID` **unset**. An already-seeded DB writes nothing, and `SYSTEM_ID=` (empty) passes validation. Make a scratch DB: `docker exec portalai-postgres-test-1 psql -U postgres -c "CREATE DATABASE smoke948"`, set `U=postgresql://postgres:postgres@postgres-test:5432/smoke948`, then run `DATABASE_URL=$U node --env-file=.env dist/scripts/db-migrate.js`. Write an env file without the variable: `grep -v '^SYSTEM_ID' .env > /tmp/env-nosysid`. Then `env -u SYSTEM_ID DATABASE_URL=$U node --env-file=/tmp/env-nosysid dist/db/seed.js` logs `Error during seeding: Error: SYSTEM_ID is required: …` and exits 1 (`echo $?`). With `--env-file=.env` it prints `Seeding completed successfully.` and exits 0.
+3. Before the step-2 success run (the failed seed rolled back, so `smoke948` is still unseeded), the same unset-`SYSTEM_ID` command with `dist/scripts/db-upgrade.js` logs `UPGRADE FAILED: Error: SYSTEM_ID is required: …` and exits 1. Afterwards, `DROP DATABASE smoke948`.
 4. With `npm run dev` running, stop the dev Postgres and load the dashboard. The API's error lines carry `err.message` (e.g. `connect ECONNREFUSED …`) and a stack, not `{"type":"string"}`. Restart Postgres.
 5. `SYSTEM_ID=5f0c2a7e-0000-4000-8000-000000000000 node --env-file=.env dist/index.js` boots normally (prod's value is a UUID).
 
@@ -51,3 +51,4 @@ The boot guard refuses to start in **every** mode when `SYSTEM_ID` is empty ("SY
 - Migrations 0065, 0066 and 0080 write the literal `'SYSTEM'`, while prod's `SYSTEM_ID` is a UUID, so those rows may not read as `created_by_system` in prod. That's a separate question, not this ticket.
 - Logs already emitted: no backfill of past `{"type":"string"}` lines.
 - The 7 non-logger message carriers (intentional result/row payloads).
+- Non-DB error messages now reach the logs in full, per #540's design (only DB errors are redacted). A few can quote customer values: the SQL tool's `ApiError` wrapping a Postgres 22xxx input error, a workbook-cache `JSON.parse` `SyntaxError`. Accepted in code review; narrowing that belongs to the redaction itself, not this ticket.

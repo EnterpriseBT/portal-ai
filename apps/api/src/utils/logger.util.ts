@@ -89,6 +89,18 @@ export function sanitizeError(err: unknown, depth = 0): unknown {
  * so the request logger (`createHttpLogger`), whose pino-http child replaces a
  * parent's `redact`, applies them to every request-scoped log too.
  */
+/**
+ * #948: an error's one-line description for a log message's text, through the
+ * same rules as `sanitizeError`: a DB error reads as its class and SQLSTATE,
+ * never its SQL or bound values. Message text isn't serialized, so a raw
+ * `${error.message}` there skips the sanitizer that the `err` field gets.
+ */
+export function errorSummary(err: unknown): string {
+  const s = sanitizeError(err) as { type: string; message?: string };
+  if (s.message === undefined) return `non-Error thrown (${s.type})`;
+  return s.message ? `${s.type}: ${s.message}` : s.type;
+}
+
 export const BASE_REDACT_PATHS: string[] = [
   "*.password",
   "*.token",
@@ -104,10 +116,11 @@ export const BASE_REDACT_PATHS: string[] = [
   // #911: a toolpack registration body carries the builder's signing secret.
   "*.signingSecret",
   "*.authorization",
-  // #540: DB-error value fields — defense-in-depth behind the `err`
+  // #540: DB-error value fields — defense-in-depth behind the `err`/`error`
   // serializer above (which already allowlists these away). Scoped to the
-  // `err`/`err.cause` paths, not `*.`, so unrelated fields that legitimately
-  // carry a `detail`/`query` key are never censored.
+  // `err`/`error` paths and their `cause`, not `*.`, so unrelated fields that
+  // legitimately carry a `detail`/`query` key are never censored. Both keys
+  // are mirrored (#948): most logger calls use `error`.
   "err.detail",
   "err.where",
   "err.table",
@@ -122,6 +135,20 @@ export const BASE_REDACT_PATHS: string[] = [
   "err.cause.table",
   "err.cause.column",
   "err.cause.constraint",
+  "error.detail",
+  "error.where",
+  "error.table",
+  "error.column",
+  "error.constraint",
+  "error.internalQuery",
+  "error.query",
+  "error.parameters",
+  "error.raw",
+  "error.cause.detail",
+  "error.cause.where",
+  "error.cause.table",
+  "error.cause.column",
+  "error.cause.constraint",
 ];
 
 /**
