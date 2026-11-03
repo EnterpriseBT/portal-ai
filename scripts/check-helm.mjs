@@ -129,6 +129,19 @@ const rejectScenarios = [
     error: /SYSTEM_ID/,
   },
   {
+    // #953 review: the id is stored as given, so " A " would differ from "A".
+    name: "a SYSTEM_ID with surrounding whitespace (#953)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set-string",
+      "config.SYSTEM_ID= a1 ",
+    ],
+    error: /SYSTEM_ID[\s\S]*whitespace/,
+  },
+  {
     name: "custom basemap without a style URL (#910)",
     args: [
       "template",
@@ -541,6 +554,27 @@ const scenarios = [
             ids.length === 1 && ids[0] === id && hook.length === 1 && hook[0] === id
           );
         },
+      ],
+    ],
+  },
+  {
+    // #953 review: a falsy-looking value (`--set config.SYSTEM_ID=0`) once fell
+    // through to "SYSTEM"; it's a string id like any other.
+    name: "a numeric-looking SYSTEM_ID (#953)",
+    args: [
+      "template",
+      "p",
+      CHART,
+      ...IMAGE_ARGS,
+      "--set",
+      "config.SYSTEM_ID=0",
+    ],
+    assertions: [
+      [
+        "renders as given, in both copies",
+        (out) =>
+          configValues(out, "SYSTEM_ID").join() === "0" &&
+          hookConfigValues(out, "SYSTEM_ID").join() === "0",
       ],
     ],
   },

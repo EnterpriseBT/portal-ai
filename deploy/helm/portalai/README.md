@@ -218,9 +218,14 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
   different value fails (`config.SYSTEM_ID is write-once…`) before anything is
   applied, because a new id would strand every row written under the old one.
   An upgrade that leaves it out keeps the installed value, read back from the
-  release's ConfigMap. Under `helm template` / GitOps (no `lookup`), set it
-  explicitly on every render, or an install that started with a UUID renders
-  `SYSTEM`.
+  release's ConfigMap. The check reads the release's objects, not the
+  database, so it guards upgrades of a live release only:
+  - under `helm template` / GitOps (no `lookup`) it doesn't run. Set the value
+    explicitly on every render; leaving it out renders `SYSTEM`, and a changed
+    value applies unchecked;
+  - a reinstall over a database that outlived the release (an external DB, a
+    kept PVC, a changed `fullnameOverride`) isn't checked either. Reuse the
+    original value. A database-side guard is tracked separately.
 - **Generated passwords need `lookup`.** An empty password is generated once
   and kept by reading the existing Secret back, which works under
   `helm install`/`upgrade` against a cluster. `helm template`, `--dry-run` and
