@@ -99,7 +99,16 @@ describe("signIn", () => {
  * A fake Auth0 combined form (#963). `raceFills` password fills land in the
  * username field instead, as Auth0's autofocus did on v1.2.1's verify-login.
  */
-function fakeAuth0(opts: { raceFills?: number; combined?: boolean } = {}) {
+function fakeAuth0(
+  opts: {
+    raceFills?: number;
+    combined?: boolean;
+    /** What the password field keeps of a fill (a maxlength, a script). */
+    keepPassword?: (v: string) => string;
+    /** A username fill that never settles, like a hung action. */
+    hangUsername?: boolean;
+  } = {}
+) {
   const form = { username: "", password: "" };
   let race = opts.raceFills ?? 0;
   const combined = opts.combined ?? true;
@@ -111,6 +120,12 @@ function fakeAuth0(opts: { raceFills?: number; combined?: boolean } = {}) {
   };
   const field = (name: "username" | "password") => ({
     fill: async (v: string) => {
+      if (name === "username" && opts.hangUsername)
+        return new Promise<void>(() => undefined);
+      if (name === "password" && opts.keepPassword) {
+        form.password = opts.keepPassword(v);
+        return;
+      }
       if (name === "password" && race > 0) {
         race -= 1;
         form.username += v;
@@ -204,5 +219,60 @@ describe("signIn checks the form before submitting (#963)", () => {
     expect(err.message).toContain("Wrong email or password");
     expect(err.message).toContain("tenant.auth0.test/u/login");
     expect(err.message).not.toContain("state=abc");
+  });
+});
+
+describe("signIn's failure paths stay clean (#963 review)", () => {
+  // A hang inside sign-in must still reach the cleanup: the test timeout
+  // would otherwise screenshot the live form.
+  it("gives up at its own deadline and still leaves the page blank", async () => {
+    const { page, state } = fakeAuth0({ hangUsername: true });
+    const err = (await signIn(page, { ...QA, deadlineMs: 50 }).catch(
+      (e: Error) => e
+    )) as Error;
+    expect(err).toBeInstanceOf(E2eSignInError);
+    expect(err.message).toMatch(/didn't finish within/);
+    expect(state.visited.at(-1)).toBe("about:blank");
+    expect(state.submits).toBe(0);
+  });
+
+  it("names the password field when it's the one that didn't hold", async () => {
+    const { page, state } = fakeAuth0({ keepPassword: (v) => v.slice(0, 4) });
+    const err = (await signIn(page, QA).catch((e: Error) => e)) as Error;
+    expect(state.submits).toBe(0);
+    expect(err.message).toMatch(/password field/);
+    expect(err.message).not.toMatch(/username field/);
+  });
+
+  // Playwright's call logs quote the navigated URL; Auth0's query carries the
+  // login transaction's state.
+  it("drops URL queries from Playwright's own error text", async () => {
+    const page = {
+      goto: async (url: string) => {
+        if (url === "about:blank") return;
+        throw new Error(
+          'waiting for navigation: navigated to "https://t.auth0.test/u/login?state=TXSTATE123"'
+        );
+      },
+    } as unknown as Page;
+    const err = (await signIn(page, QA).catch((e: Error) => e)) as Error;
+    expect(err.message).toContain("https://t.auth0.test/u/login");
+    expect(err.message).not.toContain("TXSTATE123");
+  });
+
+  it("redacts a password Playwright echoes escaped", async () => {
+    const password = 'ab"c\\d-secret';
+    const escaped = JSON.stringify(password).slice(1, -1);
+    const page = {
+      goto: async (url: string) => {
+        if (url === "about:blank") return;
+        throw new Error(`fill("${escaped}") timed out`);
+      },
+    } as unknown as Page;
+    const err = (await signIn(page, { ...QA, password }).catch(
+      (e: Error) => e
+    )) as Error;
+    expect(err.message).not.toContain(escaped);
+    expect(err.message).not.toContain("secret");
   });
 });

@@ -32,10 +32,9 @@
   - type key by key (`pressSequentially`), which has the same focus race, only slower;
   - **verify what landed.**
 - **Chosen:**
-  - wait for the Auth0 page's `load`;
-  - fill a field, then read it back with `inputValue()`;
-  - before clicking submit, confirm the username field equals the username **and** the password field equals the password;
-  - on a mismatch, clear both fields and re-fill, up to 3 attempts, then fail.
+  - fill a field, then read it back with `inputValue()`. `waitForURL` already waits for Auth0's `load`; code review dropped a separate wait as redundant.
+  - on a combined form, each attempt fills both fields and reads both back. Before clicking submit, the username field must equal the username **and** the password field the password.
+  - on a mismatch, re-fill, up to 3 attempts, then fail.
 
   The submit never fires on an unchecked form, whatever the cause, so a mistyped secret is never sent to Auth0 either. The error names the field that mismatched, never its value.
 - **Captures, options:**
@@ -43,6 +42,8 @@
   - stop uploading on deployed runs (loses the evidence that found #963's cause);
   - **clean the page and drop video.**
 - **Chosen:**
+  - the whole sign-in runs under its own deadline (`SIGN_IN_DEADLINE_MS`, 150s), under the 180s test timeout. Even a hung action then reaches this cleanup, rather than the test timeout screenshotting the live form (from code review).
+  - the failure message redacts the password both as given and as Playwright escapes it, and drops every URL's query, in Playwright's own error text too.
   - on any sign-in failure, `signIn` puts the Auth0 page's host, path and visible error text ("Wrong email or password") into its error, and then navigates to `about:blank` before the failure screenshot. It doesn't empty the inputs in place, because a page script could restore their values. The query is dropped, because Auth0's carries the login transaction's state.
   - publishable runs record **no video** (`video: "off"`), since a video holds every frame of the typing.
   - local runs keep video.
@@ -51,17 +52,20 @@
 ## Plan — 1 slice
 
 **Files:**
-- `packages/e2e/src/lib/sign-in.ts`: wait for `load`, fill with read-back and retry, the pre-submit check, and on failure the page description plus `about:blank`.
+- `packages/e2e/src/lib/sign-in.ts`: fill with read-back and retry, the pre-submit check, the sign-in deadline, and on failure a scrubbed message plus `about:blank`.
 - `packages/e2e/src/lib/playwright-config.ts`: `video: publishable ? "off" : "retain-on-failure"`, and the header comment.
 - `.github/actions/verify-login/action.yml`, `.github/workflows/e2e-test.yml`: screenshots only; comments updated.
-- `docs/E2E_DEPLOYED_QA.runbook.md`, `CLAUDE.md`: the artifact contents and the reason.
+- `docs/E2E_DEPLOYED_QA.runbook.md`, `CLAUDE.md`, `packages/e2e/README.md`: the artifact contents and the reason.
 
 **Tests (first):**
 - `src/__tests__/sign-in.test.ts`, with a fake page whose password `fill` appends to the username field:
   - the form is never submitted, and the failure names the field without the value;
   - a failure leaves the page on `about:blank`, and the error keeps Auth0's message and path without the query;
   - a race that clears on the 2nd attempt submits once;
-  - a clean form submits once.
+  - a clean form submits once;
+  - a hung fill hits the deadline and still blanks the page;
+  - a combined form's password mismatch names the password field;
+  - Playwright's URL queries and an escaped password are scrubbed.
 - `src/__tests__/playwright-config.test.ts`: video is off for CI and deployed runs, and kept locally.
 
 Run `npm run test:unit` in `packages/e2e`, then `npm run lint` / `type-check` there.

@@ -26,7 +26,9 @@ import type { E2eTarget } from "./target.js";
 export const SESSION_STORAGE_STATE = "./.auth/ci.storageState.json";
 
 /** The whole sign-in, Auth0 round trip included, fits well inside this; the
- *  default 30s could time a slow Auth0 out mid-form. */
+ *  default 30s could time a slow Auth0 out mid-form. `SIGN_IN_DEADLINE_MS`
+ *  (sign-in.ts) must stay under it, so a hung sign-in blanks its page before
+ *  the test timeout's screenshot (#963). */
 const TEST_TIMEOUT_MS = 180_000;
 
 /** Whether this run's artifacts may end up somewhere public. */

@@ -97,7 +97,7 @@ npm run --workspace @portalai/e2e e2e:stack:down
 Notes:
 - **One run per stack.** `roles` can't run twice on one stack, because an accepted invite can't be replayed. Run `e2e:stack:down` and `up` between runs.
 - **Sign-in path.** `E2E_SIGN_IN_VIA=qa` is needed because the preview build has no dev affordance. The stack bakes `VITE_AUTH0_QA_CONNECTION` from `E2E_QA_CONNECTION`.
-- **Failures.** Run locally, a failed spec leaves a trace, screenshots, video and the HTML report under `test-results/local/` and `playwright-report/`. In CI (where `CI` is set) there's no trace, no report and no page snapshot, because each would hold a typed password and this repo's artifacts are public. CI uploads only the stack logs, screenshots and video.
+- **Failures.** Run locally, a failed spec leaves a trace, screenshots, video and the HTML report under `test-results/local/` and `playwright-report/`. In CI (where `CI` is set) there's no trace, no report, no page snapshot and no video, because each can hold a typed password and this repo's artifacts are public. CI uploads only the stack logs and failure screenshots, and a sign-in failure leaves the page on `about:blank` before its screenshot (#963).
 - **Authoring.** `npm run --workspace @portalai/e2e test:e2e:ui` opens the Playwright UI.
 
 ## Deployed environments (app-dev, prod)

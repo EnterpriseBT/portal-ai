@@ -115,7 +115,7 @@ After that, later sign-ins need no link: `e2e:auth:<env>`, `e2e:auth:<env>:admin
 
 ## When `verify-login` goes red
 
-The artifact `verify-login-<env>-<run id>` holds the failure screenshot and nothing else. A trace, an HTML report, Playwright's `error-context.md` page snapshot or a video would each carry the typed QA password, and this repo's artifacts are public. So none is recorded or uploaded. A sign-in failure leaves the page on `about:blank` before the screenshot, and its error carries the Auth0 page's path and visible message instead (#963: a race once typed the password into the email field, and the screenshot and video showed it). For more detail, reproduce locally with `E2E_TARGET=<env>` and `--project=login`; a local run keeps video.
+The artifact `verify-login-<env>-<run id>` holds the failure screenshot and nothing else. A trace, an HTML report, Playwright's `error-context.md` page snapshot or a video would each carry the typed QA password, and this repo's artifacts are public. So none is recorded or uploaded. A sign-in failure leaves the page on `about:blank` before the screenshot, and its error carries the Auth0 page's path and visible message instead (#963: a race once typed the password into the email field, and the screenshot and video showed it). For more detail, reproduce locally with `E2E_TARGET=<env>` and `--project=login`. A deployed target records no video even on your machine, and its failure screenshot is blank. To watch one, set `video: "on"` in `buildConfig` for that local run only, and never commit it.
 
 | Symptom | Likely cause |
 |---|---|
