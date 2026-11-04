@@ -264,6 +264,7 @@ The provider (`providers/Toast.provider.tsx`) is mounted once in `Application.pr
 - All icon-only `<IconButton>` components must have a descriptive `aria-label`
 - `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
 - Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
+- **WCAG 2.2 AA is the target (epic #791), and `docs/A11Y_AUDIT.md` is the inventory of what's still out.** `npm run a11y:report` regenerates it from three report-only tools: jsx-a11y (`a11y:lint`), jest-axe over every story (`a11y:stories`) and axe in Playwright across every route × role × state × theme (`a11y:axe`, `a11y:axe:site`). They record and never fail on a finding until #799 turns them into gates. A new route or site page must be added to `packages/e2e/src/lib/a11y-routes.ts`, which a test enforces. A component test can assert `await expectNoAxeViolations(container)` (web `test-utils`, core `__tests__/axe.util`). jsdom can't measure colour contrast or landmarks, so the browser walk covers those
 
 ## API Calls & SDK Helpers (apps/web)
 

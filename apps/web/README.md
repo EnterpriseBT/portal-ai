@@ -517,6 +517,19 @@ describe("Header", () => {
 });
 ```
 
+### Accessibility
+
+`expectNoAxeViolations(container)` from `src/__tests__/test-utils.tsx` asserts that a render has no axe violations against WCAG 2.2 AA and best practice. Colour contrast and landmarks are left to the browser walk, because jsdom can't measure them. `npm run a11y:lint` (jsx-a11y) and `npm run a11y:stories` (axe over every story) are report-only: they write `a11y-results/`, which `npm run a11y:report` at the repo root folds into `docs/A11Y_AUDIT.md` (epic #791).
+
+```typescript
+import { render, expectNoAxeViolations } from "./test-utils";
+
+it("has no accessibility violations", async () => {
+  const { container } = render(<HeaderUI title="Test" />);
+  await expectNoAxeViolations(container);
+});
+```
+
 ### Test Coverage
 
 Minimum coverage thresholds are configured at 60% for:

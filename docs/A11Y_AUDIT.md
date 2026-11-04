@@ -1081,7 +1081,77 @@ The flows:
 
 ## Screen-reader pass
 
-The script for each of the flows above is walked with **VoiceOver + Safari** (macOS) and **NVDA + Firefox** (Windows).
+Walk each flow below twice:
+- **VoiceOver + Safari** on macOS: VO = Ctrl+Option. Open the rotor with VO+U to list landmarks, headings and links.
+- **NVDA + Firefox** on Windows: browse mode is the default. H moves by heading, D by landmark, Tab by control, and Insert+F7 lists elements.
+
+Use the local stack, signed in as the e2e owner (`e2e-fixture` org). Flow 5 is also walked as the member.
+
+Each step says what you **do** and what you should **hear**. Anything you hear that differs, or anything you can't do without the mouse, is a finding. Record it in the table at the end as `SR-nn`, with the flow and step number, the AT you heard it with, and the owner: the area child that owns that part of the UI. If you're unsure of the owner, write `?` and it gets triaged. Two habits help:
+- **Note when each page's title is announced.** A route change that announces nothing is a finding (2.4.2, 4.1.3).
+- **Note when a toast or status change is announced.** Success and error toasts, job progress and lock alerts should be heard without moving focus to them (4.1.3).
+
+### 1. Sign-in (`/login`, signed out)
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Load `/login` | The page title, then a level-1 heading naming the page |
+| 2 | List landmarks (rotor / D) | At least a main region; no unlabelled duplicate regions |
+| 3 | Tab through every control | Each sign-in option as a **button** with a name naming its provider; Terms and Privacy as **links** |
+| 4 | Activate the Google option | Navigation to the provider (stop here; the provider's page isn't ours) |
+
+### 2. CSV import → records
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Go to Connectors | The page title; "Connectors" level-1 heading; the Connected / Catalog tabs as a **tab list** with the selected tab announced |
+| 2 | Open the Catalog tab and start a File Upload connector | A **dialog** announced with its name; focus inside it |
+| 3 | Choose `packages/e2e/src/fixtures/core-loop.csv` from the file field | The field's label; the chosen file's name after picking |
+| 4 | Move through each wizard step (Next) | Each step's name or number, and the stepper's current step; field labels and errors read when they appear |
+| 5 | In the layout step (RegionEditor), try to understand the sheet | Something meaningful: a grid with row and column headers, or a stated alternative. A wall of unnamed buttons or silence is a finding |
+| 6 | Commit the import | A status announcement while it runs, and its outcome, without moving focus |
+| 7 | Open the new entity's records | The records table as a **table** with column headers read for each cell (Ctrl+Alt+arrows / NVDA table keys) |
+| 8 | Open one record | Its fields as label–value pairs |
+
+### 3. Station → portal → pin
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Go to Stations, open My Station | Page titles; the station's name as a heading |
+| 2 | Start a portal and send "How many customers are there?" | The message field's label; your message; the reply announced or reachable as it arrives (4.1.3), not only visible |
+| 3 | Ask for a chart ("Chart orders by month") | The chart as an image or region with a **name**, and some text alternative to its data. Silence or "frame" alone is a finding (#796) |
+| 4 | Pin the result | The pin button's name; a confirmation announced |
+| 5 | Open Pinned results and the pin | The pinned result's title as a heading; the chart's alternative again |
+
+### 4. A curated view
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Go to Views, choose Create View | A **dialog** with its name; the first field focused with its label |
+| 2 | Submit empty | The error read for each required field, and focus moved to the first invalid one |
+| 3 | Fill it in and save | The dialog closing and a confirmation; focus returned to a sensible place |
+| 4 | Open the view | Its name as a heading; its table as in flow 2, step 7 |
+
+### 5. Settings → Members (owner, then member)
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Go to Settings | The page title; the settings tabs as a **tab list** with the selected tab |
+| 2 | Open Members | The members table with headers; each member's name and access |
+| 3 | Open the invite dialog (owner) | A **dialog** with its name; labelled fields; errors read on an invalid email |
+| 4 | As member, visit Settings | Only the tabs the member has; any unavailable action announced as unavailable **with its reason**, not silently missing focus |
+
+### 6. Marketing site: home → pricing → contact (`localhost:3002`)
+
+| Step | Do | Expect to hear |
+|---|---|---|
+| 1 | Load `/`, press Tab once | "Skip to content" as the first link; activating it moves you to the main content |
+| 2 | List landmarks and headings | Banner, primary navigation, main, footer navigation; one level-1 heading |
+| 3 | Go to Pricing via the nav | The current page marked current in the nav; each plan as a heading; its prices and limits read in order |
+| 4 | Go to Contact | The page's heading; each contact method with a meaningful name |
+| 5 | Toggle the theme | The toggle's name and its new state |
+
+### Findings
 
 | ID | Flow | Step | WCAG | Observed | AT | Owner |
 |---|---|---|---|---|---|---|
