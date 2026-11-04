@@ -6,7 +6,9 @@ name: Deploy Site (prod)
 #
 #   1. It NEVER builds from a branch. Prod publishes a released tag, so a
 #      merge to main can't reach the public site by accident. A dispatch,
-#      scheduled or manual run resolves the latest release tag instead.
+#      scheduled or manual run resolves the latest release tag instead, and
+#      re-resolves it after approval (#959), so a run that waited across a
+#      release builds the new one.
 #   2. It runs in the `prod` GitHub Environment, whose required reviewers
 #      are the human gate on a public deploy.
 #
@@ -96,6 +98,12 @@ jobs:
       # deliberately has none of its own (#383, #386).
       cert-stack: portalai-dev-dns-certs
       build-ref: ${{ needs.resolve.outputs.ref }}
+      # #959: every run waits on reviewers and may be approved after a newer
+      # release, so each builds the latest release as of approval, a release
+      # run included (its own tag is at most the latest by then). That also
+      # keeps a prerelease, or a release published without "make latest",
+      # off the public site.
+      follow-latest-release: true
       site-url: https://www.portalsai.io
       site-config-url: ${{ vars.PROD_SITE_CONFIG_URL }}
       app-url: https://app.portalsai.io

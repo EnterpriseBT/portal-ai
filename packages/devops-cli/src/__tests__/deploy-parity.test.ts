@@ -1456,3 +1456,71 @@ describe("the API task sets its externally-reachable URLs (#889)", () => {
     );
   });
 });
+
+// #959: a prod site run decides what to build when it STARTS, but its deploy
+// job waits for the `prod` environment's reviewers. A scheduled or dispatched
+// run approved after a newer release built the old release against the new
+// API and failed (run 41322287092: v1.1.2 against v1.2.0's site-config). So a
+// non-release run re-resolves the latest release inside the gated job.
+describe("prod site build ref is resolved after approval (#959)", () => {
+  const read = (file: string): string =>
+    fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8");
+
+  it("the reusable workflow takes follow-latest-release, default false", () => {
+    const body = read("deploy-static-site.yml");
+    const start = body.indexOf("      follow-latest-release:");
+    expect(start).toBeGreaterThan(-1);
+    // Up to the next input key at the same indent, so another input's
+    // default can't satisfy the check.
+    const rest = body.slice(start + 1);
+    const next = rest.search(/\n {6}[a-z-]+:\n/);
+    const input = next === -1 ? rest : rest.slice(0, next);
+    expect(input).toMatch(/type: boolean/);
+    expect(input).toMatch(/default: false/);
+  });
+
+  it("resolves the ref in the gated job, before the checkout", () => {
+    const body = read("deploy-static-site.yml");
+    const gate = body.indexOf("environment: ${{ inputs.gh-environment }}");
+    const resolve = body.indexOf("name: Resolve the ref to build");
+    const checkout = body.indexOf("uses: actions/checkout@");
+    expect(gate).toBeGreaterThan(-1);
+    expect(resolve).toBeGreaterThan(gate);
+    expect(checkout).toBeGreaterThan(resolve);
+    const step = body.slice(resolve, checkout);
+    expect(step).toContain("id: ref");
+    expect(step).toContain("inputs.follow-latest-release");
+    expect(step).toContain("gh release view");
+  });
+
+  it("checks out and reports the resolved ref, not the input", () => {
+    const body = read("deploy-static-site.yml");
+    const checkout = body.slice(body.indexOf("uses: actions/checkout@"));
+    expect(checkout.slice(0, 200)).toContain(
+      "ref: ${{ steps.ref.outputs.ref }}"
+    );
+    expect(body).toContain("Built from: \\`${{ steps.ref.outputs.ref }}\\`");
+    expect(body).not.toContain("ref: ${{ inputs.build-ref }}");
+  });
+
+  // A release run too (#959 review): one approved after an even newer
+  // release would otherwise build its own, now-stale tag; and a prerelease or
+  // a release published without "make latest" would reach the public site.
+  it("the prod caller follows the latest release on every run", () => {
+    expect(read("deploy-site-prod.yml")).toContain(
+      "follow-latest-release: true"
+    );
+  });
+
+  it("reports the commit actually built, and an unreadable latest fails with its own error", () => {
+    const body = read("deploy-static-site.yml");
+    expect(body).toContain("($(git rev-parse HEAD))");
+    expect(body).toContain(
+      `|| { echo "::error::Couldn't read the latest release to build"; exit 1; }`
+    );
+  });
+
+  it("the dev caller builds main as given", () => {
+    expect(read("deploy-site-dev.yml")).not.toContain("follow-latest-release");
+  });
+});

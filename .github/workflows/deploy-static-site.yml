@@ -20,6 +20,14 @@ on:
         description: "Git ref to build. Prod always passes a release tag, never a branch."
         required: true
         type: string
+      follow-latest-release:
+        description: >-
+          Build the latest release as of approval instead of build-ref (#959).
+          For prod, whose runs wait on reviewers and could otherwise build a
+          release superseded while they waited; build-ref is the fallback.
+        required: false
+        type: boolean
+        default: false
       site-url:
         description: "Canonical origin, e.g. https://site-dev.portalsai.io"
         required: true
@@ -91,10 +99,36 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Checkout ${{ inputs.build-ref }}
+      # #959: this job runs only after the environment's reviewers approve,
+      # so the lookup here sees releases published while the run waited.
+      # `gh release view` with no tag is GitHub's "latest" release, which
+      # excludes drafts and prereleases.
+      - name: Resolve the ref to build
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIVEN: ${{ inputs.build-ref }}
+        run: |
+          REF="$GIVEN"
+          if [ "${{ inputs.follow-latest-release }}" = "true" ]; then
+            LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName) \
+              || { echo "::error::Couldn't read the latest release to build"; exit 1; }
+            if [ -z "$LATEST" ]; then
+              echo "::error::No release to build"
+              exit 1
+            fi
+            if [ "$LATEST" != "$GIVEN" ]; then
+              echo "::notice::$GIVEN was superseded while this run waited; building $LATEST"
+            fi
+            REF="$LATEST"
+          fi
+          echo "Building from release tag: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout ${{ steps.ref.outputs.ref }}
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.build-ref }}
+          ref: ${{ steps.ref.outputs.ref }}
 
       - name: Setup
         uses: ./.github/actions/setup
@@ -285,6 +319,6 @@ jobs:
             echo ""
             echo "- Environment: \`${{ inputs.environment }}\`"
             echo "- URL: ${{ inputs.site-url }}"
-            echo "- Built from: \`${{ inputs.build-ref }}\` (${{ github.sha }})"
+            echo "- Built from: \`${{ steps.ref.outputs.ref }}\` ($(git rev-parse HEAD))"
             echo "- Config source: ${{ inputs.site-config-url }}"
           } >> "$GITHUB_STEP_SUMMARY"
