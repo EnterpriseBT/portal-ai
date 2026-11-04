@@ -17,6 +17,8 @@
 		"lint:review-chain": "node scripts/check-review-chain.mjs",
 		"lint:migrations": "node scripts/check-migrations.mjs",
 		"lint:helm": "node scripts/check-helm.mjs",
+		"lint:a11y-inventory": "node scripts/a11y-inventory.mjs --self-test",
+		"a11y:inventory": "node scripts/a11y-inventory.mjs",
 		"format": "turbo run format",
 		"format:check": "turbo run format:check",
 		"type-check": "turbo run type-check",

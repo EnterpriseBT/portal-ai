@@ -102,7 +102,8 @@ The helper calls `configureAxe` with every rule in `JSDOM_DISABLED_AXE_RULES ∪
 interface RawResultFile { tool: "jest-axe" | "axe-app" | "axe-site"; package: string;
   generatedAt: string; axeVersion: string; runs: RawRun[] }
 interface RawRun {
-  context: { story?: string; file?: string; route?: string; url?: string;
+  context: { story?: string; file?: string /* repo-relative */; route?: string; url?: string;
+             owner?: 793 | 794 | 795 | 796 | 797 | 798 /* the route's manifest owner (axe-app) */;
              role?: "owner" | "admin" | "member"; state?: A11yState; theme?: "brand" | "brand.dark" };
   status: "ok" | "skipped"; error?: string;
   violations: { id: string; impact: string | null; tags: string[];
@@ -195,10 +196,11 @@ Root `package.json` scripts:
 ```
 # Accessibility audit inventory
 <purpose · how to regenerate (`npm run a11y:report`, preconditions) · lifecycle: #800 folds in or deletes>
-## Coverage           (tools, versions, routes × roles × states × themes run, skipped runs + gaps)
+## How it's produced (tools, scripts, preconditions)
 <!-- a11y-inventory:start -->
+## Coverage           (per result file: tool, version, ok runs, skipped runs with their reason)
 ## Summary            (owner × WCAG criterion counts)
-## #793 dialogs and forms {#owner-793}  … one section per owner, then ## Unassigned, ## Best practice
+<a id="owner-793"></a> ## #793 Dialogs and forms  … one section per owner, then ## Unassigned (best-practice rows carry "best practice" in the WCAG column)
 <!-- a11y-inventory:end -->
 ## Keyboard pass      (per flow: checklist incl. 2.1.1, 2.1.2, 2.4.3, 2.4.7, 2.4.11, 2.5.7, 2.5.8, 3.3.7, 3.3.8; findings KB-nn)
 ## Screen-reader pass (per flow: steps + expected announcement; findings SR-nn, with VoiceOver+Safari / NVDA+Firefox)
