@@ -23,9 +23,10 @@ Two options:
 
 **Chosen: re-resolve.** The scheduled run exists to "publish whatever is currently released" (and renew `security.txt`), so building the current release keeps that job instead of skipping it.
 
-- The prod caller passes `follow-latest-release: ${{ github.event_name != 'release' }}`. A release run keeps its own tag: it *is* the current release when it's published, and a later release starts its own run.
+- The prod caller passes `follow-latest-release: true` on **every** run (changed in code review). A release run approved after an even newer release would otherwise build its own, now-stale tag. Following also keeps a prerelease, or a release published without "make latest", off the public site, because `gh release view` with no tag skips those.
+- An older site can't overwrite a newer one: the workflow-level concurrency group holds a run waiting for approval, so runs execute in arrival order.
 - The step runs after the environment gate (it's in the gated job), uses `gh release view --repo ${{ github.repository }}` with the job's `contents: read` token, and needs no checkout.
-- Checkout and the summary read the resolved ref.
+- Checkout and the summary read the resolved ref. The summary prints the commit actually built (`git rev-parse HEAD`), not the triggering one.
 - `PublicSiteTierSchema` stays strict: strictness is what catches site/API drift.
 
 ## Plan — 1 slice
@@ -41,7 +42,7 @@ Two options:
 - the reusable workflow declares the input, default false;
 - the resolve step comes before the checkout, inside the gated job;
 - checkout and summary read `steps.ref.outputs.ref`, not `inputs.build-ref`;
-- the prod caller passes `github.event_name != 'release'`;
+- the prod caller passes `true`;
 - the dev caller doesn't pass it.
 
 Run `npm run test:unit -- --testPathPattern deploy-parity` in `packages/devops-cli`, then `npm run lint:ci-cache` at the root.

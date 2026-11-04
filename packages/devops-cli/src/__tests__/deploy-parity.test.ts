@@ -1468,9 +1468,15 @@ describe("prod site build ref is resolved after approval (#959)", () => {
 
   it("the reusable workflow takes follow-latest-release, default false", () => {
     const body = read("deploy-static-site.yml");
-    const input = body.slice(body.indexOf("follow-latest-release:"));
-    expect(input).toMatch(/^follow-latest-release:[\s\S]*?type: boolean/);
-    expect(input.slice(0, 400)).toMatch(/default: false/);
+    const start = body.indexOf("      follow-latest-release:");
+    expect(start).toBeGreaterThan(-1);
+    // Up to the next input key at the same indent, so another input's
+    // default can't satisfy the check.
+    const rest = body.slice(start + 1);
+    const next = rest.search(/\n      [a-z-]+:\n/);
+    const input = next === -1 ? rest : rest.slice(0, next);
+    expect(input).toMatch(/type: boolean/);
+    expect(input).toMatch(/default: false/);
   });
 
   it("resolves the ref in the gated job, before the checkout", () => {
@@ -1497,9 +1503,20 @@ describe("prod site build ref is resolved after approval (#959)", () => {
     expect(body).not.toContain("ref: ${{ inputs.build-ref }}");
   });
 
-  it("the prod caller follows the latest release on every run but a release", () => {
+  // A release run too (#959 review): one approved after an even newer
+  // release would otherwise build its own, now-stale tag; and a prerelease or
+  // a release published without "make latest" would reach the public site.
+  it("the prod caller follows the latest release on every run", () => {
     expect(read("deploy-site-prod.yml")).toContain(
-      "follow-latest-release: ${{ github.event_name != 'release' }}"
+      "follow-latest-release: true"
+    );
+  });
+
+  it("reports the commit actually built, and an unreadable latest fails with its own error", () => {
+    const body = read("deploy-static-site.yml");
+    expect(body).toContain("($(git rev-parse HEAD))");
+    expect(body).toContain(
+      `|| { echo "::error::Couldn't read the latest release to build"; exit 1; }`
     );
   });
 

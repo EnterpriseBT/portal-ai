@@ -98,10 +98,12 @@ jobs:
       # deliberately has none of its own (#383, #386).
       cert-stack: portalai-dev-dns-certs
       build-ref: ${{ needs.resolve.outputs.ref }}
-      # #959: a scheduled or dispatched run waits on reviewers and may be
-      # approved after a newer release, so it builds the latest release as of
-      # approval. A release run builds its own tag.
-      follow-latest-release: ${{ github.event_name != 'release' }}
+      # #959: every run waits on reviewers and may be approved after a newer
+      # release, so each builds the latest release as of approval, a release
+      # run included (its own tag is at most the latest by then). That also
+      # keeps a prerelease, or a release published without "make latest",
+      # off the public site.
+      follow-latest-release: true
       site-url: https://www.portalsai.io
       site-config-url: ${{ vars.PROD_SITE_CONFIG_URL }}
       app-url: https://app.portalsai.io

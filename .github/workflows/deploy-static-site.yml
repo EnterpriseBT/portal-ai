@@ -23,8 +23,8 @@ on:
       follow-latest-release:
         description: >-
           Build the latest release as of approval instead of build-ref (#959).
-          For prod's scheduled/dispatched runs, which wait on reviewers and
-          could otherwise build a release superseded while they waited.
+          For prod, whose runs wait on reviewers and could otherwise build a
+          release superseded while they waited; build-ref is the fallback.
         required: false
         type: boolean
         default: false
@@ -100,8 +100,9 @@ jobs:
       contents: read
     steps:
       # #959: this job runs only after the environment's reviewers approve,
-      # so the lookup here sees releases published while the run waited. A
-      # release run passes its own tag and doesn't follow.
+      # so the lookup here sees releases published while the run waited.
+      # `gh release view` with no tag is GitHub's "latest" release, which
+      # excludes drafts and prereleases.
       - name: Resolve the ref to build
         id: ref
         env:
@@ -110,7 +111,8 @@ jobs:
         run: |
           REF="$GIVEN"
           if [ "${{ inputs.follow-latest-release }}" = "true" ]; then
-            LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)
+            LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName) \
+              || { echo "::error::Couldn't read the latest release to build"; exit 1; }
             if [ -z "$LATEST" ]; then
               echo "::error::No release to build"
               exit 1
@@ -317,6 +319,6 @@ jobs:
             echo ""
             echo "- Environment: \`${{ inputs.environment }}\`"
             echo "- URL: ${{ inputs.site-url }}"
-            echo "- Built from: \`${{ steps.ref.outputs.ref }}\` (${{ github.sha }})"
+            echo "- Built from: \`${{ steps.ref.outputs.ref }}\` ($(git rev-parse HEAD))"
             echo "- Config source: ${{ inputs.site-config-url }}"
           } >> "$GITHUB_STEP_SUMMARY"
