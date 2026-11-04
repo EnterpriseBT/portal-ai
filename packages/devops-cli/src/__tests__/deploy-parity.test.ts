@@ -1473,7 +1473,7 @@ describe("prod site build ref is resolved after approval (#959)", () => {
     // Up to the next input key at the same indent, so another input's
     // default can't satisfy the check.
     const rest = body.slice(start + 1);
-    const next = rest.search(/\n      [a-z-]+:\n/);
+    const next = rest.search(/\n {6}[a-z-]+:\n/);
     const input = next === -1 ? rest : rest.slice(0, next);
     expect(input).toMatch(/type: boolean/);
     expect(input).toMatch(/default: false/);
