@@ -2,7 +2,7 @@
 
 How to set up, verify and maintain the QA identities that browser verification uses against deployed environments (#489):
 
-- **Post-deploy login check.** `verify-login`, the last job of `deploy-dev.yml` / `deploy-prod.yml`, signs in to the environment just deployed as its **QA owner**. If that fails the run goes red, with screenshots and video. Nothing rolls back.
+- **Post-deploy login check.** `verify-login`, the last job of `deploy-dev.yml` / `deploy-prod.yml`, signs in to the environment just deployed as its **QA owner**. If that fails the run goes red, with a failure screenshot. Nothing rolls back.
 - **Agent sessions.** The `playwright-app-dev` / `playwright-prod` MCP servers (`.mcp.json`) let an in-container Claude session walk the deployed app as the QA **owner, admin or member**.
 
 Both sign in through the **QA sign-in** (`/login?qa=1` → "QA sign-in"), which a build renders only when it bakes `VITE_AUTH0_QA_CONNECTION`. Normal users never see it: `/login` still shows only the Google button.
@@ -115,7 +115,7 @@ After that, later sign-ins need no link: `e2e:auth:<env>`, `e2e:auth:<env>:admin
 
 ## When `verify-login` goes red
 
-The artifact `verify-login-<env>-<run id>` holds the screenshot and video, and nothing else. A trace, an HTML report or Playwright's `error-context.md` page snapshot would each carry the typed QA password, and this repo's artifacts are public. So none is recorded or uploaded. For more detail, reproduce locally with `E2E_TARGET=<env>` and `--project=login`.
+The artifact `verify-login-<env>-<run id>` holds the failure screenshot and nothing else. A trace, an HTML report, Playwright's `error-context.md` page snapshot or a video would each carry the typed QA password, and this repo's artifacts are public. So none is recorded or uploaded. A sign-in failure leaves the page on `about:blank` before the screenshot, and its error carries the Auth0 page's path and visible message instead (#963: a race once typed the password into the email field, and the screenshot and video showed it). For more detail, reproduce locally with `E2E_TARGET=<env>` and `--project=login`. A deployed target records no video even on your machine, and its failure screenshot is blank. To watch one, set `video: "on"` in `buildConfig` for that local run only, and never commit it.
 
 | Symptom | Likely cause |
 |---|---|

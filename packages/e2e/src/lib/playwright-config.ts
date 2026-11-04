@@ -11,7 +11,10 @@
  * - no `error-context.md`: Playwright's failure snapshot of the page copies
  *   every input's value, a password field's too (`PLAYWRIGHT_NO_COPY_PROMPT`,
  *   set by playwright.config.ts).
- * Screenshots and video stay; a password field renders masked in both.
+ * - no video: it records every frame of the typing (#963).
+ * Failure screenshots stay. A sign-in failure leaves the page on about:blank
+ * first (`signIn`), since a password typed into the wrong field would show
+ * on it in the clear.
  */
 
 import type { PlaywrightTestConfig } from "@playwright/test";
@@ -23,7 +26,9 @@ import type { E2eTarget } from "./target.js";
 export const SESSION_STORAGE_STATE = "./.auth/ci.storageState.json";
 
 /** The whole sign-in, Auth0 round trip included, fits well inside this; the
- *  default 30s could time a slow Auth0 out mid-form. */
+ *  default 30s could time a slow Auth0 out mid-form. `SIGN_IN_DEADLINE_MS`
+ *  (sign-in.ts) must stay under it, so a hung sign-in blanks its page before
+ *  the test timeout's screenshot (#963). */
 const TEST_TIMEOUT_MS = 180_000;
 
 /** Whether this run's artifacts may end up somewhere public. */
@@ -62,7 +67,9 @@ export function buildConfig(
       baseURL: target.baseUrl,
       trace: publishable ? "off" : "on-first-retry",
       screenshot: "only-on-failure",
-      video: "retain-on-failure",
+      // A video holds every frame of the typing, a password typed into the
+      // wrong field included (#963), so a publishable run records none.
+      video: publishable ? "off" : "retain-on-failure",
       headless: true,
     },
     // A deployed target runs the login check alone: the other projects

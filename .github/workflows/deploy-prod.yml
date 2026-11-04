@@ -662,7 +662,7 @@ jobs:
   # that stays a human decision.
   #
   # The steps live in .github/actions/verify-login, shared with the other
-  # deploy workflow. A failure uploads screenshots and video only.
+  # deploy workflow. A failure uploads a screenshot only (#963).
   verify-login:
     # Plain `needs` success, like deploy-frontend: nothing upstream here is
     # deliberately skipped, so dev's `!cancelled()` override isn't needed.

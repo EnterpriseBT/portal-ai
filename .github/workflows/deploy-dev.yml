@@ -680,7 +680,7 @@ jobs:
   # the deploy is live either way, and this reports on it.
   #
   # The steps live in .github/actions/verify-login, shared with the other
-  # deploy workflow. A failure uploads screenshots and video only.
+  # deploy workflow. A failure uploads a screenshot only (#963).
   verify-login:
     needs: [deploy-frontend, deploy-backend]
     # Same propagation applies two hops down — see deploy-frontend.
