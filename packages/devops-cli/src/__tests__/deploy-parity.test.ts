@@ -1456,3 +1456,54 @@ describe("the API task sets its externally-reachable URLs (#889)", () => {
     );
   });
 });
+
+// #959: a prod site run decides what to build when it STARTS, but its deploy
+// job waits for the `prod` environment's reviewers. A scheduled or dispatched
+// run approved after a newer release built the old release against the new
+// API and failed (run 41322287092: v1.1.2 against v1.2.0's site-config). So a
+// non-release run re-resolves the latest release inside the gated job.
+describe("prod site build ref is resolved after approval (#959)", () => {
+  const read = (file: string): string =>
+    fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8");
+
+  it("the reusable workflow takes follow-latest-release, default false", () => {
+    const body = read("deploy-static-site.yml");
+    const input = body.slice(body.indexOf("follow-latest-release:"));
+    expect(input).toMatch(/^follow-latest-release:[\s\S]*?type: boolean/);
+    expect(input.slice(0, 400)).toMatch(/default: false/);
+  });
+
+  it("resolves the ref in the gated job, before the checkout", () => {
+    const body = read("deploy-static-site.yml");
+    const gate = body.indexOf("environment: ${{ inputs.gh-environment }}");
+    const resolve = body.indexOf("name: Resolve the ref to build");
+    const checkout = body.indexOf("uses: actions/checkout@");
+    expect(gate).toBeGreaterThan(-1);
+    expect(resolve).toBeGreaterThan(gate);
+    expect(checkout).toBeGreaterThan(resolve);
+    const step = body.slice(resolve, checkout);
+    expect(step).toContain("id: ref");
+    expect(step).toContain("inputs.follow-latest-release");
+    expect(step).toContain("gh release view");
+  });
+
+  it("checks out and reports the resolved ref, not the input", () => {
+    const body = read("deploy-static-site.yml");
+    const checkout = body.slice(body.indexOf("uses: actions/checkout@"));
+    expect(checkout.slice(0, 200)).toContain(
+      "ref: ${{ steps.ref.outputs.ref }}"
+    );
+    expect(body).toContain("Built from: \\`${{ steps.ref.outputs.ref }}\\`");
+    expect(body).not.toContain("ref: ${{ inputs.build-ref }}");
+  });
+
+  it("the prod caller follows the latest release on every run but a release", () => {
+    expect(read("deploy-site-prod.yml")).toContain(
+      "follow-latest-release: ${{ github.event_name != 'release' }}"
+    );
+  });
+
+  it("the dev caller builds main as given", () => {
+    expect(read("deploy-site-dev.yml")).not.toContain("follow-latest-release");
+  });
+});
