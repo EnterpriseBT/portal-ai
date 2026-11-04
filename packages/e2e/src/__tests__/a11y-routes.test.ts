@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   A11Y_ROUTES,
+  firstId,
   LOCK_ALERT_ROUTES,
   leafRouteFiles,
   SITE_PAGES,
@@ -38,6 +39,13 @@ describe("A11Y_ROUTES", () => {
     expect(covered).toEqual(leafRouteFiles(routeFiles).sort());
   });
 
+  it("anchors every state pattern at /api/", () => {
+    for (const r of A11Y_ROUTES) {
+      for (const pattern of Object.values(r.states))
+        expect(pattern).toMatch(/^\/api\//);
+    }
+  });
+
   it("has unique ids", () => {
     const ids = A11Y_ROUTES.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -47,6 +55,21 @@ describe("A11Y_ROUTES", () => {
     for (const r of A11Y_ROUTES) {
       expect([!!r.path, !!r.drill].filter(Boolean)).toHaveLength(1);
       if (r.path) expect(r.path).not.toMatch(/[:$]/);
+    }
+  });
+
+  it("builds each drilled path from the last step's id, and visits later steps by earlier ids", () => {
+    for (const r of A11Y_ROUTES.filter((x) => x.drill)) {
+      const ids = r.drill!.steps.map((_, i) => `id${i}`);
+      expect(r.drill!.path(ids)).toContain(ids[ids.length - 1]);
+      r.drill!.steps.forEach((step, i) => {
+        expect(step.api).toMatch(/^\/api\//);
+        const visit =
+          typeof step.visit === "string"
+            ? step.visit
+            : step.visit(ids.slice(0, i));
+        if (i > 0) expect(visit).toContain(ids[i - 1]);
+      });
     }
   });
 
@@ -67,7 +90,7 @@ describe("A11Y_ROUTES", () => {
     );
     expect(locked.sort()).toEqual([...LOCK_ALERT_ROUTES].sort());
     for (const r of A11Y_ROUTES.filter((x) => x.states.locked)) {
-      expect(r.states.locked).toMatch(/\/running-jobs\*$/);
+      expect(r.states.locked).toMatch(/^\/api\/.*\/running-jobs$/);
     }
   });
 });
@@ -103,5 +126,34 @@ describe("SITE_PAGES", () => {
     ].sort();
     expect(slugs.length).toBeGreaterThan(0);
     expect([...SITE_PAGES].sort()).toEqual(expected);
+  });
+});
+
+describe("firstId", () => {
+  const body = {
+    success: true,
+    payload: {
+      total: 3,
+      connectorInstances: [
+        { id: "a", name: "Sandbox" },
+        { id: "b", name: "File Upload — CSV" },
+      ],
+    },
+  };
+
+  it("takes the first item of the payload's list", () => {
+    expect(firstId(body)).toBe("a");
+  });
+
+  it("takes the first item that matches the filter", () => {
+    expect(firstId(body, /file upload/i)).toBe("b");
+  });
+
+  it("returns null when the list is empty or nothing matches", () => {
+    expect(
+      firstId({ success: true, payload: { items: [], total: 0 } })
+    ).toBeNull();
+    expect(firstId(body, /excel/i)).toBeNull();
+    expect(firstId({ success: false })).toBeNull();
   });
 });

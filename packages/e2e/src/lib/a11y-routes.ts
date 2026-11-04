@@ -12,12 +12,18 @@ import type { E2eIdentity } from "./target.js";
 
 export type A11yOwner = 793 | 794 | 795 | 796 | 797 | 798;
 
-/** One hop of a drill: on the current page, follow the first link (or
- *  click the first table row) that lands on a URL matching `url`, among
- *  those whose text matches `text` when given. */
+/**
+ * One hop of a drill: visit a page and take the id of the first item its own
+ * list request returns (the first whose JSON matches `pick`, when given).
+ * Reading the response, not the markup, works whether the list renders as
+ * a table, cards or links.
+ */
 export interface A11yDrillStep {
-  url: RegExp;
-  text?: RegExp;
+  /** The page to visit, given the ids taken by earlier steps. */
+  visit: string | ((ids: readonly string[]) => string);
+  /** Path pattern of the list request to read (apiPathMatcher). */
+  api: string;
+  pick?: RegExp;
 }
 
 export interface A11yRoute {
@@ -27,32 +33,39 @@ export interface A11yRoute {
   route: string;
   /** A literal path, for routes without params. */
   path?: string;
-  /** For routes with params: an index path, then the hops to the page. */
-  drill?: { from: string; steps: A11yDrillStep[] };
+  /** For routes with params: the hops that collect ids, and the page path
+   *  built from them (one id per step). */
+  drill?: {
+    steps: readonly A11yDrillStep[];
+    path: (ids: readonly string[]) => string;
+  };
   owner: A11yOwner;
   /** Walked from a fresh, signed-out context (role null). */
   signedOut?: true;
   /** Defaults to all three. */
   roles?: readonly E2eIdentity[];
-  /** State → Playwright URL glob of the request to intercept. */
+  /** State → path pattern of the API request to intercept (apiPathMatcher). */
   states: Partial<Record<"empty" | "error" | "loading" | "locked", string>>;
 }
 
-const UUID = "[0-9a-f-]{36}";
-const detail = (segment: string) => new RegExp(`/${segment}/${UUID}/?$`);
+/** The common drill: from an index page, into its first item. */
+const into = (index: string, api: string) => ({
+  steps: [{ visit: index, api: `/api/${api}` }],
+  path: ([id]: readonly string[]) => `${index}/${id}`,
+});
 
 /** List page states: one glob for the list request. */
 const list = (api: string) => ({
-  empty: `**/api/${api}*`,
-  error: `**/api/${api}*`,
-  loading: `**/api/${api}*`,
+  empty: `/api/${api}`,
+  error: `/api/${api}`,
+  loading: `/api/${api}`,
 });
 /** Detail page states: the object's own request. */
 const one = (api: string) => ({
-  error: `**/api/${api}/*`,
-  loading: `**/api/${api}/*`,
+  error: `/api/${api}/*`,
+  loading: `/api/${api}/*`,
 });
-const running = (api: string) => `**/api/${api}/*/running-jobs*`;
+const running = (api: string) => `/api/${api}/*/running-jobs`;
 
 /** The views that render ConnectorInstanceLockAlertUI. */
 export const LOCK_ALERT_ROUTES = [
@@ -83,7 +96,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "connector-detail",
     route: "connectors.$connectorInstanceId.index",
-    drill: { from: "/connectors", steps: [{ url: detail("connectors") }] },
+    drill: into("/connectors", "connector-instances"),
     owner: 794,
     states: {
       ...one("connector-instances"),
@@ -94,14 +107,15 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
     id: "layout-plan-edit",
     route: "connectors.$connectorInstanceId.layout-plan.edit",
     drill: {
-      from: "/connectors",
+      // A spreadsheet-backed instance: only those have a layout plan.
       steps: [
         {
-          url: detail("connectors"),
-          text: /csv|xlsx|spreadsheet|upload|excel|sheets/i,
+          visit: "/connectors",
+          api: "/api/connector-instances",
+          pick: /file.?upload|xlsx|csv|sheets|excel/i,
         },
-        { url: /\/layout-plan\/edit\/?$/ },
       ],
+      path: ([id]) => `/connectors/${id}/layout-plan/edit`,
     },
     owner: 795,
     states: {},
@@ -117,7 +131,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "entity-detail",
     route: "entities.$entityId.index",
-    drill: { from: "/entities", steps: [{ url: detail("entities") }] },
+    drill: into("/entities", "connector-entities"),
     owner: 794,
     states: {
       ...one("connector-entities"),
@@ -128,8 +142,14 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
     id: "record-detail",
     route: "entities.$entityId.records.$recordId",
     drill: {
-      from: "/entities",
-      steps: [{ url: detail("entities") }, { url: /\/records\/[^/]+\/?$/ }],
+      steps: [
+        { visit: "/entities", api: "/api/connector-entities" },
+        {
+          visit: ([entity]) => `/entities/${entity}`,
+          api: "/api/connector-entities/*/records",
+        },
+      ],
+      path: ([entity, record]) => `/entities/${entity}/records/${record}`,
     },
     owner: 794,
     states: {
@@ -147,10 +167,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "column-definition-detail",
     route: "column-definitions.$columnDefinitionId",
-    drill: {
-      from: "/column-definitions",
-      steps: [{ url: detail("column-definitions") }],
-    },
+    drill: into("/column-definitions", "column-definitions"),
     owner: 794,
     states: {
       ...one("column-definitions"),
@@ -167,10 +184,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "entity-group-detail",
     route: "entity-groups.$entityGroupId",
-    drill: {
-      from: "/entity-groups",
-      steps: [{ url: detail("entity-groups") }],
-    },
+    drill: into("/entity-groups", "entity-groups"),
     owner: 794,
     states: one("entity-groups"),
   },
@@ -192,7 +206,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "station-detail",
     route: "stations.$stationId",
-    drill: { from: "/stations", steps: [{ url: detail("stations") }] },
+    drill: into("/stations", "stations"),
     owner: 794,
     states: one("stations"),
   },
@@ -200,8 +214,11 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
     id: "portal",
     route: "portals.$portalId",
     drill: {
-      from: "/stations",
-      steps: [{ url: detail("stations") }, { url: detail("portals") }],
+      steps: [
+        { visit: "/stations", api: "/api/stations" },
+        { visit: ([station]) => `/stations/${station}`, api: "/api/portals" },
+      ],
+      path: ([, portal]) => `/portals/${portal}`,
     },
     owner: 796,
     states: one("portals"),
@@ -216,10 +233,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "portal-result-detail",
     route: "portal-results.$portalResultId",
-    drill: {
-      from: "/portal-results",
-      steps: [{ url: detail("portal-results") }],
-    },
+    drill: into("/portal-results", "portal-results"),
     owner: 796,
     states: one("portal-results"),
   },
@@ -233,7 +247,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "view-detail",
     route: "views.$viewId",
-    drill: { from: "/views", steps: [{ url: detail("views") }] },
+    drill: into("/views", "curated-views"),
     owner: 794,
     states: one("curated-views"),
   },
@@ -254,7 +268,7 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
   {
     id: "job-detail",
     route: "jobs.$jobId",
-    drill: { from: "/jobs", steps: [{ url: detail("jobs") }] },
+    drill: into("/jobs", "jobs"),
     owner: 794,
     states: one("jobs"),
   },
@@ -307,4 +321,25 @@ export function leafRouteFiles(names: readonly string[]): string[] {
   return names.filter(
     (n) => n !== "__root" && !names.some((other) => other.startsWith(`${n}.`))
   );
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The id of the first item in a list response's payload (the payload
+ *  itself, or its first array), among those whose JSON matches `pick`.
+ *  Null when there's nothing to drill into. */
+export function firstId(body: unknown, pick?: RegExp): string | null {
+  if (!isRecord(body)) return null;
+  const payload = body.payload;
+  const items = Array.isArray(payload)
+    ? payload
+    : isRecord(payload)
+      ? Object.values(payload).find(Array.isArray)
+      : undefined;
+  for (const item of items ?? []) {
+    if (!isRecord(item) || typeof item.id !== "string") continue;
+    if (!pick || pick.test(JSON.stringify(item))) return item.id;
+  }
+  return null;
 }

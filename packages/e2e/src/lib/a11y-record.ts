@@ -49,14 +49,15 @@ interface AxeViolationLike {
   id: string;
   impact?: string | null;
   tags: string[];
-  nodes: ({ target: unknown[] } & Record<string, unknown>)[];
-  [key: string]: unknown;
+  nodes: readonly { target: readonly unknown[] }[];
 }
 
 const selector = (t: unknown): string =>
   Array.isArray(t) ? t.map(String).join(" >>> ") : String(t);
 
-export function trimViolations(violations: AxeViolationLike[]): RawViolation[] {
+export function trimViolations<V extends AxeViolationLike>(
+  violations: readonly V[]
+): RawViolation[] {
   return violations.map((v) => ({
     id: v.id,
     impact: v.impact ?? null,

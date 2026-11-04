@@ -1,6 +1,7 @@
 import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
 
 import {
+  apiPathMatcher,
   emptyPayload,
   loadErrorFixture,
   loadRunningJobFixture,
@@ -72,5 +73,35 @@ describe("fixtures", () => {
     expect(body.success).toBe(false);
     expect(body.message).toBe(INTERNAL_ERROR_MESSAGE);
     expect(typeof body.code).toBe("string");
+  });
+});
+
+describe("apiPathMatcher", () => {
+  it("matches API requests by path, never the app's own source modules", () => {
+    const list = apiPathMatcher("/api/stations*");
+    expect(list(new URL("http://localhost:3000/api/stations?limit=10"))).toBe(
+      true
+    );
+    expect(list(new URL("http://localhost:3000/api/stations"))).toBe(true);
+    expect(list(new URL("http://localhost:3000/src/api/stations.api.ts"))).toBe(
+      false
+    );
+    expect(list(new URL("http://localhost:3000/api/stations/abc"))).toBe(false);
+  });
+
+  it("matches one path segment per *", () => {
+    const one = apiPathMatcher("/api/connector-entities/*");
+    expect(one(new URL("http://x/api/connector-entities/abc"))).toBe(true);
+    expect(one(new URL("http://x/api/connector-entities/abc/records"))).toBe(
+      false
+    );
+    const jobs = apiPathMatcher("/api/connector-entities/*/running-jobs");
+    expect(
+      jobs(new URL("http://x/api/connector-entities/abc/running-jobs"))
+    ).toBe(true);
+  });
+
+  it("refuses a pattern that isn't anchored at /api/", () => {
+    expect(() => apiPathMatcher("**/api/stations*")).toThrow(/\/api\//);
   });
 });

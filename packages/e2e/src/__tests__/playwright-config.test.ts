@@ -43,11 +43,40 @@ describe("buildConfig", () => {
   it("runs only the login check against a deployed target", () => {
     expect((prod.projects ?? []).map((p) => p.name)).toEqual(["login"]);
     expect((local.projects ?? []).map((p) => p.name).sort()).toEqual([
+      "a11y",
+      "a11y-site",
       "core-loop",
       "login",
       "roles",
       "setup",
     ]);
+  });
+
+  // The accessibility walks (#792) record findings and never fail on them,
+  // run only against a local stack, and are never named by CI's explicit
+  // project list.
+  it("runs the accessibility walks only against a local target, never retrying", () => {
+    const names = (prod.projects ?? []).map((p) => p.name);
+    expect(names).not.toContain("a11y");
+    expect(names).not.toContain("a11y-site");
+    for (const name of ["a11y", "a11y-site"]) {
+      const project = (local.projects ?? []).find((p) => p.name === name);
+      expect(project?.retries).toBe(0);
+      expect(project?.dependencies ?? []).toEqual([]);
+    }
+  });
+
+  it("points the site walk at astro preview, overridable with E2E_SITE_BASE_URL", () => {
+    const site = (cfg: typeof local) =>
+      (cfg.projects ?? []).find((p) => p.name === "a11y-site")?.use?.baseURL;
+    expect(site(local)).toBe("http://localhost:3002");
+    expect(
+      site(
+        buildConfig(resolveTarget({}), {
+          E2E_SITE_BASE_URL: "http://localhost:4321",
+        })
+      )
+    ).toBe("http://localhost:4321");
   });
 
   it("gives a test long enough for a slow Auth0 round trip", () => {

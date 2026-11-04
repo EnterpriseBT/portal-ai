@@ -73,6 +73,25 @@ export function withRunningJob(body: unknown, job: Job): unknown {
   };
 }
 
+/**
+ * A request matcher from a path pattern such as `/api/stations*` or
+ * `/api/connector-entities/*` (`*` = within one path segment), tested
+ * against the URL's pathname alone. Anchored at `/api/`: a Playwright glob
+ * like `**\/api/stations*` also matches the dev server's own
+ * `/src/api/stations.api.ts` module, and faking that breaks the page.
+ */
+export function apiPathMatcher(pattern: string): (url: URL) => boolean {
+  if (!pattern.startsWith("/api/")) {
+    throw new Error(`state pattern "${pattern}" must start with /api/`);
+  }
+  const source = pattern
+    .split("*")
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[^/]*");
+  const re = new RegExp(`^${source}$`);
+  return (url) => re.test(url.pathname);
+}
+
 const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({
     status,
@@ -81,18 +100,31 @@ const json = (route: Route, status: number, body: unknown) =>
   });
 
 /**
- * Installs the interception for `state` on requests matching `glob`, before
- * navigation. For "loading", the returned `release` lets the held requests
- * through; call it after axe has run (and in a finally).
+ * Installs the interception for `state` on requests matching `pattern` (see
+ * apiPathMatcher), before navigation. `release` lets "loading"'s held
+ * requests through; call it after axe has run, in a finally. `failures`
+ * collects any interception that couldn't produce its state: the caller
+ * records that run as skipped rather than auditing a page in the wrong state.
  */
 export async function applyState(
   page: Page,
   state: Exclude<A11yState, "populated">,
-  glob: string
-): Promise<{ release: () => void }> {
+  pattern: string
+): Promise<{ release: () => void; failures: string[] }> {
   const held: Route[] = [];
+  const failures: string[] = [];
   let released = false;
-  await page.route(glob, async (route) => {
+  await page.route(apiPathMatcher(pattern), async (route) => {
+    try {
+      await fulfil(route);
+    } catch (err) {
+      failures.push(
+        `${state} interception of ${new URL(route.request().url()).pathname} failed: ${String(err instanceof Error ? err.message : err).split("\n")[0]}`
+      );
+      await route.continue().catch(() => undefined);
+    }
+  });
+  async function fulfil(route: Route): Promise<void> {
     switch (state) {
       case "empty": {
         const res = await route.fetch();
@@ -113,8 +145,9 @@ export async function applyState(
         held.push(route);
         return;
     }
-  });
+  }
   return {
+    failures,
     release: () => {
       released = true;
       for (const r of held.splice(0)) r.continue().catch(() => undefined);

@@ -100,6 +100,30 @@ Notes:
 - **Failures.** Run locally, a failed spec leaves a trace, screenshots, video and the HTML report under `test-results/local/` and `playwright-report/`. In CI (where `CI` is set) there's no trace, no report, no page snapshot and no video, because each can hold a typed password and this repo's artifacts are public. CI uploads only the stack logs and failure screenshots, and a sign-in failure leaves the page on `about:blank` before its screenshot (#963).
 - **Authoring.** `npm run --workspace @portalai/e2e test:e2e:ui` opens the Playwright UI.
 
+## Accessibility audit (#792)
+
+Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA inventory for epic #791. They **record** axe violations and never fail on one. They fail only on setup: a missing or expired session, a site that isn't being served, or a run that checked nothing. Both run only against a local target, and CI's `--project` list never names them.
+
+| Script | Project | Walks | Writes |
+|---|---|---|---|
+| `npm run a11y:axe` | `a11y` | every route in `src/lib/a11y-routes.ts`, as owner, admin and member (the sign-in pages signed out), in each state the route declares (populated, empty, error, loading, locked), in both themes | `a11y-results/app.json` |
+| `npm run a11y:axe:site` | `a11y-site` | every page in `SITE_PAGES`, in both themes | `a11y-results/site.json` |
+
+**Preconditions for `a11y:axe`:**
+- the dev stack is running;
+- the `e2e-fixture` org exists (`e2e:seed`) and holds data to drill into: `npx portalai demo seed --org <id> --rows 2000 --env local --yes`;
+- the three sessions are fresh (`e2e:auth:all`).
+
+**Preconditions for `a11y:axe:site`:** `npm run --workspace @portalai/site build`, then `npm run --workspace @portalai/site preview`, which serves on :3002 (`E2E_SITE_BASE_URL` overrides it).
+
+**How the walk works:**
+- **States** are produced by intercepting the view's own API request (`src/lib/a11y-states.ts`), not by seeding. A state's pattern is anchored at `/api/`: a `**/api/…` glob would also match the dev server's `/src/api/*.api.ts` modules.
+- **Routes with params** are reached by reading the first item's id from the index page's own list request (`drill` in the manifest), so the walk doesn't depend on how a list renders.
+- **Skips:** a route with nothing to drill into is recorded as skipped, with the reason. The inventory lists it as a coverage gap.
+- **New pages:** `a11y-routes.test.ts` fails until a new route file or site page is in the manifest.
+
+`npm run a11y:report` at the repo root runs these with the lint and stories tools, then regenerates the inventory.
+
 ## Deployed environments (app-dev, prod)
 
 Each deployed env has three QA users (owner, admin, member), and each one's only membership is that env's QA org. The membership is the boundary, and the API enforces it. Setup, verification, rotation and incidents: **`docs/E2E_DEPLOYED_QA.runbook.md`**. The Auth0 and secrets setup is scripted: `npm run --workspace @portalai/e2e e2e:qa:setup -- app-dev|prod`.

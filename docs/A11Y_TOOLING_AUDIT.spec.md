@@ -140,12 +140,13 @@ export interface A11yRoute {
   id: string;                    // stable, e.g. "entity-detail"
   route: string;                 // the apps/web/src/routes file it covers
   path?: string;                 // literal path, for routes without params…
-  drill?: { from: string; steps: { url: RegExp; text?: RegExp }[] }; // …or an index path plus hops:
-                                 // each follows the first link / table row landing on `url` (text-filtered)
+  drill?: { steps: { visit: string | ((ids) => string); api: string; pick?: RegExp }[];
+             path: (ids) => string };  // …or hops that each visit a page and read the first item's id
+                                 // (matching `pick`) from that page's own list request (`api`)
   owner: A11yOwner;              // default owner for findings on this route
   signedOut?: true;              // login, not-invited, invitations.accept
   roles?: E2eIdentity[];         // default all three
-  states: Partial<Record<Exclude<A11yState, "populated">, string>>; // state → URL glob of the request to intercept
+  states: Partial<Record<Exclude<A11yState, "populated">, string>>; // state → `/api/…` path pattern of the request to intercept
 }
 export const A11Y_ROUTES: readonly A11yRoute[];
 export const SITE_PAGES: readonly string[]; // every built page path under apps/site/src/pages, incl. each use-case slug
@@ -155,7 +156,7 @@ export const SITE_PAGES: readonly string[]; // every built page path under apps/
 
 ### State interception (`packages/e2e/src/lib/a11y-states.ts`, new)
 
-| State | `page.route(glob, …)` behaviour |
+| State | `page.route(apiPathMatcher(pattern), …)` behaviour (pathname-anchored at `/api/`; `*` = one segment) |
 |---|---|
 | `empty` | `route.fetch()`, then empty every array in `payload` and zero every numeric `total`/`count` key, then `route.fulfill` |
 | `error` | fulfil `500` with the API's 500 envelope (`apps/api/src/services/http.service.ts:74`: `success: false`, `message` = core's `INTERNAL_ERROR_MESSAGE`, a `code`) in `src/fixtures/a11y-error.json`; a unit test holds it to that shape |
