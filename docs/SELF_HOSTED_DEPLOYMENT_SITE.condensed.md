@@ -13,7 +13,7 @@
 | Pricing cards | `apps/site/src/pages/pricing.astro:47` | entirely data-driven from the site-config snapshot; nothing is keyed on a tier slug |
 | Plan feature list | `apps/site/src/lib/pack-label.ts:21` (`planFeatures`) | derived from tier flags (`customRbac`, etc.); no residency flag exists |
 | Pricing footer line | `apps/site/src/pages/pricing.astro:124` | "Need something that isn't listed…? Get in touch." |
-| What the chart ships | `deploy/helm/portalai/README.md` | one release; bundled or managed Postgres/Redis/S3; OIDC (`values.yaml:96`); `ANTHROPIC_BASE_URL` (README:309); pre-upgrade migrate job (`templates/upgrade-job.yaml`) |
+| What the chart ships | `deploy/helm/portalai/README.md` | one release; bundled or managed Postgres/Redis/S3; OIDC (`values.yaml:96`); pre-upgrade migrate job (`templates/upgrade-job.yaml`) |
 | Image gate | `docs/SUPPLY_CHAIN.md` | Trivy-scanned, cosign-signed, SBOM + provenance |
 
 ## Decision — where the Pricing line lives
@@ -33,7 +33,7 @@ Add a sixth pillar, `id: "self-hosted"`, after `share` and before `extend`, so i
 - **Points:**
   - Installs with a single Helm chart, so it fits the way you already run software.
   - Runs on your managed PostgreSQL, Redis and S3-compatible storage, or bundled ones for a quick evaluation.
-  - Sign-in goes through your own identity provider, and the AI calls go to the endpoint you choose.
+  - Sign-in goes through your own identity provider.
   - Images are signed and vulnerability-scanned, and upgrades apply database changes as part of the install.
 
 **Pricing footer:** "Need something that isn't listed — higher allowances, a private toolpack, an invoice instead of a card, or a deployment in your own cloud? Get in touch."

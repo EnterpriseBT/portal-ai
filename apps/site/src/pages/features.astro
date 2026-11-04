@@ -5,7 +5,8 @@ import { siteUrl } from "../lib/site-context.js";
 import { breadcrumbLd, definedTermSetLd, faqPageLd } from "../lib/jsonld.js";
 
 /**
- * Five pillars, in the order a new user meets them (#360, sharing added in #615). Benefit-led copy —
+ * Six pillars, in the order a new user meets them (#360, sharing added in #615,
+ * self-hosted deployment in #961). Benefit-led copy —
  * this page sells the product, it is not a glossary. (The in-app vocabulary
  * lives in `@portalai/core/content`; it powers the DefinedTermSet JSON-LD below
  * for SEO, but is deliberately not enumerated in the visible copy.)
@@ -53,7 +54,18 @@ const PILLARS: Array<{
     points: [
       "Share a station or pinned result with a teammate or the whole team, read-only or editable.",
       "Share a curated view to give read access to just the columns and rows someone needs — with SQL filters on the plans that include them.",
-      "For larger organizations: custom roles and policies, sign-in through your own identity provider, and deployment in your own cloud — see Pricing or talk to us.",
+      "For larger organizations: custom roles and policies, sign-in through your own identity provider, and deployment in your own cloud (see below).",
+    ],
+  },
+  {
+    id: "self-hosted",
+    heading: "Run it in your own cloud",
+    lede: "Enterprise teams can run Portals AI on their own Kubernetes cluster, so the data, the database and the people who can reach them all stay inside their own environment.",
+    points: [
+      "Installs with a single Helm chart, so it fits the way you already run software.",
+      "Runs on your managed PostgreSQL, Redis and S3-compatible storage, or bundled ones for a quick evaluation.",
+      "Sign-in goes through your own identity provider.",
+      "Images are signed and vulnerability-scanned, and upgrades apply database changes as part of the install.",
     ],
   },
   {
