@@ -19,6 +19,14 @@ runs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ steps.pw.outputs.os }}-${{ steps.pw.outputs.version }}
 
+    # No --with-deps (#965): the pinned runner image already carries every
+    # library Chromium needs, and --with-deps ran apt-get on every run (cache
+    # hit or not) only to add fonts nothing asserts on. A slow Ubuntu mirror
+    # once stretched this step to 8 minutes against verify-login's 15. If an
+    # image move drops a library, the launch fails with Playwright's "Host
+    # system is missing dependencies" list, which is the reviewable signal.
+    # `timeout` bounds a stalled browser download on a cache miss; composite
+    # steps don't take timeout-minutes.
     - name: Install Chromium
       shell: bash
-      run: npm run --workspace @portalai/e2e playwright:install
+      run: timeout 300 npm run --workspace @portalai/e2e playwright:install
