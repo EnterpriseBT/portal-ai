@@ -184,7 +184,9 @@ Theme: before navigation, `page.addInitScript` sets `localStorage["portalai-them
   3. Path prefixes: `modules/RegionEditor` → #795; `modules/MapWidget` and `modules/D3Widget` → #796; `layouts/`, `SidebarNav`, `HeaderMenu`, `views/Loading` → #797; `ui/DataTable`, `DataTableBlock`, `PaginationToolbar`, `modules/TableWidget`, `EntityRecordDataTable`, `KeyValueTable` → #794; `ui/Modal`, `*Dialog.component.tsx`, `FormAlert`, `workflows/` → #793.
   4. An `axe-app` finding not matched above takes its route's `owner`.
   5. Otherwise, `unassigned`.
-- **Dedupe.** Findings with the same `(tool, rule, location)` merge their `seen` lists. The `brand.dark` run of a rule other than `color-contrast` adds to `seen` and never adds a row.
+- **Dedupe.** Findings with the same `(tool, rule, location)` merge their `seen` lists. The `brand.dark` run of a rule other than `color-contrast` adds to `seen` and never adds a row. Emotion class hashes (`.css-…`) are stripped from targets so a rebuild can't move a finding.
+- **Grouping (added in slice 6, when the per-owner tables passed 200 rows).** Rows are **one rule × one element**, wherever it was seen. The element is the selector for the browser walk, story file + selector for stories, and the file for lint. `:nth-child(n)` and generated MUI ids don't split a group. Each row lists **Where** (routes, stories or lines) and an **Instances** count.
+- **Ownership of a group.** A group whose findings share an owner keeps it. One spanning owners is a shared component: when it's on at least half the walked app routes it's chrome and goes to #797, otherwise to its most common owner.
 - **Output.** It replaces the text between `<!-- a11y-inventory:start -->` and `<!-- a11y-inventory:end -->` in `docs/A11Y_AUDIT.md`. Missing or duplicate markers exit 1. **Zero `ok` runs across all inputs exits 1** ("an empty report isn't a clean one").
 - **`--self-test`.** It runs against embedded fixtures and covers: tag-to-criterion mapping, owner precedence, dedupe across themes, the unmapped-rule failure, the missing-marker failure and the empty-run failure.
 
@@ -210,7 +212,7 @@ Root `package.json` scripts:
 ## Screen-reader pass (per flow: steps + expected announcement; findings SR-nn, with VoiceOver+Safari / NVDA+Firefox)
 ```
 
-Each per-owner table has the columns `| WCAG | Rule | Impact | Location | Seen (role/state/theme) | Tool |`. The manual findings tables have `| ID | Flow | Step | WCAG | Observed | AT | Owner |`.
+Each per-owner table has the columns `| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen (role/state/theme) | Tool |`, and the Summary counts rows and instances per owner. The manual findings tables have `| ID | Flow | Step | WCAG | Observed | AT | Owner |`.
 
 The manual passes cover these six flows:
 1. Sign-in.

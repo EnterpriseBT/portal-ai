@@ -140,7 +140,8 @@ const stableTarget = (target) =>
     .replace(/\.css-[a-z0-9]+(?:-[A-Za-z0-9]+)*/g, "")
     .replace(/\s+>\s+(?=>|$)/g, " ")
     .replace(/\s{2,}/g, " ")
-    .trim();
+    .trim()
+    .replace(/^>\s*/, "");
 
 const JSX_A11Y_PREFIX = /^(astro\/)?jsx-a11y\//;
 
@@ -203,6 +204,8 @@ export function normalizeEslint(results, { package: pkg, root, wcagMap = JSX_A11
         wcag: [...wcag].sort(compareCriteria),
         location,
         file,
+        subject: file,
+        where: `:${msg.line}`,
         seen: [{ role: null, state: null, theme: null }],
         owner: ownerFor({ tool: "eslint", pkg, rule, file }),
         message: msg.message,
@@ -235,6 +238,8 @@ export function normalizeRaw(data, { package: pkg }) {
           wcag: wcagFromTags(v.tags),
           location,
           file,
+          subject: file ? `${file} ${target}`.trim() : target,
+          where: file ? (ctx.story ?? "") : (ctx.route ?? ctx.url ?? "?"),
           seen: [{ role: ctx.role ?? null, state: ctx.state ?? null, theme: ctx.theme ?? null }],
           owner: ownerFor({ tool: data.tool, pkg, rule: v.id, file, routeOwner: ctx.owner }),
         });
@@ -257,7 +262,11 @@ function okRuns(input, data) {
 export function buildInventory(sources, { wcagMap = JSX_A11Y_WCAG } = {}) {
   const coverage = [];
   const merged = new Map();
+  const appRoutes = new Set();
   for (const { input, data, root = "/" } of sources) {
+    if (input.kind === "raw" && data.tool === "axe-app") {
+      for (const r of data.runs ?? []) if (r.status === "ok" && r.context?.route) appRoutes.add(r.context.route);
+    }
     const ok = okRuns(input, data);
     if (ok === 0) {
       throw new InventoryError(`${input.file} has no successful run; an empty result isn't a clean one. Re-run its tool.`);
@@ -295,7 +304,77 @@ export function buildInventory(sources, { wcagMap = JSX_A11Y_WCAG } = {}) {
       a.rule.localeCompare(b.rule) ||
       a.location.localeCompare(b.location)
   );
-  return { findings, coverage };
+  return { findings, groups: groupFindings(findings, appRoutes.size), coverage };
+}
+
+/** Positional selector parts and generated ids differ between pages that
+ *  render the same component, so they don't split a group. The row still
+ *  shows a real selector. */
+const groupSubject = (subject) =>
+  subject
+    .replace(/:nth-(child|of-type)\(\d+\)/g, "")
+    .replace(/#\\:r[0-9a-z]+\\:/g, "#(generated)")
+    .replace(/#mui-\d+/g, "#(generated)");
+
+const IMPACT_ORDER = ["critical", "serious", "moderate", "minor"];
+
+/**
+ * One row per rule × element: the same violation on the same component,
+ * wherever it was seen, with the pages (routes, stories or lines) it was seen
+ * on and an instance count. A group whose findings have different owners
+ * is a shared component: on at least half the walked app routes it's
+ * shared chrome (#797), otherwise it goes to its most common owner.
+ */
+function groupFindings(findings, appRouteCount) {
+  const byKey = new Map();
+  for (const f of findings) {
+    const theme = f.rule === "color-contrast" ? (f.seen[0]?.theme ?? "") : "";
+    const key = `${f.tool}|${f.rule}|${groupSubject(f.subject ?? f.location)}|${theme}`;
+    if (!byKey.has(key)) byKey.set(key, { key, members: [] });
+    byKey.get(key).members.push(f);
+  }
+  const groups = [];
+  for (const { key, members } of byKey.values()) {
+    const first = members[0];
+    const owners = members.map((m) => m.owner);
+    let owner = owners[0];
+    if (new Set(owners).size > 1) {
+      const routes = new Set(members.map((m) => m.where));
+      if (first.tool === "axe-app" && appRouteCount > 0 && routes.size * 2 >= appRouteCount) owner = 797;
+      else {
+        const tally = {};
+        for (const o of owners) tally[o] = (tally[o] ?? 0) + 1;
+        owner = Object.entries(tally).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
+        owner = OWNERS[owner] ? Number(owner) : owner;
+      }
+    }
+    const seen = [];
+    for (const m of members) {
+      for (const s of m.seen) {
+        if (!seen.some((p) => p.role === s.role && p.state === s.state && p.theme === s.theme)) seen.push(s);
+      }
+    }
+    const impacts = members.map((m) => m.impact).filter(Boolean);
+    groups.push({
+      id: createHash("sha1").update(key).digest("hex").slice(0, 8),
+      tool: first.tool,
+      rule: first.rule,
+      impact: IMPACT_ORDER.find((i) => impacts.includes(i)) ?? null,
+      wcag: [...new Set(members.flatMap((m) => m.wcag))].sort(compareCriteria),
+      subject: groupSubject(first.subject ?? first.location),
+      where: [...new Set(members.map((m) => m.where ?? m.location))].sort(),
+      instances: members.length,
+      seen,
+      owner,
+    });
+  }
+  return groups.sort(
+    (a, b) =>
+      String(a.owner).localeCompare(String(b.owner)) ||
+      compareCriteria(a.wcag[0] ?? "9.9.9", b.wcag[0] ?? "9.9.9") ||
+      a.rule.localeCompare(b.rule) ||
+      a.subject.localeCompare(b.subject)
+  );
 }
 
 /** Counts the hand-written KB-/SR- rows per owner. The owner is the row's
@@ -327,7 +406,12 @@ const contextLabel = (ctx) =>
   [ctx.file && `${ctx.file} › ${ctx.story ?? ""}`, ctx.route, ctx.role, ctx.state, ctx.theme].filter(Boolean).join(" · ");
 
 /** The text that goes between the markers. Deterministic: no timestamps. */
-export function renderGenerated({ findings, coverage }, manual = {}) {
+const whereSummary = (where) => {
+  const shown = where.slice(0, 6).map((w) => w || "(default)");
+  return `${where.length}: ${shown.join(", ")}${where.length > shown.length ? `, +${where.length - shown.length} more` : ""}`;
+};
+
+export function renderGenerated({ groups: rows, coverage }, manual = {}) {
   const lines = [];
   lines.push("## Coverage", "");
   lines.push("| Result file | Tool | Version | Runs ok | Skipped |", "|---|---|---|---|---|");
@@ -342,16 +426,21 @@ export function renderGenerated({ findings, coverage }, manual = {}) {
 
   const groups = [...Object.keys(OWNERS), "unassigned"];
   lines.push("", "## Summary", "");
-  lines.push("| Owner | Automated findings | WCAG criteria | Keyboard / screen-reader findings |", "|---|---|---|---|");
+  lines.push(
+    "Each row below is one rule on one element, wherever it was seen: **Where** lists the routes, stories or lines, and **Instances** counts every sighting.",
+    ""
+  );
+  lines.push("| Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |", "|---|---|---|---|---|");
   for (const g of groups) {
-    const mine = findings.filter((f) => String(f.owner) === g);
+    const mine = rows.filter((f) => String(f.owner) === g);
     const criteria = [...new Set(mine.flatMap((f) => f.wcag))].sort(compareCriteria);
     const label = g === "unassigned" ? "Unassigned" : `[#${g} ${OWNERS[g]}](#owner-${g})`;
-    lines.push(`| ${label} | ${mine.length} | ${criteria.join(", ") || "—"} | ${manual[g] ?? 0} |`);
+    const instances = mine.reduce((n, f) => n + f.instances, 0);
+    lines.push(`| ${label} | ${mine.length} | ${instances} | ${criteria.join(", ") || "—"} | ${manual[g] ?? 0} |`);
   }
 
   for (const g of groups) {
-    const mine = findings.filter((f) => String(f.owner) === g);
+    const mine = rows.filter((f) => String(f.owner) === g);
     lines.push("");
     lines.push(g === "unassigned" ? '<a id="owner-unassigned"></a>' : `<a id="owner-${g}"></a>`, "");
     lines.push(g === "unassigned" ? "## Unassigned" : `## #${g} ${OWNERS[g]}`, "");
@@ -359,10 +448,10 @@ export function renderGenerated({ findings, coverage }, manual = {}) {
       lines.push("No automated findings.");
       continue;
     }
-    lines.push("| ID | WCAG | Rule | Impact | Location | Seen | Tool |", "|---|---|---|---|---|---|---|");
+    lines.push("| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |", "|---|---|---|---|---|---|---|---|---|");
     for (const f of mine) {
       lines.push(
-        `| ${f.id} | ${f.wcag.join(", ") || "best practice"} | ${cell(f.rule)} | ${f.impact ?? "—"} | ${cell(f.location)} | ${cell(seenSummary(f.seen))} | ${f.tool} |`
+        `| ${f.id} | ${f.wcag.join(", ") || "best practice"} | ${cell(f.rule)} | ${f.impact ?? "—"} | ${cell(f.subject)} | ${cell(whereSummary(f.where))} | ${f.instances} | ${cell(seenSummary(f.seen))} | ${f.tool} |`
       );
     }
   }
@@ -614,10 +703,83 @@ async function selfTest() {
       },
     ]).findings
   );
+  const leading = run("leading hash", () =>
+    build([
+      { input: INPUTS[5], data: rawFile("axe-app", [appRun("jobs", 794, [violation("button-name", ["wcag412"], [".css-1abc > .MuiStack-root > button"])])]) },
+    ]).findings
+  );
+  check(
+    "a target whose first part was only a hash doesn't start with a dangling combinator",
+    leading?.[0]?.location === "jobs .MuiStack-root > button",
+    leading?.[0]?.location
+  );
   check(
     "styling-engine class hashes are stripped from targets, so a rebuild can't move a finding",
     hashed?.[0]?.location === "jobs #tabpanel-0 > .MuiBox-root > .MuiStack-root > button",
     hashed?.[0]?.location
+  );
+
+  // Grouping: one row per rule × element, listing where it was seen
+  const grouped = run("grouping", () =>
+    build([
+      {
+        input: INPUTS[5],
+        data: rawFile("axe-app", [
+          appRun("jobs", 794, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(2) > div"])]),
+          appRun("stations", 794, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(5) > div"])]),
+          appRun("settings", 793, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(3) > div"])]),
+          appRun("help", 797, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(1) > div"])]),
+          appRun("tags", 794, [violation("label", ["wcag412"], ["#\\:r5\\: input"])]),
+          appRun("views", 794, [violation("label", ["wcag412"], ["#\\:r9\\: input"])]),
+          appRun("dashboard", 797, []),
+          appRun("entities", 794, [violation("button-name", ["wcag412"], ["button.only-here"])]),
+        ]),
+      },
+      {
+        input: INPUTS[1],
+        data: rawFile("jest-axe", [
+          { context: { file: "apps/web/src/components/JobCard.component.stories.tsx", story: "A" }, status: "ok", violations: [violation("aria-allowed-role", ["best-practice"], ["div.card"])] },
+          { context: { file: "apps/web/src/components/JobCard.component.stories.tsx", story: "B" }, status: "ok", violations: [violation("aria-allowed-role", ["best-practice"], ["div.card"])] },
+        ]),
+      },
+      {
+        input: INPUTS[0],
+        data: eslintFile("/r/apps/web/src/modules/RegionEditor/ReviewStep.component.tsx", ["jsx-a11y/alt-text", "jsx-a11y/alt-text"]),
+        root: "/r",
+      },
+    ]).groups
+  );
+  const groupOf = (rule) => grouped?.filter((g) => g.rule === rule) ?? [];
+  const nav = groupOf("aria-command-name");
+  check(
+    "one rule on one element across pages is one row, listing every page, counting every instance",
+    nav.length === 1 && nav[0].instances === 4 && nav[0].where.join() === "help,jobs,settings,stations",
+    JSON.stringify(nav)
+  );
+  check(
+    "an element seen on at least half the walked app routes is shared chrome, owned by #797",
+    nav[0]?.owner === 797,
+    nav[0]?.owner
+  );
+  check(
+    "generated MUI ids don't split a group",
+    groupOf("label").length === 1 && groupOf("label")[0].instances === 2,
+    JSON.stringify(groupOf("label"))
+  );
+  check(
+    "a group within one owner keeps that owner",
+    groupOf("label")[0]?.owner === 794 && groupOf("button-name")[0]?.owner === 794,
+    JSON.stringify([groupOf("label")[0]?.owner, groupOf("button-name")[0]?.owner])
+  );
+  check(
+    "story findings group per story file and selector, listing the stories",
+    groupOf("aria-allowed-role").length === 1 && groupOf("aria-allowed-role")[0].where.join() === "A,B",
+    JSON.stringify(groupOf("aria-allowed-role"))
+  );
+  check(
+    "lint findings group per file and rule, listing the lines",
+    groupOf("jsx-a11y/alt-text").length === 1 && groupOf("jsx-a11y/alt-text")[0].where.join() === ":10,:11",
+    JSON.stringify(groupOf("jsx-a11y/alt-text"))
   );
 
   // Dedupe across themes
@@ -739,7 +901,7 @@ function main() {
     const inventory = buildInventory(sources);
     const next = replaceGenerated(doc, renderGenerated(inventory, parseManual(doc)));
     writeFileSync(docPath, next);
-    console.log(`a11y-inventory: ${inventory.findings.length} finding(s) written to ${DOC}`);
+    console.log(`a11y-inventory: ${inventory.groups.length} row(s) from ${inventory.findings.length} finding(s) written to ${DOC}`);
   } catch (err) {
     console.error(`a11y-inventory: ${err instanceof InventoryError ? err.message : err.stack ?? err}`);
     process.exit(1);
