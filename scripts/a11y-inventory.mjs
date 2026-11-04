@@ -111,10 +111,36 @@ const isShellRule = (rule) => SHELL_RULES.has(rule) || rule.startsWith("landmark
 const PATH_OWNERS = [
   [/\/modules\/RegionEditor\//, 795],
   [/\/modules\/(MapWidget|D3Widget)\//, 796],
-  [/(\/layouts\/|SidebarNav|HeaderMenu|\/views\/Loading\.view)/, 797],
-  [/(\/ui\/DataTable|DataTableBlock|PaginationToolbar|\/modules\/TableWidget\/|EntityRecordDataTable|KeyValueTable)/, 794],
-  [/(\/ui\/Modal|Dialog\.component|FormAlert|\/workflows\/)/, 793],
+  // The shell and page-level status: layouts, nav, loading, error pages,
+  // Help and the dashboard, and the page-structure primitives.
+  [
+    /(\/layouts\/|SidebarNav|HeaderMenu|\/(Authorized|Loading)\.|HttpError|BadRequest|Forbidden|NotFound|ServerError|Unauthorized|\/Help\.view|\/Dashboard\.view|PageSection|PageHeader|HealthCheck)/,
+    797,
+  ],
+  [
+    /(\/ui\/DataTable|DataTableBlock|PaginationToolbar|\/modules\/TableWidget\/|EntityRecordDataTable|KeyValueTable|JobCard|FilterSqlPreview|\/Connector\.view|CuratedViewDetail\.view)/,
+    794,
+  ],
+  [
+    /(\/ui\/Modal|Dialog\.component|Modal\.component|FormAlert|\/workflows\/|AdvancedFilterBuilder|SearchableSelect|ChatWindow|SsoLoginForm|IconButton|\/Settings\.view)/,
+    793,
+  ],
 ];
+
+/** Rules owned by one child wherever they're found: an unnamed progress
+ *  indicator comes from the shared loading primitives (StatusMessage,
+ *  Loading, DataResult), which #797 owns with the rest of page status. */
+const RULE_OWNERS = { "aria-progressbar-name": 797 };
+
+/** Emotion class hashes (`.css-19midj6`, `.css-1sazv7p-MuiStack-root`)
+ *  change with any styling change, so a location carrying one would move
+ *  on rebuild. The stable MUI classes beside them stay. */
+const stableTarget = (target) =>
+  target
+    .replace(/\.css-[a-z0-9]+(?:-[A-Za-z0-9]+)*/g, "")
+    .replace(/\s+>\s+(?=>|$)/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
 const JSX_A11Y_PREFIX = /^(astro\/)?jsx-a11y\//;
 
@@ -140,6 +166,7 @@ const findingId = (tool, rule, location) => createHash("sha1").update(`${tool}|$
 
 function ownerFor({ tool, pkg, rule, file, routeOwner }) {
   if (tool === "axe-app" && isShellRule(rule)) return 797;
+  if (RULE_OWNERS[rule]) return RULE_OWNERS[rule];
   if (pkg === "apps/site" || tool === "axe-site") return 798;
   if (file) {
     const probe = `/${file}`;
@@ -197,7 +224,7 @@ export function normalizeRaw(data, { package: pkg }) {
     const file = ctx.file;
     for (const v of run.violations ?? []) {
       for (const node of v.nodes ?? []) {
-        const target = (node.target ?? []).join(" > ");
+        const target = (node.target ?? []).map(stableTarget).join(" > ");
         const where = file ? `${file} › ${ctx.story ?? ""}` : (ctx.route ?? ctx.url ?? "?");
         const location = `${where} ${target}`.trim();
         findings.push({
@@ -550,6 +577,48 @@ async function selfTest() {
   );
   check("a finding no rule places is unassigned, never guessed", ownerOf(byRule("aria-roles", "ToastHost")) === "unassigned", ownerOf(byRule("aria-roles", "ToastHost")));
   check("a finding with no wcag tag is best practice (no criteria)", byRule("region")?.wcag.length === 0, JSON.stringify(byRule("region")));
+
+  // Owner rules added from the first real run (#792 slice 6)
+  const realRun = run("real-run owners", () =>
+    build([
+      {
+        input: INPUTS[1],
+        data: rawFile("jest-axe", [
+          { context: { file: "apps/web/src/stories/HttpError.component.stories.tsx", story: "S" }, status: "ok", violations: [violation("heading-order", ["best-practice"])] },
+          { context: { file: "apps/web/src/stories/Authorized.layout.stories.tsx", story: "S" }, status: "ok", violations: [violation("aria-command-name", ["wcag2a", "wcag412"])] },
+          { context: { file: "apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx", story: "S" }, status: "ok", violations: [violation("aria-input-field-name", ["wcag2a", "wcag412"])] },
+          { context: { file: "apps/web/src/stories/JobCard.component.stories.tsx", story: "S" }, status: "ok", violations: [violation("aria-allowed-role", ["best-practice"])] },
+          { context: { file: "apps/web/src/stories/Connector.view.stories.tsx", story: "S" }, status: "ok", violations: [violation("aria-progressbar-name", ["wcag2a", "wcag111"])] },
+        ]),
+      },
+    ]).findings
+  );
+  const ownerOfRule = (rule) => realRun?.find((f) => f.rule === rule)?.owner;
+  check(
+    "shell pages go to #797, form controls to #793, list cards to #794",
+    ownerOfRule("heading-order") === 797 && ownerOfRule("aria-command-name") === 797 && ownerOfRule("aria-input-field-name") === 793 && ownerOfRule("aria-allowed-role") === 794,
+    JSON.stringify(realRun?.map((f) => [f.rule, f.owner]))
+  );
+  check(
+    "an unnamed progress indicator goes to #797 wherever it renders (the shared loading primitives)",
+    ownerOfRule("aria-progressbar-name") === 797,
+    ownerOfRule("aria-progressbar-name")
+  );
+  const hashed = run("hashed targets", () =>
+    build([
+      {
+        input: INPUTS[5],
+        data: rawFile("axe-app", [
+          appRun("jobs", 794, [violation("button-name", ["wcag412"], ["#tabpanel-0 > .css-19midj6.MuiBox-root > .css-1sazv7p-MuiStack-root.MuiStack-root > button"])]),
+        ]),
+      },
+    ]).findings
+  );
+  check(
+    "styling-engine class hashes are stripped from targets, so a rebuild can't move a finding",
+    hashed?.[0]?.location === "jobs #tabpanel-0 > .MuiBox-root > .MuiStack-root > button",
+    hashed?.[0]?.location
+  );
 
   // Dedupe across themes
   const themed = run("theme build", () =>

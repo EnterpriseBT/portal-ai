@@ -113,6 +113,7 @@ Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA i
 - the dev stack is running;
 - the `e2e-fixture` org exists (`e2e:seed`) and holds data to drill into: `npx portalai demo seed --org <id> --rows 2000 --env local --yes`;
 - the three sessions are fresh (`e2e:auth:all`).
+- each identity's **active org** is `e2e-fixture`. The app opens the most recently signed-in membership, so an identity that belongs to another org walks that org instead. The coverage list shows it: one role's drills fail where the others' succeed. Switch it with `POST /api/organization/switch` or the org switcher.
 
 **Preconditions for `a11y:axe:site`:** `npm run --workspace @portalai/site build`, then `npm run --workspace @portalai/site preview`, which serves on :3002 (`E2E_SITE_BASE_URL` overrides it).
 

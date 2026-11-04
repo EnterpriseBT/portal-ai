@@ -16,6 +16,9 @@ export default [
   ...base,
   {
     files: ["src/**/*.tsx"],
+    // Tests and stories render fixtures, not shipped markup; the stories
+    // sweep (a11y:stories) audits what the stories render instead.
+    ignores: ["src/**/__tests__/**", "src/**/*.test.tsx", "src/**/*.stories.tsx", "src/stories/**"],
     plugins: { "jsx-a11y": jsxA11y },
     rules: jsxA11y.flatConfigs.strict.rules,
     settings: {
