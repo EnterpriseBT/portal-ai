@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom";
+import jestAxe from "jest-axe";
 import { configure } from "@testing-library/react";
 import { TextEncoder, TextDecoder } from "util";
+
+// jest-axe's matcher, used by expectNoAxeViolations (#792). jest-axe is
+// CommonJS, and Jest's ESM mode doesn't expose its named exports.
+expect.extend(jestAxe.toHaveNoViolations);
 
 // Testing Library's async budget (#378). `waitFor` and friends default to
 // 1000 ms — a number sized for an idle machine, not for a 239-suite parallel

@@ -98,5 +98,35 @@ export async function pressEnter(element: HTMLElement): Promise<void> {
   await userEvent.keyboard("{Enter}");
 }
 
+/**
+ * jsdom has no layout or computed colour, and a component rendered on its own
+ * sits in no landmark, so these two rules can only report noise here. The
+ * browser walk (`npm run a11y:axe`, #792) measures them. Mirrors
+ * `packages/core/src/__tests__/axe.util.ts`; keep the two lists the same.
+ */
+export const JSDOM_DISABLED_AXE_RULES = ["color-contrast", "region"] as const;
+
+/**
+ * Asserts that `container` has no axe violations (WCAG 2.2 AA and best
+ * practice), apart from the rules jsdom can't evaluate and any the caller
+ * disables with a reason. jest-axe loads on first use: every suite imports
+ * this file, and most never call it.
+ */
+export async function expectNoAxeViolations(
+  container: Element,
+  options: { disableRules?: readonly string[] } = {}
+): Promise<void> {
+  // CommonJS: Jest's ESM mode exposes only the default export.
+  const { default: jestAxe } = await import("jest-axe");
+  const disabled = [
+    ...JSDOM_DISABLED_AXE_RULES,
+    ...(options.disableRules ?? []),
+  ];
+  const results = await jestAxe.axe(container, {
+    rules: Object.fromEntries(disabled.map((id) => [id, { enabled: false }])),
+  });
+  expect(results).toHaveNoViolations();
+}
+
 export * from "@testing-library/react";
 export { renderWithProviders as render };

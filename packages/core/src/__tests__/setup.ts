@@ -1,7 +1,12 @@
 import "@testing-library/jest-dom";
+import jestAxe from "jest-axe";
 
 import { TextEncoder, TextDecoder } from "node:util";
 import { webcrypto } from "node:crypto";
+
+// jest-axe's matcher, used by expectNoAxeViolations (#792). jest-axe is
+// CommonJS, and Jest's ESM mode doesn't expose its named exports.
+expect.extend(jestAxe.toHaveNoViolations);
 
 // jsdom (the Jest test environment) does not expose TextEncoder /
 // TextDecoder / Web Crypto on the global. Polyfill from Node so that
