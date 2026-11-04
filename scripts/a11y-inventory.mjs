@@ -25,10 +25,13 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export class InventoryError extends Error {}
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Every raw result the inventory needs, relative to the repo root. */
 export const INPUTS = [
@@ -60,9 +63,43 @@ export const OWNERS = {
  * jsx-a11y rule → WCAG 2.2 success criteria. jsx-a11y results carry no
  * criterion of their own, so every rule the report runs must be listed: an
  * unlisted one fails the run rather than producing a row with no criterion.
- * `astro/jsx-a11y/<rule>` resolves through the same key.
+ * `astro/jsx-a11y/<rule>` resolves through the same key. `[]` is a
+ * deliberate "best practice, no criterion of its own" (the generator lists
+ * it as such), distinct from a missing key.
  */
-export const JSX_A11Y_WCAG = {};
+export const JSX_A11Y_WCAG = {
+  "alt-text": ["1.1.1"],
+  "anchor-has-content": ["2.4.4", "4.1.2"],
+  "anchor-is-valid": ["2.1.1", "2.4.4"],
+  "aria-activedescendant-has-tabindex": ["2.1.1"],
+  "aria-props": ["4.1.2"],
+  "aria-proptypes": ["4.1.2"],
+  "aria-role": ["4.1.2"],
+  "aria-unsupported-elements": ["4.1.2"],
+  "autocomplete-valid": ["1.3.5"],
+  "click-events-have-key-events": ["2.1.1"],
+  "heading-has-content": ["1.3.1", "2.4.6"],
+  "html-has-lang": ["3.1.1"],
+  "iframe-has-title": ["4.1.2"],
+  "img-redundant-alt": ["1.1.1"],
+  "interactive-supports-focus": ["2.1.1"],
+  "label-has-associated-control": ["1.3.1", "3.3.2", "4.1.2"],
+  "media-has-caption": ["1.2.2"],
+  "mouse-events-have-key-events": ["2.1.1"],
+  "no-access-key": [],
+  "no-autofocus": [],
+  "no-distracting-elements": ["2.2.2"],
+  "no-interactive-element-to-noninteractive-role": ["4.1.2"],
+  "no-noninteractive-element-interactions": ["4.1.2"],
+  "no-noninteractive-element-to-interactive-role": ["4.1.2"],
+  "no-noninteractive-tabindex": ["2.4.3"],
+  "no-redundant-roles": [],
+  "no-static-element-interactions": ["2.1.1", "4.1.2"],
+  "role-has-required-aria-props": ["4.1.2"],
+  "role-supports-aria-props": ["4.1.2"],
+  scope: ["1.3.1"],
+  "tabindex-no-positive": ["2.4.3"],
+};
 
 /** axe rules that describe the page shell rather than the view inside it. On
  *  an app route they belong to #797 whatever the route's own owner is. */
@@ -317,6 +354,24 @@ export function replaceGenerated(doc, generated) {
   return `${doc.slice(0, i + START.length)}\n${generated}\n${doc.slice(j)}`;
 }
 
+const ruleIsOn = (v) => !(v === "off" || v === 0 || (Array.isArray(v) && (v[0] === "off" || v[0] === 0)));
+
+/** The jsx-a11y rule names (prefix stripped) the report configs enable:
+ *  jsx-a11y's `strict` (web, core) and eslint-plugin-astro's
+ *  `flat/jsx-a11y-strict` (site), each resolved from the package that uses it. */
+export async function enabledJsxA11yRulesAsync(root = REPO_ROOT) {
+  const requireFrom = (pkg) => createRequire(path.join(root, pkg, "package.json"));
+  const jsxA11y = requireFrom("apps/web")("eslint-plugin-jsx-a11y");
+  const astroPath = requireFrom("apps/site").resolve("eslint-plugin-astro");
+  const astro = (await import(pathToFileURL(astroPath).href)).default;
+  const rules = new Set();
+  for (const [k, v] of Object.entries(jsxA11y.flatConfigs.strict.rules)) if (ruleIsOn(v)) rules.add(k.replace(JSX_A11Y_PREFIX, ""));
+  for (const block of astro.configs["flat/jsx-a11y-strict"]) {
+    for (const [k, v] of Object.entries(block.rules ?? {})) if (JSX_A11Y_PREFIX.test(k) && ruleIsOn(v)) rules.add(k.replace(JSX_A11Y_PREFIX, ""));
+  }
+  return [...rules].sort();
+}
+
 /** Reads every input; a missing or unparseable one fails, naming it. */
 export function readInputs(root) {
   return INPUTS.map((input) => {
@@ -372,7 +427,7 @@ const DOC_FIXTURE = [
   "",
 ].join("\n");
 
-function selfTest() {
+async function selfTest() {
   let failed = 0;
   let total = 0;
   const check = (name, ok, detail) => {
@@ -584,6 +639,21 @@ function selfTest() {
   throws("a doc with no markers fails", () => replaceGenerated("# no markers\n", "NEW"), /marker/);
   throws("a doc with duplicate markers fails", () => replaceGenerated(`${START}\n${END}\n${START}\n${END}\n`, "NEW"), /marker/);
 
+  // The map covers what the report actually runs: read the installed presets,
+  // so a plugin upgrade that adds a rule fails here, not mid-report.
+  let enabled;
+  try {
+    enabled = await enabledJsxA11yRulesAsync();
+  } catch (err) {
+    check("the installed jsx-a11y presets can be read", false, err.message);
+  }
+  const unmapped = (enabled ?? []).filter((r) => !JSX_A11Y_WCAG[r]);
+  check(
+    "every rule the strict presets enable has a WCAG mapping",
+    enabled?.length > 0 && unmapped.length === 0,
+    `unmapped: ${unmapped.join(", ") || "(no rules read)"}`
+  );
+
   if (failed) {
     console.error(`a11y-inventory self-test: ${failed} of ${total} case(s) failed`);
     process.exit(1);
@@ -592,7 +662,7 @@ function selfTest() {
 }
 
 function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const root = REPO_ROOT;
   try {
     const sources = readInputs(root);
     const docPath = path.join(root, DOC);
@@ -608,6 +678,6 @@ function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (process.argv.includes("--self-test")) selfTest();
+  if (process.argv.includes("--self-test")) await selfTest();
   else main();
 }
