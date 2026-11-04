@@ -19,6 +19,32 @@ runs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ steps.pw.outputs.os }}-${{ steps.pw.outputs.version }}
 
+    # No --with-deps (#965): the runner image already carries every library
+    # Chromium needs, and --with-deps ran apt-get on every run (cache hit or
+    # not) only to add fonts the specs don't depend on. A slow Ubuntu mirror
+    # once stretched this step to 8 minutes against verify-login's 15. The
+    # package script keeps --with-deps for hosts without those libraries; CI
+    # uses the :ci variant. `timeout` bounds a stalled browser download on a
+    # cache miss, since composite steps don't take timeout-minutes.
     - name: Install Chromium
       shell: bash
-      run: npm run --workspace @portalai/e2e playwright:install
+      run: |
+        timeout 300 npm run --workspace @portalai/e2e playwright:install:ci || {
+          code=$?
+          if [ "$code" = 124 ]; then
+            echo "::error::Chromium install exceeded 300s (stalled browser download?)"
+          fi
+          exit "$code"
+        }
+
+    # The label pins the OS, but GitHub refreshes the image under it weekly
+    # with no commit here, so a library can go missing without a reviewed
+    # change. Launch once now, so that surfaces here, named as a missing
+    # library, rather than as a failed sign-in after a deploy.
+    - name: Check Chromium launches
+      shell: bash
+      run: |
+        node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || {
+          echo "::error::Chromium failed to launch on this runner image; see Playwright's missing-dependencies list above (#965)"
+          exit 1
+        }
