@@ -56,15 +56,17 @@ runs:
         export E2E_QA_AUTH0_USERNAME E2E_QA_AUTH0_PASSWORD E2E_QA_ORG_ID
         npm run --workspace @portalai/e2e test:e2e -- --project=login
 
-    # Screenshots and video only, where a password field renders masked.
-    # Nothing else under test-results/ is uploaded.
-    - name: Upload screenshots and video
+    # Screenshots only. A sign-in failure leaves the page on about:blank
+    # first, and a deployed run records no video (#963: a race typed the QA
+    # password into Auth0's email field, where both showed it in the clear).
+    # Nothing else under test-results/ is uploaded; this repo's artifacts are
+    # public.
+    - name: Upload screenshots
       if: failure()
       uses: actions/upload-artifact@v7
       with:
         name: verify-login-${{ inputs.target }}-${{ github.run_id }}
         path: |
           packages/e2e/test-results/${{ inputs.target }}/**/*.png
-          packages/e2e/test-results/${{ inputs.target }}/**/*.webm
         if-no-files-found: ignore
         retention-days: 14

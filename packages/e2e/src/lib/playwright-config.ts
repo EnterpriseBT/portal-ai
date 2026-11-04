@@ -11,7 +11,10 @@
  * - no `error-context.md`: Playwright's failure snapshot of the page copies
  *   every input's value, a password field's too (`PLAYWRIGHT_NO_COPY_PROMPT`,
  *   set by playwright.config.ts).
- * Screenshots and video stay; a password field renders masked in both.
+ * - no video: it records every frame of the typing (#963).
+ * Failure screenshots stay. A sign-in failure leaves the page on about:blank
+ * first (`signIn`), since a password typed into the wrong field would show
+ * on it in the clear.
  */
 
 import type { PlaywrightTestConfig } from "@playwright/test";
@@ -62,7 +65,9 @@ export function buildConfig(
       baseURL: target.baseUrl,
       trace: publishable ? "off" : "on-first-retry",
       screenshot: "only-on-failure",
-      video: "retain-on-failure",
+      // A video holds every frame of the typing, a password typed into the
+      // wrong field included (#963), so a publishable run records none.
+      video: publishable ? "off" : "retain-on-failure",
       headless: true,
     },
     // A deployed target runs the login check alone: the other projects

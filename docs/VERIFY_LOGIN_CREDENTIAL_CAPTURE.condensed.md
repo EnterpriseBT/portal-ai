@@ -43,7 +43,7 @@
   - stop uploading on deployed runs (loses the evidence that found #963's cause);
   - **clean the page and drop video.**
 - **Chosen:**
-  - on any sign-in failure, `signIn` empties every `<input>` on the page before rethrowing, so the failure screenshot keeps Auth0's message ("Wrong email or password") without anything typed. If the page can't be evaluated, it navigates to `about:blank`.
+  - on any sign-in failure, `signIn` puts the Auth0 page's host, path and visible error text ("Wrong email or password") into its error, and then navigates to `about:blank` before the failure screenshot. It doesn't empty the inputs in place, because a page script could restore their values. The query is dropped, because Auth0's carries the login transaction's state.
   - publishable runs record **no video** (`video: "off"`), since a video holds every frame of the typing.
   - local runs keep video.
   - the upload steps drop `*.webm`, and their comments, `buildConfig`'s header, the runbook and CLAUDE.md say why.
@@ -51,7 +51,7 @@
 ## Plan — 1 slice
 
 **Files:**
-- `packages/e2e/src/lib/sign-in.ts`: wait for `load`, fill with read-back and retry, the pre-submit check, and the failure cleanup.
+- `packages/e2e/src/lib/sign-in.ts`: wait for `load`, fill with read-back and retry, the pre-submit check, and on failure the page description plus `about:blank`.
 - `packages/e2e/src/lib/playwright-config.ts`: `video: publishable ? "off" : "retain-on-failure"`, and the header comment.
 - `.github/actions/verify-login/action.yml`, `.github/workflows/e2e-test.yml`: screenshots only; comments updated.
 - `docs/E2E_DEPLOYED_QA.runbook.md`, `CLAUDE.md`: the artifact contents and the reason.
@@ -59,7 +59,7 @@
 **Tests (first):**
 - `src/__tests__/sign-in.test.ts`, with a fake page whose password `fill` appends to the username field:
   - the form is never submitted, and the failure names the field without the value;
-  - the inputs are emptied on failure;
+  - a failure leaves the page on `about:blank`, and the error keeps Auth0's message and path without the query;
   - a race that clears on the 2nd attempt submits once;
   - a clean form submits once.
 - `src/__tests__/playwright-config.test.ts`: video is off for CI and deployed runs, and kept locally.
@@ -71,7 +71,8 @@ Run `npm run test:unit` in `packages/e2e`, then `npm run lint` / `type-check` th
 1. `npm run --workspace @portalai/e2e e2e:auth:app-dev` signs in and writes `.auth/app-dev/owner.storageState.json`, so the checked path still signs in.
 2. `E2E_TARGET=app-dev npm run --workspace @portalai/e2e test:e2e -- --project=login` passes.
 3. A forced failure: `E2E_QA_AUTH0_USERNAME=qa+app-dev@portalsai.io E2E_QA_AUTH0_PASSWORD=wrong-on-purpose E2E_TARGET=app-dev npm run --workspace @portalai/e2e test:e2e -- --project=login` fails with "Wrong email or password".
-   - `test-results/app-dev/**/test-failed-1.png` shows empty fields;
+   - the error names the Auth0 page and its message;
+   - `test-results/app-dev/**/test-failed-1.png` is blank;
    - there's no `*.webm`, because a deployed target is publishable;
    - the log doesn't contain the value.
    One wrong attempt, which is well inside Auth0's brute-force threshold.

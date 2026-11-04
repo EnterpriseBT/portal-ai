@@ -104,9 +104,10 @@ jobs:
         run: npm run --workspace @portalai/e2e test:e2e -- --project=setup --project=core-loop --project=login --project=roles
 
       # The stack's own logs (API, web, stub, migrate/seed), plus Playwright's
-      # screenshots and video, where a password field renders masked. Nothing
-      # else under test-results/ is uploaded: this repo's artifacts are
-      # public, and the session files under .auth/ hold refresh tokens.
+      # failure screenshots. A sign-in failure leaves the page on about:blank
+      # first, and CI records no video (#963). Nothing else under
+      # test-results/ is uploaded: this repo's artifacts are public, and the
+      # session files under .auth/ hold refresh tokens.
       - name: Upload artifacts
         if: failure() && steps.creds.outputs.run == 'true'
         uses: actions/upload-artifact@v7
@@ -115,7 +116,6 @@ jobs:
           path: |
             packages/e2e/test-results/stack/
             packages/e2e/test-results/local/**/*.png
-            packages/e2e/test-results/local/**/*.webm
           if-no-files-found: ignore
           retention-days: 14
 

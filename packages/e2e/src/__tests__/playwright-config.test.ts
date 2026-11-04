@@ -15,6 +15,14 @@ describe("buildConfig", () => {
     expect(local.use?.trace).toBe("on-first-retry");
   });
 
+  // A video holds every frame of the typing, including a password typed
+  // into the wrong field (#963), so a publishable run records none.
+  it("records no video in CI or for a deployed run, and keeps it locally", () => {
+    expect(ci.use?.video).toBe("off");
+    expect(prod.use?.video).toBe("off");
+    expect(local.use?.video).toBe("retain-on-failure");
+  });
+
   it("writes no HTML report for a deployed run", () => {
     expect(prod.reporter).toEqual([["list"]]);
     expect(JSON.stringify(local.reporter)).toContain("html");

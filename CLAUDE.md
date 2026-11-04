@@ -808,7 +808,7 @@ Three automated and deployed tiers build on it (#489):
 - **Sign-in:** every deployed tier signs in through the **QA sign-in** (`/login?qa=1`). It renders only in a build that bakes `VITE_AUTH0_QA_CONNECTION`, an Auth0 Database connection with sign-ups disabled, and a normal user's `/login` is unchanged.
 - **Boundary:** each QA identity's only membership is its env's QA org. That, enforced by the API, is the boundary, not the MCP server's `--allowed-origins`, which doesn't cover redirects.
 - **Conduct:** stay in the QA org; reproduce a customer's bug by recreating its conditions there, never by entering their org; no billing checkout; label created data and clean it up.
-- **Artifacts are public:** this repo is public, and so are its workflow artifacts. A CI or deployed run therefore records no trace, no HTML report and no page snapshot, since each holds typed passwords. Uploads are screenshots, video and stack logs only.
+- **Artifacts are public:** this repo is public, and so are its workflow artifacts. A CI or deployed run therefore records no trace, no HTML report, no page snapshot and no video, since each can hold a typed password. Uploads are failure screenshots and stack logs only, and a sign-in failure blanks the page before its screenshot (#963: a race typed the prod QA password into Auth0's email field, and the screenshot and video showed it). The sign-in helper submits only a form it has read back.
 - **Runbook:** setup, rotation and incidents are in `docs/E2E_DEPLOYED_QA.runbook.md`.
 - **Prod releases:** a prod release that first carries a new vendor-side step needs that step done first (#854).
 
