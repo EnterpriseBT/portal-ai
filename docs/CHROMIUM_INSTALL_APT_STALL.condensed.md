@@ -20,16 +20,16 @@
 - **B. Cache the `.deb`s or `apt` state.** That means a second cache to key and invalidate, kept around to install fonts nothing needs.
 - **C. Drop `--with-deps` in CI.** The libraries come from the pinned runner image.
 
-**Decision: C.** The script becomes `playwright install chromium`, and the action's comment records why. The script has a single caller (the CI action), so changing it doesn't need a separate CI-only script. If a future runner image is missing a library, Chromium's launch fails with Playwright's "Host system is missing dependencies" list. That is a loud failure on a change that is already a reviewed one-line diff (#904), which is better than `apt-get` silently installing it. The step keeps a bound as well: the install runs under `timeout 300`, because composite-action steps don't accept `timeout-minutes`. That way a stalled CDN download of the browser on a cache miss fails clearly instead of eating `verify-login`'s whole 15 minutes.
+**Decision: C.** CI calls a new `playwright:install:ci` script (`playwright install chromium`). The general `playwright:install` keeps `--with-deps` for hosts that lack the libraries. The `ubuntu-26.04` label pins the OS, but GitHub refreshes the image under it every week with no commit here, so a library can disappear without a reviewed change. The action therefore launches Chromium once right after installing it. A missing library then fails in that step, named as such, instead of showing up as a failed sign-in after a deploy. The install runs under `timeout 300`, because composite-action steps don't accept `timeout-minutes`. A timeout exit (124) prints an `::error::` naming the stall.
 
 ## Plan — one slice
 
 **Files**
-- Edit `packages/e2e/package.json`: change `playwright:install` to `playwright install chromium`.
+- Edit `packages/e2e/package.json`: add `playwright:install:ci` (`playwright install chromium`) and leave `playwright:install` unchanged.
 - Edit `.github/actions/playwright-browsers/action.yml`:
-  - Add a comment on `Install Chromium` explaining that `--with-deps` is deliberately absent (#965), that the runner image supplies the libraries, and that a missing one fails the launch loudly.
-  - Wrap the run in `timeout 300`.
-- Edit `packages/e2e/README.md` only if it describes the CI install (check during implementation).
+  - Run `playwright:install:ci` under `timeout 300`, with an `::error::` on exit 124.
+  - Add a **Check Chromium launches** step.
+  - Add comments recording why.
 
 **Tests.** No unit surface; the CI runs on the branch are the test.
 - `npm run lint:ci-cache` must still pass, since it parses the workflows and actions.
