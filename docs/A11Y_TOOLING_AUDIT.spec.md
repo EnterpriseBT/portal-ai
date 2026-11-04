@@ -138,9 +138,12 @@ Each spec writes its `RawResultFile` to `a11y-results/{app,site}.json` in `after
 export type A11yOwner = 793 | 794 | 795 | 796 | 797 | 798;
 export interface A11yRoute {
   id: string;                    // stable, e.g. "entity-detail"
-  path: string;                  // literal, or containing ":id"
-  drillFrom?: string;            // index path: click the first row/link and use the URL it lands on
+  route: string;                 // the apps/web/src/routes file it covers
+  path?: string;                 // literal path, for routes without params…
+  drill?: { from: string; steps: { url: RegExp; text?: RegExp }[] }; // …or an index path plus hops:
+                                 // each follows the first link / table row landing on `url` (text-filtered)
   owner: A11yOwner;              // default owner for findings on this route
+  signedOut?: true;              // login, not-invited, invitations.accept
   roles?: E2eIdentity[];         // default all three
   states: Partial<Record<Exclude<A11yState, "populated">, string>>; // state → URL glob of the request to intercept
 }
@@ -155,7 +158,7 @@ export const SITE_PAGES: readonly string[]; // every built page path under apps/
 | State | `page.route(glob, …)` behaviour |
 |---|---|
 | `empty` | `route.fetch()`, then empty every array in `payload` and zero every numeric `total`/`count` key, then `route.fulfill` |
-| `error` | fulfil `500` with the API's error envelope (the `success: false` shape from `apps/api/src/services/http.service.ts:74`), copied from a captured response into `src/fixtures/a11y-error.json` |
+| `error` | fulfil `500` with the API's 500 envelope (`apps/api/src/services/http.service.ts:74`: `success: false`, `message` = core's `INTERNAL_ERROR_MESSAGE`, a `code`) in `src/fixtures/a11y-error.json`; a unit test holds it to that shape |
 | `loading` | hold the request. Axe runs once `[role="progressbar"]` is visible, then the request continues |
 | `locked` | `route.fetch()`, then insert `src/fixtures/a11y-running-job.json` into the payload's running-jobs list. The fixture is parsed with core's job schema at load, so a drifted fixture fails setup |
 
