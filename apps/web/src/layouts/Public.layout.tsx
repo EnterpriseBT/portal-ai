@@ -10,8 +10,10 @@ import {
 import { Link } from "@tanstack/react-router";
 
 import { MAIN_CONTENT_ID, SkipLinks } from "../components/SkipLinks.component";
+import { useRouteAnnouncer } from "../utils/route-announcer.util";
 
 export const PublicLayout = ({ children }: { children: React.ReactNode }) => {
+  useRouteAnnouncer();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
       <SkipLinks />

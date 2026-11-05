@@ -126,7 +126,8 @@ Behavior, keyed on `useRouterState({ select: s => s.location.pathname })`:
 1. **On every pathname, first load included:** observe `#main-content`. Whenever its first `h1`'s text changes, set `document.title = pageTitle(text)`. With no `h1`, the title is `"Portals AI"`.
 2. **After a pathname change (not first load):** once an `h1` exists inside `#main-content`, give it `tabIndex=-1` and focus it. If none appears within 5 s, focus `#main-content` instead.
    - Focus moves once per navigation. A later `h1` text change (loading, then the object's name) updates the title but doesn't refocus.
-   - If focus moved elsewhere first (into a dialog, an input, or anything other than `body` or `main`), focus isn't taken.
+   - Focus is taken only if it's still where the navigation left it: the element focused when navigation began (the clicked link, captured on the router's `onBeforeNavigate`), `body`, or `main`. A user who has moved into a field or dialog since keeps their place.
+   - The hook keys on the router's `resolvedLocation`, which changes once the new route has rendered. `location` changes first, while the old page's `h1` is still on screen.
 3. **Cleanup:** disconnect the observer on pathname change and unmount.
 
 ### Web: `DataResult` — `apps/web/src/components/DataResult.component.tsx`
@@ -276,7 +277,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
 
 ## Risks & rollback
 
-- **Focus theft.** If `useRouteAnnouncer` moves focus at the wrong time, it could pull focus out of a dialog or a field the page auto-focuses. It guards against both: it only moves focus when focus sits on `body` or `main`, and only once per navigation. Tests cover both cases. Rollback is removing the `useRouteAnnouncer()` calls from the layouts; titles and focus then go back to today's behavior.
+- **Focus theft.** If `useRouteAnnouncer` moves focus at the wrong time, it could pull focus out of a dialog or a field the page auto-focuses. It guards against both: it only moves focus when focus hasn't moved since the navigation began, and only once per navigation. Tests cover both cases. Rollback is removing the `useRouteAnnouncer()` calls from the layouts; titles and focus then go back to today's behavior.
 - **Palette shifts are visible.** They're bounded by the ratio test and the same hues, and the site's next build carries them. They show up in screenshots and Storybook, not as breakage. Rollback is reverting the JSON values.
 - **Sidebar links change click behavior.** A middle-click now opens a tab, which is intended. Gating (`visibleNavItems`) is untouched, and `SidebarNavGating.test.tsx` holds it.
 - **The always-mounted toast region appears in every render.** Tests that snapshot the whole body may need updating, so `toast.harness.test.tsx` checks that the region holds no text when idle.

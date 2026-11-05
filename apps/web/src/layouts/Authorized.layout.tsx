@@ -13,6 +13,7 @@ import { SidebarNav } from "../components/SidebarNav.component";
 import { useLayout } from "../utils";
 import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
 import { MAIN_CONTENT_ID, SkipLinks } from "../components/SkipLinks.component";
+import { useRouteAnnouncer } from "../utils/route-announcer.util";
 
 export const AuthorizedLayout = ({
   children,
@@ -20,6 +21,7 @@ export const AuthorizedLayout = ({
   children: React.ReactNode;
 }) => {
   const { isMobileExpanded, isMobile } = useLayout();
+  useRouteAnnouncer();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
       <SkipLinks />
