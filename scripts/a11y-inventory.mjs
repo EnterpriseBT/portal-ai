@@ -24,7 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -135,8 +135,23 @@ const RULE_OWNERS = { "aria-progressbar-name": 797 };
 /** Emotion class hashes (`.css-19midj6`, `.css-1sazv7p-MuiStack-root`)
  *  change with any styling change, so a location carrying one would move
  *  on rebuild. The stable MUI classes beside them stay. */
+/** Attributes whose value is structure, not page text, so it stays in a
+ *  selector. Every other attribute (alt, title, aria-label, href, src,
+ *  placeholder, value…) can carry a person's name, an email or other page
+ *  text, so its value is dropped and only `[attr]` remains. */
+const STRUCTURAL_ATTRS = new Set([
+  "type", "role", "tabindex", "data-testid",
+  "aria-checked", "aria-current", "aria-disabled", "aria-expanded", "aria-haspopup",
+  "aria-hidden", "aria-orientation", "aria-pressed", "aria-selected",
+]);
+
+const ATTR_VALUE = /\[\s*([\w:-]+)\s*[~|^$*]?=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]\s]*)\s*(?:[is]\s*)?\]/g;
+
+const stripAttrValues = (target) =>
+  target.replace(ATTR_VALUE, (whole, name) => (STRUCTURAL_ATTRS.has(name.toLowerCase()) ? whole : `[${name}]`));
+
 const stableTarget = (target) =>
-  target
+  stripAttrValues(target)
     .replace(/\.css-[a-z0-9]+(?:-[A-Za-z0-9]+)*/g, "")
     .replace(/\s+>\s+(?=>|$)/g, " ")
     .replace(/\s{2,}/g, " ")
@@ -268,7 +283,7 @@ export function buildInventory(sources, { wcagMap = JSX_A11Y_WCAG } = {}) {
   const coverage = [];
   const merged = new Map();
   const appRoutes = new Set();
-  for (const { input, data, root = "/" } of sources) {
+  for (const { input, data, root = "/", generatedAt } of sources) {
     if (input.kind === "raw" && data.tool === "axe-app") {
       for (const r of data.runs ?? []) if (r.status === "ok" && r.context?.route) appRoutes.add(r.context.route);
     }
@@ -282,6 +297,9 @@ export function buildInventory(sources, { wcagMap = JSX_A11Y_WCAG } = {}) {
       tool: input.kind === "eslint" ? "eslint" : data.tool,
       package: input.package,
       version: input.kind === "eslint" ? null : (data.axeVersion ?? null),
+      // When the tool ran: the writer's own stamp, else (ESLint's formatter
+      // has none) the file's modification time, read by readInputs.
+      generatedAt: (input.kind === "eslint" ? null : data.generatedAt) ?? generatedAt ?? null,
       ok,
       skipped: skipped.map((r) => ({ context: r.context ?? {}, error: r.error ?? "" })),
     });
@@ -319,6 +337,9 @@ const groupSubject = (subject) =>
   subject
     .replace(/:nth-(child|of-type)\(\d+\)/g, "")
     .replace(/#\\:r[0-9a-z]+\\:/g, "#(generated)")
+    // React 19's useId (`_r_8_`, `«r8»`): its number depends on render order.
+    .replace(/#_r_[0-9a-z]+_/g, "#(generated)")
+    .replace(/#«r[0-9a-z]+»/g, "#(generated)")
     .replace(/#mui-\d+/g, "#(generated)");
 
 const IMPACT_ORDER = ["critical", "serious", "moderate", "minor"];
@@ -399,6 +420,18 @@ export function parseManual(doc) {
 /** Markdown table cells can't hold a raw pipe or a newline. */
 const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
 
+/** A selector or path, shown literally: in a code span, markdown in it
+ *  (backticks, `[x](y)`, `<tag>`) renders as text. A backtick inside takes
+ *  a longer fence. */
+const codeCell = (s) => {
+  const text = cell(s);
+  if (!text) return "—";
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((r) => r.length));
+  const fence = "`".repeat(longest + 1);
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+};
+
 function seenSummary(seen) {
   const part = (label, key) => {
     const values = [...new Set(seen.map((s) => s[key]).filter(Boolean))].sort();
@@ -410,18 +443,34 @@ function seenSummary(seen) {
 const contextLabel = (ctx) =>
   [ctx.file && `${ctx.file} › ${ctx.story ?? ""}`, ctx.route, ctx.role, ctx.state, ctx.theme].filter(Boolean).join(" · ");
 
-/** The text that goes between the markers. Deterministic: no timestamps. */
+/** The text that goes between the markers. Deterministic: the only times in
+ *  it are the result files' own, so the same results render the same. */
 const whereSummary = (where) => {
   const shown = where.slice(0, 6).map((w) => w || "(default)");
   return `${where.length}: ${shown.join(", ")}${where.length > shown.length ? `, +${where.length - shown.length} more` : ""}`;
 };
 
+/** Results further apart than this weren't one `a11y:report` run. */
+export const MAX_RUN_SPREAD_HOURS = 2;
+
+const minuteUtc = (iso) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : "—");
+
 export function renderGenerated({ groups: rows, coverage }, manual = {}) {
   const lines = [];
   lines.push("## Coverage", "");
-  lines.push("| Result file | Tool | Version | Runs ok | Skipped |", "|---|---|---|---|---|");
+  lines.push("| Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |", "|---|---|---|---|---|---|");
   for (const c of coverage) {
-    lines.push(`| \`${c.file}\` | ${c.tool} | ${c.version ?? "—"} | ${c.ok} | ${c.skipped.length} |`);
+    lines.push(`| \`${c.file}\` | ${c.tool} | ${c.version ?? "—"} | ${minuteUtc(c.generatedAt)} | ${c.ok} | ${c.skipped.length} |`);
+  }
+  const times = coverage.map((c) => Date.parse(c.generatedAt ?? "")).filter(Number.isFinite);
+  if (times.length) {
+    const spread = (Math.max(...times) - Math.min(...times)) / 3_600_000;
+    if (spread > MAX_RUN_SPREAD_HOURS) {
+      lines.push(
+        "",
+        `> **These results come from runs ${Math.round(spread)} hours apart** (${minuteUtc(new Date(Math.min(...times)).toISOString())} to ${minuteUtc(new Date(Math.max(...times)).toISOString())} UTC), so they aren't one audit of one tree. Run \`npm run a11y:report\` before relying on them.`
+      );
+    }
   }
   const skipped = coverage.flatMap((c) => c.skipped.map((s) => ({ ...s, file: c.file })));
   if (skipped.length) {
@@ -456,7 +505,7 @@ export function renderGenerated({ groups: rows, coverage }, manual = {}) {
     lines.push("| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |", "|---|---|---|---|---|---|---|---|---|");
     for (const f of mine) {
       lines.push(
-        `| ${f.id} | ${f.wcag.join(", ") || "best practice"} | ${cell(f.rule)} | ${f.impact ?? "—"} | ${cell(f.subject)} | ${cell(whereSummary(f.where))} | ${f.instances} | ${cell(seenSummary(f.seen))} | ${f.tool} |`
+        `| ${f.id} | ${f.wcag.join(", ") || "best practice"} | ${cell(f.rule)} | ${f.impact ?? "—"} | ${codeCell(f.subject)} | ${cell(whereSummary(f.where))} | ${f.instances} | ${cell(seenSummary(f.seen))} | ${f.tool} |`
       );
     }
   }
@@ -506,7 +555,7 @@ export function readInputs(root) {
     } catch (err) {
       throw new InventoryError(`${input.file} isn't valid JSON: ${err.message}`);
     }
-    return { input, data, root };
+    return { input, data, root, generatedAt: statSync(full).mtime.toISOString() };
   });
 }
 // ── end implementation ──────────────────────────────────────────────────────
@@ -897,6 +946,82 @@ async function selfTest() {
       !rewritten.includes("old generated text"),
     rewritten
   );
+  // Page text stays out of selectors (#792 adversarial §2.6).
+  const textInv = run("attribute values", () =>
+    build([
+      {
+        input: INPUTS[5],
+        data: rawFile("axe-app", [
+          appRun("dashboard", 797, [
+            violation("image-redundant-alt", ["best-practice"], ['img[alt="e2e-admin@portalsai.io"]']),
+            violation("link-name", ["wcag244"], ['.button[href$="mailto:qa@portalsai.io"]']),
+            violation("label", ["wcag412"], ["input[type=\"checkbox\"][aria-label='Jane Doe 555-0100']"]),
+          ]),
+        ]),
+      },
+    ])
+  );
+  const textSubjects = (textInv?.groups ?? []).map((g) => g.subject).sort();
+  check(
+    "attribute values that can carry page text are dropped; structural ones stay",
+    JSON.stringify(textSubjects) === JSON.stringify([".button[href]", "img[alt]", 'input[type="checkbox"][aria-label]']),
+    JSON.stringify(textSubjects)
+  );
+
+  // React 19 useId ids depend on render order (adversarial F6).
+  const useIdInv = run("useId", () =>
+    build([
+      {
+        input: INPUTS[5],
+        data: rawFile("axe-app", [
+          appRun("entity-detail", 794, [violation("region", ["best-practice"], ["#_r_8_-label"])]),
+          appRun("connector-detail", 794, [violation("region", ["best-practice"], ["#_r_e_-label"])]),
+        ]),
+      },
+    ])
+  );
+  check(
+    "React useId ids (_r_N_) don't split a group",
+    useIdInv?.groups.length === 1 && useIdInv.groups[0].instances === 2,
+    JSON.stringify(useIdInv?.groups)
+  );
+
+  // The Element column renders literally (adversarial F7).
+  const literal = run("code cell", () =>
+    renderGenerated(
+      build([{ input: INPUTS[5], data: rawFile("axe-app", [appRun("dashboard", 797, [violation("button-name", ["wcag412"], ["td | <b>x</b> `y` [z](javascript:alert(1))"])])]) }])
+    )
+  );
+  check(
+    "the element is a code span (a backtick inside takes a longer fence), with its pipe still escaped",
+    literal?.includes("| ``td \\| <b>x</b> `y` [z](javascript:alert(1))`` |"),
+    literal
+  );
+
+  // Mixed-generation results show as such (adversarial §6.1).
+  const at = (iso, runs) => ({ ...rawFile("axe-app", runs), generatedAt: iso });
+  const timed = (appAt, eslintAt) =>
+    run("run times", () =>
+      renderGenerated(
+        build([
+          { input: INPUTS[0], data: eslintFile("/repo/apps/web/src/A.tsx", []), root: "/repo", generatedAt: eslintAt },
+          { input: INPUTS[5], data: at(appAt, [appRun("dashboard", 797, [])]) },
+        ])
+      )
+    );
+  const together = timed("2026-11-05T00:55:45Z", "2026-11-05T00:22:10Z");
+  const apart = timed("2026-11-05T00:55:45Z", "2026-11-02T09:00:00Z");
+  check(
+    "coverage shows when each result file ran (the writer's stamp, else the file's mtime)",
+    together?.includes("| 2026-11-05 00:55 |") && together?.includes("| 2026-11-05 00:22 |"),
+    together
+  );
+  check(
+    "results from runs more than MAX_RUN_SPREAD_HOURS apart carry a warning; one report's runs don't",
+    !together?.includes("hours apart") && /runs 64 hours apart/.test(apart ?? ""),
+    apart
+  );
+
   throws("a doc with no markers fails", () => replaceGenerated("# no markers\n", "NEW"), /marker/);
   throws("a doc with duplicate markers fails", () => replaceGenerated(`${START}\n${END}\n${START}\n${END}\n`, "NEW"), /marker/);
 

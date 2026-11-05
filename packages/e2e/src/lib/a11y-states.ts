@@ -102,6 +102,57 @@ export function apiPathMatcher(pattern: string): (url: URL) => boolean {
   return (url) => re.test(url.pathname);
 }
 
+/** The fixture org every signed-in identity must be in while it walks. */
+export const A11Y_FIXTURE_ORG = "e2e-fixture";
+
+/** Whether `url` is the app's sign-in page: a session that has expired
+ *  lands there, and auditing it would record the sign-in page as the route. */
+export function onLoginPage(url: string): boolean {
+  return /^\/login\/?$/.test(new URL(url).pathname);
+}
+
+/**
+ * The problem with one API exchange during a walk, or null. A 5xx or a
+ * request with no answer means the page shows an error the walk didn't ask
+ * for, so the run isn't the state it claims. A 4xx isn't one: the error
+ * state answers ERROR_STATUS on purpose. An aborted request is navigation
+ * closing a stream, and anything outside /api/ isn't the API.
+ */
+export function apiFailure(exchange: {
+  url: string;
+  method?: string;
+  status?: number;
+  failure?: string;
+}): string | null {
+  const { pathname } = new URL(exchange.url);
+  if (!pathname.startsWith("/api/")) return null;
+  const label = `${exchange.method ?? "GET"} ${pathname}`;
+  if (exchange.failure !== undefined) {
+    return exchange.failure.includes("ERR_ABORTED")
+      ? null
+      : `${label} failed: ${exchange.failure}`;
+  }
+  return exchange.status !== undefined && exchange.status >= 500
+    ? `${label} answered ${exchange.status}`
+    : null;
+}
+
+/**
+ * The problem with the org an identity is about to walk, or null. The app
+ * opens the most recently signed-in membership, so an identity that is also
+ * in another org walks that one, and its results would read as the
+ * fixture's. Matched by `expectedId` (E2E_ORG_ID) when set, else by name.
+ */
+export function activeOrgProblem(
+  role: string,
+  org: { id: string; name: string },
+  expectedId?: string
+): string | null {
+  const ok = expectedId ? org.id === expectedId : org.name === A11Y_FIXTURE_ORG;
+  if (ok) return null;
+  return `${role}'s active org is "${org.name}" (${org.id}), not ${expectedId ?? A11Y_FIXTURE_ORG}: switch it with POST /api/organization/switch, or sign that identity in to the fixture org (see the e2e README)`;
+}
+
 const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({
     status,

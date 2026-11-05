@@ -10,7 +10,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { BrowserContext, Page } from "@playwright/test";
 
 import { firstId, type A11yDrillStep } from "./a11y-routes.js";
-import { apiPathMatcher } from "./a11y-states.js";
+import { apiFailure, apiPathMatcher } from "./a11y-states.js";
 import {
   trimViolations,
   type A11yTheme,
@@ -99,6 +99,57 @@ export async function drillTo(
     ids.push(id);
   }
   return drill.path(ids);
+}
+
+/**
+ * Starts recording API failures on `page` (see apiFailure). Call before
+ * navigating; the returned function gives the first failure seen so far,
+ * or null. A run whose page saw one is skipped, not recorded as its state.
+ */
+export function watchApiFailures(page: Page): () => string | null {
+  let first: string | null = null;
+  const note = (problem: string | null) => {
+    if (problem && !first) first = problem;
+  };
+  page.on("response", (r) =>
+    note(
+      apiFailure({
+        url: r.url(),
+        method: r.request().method(),
+        status: r.status(),
+      })
+    )
+  );
+  page.on("requestfailed", (r) =>
+    note(
+      apiFailure({
+        url: r.url(),
+        method: r.method(),
+        failure: r.failure()?.errorText ?? "no response",
+      })
+    )
+  );
+  return () => first;
+}
+
+/** The identity's active org, read from the request Settings makes. */
+export async function activeOrg(
+  page: Page
+): Promise<{ id: string; name: string }> {
+  const matches = apiPathMatcher("/api/organization/current");
+  const response = page.waitForResponse(
+    (r) => r.request().method() === "GET" && matches(new URL(r.url())),
+    { timeout: 20_000 }
+  );
+  await page.goto("/settings");
+  const res = await response;
+  if (!res.ok()) {
+    throw new Error(`GET /api/organization/current answered ${res.status()}`);
+  }
+  const body = (await res.json()) as {
+    payload: { organization: { id: string; name: string } };
+  };
+  return body.payload.organization;
 }
 
 export const reason = (err: unknown): string =>

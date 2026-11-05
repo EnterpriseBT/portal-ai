@@ -1,12 +1,15 @@
 import type { Page, Route } from "@playwright/test";
 
 import {
+  activeOrgProblem,
+  apiFailure,
   apiPathMatcher,
   applyState,
   emptyPayload,
   ERROR_STATUS,
   loadErrorFixture,
   loadRunningJobFixture,
+  onLoginPage,
   withRunningJob,
 } from "../lib/a11y-states.js";
 
@@ -160,5 +163,74 @@ describe("applyState", () => {
     state.release();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(calls).toEqual(["continue"]);
+  });
+});
+
+describe("onLoginPage", () => {
+  it("is true on the app's sign-in page, with or without a trailing slash", () => {
+    expect(onLoginPage("http://localhost:3000/login")).toBe(true);
+    expect(onLoginPage("http://localhost:3000/login/?qa=1")).toBe(true);
+  });
+
+  it("is false anywhere else, including a path that merely contains login", () => {
+    expect(onLoginPage("http://localhost:3000/settings")).toBe(false);
+    expect(onLoginPage("http://localhost:3000/help/login-faq")).toBe(false);
+  });
+});
+
+describe("apiFailure", () => {
+  const api = "http://localhost:3000/api/stations";
+
+  it("names a 5xx from the API", () => {
+    expect(apiFailure({ url: api, status: 502 })).toBe(
+      "GET /api/stations answered 502"
+    );
+  });
+
+  it("names a request that never got an answer", () => {
+    expect(
+      apiFailure({ url: api, failure: "net::ERR_CONNECTION_REFUSED" })
+    ).toBe("GET /api/stations failed: net::ERR_CONNECTION_REFUSED");
+  });
+
+  it("ignores a 4xx (the error state answers 400 on purpose) and a 2xx", () => {
+    expect(apiFailure({ url: api, status: ERROR_STATUS })).toBeNull();
+    expect(apiFailure({ url: api, status: 200 })).toBeNull();
+  });
+
+  it("ignores an aborted request (an SSE stream closed by navigation)", () => {
+    expect(apiFailure({ url: api, failure: "net::ERR_ABORTED" })).toBeNull();
+  });
+
+  it("ignores everything outside /api/, Vite's /src/api modules included", () => {
+    expect(
+      apiFailure({
+        url: "http://localhost:3000/src/api/stations.api.ts",
+        status: 500,
+      })
+    ).toBeNull();
+  });
+});
+
+describe("activeOrgProblem", () => {
+  const fixture = { id: "f01f20fe", name: "e2e-fixture" };
+
+  it("accepts the fixture org by name when no id is configured", () => {
+    expect(activeOrgProblem("admin", fixture)).toBeNull();
+  });
+
+  it("names the org the identity is really in, and how to switch", () => {
+    expect(
+      activeOrgProblem("admin", { id: "2ed48778", name: "My Organization" })
+    ).toMatch(
+      /admin's active org is "My Organization" \(2ed48778\), not e2e-fixture.*organization\/switch/
+    );
+  });
+
+  it("matches by id when E2E_ORG_ID is set", () => {
+    expect(activeOrgProblem("owner", fixture, "f01f20fe")).toBeNull();
+    expect(activeOrgProblem("owner", fixture, "another")).toMatch(
+      /not another/
+    );
   });
 });

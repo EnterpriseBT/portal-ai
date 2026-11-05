@@ -21,14 +21,20 @@ import {
   type RawRun,
 } from "../lib/a11y-record.js";
 import { A11Y_ROUTES, type A11yRoute } from "../lib/a11y-routes.js";
-import { applyState } from "../lib/a11y-states.js";
 import {
+  activeOrgProblem,
+  applyState,
+  onLoginPage,
+} from "../lib/a11y-states.js";
+import {
+  activeOrg,
   analyze,
   axeVersion,
   drillTo,
   reason,
   settle,
   useTheme,
+  watchApiFailures,
 } from "../lib/a11y-walk.js";
 import {
   resolveTarget,
@@ -96,6 +102,14 @@ async function walkRoute(
     let release = () => {};
     let failures: string[] = [];
     let handled = () => 1;
+    const apiProblem = watchApiFailures(page);
+    // The app redirects an expired session to /login after the page loads,
+    // so this is checked again once the page has settled and after axe.
+    const assertSignedIn = () => {
+      if (!route.signedOut && onLoginPage(page.url())) {
+        throw new SessionExpired(role);
+      }
+    };
     try {
       if (state !== "populated") {
         ({ release, failures, handled } = await applyState(
@@ -105,12 +119,7 @@ async function walkRoute(
         ));
       }
       await page.goto(path!);
-      if (
-        !route.signedOut &&
-        /\/login\/?$/.test(new URL(page.url()).pathname)
-      ) {
-        throw new SessionExpired(role);
-      }
+      assertSignedIn();
       if (state === "loading") {
         await page
           .locator('[role="progressbar"]')
@@ -120,8 +129,14 @@ async function walkRoute(
       } else {
         await settle(page);
       }
+      assertSignedIn();
       const violations = await analyze(page);
+      assertSignedIn();
       if (failures.length) throw new Error(failures[0]);
+      // The page met an API failure the walk didn't ask for (the API is
+      // down or erroring), so it shows an error, not this state.
+      const problem = apiProblem();
+      if (problem) throw new Error(`the page met an API failure: ${problem}`);
       if (handled() === 0) {
         // The pattern matched no request, so the page never entered this
         // state; recording it would label the populated page as this one.
@@ -164,6 +179,23 @@ for (const role of ROLES) {
       throw new Error(
         `${storageState} is missing: run npm run --workspace @portalai/e2e e2e:auth:all`
       );
+    }
+    // An identity also in another org walks whichever it last signed in to,
+    // and its results would read as the fixture's.
+    const check = await browser.newContext({ storageState });
+    try {
+      const page = await check.newPage();
+      await page.goto("/");
+      await settle(page);
+      if (onLoginPage(page.url())) throw new SessionExpired(role);
+      const problem = activeOrgProblem(
+        role,
+        await activeOrg(page),
+        process.env.E2E_ORG_ID || undefined
+      );
+      if (problem) throw new Error(problem);
+    } finally {
+      await check.close();
     }
     const resolved = new Map<string, string | Error>();
     for (const theme of A11Y_THEMES) {

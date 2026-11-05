@@ -113,7 +113,7 @@ Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA i
 - the dev stack is running;
 - the `e2e-fixture` org exists (`e2e:seed`) and holds data to drill into: `npx portalai demo seed --org <id> --rows 2000 --env local --yes`;
 - the three sessions are fresh (`e2e:auth:all`).
-- each identity's **active org** is `e2e-fixture`. The app opens the most recently signed-in membership, so an identity that belongs to another org walks that org instead. The coverage list shows it: one role's drills fail where the others' succeed. Switch it with `POST /api/organization/switch` or the org switcher.
+- each identity's **active org** is `e2e-fixture` (or `E2E_ORG_ID`, when set). The app opens the most recently signed-in membership, so an identity that also belongs to another org would walk that org. The walk checks each role's org before it starts and fails naming the org it found. Switch it with `POST /api/organization/switch` or the org switcher.
 
 **Preconditions for `a11y:axe:site`:** `npm run --workspace @portalai/site build`, then `npm run --workspace @portalai/site preview`, which serves on :3002 (`E2E_SITE_BASE_URL` overrides it).
 
@@ -122,6 +122,8 @@ Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA i
   - A state's pattern is anchored at `/api/`: a `**/api/…` glob would also match the dev server's `/src/api/*.api.ts` modules.
   - A state whose pattern catches no request is recorded as skipped, never as audited.
   - The error state answers with a 400: the app retries a 5xx for about 14s, and never a 4xx.
+- **A run is recorded only for the page it claims.** It's skipped, with the reason, when the page met an API failure the walk didn't ask for (a 5xx, or a request with no answer: the API is down), so an error page is never recorded as populated. A session that the app redirects to `/login` fails the walk, checked after the page settles as well as on arrival.
+- **Selectors keep no page text.** Node HTML is dropped, and the inventory keeps only structural attribute values (`type`, `role`, a few boolean `aria-*`), so `img[alt="…"]` is recorded as `img[alt]`.
 - **Routes with params** are reached by reading the first item's id from the index page's own list request (`drill` in the manifest), so the walk doesn't depend on how a list renders.
 - **Skips:** a route with nothing to drill into is recorded as skipped, with the reason. The inventory lists it as a coverage gap.
 - **New pages:** `a11y-routes.test.ts` fails until a new route file or site page is in the manifest.

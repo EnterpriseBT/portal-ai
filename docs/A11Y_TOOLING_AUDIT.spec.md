@@ -239,7 +239,7 @@ No schema, migration or seed change. The fixture org from `e2e:seed` is used as 
 ## TDD test plan
 
 ### Inventory generator (`npm run lint:a11y-inventory`)
-Self-test cases: `wcag143`→`1.4.3`; best-practice-only → Best practice; jsx-a11y map hit; unmapped rule → exit 1; each of the five owner rules plus `unassigned`; route-owner fallback; dark/light dedupe for a non-contrast rule; `color-contrast` kept per theme; marker replace leaves the manual sections byte-identical; missing marker → exit 1; missing input file → exit 1; zero ok runs → exit 1. **≈ 16**
+Self-test cases: `wcag143`→`1.4.3`; best-practice-only → Best practice; jsx-a11y map hit; unmapped rule → exit 1; each of the five owner rules plus `unassigned`; route-owner fallback; dark/light dedupe for a non-contrast rule; `color-contrast` kept per theme; marker replace leaves the manual sections byte-identical; missing marker → exit 1; missing input file → exit 1; zero ok runs → exit 1; attribute values that can carry page text dropped from selectors; React useId ids don't split a group; the Element column is a code span; each result file's run time in Coverage, with a warning when they span more than `MAX_RUN_SPREAD_HOURS` (2). **≈ 40** (the adversarial review added the last four)
 
 ### e2e unit (`npm run --workspace @portalai/e2e test:unit`)
 - `playwright-config.test.ts`: a local target has `a11y` + `a11y-site`, a deployed target has neither, and `a11y-site`'s baseURL honours `E2E_SITE_BASE_URL`.

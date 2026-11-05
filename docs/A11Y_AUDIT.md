@@ -27,20 +27,22 @@ The details are in `packages/e2e/README.md` → "Accessibility audit".
 
 A run fails on a setup problem, never on findings: a missing result, a tool with no successful run, an unmapped rule. An empty report isn't a clean one.
 
+Coverage shows when each result file was written. If they span more than two hours, a warning says so: those results weren't one `a11y:report` run, so they aren't one audit of one tree.
+
 The **Keyboard pass** and **Screen-reader pass** sections after the generated section are hand-written. The generator never touches them; it only counts their rows per owner.
 
 <!-- a11y-inventory:start -->
 ## Coverage
 
-| Result file | Tool | Version | Runs ok | Skipped |
-|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 889 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 322 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 414 | 72 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 24 | 0 |
+| Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
+|---|---|---|---|---|---|
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-05 16:15 | 889 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 16:19 | 281 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-05 16:15 | 322 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 16:19 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-05 16:15 | 31 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-05 16:47 | 414 | 72 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-05 16:48 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -128,11 +130,11 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
-| [#793 Dialogs and forms](#owner-793) | 27 | 74 | 4.1.2 | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 20 | 97 | 1.4.3, 4.1.2 | 2 |
+| [#793 Dialogs and forms](#owner-793) | 25 | 74 | 4.1.2 | 0 |
+| [#794 Tables, grids and lists](#owner-794) | 19 | 96 | 1.4.3, 4.1.2 | 2 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 9 | 38 | 4.1.2 | 1 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
-| [#797 App shell, navigation and landmarks](#owner-797) | 104 | 673 | 1.1.1, 1.3.1, 1.4.3, 2.1.1, 2.5.3, 4.1.2 | 5 |
+| [#797 App shell, navigation and landmarks](#owner-797) | 93 | 670 | 1.1.1, 1.3.1, 1.4.3, 2.1.1, 2.5.3, 4.1.2 | 5 |
 | [#798 Marketing site](#owner-798) | 8 | 21 | 1.4.3 | 1 |
 | Unassigned | 0 | 0 | — | 0 |
 
@@ -142,33 +144,31 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 89861fc2 | 4.1.2 | aria-command-name | serious | .Mui-selected.MuiListItemButton-root.MuiListItemButton-gutters | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 2cd831c2 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: MaxDepthReached | 1 | — | jest-axe |
-| 78d3c106 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: MaxDepthReached | 1 | — | jest-axe |
-| 91247097 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: MaxDepthReached | 1 | — | jest-axe |
-| b88b933a | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 2: MaxDepthReached, Populated | 3 | — | jest-axe |
-| 495d49f5 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 4: BetweenOperators, EmptyAndArrayOperators, MaxDepthReached, Populated | 7 | — | jest-axe |
-| de9c47a9 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx | 2: Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 2 | — | jest-axe |
-| 271b92d5 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx div[data-corner-header=""] | 3: Step1_Empty, Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 3 | — | jest-axe |
-| 7273f52e | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx | 3: InvalidRegion_AttemptedInterpret, OneRegion_Valid, ServerError | 3 | — | jest-axe |
-| 0ba71aed | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx div[data-corner-header=""] | 5: Empty, InvalidRegion_AttemptedInterpret, MultipleRegions_MergedEntity, OneRegion_Valid, ServerError | 5 | — | jest-axe |
-| fd812fff | 4.1.2 | button-name | critical | packages/core/src/stories/IconButton.stories.tsx button | 1: Default | 1 | — | jest-axe |
-| 7e1b66c0 | 4.1.2 | label | critical | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx #_r_kl_ | 1: BetweenOperators | 1 | — | jest-axe |
-| a60ad4d8 | 4.1.2 | label | critical | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx #_r_km_ | 1: BetweenOperators | 1 | — | jest-axe |
-| 2fc613b6 | 4.1.2 | label | critical | apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx #_r_m2_ | 1: MaxDepthReached | 1 | — | jest-axe |
-| f6b2d0a7 | best practice | aria-allowed-role | minor | apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx form | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
-| 6dc28c79 | best practice | aria-allowed-role | minor | apps/web/src/stories/DeleteCuratedViewDialog.component.stories.tsx form | 3: Default, Deleting, WithError | 3 | — | jest-axe |
-| 78e7ccaf | best practice | aria-allowed-role | minor | apps/web/src/stories/DeleteTagDialog.component.stories.tsx form | 3: Default, Deleting, DifferentTag | 3 | — | jest-axe |
-| 91a647f9 | best practice | aria-allowed-role | minor | apps/web/src/stories/RenameOrganizationDialog.component.stories.tsx form | 3: Default, PermissionDenied, Saving | 3 | — | jest-axe |
-| 1c5f8667 | best practice | aria-allowed-role | minor | apps/web/src/stories/TagFormModal.component.stories.tsx form | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
-| ca6a0a48 | best practice | heading-order | moderate | .MuiStack-root > h6 | 1: settings | 1 | roles: admin, member, owner · states: error, populated · themes: brand, brand.dark | axe-app |
-| e6d4efd6 | best practice | heading-order | moderate | apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx h6 | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
-| e4cfa0d2 | best practice | heading-order | moderate | apps/web/src/stories/TagFormModal.component.stories.tsx h6 | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
-| 2483fa7e | best practice | heading-order | moderate | apps/web/src/stories/ToolpackMetadataModal.component.stories.tsx h6 | 2: Default, Unentitled | 2 | — | jest-axe |
-| 3f08377b | best practice | heading-order | moderate | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiTypography-subtitle1 | 4: Step1_InvalidRegion, Step1_RegionsDrawn_Valid, Step2_AllGreen, Step2_BlockerPresent | 4 | — | jest-axe |
-| 595fdf3b | best practice | heading-order | moderate | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx h6 | 1: Step1_Empty | 1 | — | jest-axe |
-| e7dac676 | best practice | jsx-a11y/no-autofocus | — | apps/web/src/components/ChatWindow.component.tsx | 1: :288 | 1 | — | eslint |
-| af258267 | best practice | jsx-a11y/no-autofocus | — | apps/web/src/components/SsoLoginForm.component.tsx | 1: :108 | 1 | — | eslint |
+| 89861fc2 | 4.1.2 | aria-command-name | serious | `.Mui-selected.MuiListItemButton-root.MuiListItemButton-gutters` | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| 2cd831c2 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
+| 78d3c106 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
+| 91247097 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
+| b88b933a | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 2: MaxDepthReached, Populated | 3 | — | jest-axe |
+| 495d49f5 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 4: BetweenOperators, EmptyAndArrayOperators, MaxDepthReached, Populated | 7 | — | jest-axe |
+| de9c47a9 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx` | 2: Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 2 | — | jest-axe |
+| bb99c709 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx div[data-corner-header]` | 3: Step1_Empty, Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 3 | — | jest-axe |
+| 7273f52e | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx` | 3: InvalidRegion_AttemptedInterpret, OneRegion_Valid, ServerError | 3 | — | jest-axe |
+| 864ce79f | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx div[data-corner-header]` | 5: Empty, InvalidRegion_AttemptedInterpret, MultipleRegions_MergedEntity, OneRegion_Valid, ServerError | 5 | — | jest-axe |
+| fd812fff | 4.1.2 | button-name | critical | `packages/core/src/stories/IconButton.stories.tsx button` | 1: Default | 1 | — | jest-axe |
+| 647903d9 | 4.1.2 | label | critical | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx #(generated)` | 2: BetweenOperators, MaxDepthReached | 3 | — | jest-axe |
+| f6b2d0a7 | best practice | aria-allowed-role | minor | `apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx form` | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
+| 6dc28c79 | best practice | aria-allowed-role | minor | `apps/web/src/stories/DeleteCuratedViewDialog.component.stories.tsx form` | 3: Default, Deleting, WithError | 3 | — | jest-axe |
+| 78e7ccaf | best practice | aria-allowed-role | minor | `apps/web/src/stories/DeleteTagDialog.component.stories.tsx form` | 3: Default, Deleting, DifferentTag | 3 | — | jest-axe |
+| 91a647f9 | best practice | aria-allowed-role | minor | `apps/web/src/stories/RenameOrganizationDialog.component.stories.tsx form` | 3: Default, PermissionDenied, Saving | 3 | — | jest-axe |
+| 1c5f8667 | best practice | aria-allowed-role | minor | `apps/web/src/stories/TagFormModal.component.stories.tsx form` | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
+| ca6a0a48 | best practice | heading-order | moderate | `.MuiStack-root > h6` | 1: settings | 1 | roles: admin, member, owner · states: error, loading, populated · themes: brand, brand.dark | axe-app |
+| e6d4efd6 | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx h6` | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
+| e4cfa0d2 | best practice | heading-order | moderate | `apps/web/src/stories/TagFormModal.component.stories.tsx h6` | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
+| 2483fa7e | best practice | heading-order | moderate | `apps/web/src/stories/ToolpackMetadataModal.component.stories.tsx h6` | 2: Default, Unentitled | 2 | — | jest-axe |
+| 3f08377b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiTypography-subtitle1` | 4: Step1_InvalidRegion, Step1_RegionsDrawn_Valid, Step2_AllGreen, Step2_BlockerPresent | 4 | — | jest-axe |
+| 595fdf3b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx h6` | 1: Step1_Empty | 1 | — | jest-axe |
+| e7dac676 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/ChatWindow.component.tsx` | 1: :288 | 1 | — | eslint |
+| af258267 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/SsoLoginForm.component.tsx` | 1: :108 | 1 | — | eslint |
 
 <a id="owner-794"></a>
 
@@ -176,26 +176,25 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 4830db52 | 1.4.3 | color-contrast | serious |  | 14: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +8 more | 14 | roles: admin, member, owner · states: error, populated · themes: brand.dark | axe-app |
-| f05935f7 | 1.4.3 | color-contrast | serious |  >  > .MuiStack-root > .MuiChip-colorWarning.MuiChip-outlinedWarning > .MuiChip-label.MuiChip-labelSmall | 1: toolpacks | 5 | roles: admin, owner · states: populated · themes: brand | axe-app |
-| 5f27d59e | 1.4.3 | color-contrast | serious | .MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium | 3: entity-groups, tags, views | 3 | roles: admin, owner · states: empty, populated · themes: brand.dark | axe-app |
-| 91722e26 | 1.4.3 | color-contrast | serious | .MuiButton-outlinedError | 1: stations | 1 | roles: admin, owner · states: populated · themes: brand.dark | axe-app |
-| fe7eccf7 | 1.4.3 | color-contrast | serious | .MuiChip-label | 1: job-detail | 1 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
-| a5214448 | 1.4.3 | color-contrast | serious | .MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiButton-outlinedError.MuiButton-colorError | 2: connectors, entities | 15 | roles: admin, owner · states: populated · themes: brand.dark | axe-app |
-| 89a71f83 | 1.4.3 | color-contrast | serious | .MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiChip-colorError.MuiChip-outlinedError > .MuiChip-label.MuiChip-labelSmall | 1: jobs | 3 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
-| 8fd55971 | 4.1.2 | aria-command-name | serious | .MuiBox-root > .MuiListItemButton-root.MuiListItemButton-gutters | 1: connectors | 3 | roles: admin, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| b40cacd6 | 4.1.2 | aria-input-field-name | serious | .MuiSelect-select | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 13 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 6b84b4b2 | 4.1.2 | aria-input-field-name | serious | #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: connectors | 1 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 199e2593 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: Default | 1 | — | jest-axe |
-| d4cf6987 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/PaginationToolbar.component.stories.tsx .MuiSelect-select | 11: AllFilterTypes, BooleanFilters, Default, Interactive, LastPage, MidPage, +5 more | 11 | — | jest-axe |
-| 5706fa98 | best practice | heading-order | moderate | .MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h6 | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 6328129f | best practice | heading-order | moderate | .MuiTypography-h6 | 1: connectors | 1 | roles: admin, owner · states: empty · themes: brand | axe-app |
-| e86a6bdc | best practice | heading-order | moderate | apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6 | 1: Empty | 1 | — | jest-axe |
-| bff1218e | best practice | heading-order | moderate | h4 | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 1a851f7c | best practice | heading-order | moderate | h6 | 11: column-definition-detail, column-definitions, connector-detail, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
-| d736ad8e | best practice | image-redundant-alt | minor | img[alt="E2E Test User"] | 1: connectors | 1 | roles: owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| f1bd287e | best practice | image-redundant-alt | minor | img[alt="e2e-admin@portalsai.io"] | 1: connectors | 1 | roles: admin · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 53f149ff | best practice | jsx-a11y/no-autofocus | — | apps/web/src/components/PaginationToolbar.component.tsx | 1: :747 | 1 | — | eslint |
+| 4830db52 | 1.4.3 | color-contrast | serious | — | 14: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +8 more | 14 | roles: admin, member, owner · states: error, populated · themes: brand.dark | axe-app |
+| f05935f7 | 1.4.3 | color-contrast | serious | ` >  > .MuiStack-root > .MuiChip-colorWarning.MuiChip-outlinedWarning > .MuiChip-label.MuiChip-labelSmall` | 1: toolpacks | 5 | roles: admin, owner · states: populated · themes: brand | axe-app |
+| 5f27d59e | 1.4.3 | color-contrast | serious | `.MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium` | 3: entity-groups, tags, views | 3 | roles: admin, owner · states: empty, populated · themes: brand.dark | axe-app |
+| 91722e26 | 1.4.3 | color-contrast | serious | `.MuiButton-outlinedError` | 1: stations | 1 | roles: admin, owner · states: populated · themes: brand.dark | axe-app |
+| fe7eccf7 | 1.4.3 | color-contrast | serious | `.MuiChip-label` | 1: job-detail | 1 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
+| a5214448 | 1.4.3 | color-contrast | serious | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiButton-outlinedError.MuiButton-colorError` | 2: connectors, entities | 15 | roles: admin, owner · states: populated · themes: brand.dark | axe-app |
+| 89a71f83 | 1.4.3 | color-contrast | serious | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiChip-colorError.MuiChip-outlinedError > .MuiChip-label.MuiChip-labelSmall` | 1: jobs | 3 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
+| 8fd55971 | 4.1.2 | aria-command-name | serious | `.MuiBox-root > .MuiListItemButton-root.MuiListItemButton-gutters` | 1: connectors | 3 | roles: admin, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| b40cacd6 | 4.1.2 | aria-input-field-name | serious | `.MuiSelect-select` | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 13 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 6b84b4b2 | 4.1.2 | aria-input-field-name | serious | `#tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: connectors | 1 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| 199e2593 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: Default | 1 | — | jest-axe |
+| d4cf6987 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/PaginationToolbar.component.stories.tsx .MuiSelect-select` | 11: AllFilterTypes, BooleanFilters, Default, Interactive, LastPage, MidPage, +5 more | 11 | — | jest-axe |
+| 5706fa98 | best practice | heading-order | moderate | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h6` | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 6328129f | best practice | heading-order | moderate | `.MuiTypography-h6` | 1: connectors | 1 | roles: admin, owner · states: empty · themes: brand | axe-app |
+| e86a6bdc | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6` | 1: Empty | 1 | — | jest-axe |
+| bff1218e | best practice | heading-order | moderate | `h4` | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| 1a851f7c | best practice | heading-order | moderate | `h6` | 11: column-definition-detail, column-definitions, connector-detail, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| 30160e9d | best practice | image-redundant-alt | minor | `img[alt]` | 1: connectors | 1 | roles: admin, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| 53f149ff | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/PaginationToolbar.component.tsx` | 1: :747 | 1 | — | eslint |
 
 <a id="owner-795"></a>
 
@@ -203,15 +202,15 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 2345f6f1 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
-| 23a381c2 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx | 5: CrosstabSelected, DriftSeeded, MessyPipelineSkipRules, MessyQuartersSkipRules, WithProposedRegions | 5 | — | jest-axe |
-| a47467a2 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx div[data-corner-header=""] | 7: CrosstabSelected, DriftSeeded, Empty, Interactive, MessyPipelineSkipRules, MessyQuartersSkipRules, +1 more | 7 | — | jest-axe |
-| e0d4f664 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx | 1: ModeB_DriftHalt | 1 | — | jest-axe |
-| 9dda1f9d | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx div[data-corner-header=""] | 3: Interactive, ModeA_Empty, ModeB_DriftHalt | 3 | — | jest-axe |
-| be8862c2 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx div[data-corner-header=""] | 8: CrosstabSheet, DriftHighlighted, Empty, InteractiveDrawing, MessyPipelineSkipRules, MessyQuartersSkipRules, +2 more | 8 | — | jest-axe |
-| fd0eeb17 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | apps/web/src/modules/RegionEditor/RegionDrawingStep.component.tsx | 1: :387 | 1 | — | eslint |
-| 424ee260 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | apps/web/src/modules/RegionEditor/ReviewStep.component.tsx | 1: :509 | 1 | — | eslint |
-| 0182bd69 | best practice | aria-allowed-role | minor | apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx form | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
+| 2345f6f1 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx` | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
+| 23a381c2 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx` | 5: CrosstabSelected, DriftSeeded, MessyPipelineSkipRules, MessyQuartersSkipRules, WithProposedRegions | 5 | — | jest-axe |
+| 5292aa4d | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx div[data-corner-header]` | 7: CrosstabSelected, DriftSeeded, Empty, Interactive, MessyPipelineSkipRules, MessyQuartersSkipRules, +1 more | 7 | — | jest-axe |
+| e0d4f664 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx` | 1: ModeB_DriftHalt | 1 | — | jest-axe |
+| 1741e9ce | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx div[data-corner-header]` | 3: Interactive, ModeA_Empty, ModeB_DriftHalt | 3 | — | jest-axe |
+| 1d220399 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx div[data-corner-header]` | 8: CrosstabSheet, DriftHighlighted, Empty, InteractiveDrawing, MessyPipelineSkipRules, MessyQuartersSkipRules, +2 more | 8 | — | jest-axe |
+| fd0eeb17 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/RegionDrawingStep.component.tsx` | 1: :387 | 1 | — | eslint |
+| 424ee260 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/ReviewStep.component.tsx` | 1: :509 | 1 | — | eslint |
+| 0182bd69 | best practice | aria-allowed-role | minor | `apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx form` | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
 
 <a id="owner-796"></a>
 
@@ -225,110 +224,99 @@ No automated findings.
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 0dd7ddee | 1.1.1 | aria-progressbar-name | serious | :root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: settings | 1 | roles: admin, member · states: loading · themes: brand | axe-app |
-| 447b49e4 | 1.1.1 | aria-progressbar-name | serious | .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 2: settings, stations | 2 | roles: admin, member, owner · states: loading · themes: brand, brand.dark | axe-app |
-| 723f3a15 | 1.1.1 | aria-progressbar-name | serious | .MuiCircularProgress-root | 15: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +9 more | 15 | roles: admin, member, owner · states: loading, locked · themes: brand, brand.dark | axe-app |
-| 3d9fd228 | 1.1.1 | aria-progressbar-name | serious | .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: stations | 1 | roles: admin, member · states: loading · themes: brand | axe-app |
-| 89fa1ce9 | 1.1.1 | aria-progressbar-name | serious | #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: connectors | 1 | roles: admin, member, owner · states: empty, error · themes: brand.dark | axe-app |
-| fabf96b1 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/modules/D3Widget/stories/D3Widget.stories.tsx .MuiCircularProgress-root | 1: Loading | 1 | — | jest-axe |
-| 8051a0be | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Authorized.stories.tsx span | 2: Loading, WithError | 2 | — | jest-axe |
-| acbca274 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: Default | 1 | — | jest-axe |
-| 7b22f862 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Dashboard.view.stories.tsx .MuiBox-root > .MuiPaper-root.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: Default | 2 | — | jest-axe |
-| 67ea94ae | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Dashboard.view.stories.tsx .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: Default | 1 | — | jest-axe |
-| d950cae1 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/DataJobStream.component.stories.tsx .MuiLinearProgress-root | 1: ActiveJob | 1 | — | jest-axe |
-| d9a4b796 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/DataResult.component.stories.tsx span | 2: Loading, PartialLoading | 2 | — | jest-axe |
-| a07b6487 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/FilterSqlPreview.component.stories.tsx span | 1: Loading | 1 | — | jest-axe |
-| 8b51247e | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/JobCard.component.stories.tsx .MuiLinearProgress-root | 3: Active, ActiveWithStreamProgress, Revalidation | 3 | — | jest-axe |
-| 88751d19 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Loading.view.stories.tsx span | 1: Default | 1 | — | jest-axe |
-| 52055a1b | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Settings.view.stories.tsx .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: Default | 1 | — | jest-axe |
-| 30981468 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx | 1: Step0_Uploading | 1 | — | jest-axe |
-| 3d4e8a1c | 1.1.1 | aria-progressbar-name | serious | apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiLinearProgress-root.MuiLinearProgress-colorPrimary.MuiLinearProgress-determinate | 1: Step0_FilesSelected | 2 | — | jest-axe |
-| 5752d06a | 1.1.1 | aria-progressbar-name | serious | apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx | 2: Parsing, Uploading | 2 | — | jest-axe |
-| 0bfd98bb | 1.1.1 | aria-progressbar-name | serious | apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiLinearProgress-root.MuiLinearProgress-colorPrimary | 1: Uploading | 2 | — | jest-axe |
-| d5d1f4cc | 1.1.1 | aria-progressbar-name | serious | apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx .MuiLinearProgress-root | 2: ErrorState, OneFileSelected | 2 | — | jest-axe |
-| aab619f9 | 1.1.1 | aria-progressbar-name | serious | packages/core/src/stories/MultiSearchableSelect.stories.tsx .MuiCircularProgress-root | 1: Async | 1 | — | jest-axe |
-| 129d245a | 1.1.1 | aria-progressbar-name | serious | packages/core/src/stories/Progress.stories.tsx .MuiLinearProgress-root | 6: Complete, Default, Error, NoLabel, Thick, Zero | 6 | — | jest-axe |
-| 054b9760 | 1.1.1 | aria-progressbar-name | serious | packages/core/src/stories/SearchableSelect.stories.tsx .MuiCircularProgress-root | 1: Async | 1 | — | jest-axe |
-| afc486e8 | 1.1.1 | aria-progressbar-name | serious | packages/core/src/stories/StatusMessage.stories.tsx span | 1: Loading | 1 | — | jest-axe |
-| 05fe17ab | 1.3.1 | list | serious | apps/web/src/stories/SidebarNav.component.stories.tsx ul | 3: Expanded, FooterRenderProp, WithoutFooter | 3 | — | jest-axe |
-| 338bfa83 | 1.3.1 | list | serious | apps/web/src/stories/SidebarNavItem.component.stories.tsx ul | 2: ChildSelected, WithChildrenOpen | 2 | — | jest-axe |
-| e181b2eb | 1.4.3 | color-contrast | serious | .MuiButton-contained | 12: column-definitions, connectors, entities, entity-groups, invitation-accept, login, +6 more | 12 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand.dark | axe-app |
-| ea6c7c24 | 1.4.3 | color-contrast | serious | .MuiButton-root | 1: dashboard | 1 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
-| f83131b6 | 2.1.1 | jsx-a11y/click-events-have-key-events | — | apps/web/src/components/SidebarNavToggle.component.tsx | 1: :54 | 1 | — | eslint |
-| c10d6f4b | 2.1.1, 4.1.2 | jsx-a11y/no-static-element-interactions | — | apps/web/src/components/SidebarNavToggle.component.tsx | 1: :54 | 1 | — | eslint |
-| 3e40577f | 2.5.3 | label-content-name-mismatch | serious |  | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| e8886413 | 4.1.2 | aria-command-name | serious | .Mui-selected | 15: column-definition-detail, column-definitions, dashboard, entities, entity-detail, entity-groups, +9 more | 15 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 5e8aaf14 | 4.1.2 | aria-command-name | serious | .MuiListItemButton-root.MuiListItemButton-gutters | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 213 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 1576f759 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/Authorized.layout.stories.tsx .Mui-selected | 3: Default, WithLongContent, WithMultipleElements | 3 | — | jest-axe |
-| 87c1f722 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/Authorized.layout.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters | 3: Default, WithLongContent, WithMultipleElements | 9 | — | jest-axe |
-| 97df4262 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/SidebarNav.component.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters | 1: Collapsed | 3 | — | jest-axe |
-| 42c9fe0c | 4.1.2 | aria-command-name | serious | apps/web/src/stories/SidebarNavItem.component.stories.tsx | 1: CollapsedWithChildren | 1 | — | jest-axe |
-| 56f4fdcd | 4.1.2 | aria-command-name | serious | apps/web/src/stories/SidebarNavItem.component.stories.tsx .MuiButtonBase-root | 1: CollapsedNoChildren | 1 | — | jest-axe |
-| ee3e688c | 4.1.2 | aria-prohibited-attr | serious |  | 1: dashboard | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| f003b5d1 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/stories/Dashboard.view.stories.tsx | 1: Default | 1 | — | jest-axe |
-| 79b6a103 | 4.1.2 | aria-prohibited-attr | serious | apps/web/src/stories/HealthCheck.component.stories.tsx .MuiBox-root | 2: Healthy, UnknownTimestamp | 2 | — | jest-axe |
-| a88c6214 | best practice | heading-order | moderate | apps/web/src/stories/Authorized.layout.stories.tsx .MuiBox-root > h6 | 1: WithMultipleElements | 1 | — | jest-axe |
-| 6b7f4782 | best practice | heading-order | moderate | apps/web/src/stories/Authorized.layout.stories.tsx h5 | 1: Default | 1 | — | jest-axe |
-| 3ed9f2da | best practice | heading-order | moderate | apps/web/src/stories/BadRequest.view.stories.tsx h4 | 2: CustomDescription, Default | 2 | — | jest-axe |
-| 4ed9e289 | best practice | heading-order | moderate | apps/web/src/stories/Forbidden.view.stories.tsx h4 | 2: CustomDescription, Default | 2 | — | jest-axe |
-| 2e486a39 | best practice | heading-order | moderate | apps/web/src/stories/Help.view.stories.tsx div[data-testid="getting-started-step-1"] > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > .MuiTypography-subtitle1 | 2: Default, GlossaryFilteredToAnalytics | 2 | — | jest-axe |
-| 514bb0bf | best practice | heading-order | moderate | apps/web/src/stories/HttpError.component.stories.tsx h4 | 7: BackButtonOnly, Forbidden, NoButtons, NoDescription, NotFound, ServerError, +1 more | 7 | — | jest-axe |
-| 24b961c5 | best practice | heading-order | moderate | apps/web/src/stories/NotFound.view.stories.tsx h4 | 2: CustomDescription, Default | 2 | — | jest-axe |
-| 8534c76c | best practice | heading-order | moderate | apps/web/src/stories/ServerError.view.stories.tsx h4 | 2: CustomDescription, Default | 2 | — | jest-axe |
-| c038d63c | best practice | heading-order | moderate | apps/web/src/stories/Unauthorized.view.stories.tsx h4 | 2: CustomDescription, Default | 2 | — | jest-axe |
-| 5dd41f8a | best practice | heading-order | moderate | div[data-testid="getting-started-step-1"] > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > .MuiTypography-subtitle1 | 1: help | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| b9463d9f | best practice | heading-order | moderate | packages/core/src/stories/PageSection.stories.tsx .MuiCard-root.MuiPaper-root > .MuiCardContent-root > h6 | 5: Default, OutlinedVariant, WithActions, WithIcon, WithSecondaryMenu | 5 | — | jest-axe |
-| da7fba43 | best practice | heading-order | moderate | packages/core/src/stories/PageSection.stories.tsx .MuiPaper-root.MuiPaper-outlined > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiCard-root.MuiPaper-root > .MuiCardContent-root > h6 | 1: Composed | 2 | — | jest-axe |
-| 30bf364d | best practice | image-redundant-alt | minor | apps/web/src/stories/Authorized.layout.stories.tsx img | 3: Default, WithLongContent, WithMultipleElements | 3 | — | jest-axe |
-| 45a5bbc9 | best practice | image-redundant-alt | minor | apps/web/src/stories/HeaderMenu.component.stories.tsx img | 1: UIWithCustomChildren | 1 | — | jest-axe |
-| c8484360 | best practice | image-redundant-alt | minor | img | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| ed380177 | best practice | landmark-one-main | moderate | html | 23: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +17 more | 23 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| fd3b5de4 | best practice | page-has-heading-one | moderate | html | 8: column-definition-detail, connector-detail, connectors, entity-detail, job-detail, record-detail, +2 more | 8 | roles: admin, member, owner · states: error, loading · themes: brand, brand.dark | axe-app |
-| 4ea83654 | best practice | region | moderate |  | 22: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +16 more | 42 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| b27dbe16 | best practice | region | moderate |  >  | 1: toolpacks | 31 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
-| defca027 | best practice | region | moderate |  > td | 1: entity-detail | 4 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| a8b0c07e | best practice | region | moderate | .MuiBadge-badge | 4: column-definitions, entities, entity-detail, jobs | 4 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 1564b9fe | best practice | region | moderate | .MuiBox-root | 8: column-definitions, connector-detail, entities, entity-groups, job-detail, station-detail, +2 more | 13 | roles: admin, member, owner · states: loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 31b9c4f5 | best practice | region | moderate | .MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 15517352 | best practice | region | moderate | .MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2 | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| ca827f8c | best practice | region | moderate | .MuiBox-root > .MuiTypography-caption.MuiTypography-root | 2: connector-detail, station-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 6f2a980f | best practice | region | moderate | .MuiChip-colorPrimary.MuiChip-outlinedPrimary > .MuiChip-label.MuiChip-labelSmall | 1: station-detail | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| ad7ca5b6 | best practice | region | moderate | .MuiCircularProgress-root | 1: entity-detail | 1 | roles: owner · states: locked · themes: brand | axe-app |
-| e04b0836 | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 2d21c1dc | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 85f7b872 | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2 | 2: entity-detail, job-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| c2160cbb | best practice | region | moderate | .MuiSelect-select | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 13 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| f1618523 | best practice | region | moderate | .MuiStack-root > .MuiBox-root | 1: connector-detail | 1 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| f784edc5 | best practice | region | moderate | .MuiStack-root > .MuiStack-root | 3: entity-detail, help, stations | 3 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| ebfd3502 | best practice | region | moderate | .MuiTabs-root | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 7b00596d | best practice | region | moderate | .MuiTypography-body1 | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| c7443303 | best practice | region | moderate | .MuiTypography-body2 | 1: station-detail | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| f2fab31b | best practice | region | moderate | .MuiTypography-caption | 19: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +13 more | 19 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 0b0eec8a | best practice | region | moderate | #_r_5_ | 8: column-definitions, entities, entity-detail, entity-groups, jobs, portal-results, +2 more | 8 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 94e71b13 | best practice | region | moderate | #_r_6_ | 1: stations | 1 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| e7a3f965 | best practice | region | moderate | #_r_7_ | 2: column-definition-detail, connector-detail | 2 | roles: member · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 4c984270 | best practice | region | moderate | #_r_8_-label | 1: entity-detail | 1 | roles: admin · states: populated · themes: brand, brand.dark | axe-app |
-| 274bbcff | best practice | region | moderate | #_r_9_ | 1: column-definition-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 851a125f | best practice | region | moderate | #_r_a_ | 1: toolpacks | 1 | roles: admin, owner · states: empty, populated · themes: brand, brand.dark | axe-app |
-| 87abde1b | best practice | region | moderate | #_r_b_ | 1: entity-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 5e2cd754 | best practice | region | moderate | #_r_e_ | 1: entity-detail | 1 | roles: admin · states: populated · themes: brand, brand.dark | axe-app |
-| 5013159d | best practice | region | moderate | #_r_g_ | 1: connector-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 226da632 | best practice | region | moderate | #_r_k_-label | 1: entity-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 71fa8b83 | best practice | region | moderate | #_r_m_ | 1: station-detail | 1 | roles: member · states: populated · themes: brand, brand.dark | axe-app |
-| 5f40cc2f | best practice | region | moderate | #_r_n_ | 1: station-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 9009b2e1 | best practice | region | moderate | #tabpanel-0 | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| eb5b3d95 | best practice | region | moderate | h1 | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| ce90a969 | best practice | region | moderate | h2 | 4: column-definition-detail, connector-detail, job-detail, station-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 98554026 | best practice | region | moderate | h4 | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| aedc54dc | best practice | region | moderate | h6 | 10: column-definition-detail, column-definitions, entities, entity-groups, jobs, portal-results, +4 more | 10 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
-| 3526dddb | best practice | region | moderate | label > .Mui-checked.MuiCheckbox-root.MuiCheckbox-colorPrimary > .PrivateSwitchBase-input[data-indeterminate="false"] | 1: connector-detail | 2 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| c0f1e321 | best practice | region | moderate | label > .MuiCheckbox-root.MuiCheckbox-colorPrimary.MuiCheckbox-sizeSmall > .PrivateSwitchBase-input[data-indeterminate="false"] | 1: connector-detail | 2 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| c5a05068 | best practice | region | moderate | label > .MuiFormControlLabel-label.MuiTypography-body1 | 1: connector-detail | 4 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 6bb07007 | best practice | region | moderate | pre | 2: connector-detail, job-detail | 2 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 9be769da | best practice | region | moderate | span[data-mui-internal-clone-element="true"] | 1: connector-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 8d5104e0 | best practice | region | moderate | tbody | 2: entity-detail, toolpacks | 2 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
-| bc053425 | best practice | region | moderate | th | 2: entity-detail, toolpacks | 5 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
-| 0a73a342 | best practice | region | moderate | th > .MuiTypography-caption.MuiTypography-root | 1: entity-detail | 6 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 447b49e4 | 1.1.1 | aria-progressbar-name | serious | `.MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 2: settings, stations | 2 | roles: admin, member, owner · states: loading · themes: brand, brand.dark | axe-app |
+| 723f3a15 | 1.1.1 | aria-progressbar-name | serious | `.MuiCircularProgress-root` | 15: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +9 more | 15 | roles: admin, member, owner · states: loading, populated · themes: brand, brand.dark | axe-app |
+| 3d9fd228 | 1.1.1 | aria-progressbar-name | serious | `.MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: stations | 1 | roles: member · states: loading · themes: brand.dark | axe-app |
+| 89fa1ce9 | 1.1.1 | aria-progressbar-name | serious | `#tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: connectors | 1 | roles: admin, member, owner · states: empty, error · themes: brand.dark | axe-app |
+| fabf96b1 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/modules/D3Widget/stories/D3Widget.stories.tsx .MuiCircularProgress-root` | 1: Loading | 1 | — | jest-axe |
+| 8051a0be | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Authorized.stories.tsx span` | 2: Loading, WithError | 2 | — | jest-axe |
+| acbca274 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: Default | 1 | — | jest-axe |
+| 7b22f862 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Dashboard.view.stories.tsx .MuiBox-root > .MuiPaper-root.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: Default | 2 | — | jest-axe |
+| 67ea94ae | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Dashboard.view.stories.tsx .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: Default | 1 | — | jest-axe |
+| d950cae1 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/DataJobStream.component.stories.tsx .MuiLinearProgress-root` | 1: ActiveJob | 1 | — | jest-axe |
+| d9a4b796 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/DataResult.component.stories.tsx span` | 2: Loading, PartialLoading | 2 | — | jest-axe |
+| a07b6487 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/FilterSqlPreview.component.stories.tsx span` | 1: Loading | 1 | — | jest-axe |
+| 8b51247e | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/JobCard.component.stories.tsx .MuiLinearProgress-root` | 3: Active, ActiveWithStreamProgress, Revalidation | 3 | — | jest-axe |
+| 88751d19 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Loading.view.stories.tsx span` | 1: Default | 1 | — | jest-axe |
+| 52055a1b | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/stories/Settings.view.stories.tsx .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary` | 1: Default | 1 | — | jest-axe |
+| 30981468 | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx` | 1: Step0_Uploading | 1 | — | jest-axe |
+| 3d4e8a1c | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiLinearProgress-root.MuiLinearProgress-colorPrimary.MuiLinearProgress-determinate` | 1: Step0_FilesSelected | 2 | — | jest-axe |
+| 5752d06a | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx` | 2: Parsing, Uploading | 2 | — | jest-axe |
+| 0bfd98bb | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiLinearProgress-root.MuiLinearProgress-colorPrimary` | 1: Uploading | 2 | — | jest-axe |
+| d5d1f4cc | 1.1.1 | aria-progressbar-name | serious | `apps/web/src/workflows/FileUploadConnector/stories/UploadStep.stories.tsx .MuiLinearProgress-root` | 2: ErrorState, OneFileSelected | 2 | — | jest-axe |
+| aab619f9 | 1.1.1 | aria-progressbar-name | serious | `packages/core/src/stories/MultiSearchableSelect.stories.tsx .MuiCircularProgress-root` | 1: Async | 1 | — | jest-axe |
+| 129d245a | 1.1.1 | aria-progressbar-name | serious | `packages/core/src/stories/Progress.stories.tsx .MuiLinearProgress-root` | 6: Complete, Default, Error, NoLabel, Thick, Zero | 6 | — | jest-axe |
+| 054b9760 | 1.1.1 | aria-progressbar-name | serious | `packages/core/src/stories/SearchableSelect.stories.tsx .MuiCircularProgress-root` | 1: Async | 1 | — | jest-axe |
+| afc486e8 | 1.1.1 | aria-progressbar-name | serious | `packages/core/src/stories/StatusMessage.stories.tsx span` | 1: Loading | 1 | — | jest-axe |
+| 05fe17ab | 1.3.1 | list | serious | `apps/web/src/stories/SidebarNav.component.stories.tsx ul` | 3: Expanded, FooterRenderProp, WithoutFooter | 3 | — | jest-axe |
+| 338bfa83 | 1.3.1 | list | serious | `apps/web/src/stories/SidebarNavItem.component.stories.tsx ul` | 2: ChildSelected, WithChildrenOpen | 2 | — | jest-axe |
+| e181b2eb | 1.4.3 | color-contrast | serious | `.MuiButton-contained` | 12: column-definitions, connectors, entities, entity-groups, invitation-accept, login, +6 more | 12 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand.dark | axe-app |
+| ea6c7c24 | 1.4.3 | color-contrast | serious | `.MuiButton-root` | 1: dashboard | 1 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
+| f83131b6 | 2.1.1 | jsx-a11y/click-events-have-key-events | — | `apps/web/src/components/SidebarNavToggle.component.tsx` | 1: :54 | 1 | — | eslint |
+| c10d6f4b | 2.1.1, 4.1.2 | jsx-a11y/no-static-element-interactions | — | `apps/web/src/components/SidebarNavToggle.component.tsx` | 1: :54 | 1 | — | eslint |
+| 3e40577f | 2.5.3 | label-content-name-mismatch | serious | — | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| e8886413 | 4.1.2 | aria-command-name | serious | `.Mui-selected` | 15: column-definition-detail, column-definitions, dashboard, entities, entity-detail, entity-groups, +9 more | 15 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 5e8aaf14 | 4.1.2 | aria-command-name | serious | `.MuiListItemButton-root.MuiListItemButton-gutters` | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 211 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 1576f759 | 4.1.2 | aria-command-name | serious | `apps/web/src/stories/Authorized.layout.stories.tsx .Mui-selected` | 3: Default, WithLongContent, WithMultipleElements | 3 | — | jest-axe |
+| 87c1f722 | 4.1.2 | aria-command-name | serious | `apps/web/src/stories/Authorized.layout.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters` | 3: Default, WithLongContent, WithMultipleElements | 9 | — | jest-axe |
+| 97df4262 | 4.1.2 | aria-command-name | serious | `apps/web/src/stories/SidebarNav.component.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters` | 1: Collapsed | 3 | — | jest-axe |
+| 42c9fe0c | 4.1.2 | aria-command-name | serious | `apps/web/src/stories/SidebarNavItem.component.stories.tsx` | 1: CollapsedWithChildren | 1 | — | jest-axe |
+| 56f4fdcd | 4.1.2 | aria-command-name | serious | `apps/web/src/stories/SidebarNavItem.component.stories.tsx .MuiButtonBase-root` | 1: CollapsedNoChildren | 1 | — | jest-axe |
+| ee3e688c | 4.1.2 | aria-prohibited-attr | serious | — | 1: dashboard | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| f003b5d1 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/stories/Dashboard.view.stories.tsx` | 1: Default | 1 | — | jest-axe |
+| 79b6a103 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/stories/HealthCheck.component.stories.tsx .MuiBox-root` | 2: Healthy, UnknownTimestamp | 2 | — | jest-axe |
+| a88c6214 | best practice | heading-order | moderate | `apps/web/src/stories/Authorized.layout.stories.tsx .MuiBox-root > h6` | 1: WithMultipleElements | 1 | — | jest-axe |
+| 6b7f4782 | best practice | heading-order | moderate | `apps/web/src/stories/Authorized.layout.stories.tsx h5` | 1: Default | 1 | — | jest-axe |
+| 3ed9f2da | best practice | heading-order | moderate | `apps/web/src/stories/BadRequest.view.stories.tsx h4` | 2: CustomDescription, Default | 2 | — | jest-axe |
+| 4ed9e289 | best practice | heading-order | moderate | `apps/web/src/stories/Forbidden.view.stories.tsx h4` | 2: CustomDescription, Default | 2 | — | jest-axe |
+| 2e486a39 | best practice | heading-order | moderate | `apps/web/src/stories/Help.view.stories.tsx div[data-testid="getting-started-step-1"] > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > .MuiTypography-subtitle1` | 2: Default, GlossaryFilteredToAnalytics | 2 | — | jest-axe |
+| 514bb0bf | best practice | heading-order | moderate | `apps/web/src/stories/HttpError.component.stories.tsx h4` | 7: BackButtonOnly, Forbidden, NoButtons, NoDescription, NotFound, ServerError, +1 more | 7 | — | jest-axe |
+| 24b961c5 | best practice | heading-order | moderate | `apps/web/src/stories/NotFound.view.stories.tsx h4` | 2: CustomDescription, Default | 2 | — | jest-axe |
+| 8534c76c | best practice | heading-order | moderate | `apps/web/src/stories/ServerError.view.stories.tsx h4` | 2: CustomDescription, Default | 2 | — | jest-axe |
+| c038d63c | best practice | heading-order | moderate | `apps/web/src/stories/Unauthorized.view.stories.tsx h4` | 2: CustomDescription, Default | 2 | — | jest-axe |
+| 5dd41f8a | best practice | heading-order | moderate | `div[data-testid="getting-started-step-1"] > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > .MuiTypography-subtitle1` | 1: help | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| b9463d9f | best practice | heading-order | moderate | `packages/core/src/stories/PageSection.stories.tsx .MuiCard-root.MuiPaper-root > .MuiCardContent-root > h6` | 5: Default, OutlinedVariant, WithActions, WithIcon, WithSecondaryMenu | 5 | — | jest-axe |
+| da7fba43 | best practice | heading-order | moderate | `packages/core/src/stories/PageSection.stories.tsx .MuiPaper-root.MuiPaper-outlined > .MuiStack-root > .MuiBox-root > .MuiStack-root > .MuiCard-root.MuiPaper-root > .MuiCardContent-root > h6` | 1: Composed | 2 | — | jest-axe |
+| 30bf364d | best practice | image-redundant-alt | minor | `apps/web/src/stories/Authorized.layout.stories.tsx img` | 3: Default, WithLongContent, WithMultipleElements | 3 | — | jest-axe |
+| 45a5bbc9 | best practice | image-redundant-alt | minor | `apps/web/src/stories/HeaderMenu.component.stories.tsx img` | 1: UIWithCustomChildren | 1 | — | jest-axe |
+| c8484360 | best practice | image-redundant-alt | minor | `img` | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| ed380177 | best practice | landmark-one-main | moderate | `html` | 23: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +17 more | 23 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| fd3b5de4 | best practice | page-has-heading-one | moderate | `html` | 7: column-definition-detail, connector-detail, entity-detail, job-detail, record-detail, station-detail, +1 more | 7 | roles: admin, member, owner · states: error, loading · themes: brand, brand.dark | axe-app |
+| 4ea83654 | best practice | region | moderate | — | 22: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +16 more | 42 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| b27dbe16 | best practice | region | moderate | ` > ` | 1: toolpacks | 31 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
+| defca027 | best practice | region | moderate | ` > td` | 1: entity-detail | 4 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| a8b0c07e | best practice | region | moderate | `.MuiBadge-badge` | 4: column-definitions, entities, entity-detail, jobs | 4 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 1564b9fe | best practice | region | moderate | `.MuiBox-root` | 8: column-definitions, connector-detail, entities, entity-groups, job-detail, station-detail, +2 more | 13 | roles: admin, member, owner · states: loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 31b9c4f5 | best practice | region | moderate | `.MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root` | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 15517352 | best practice | region | moderate | `.MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2` | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| ca827f8c | best practice | region | moderate | `.MuiBox-root > .MuiTypography-caption.MuiTypography-root` | 2: connector-detail, station-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 6f2a980f | best practice | region | moderate | `.MuiChip-colorPrimary.MuiChip-outlinedPrimary > .MuiChip-label.MuiChip-labelSmall` | 1: station-detail | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| ad7ca5b6 | best practice | region | moderate | `.MuiCircularProgress-root` | 1: entity-detail | 1 | roles: admin · states: populated · themes: brand | axe-app |
+| e04b0836 | best practice | region | moderate | `.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 2d21c1dc | best practice | region | moderate | `.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 85f7b872 | best practice | region | moderate | `.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2` | 2: entity-detail, job-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| c2160cbb | best practice | region | moderate | `.MuiSelect-select` | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 13 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| f1618523 | best practice | region | moderate | `.MuiStack-root > .MuiBox-root` | 1: connector-detail | 1 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| f784edc5 | best practice | region | moderate | `.MuiStack-root > .MuiStack-root` | 3: entity-detail, help, stations | 3 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| ebfd3502 | best practice | region | moderate | `.MuiTabs-root` | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| 7b00596d | best practice | region | moderate | `.MuiTypography-body1` | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| c7443303 | best practice | region | moderate | `.MuiTypography-body2` | 1: station-detail | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| f2fab31b | best practice | region | moderate | `.MuiTypography-caption` | 19: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +13 more | 19 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| ad76bb09 | best practice | region | moderate | `#(generated)` | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 19 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 0ab0c08e | best practice | region | moderate | `#(generated)-label` | 1: entity-detail | 2 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 9009b2e1 | best practice | region | moderate | `#tabpanel-0` | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| eb5b3d95 | best practice | region | moderate | `h1` | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| ce90a969 | best practice | region | moderate | `h2` | 4: column-definition-detail, connector-detail, job-detail, station-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 98554026 | best practice | region | moderate | `h4` | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
+| aedc54dc | best practice | region | moderate | `h6` | 10: column-definition-detail, column-definitions, entities, entity-groups, jobs, portal-results, +4 more | 10 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| 761186c7 | best practice | region | moderate | `label > .Mui-checked.MuiCheckbox-root.MuiCheckbox-colorPrimary > .PrivateSwitchBase-input[data-indeterminate]` | 1: connector-detail | 2 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 39a60630 | best practice | region | moderate | `label > .MuiCheckbox-root.MuiCheckbox-colorPrimary.MuiCheckbox-sizeSmall > .PrivateSwitchBase-input[data-indeterminate]` | 1: connector-detail | 2 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| c5a05068 | best practice | region | moderate | `label > .MuiFormControlLabel-label.MuiTypography-body1` | 1: connector-detail | 4 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 6bb07007 | best practice | region | moderate | `pre` | 2: connector-detail, job-detail | 2 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
+| 95797ebf | best practice | region | moderate | `span[data-mui-internal-clone-element]` | 1: connector-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 8d5104e0 | best practice | region | moderate | `tbody` | 2: entity-detail, toolpacks | 2 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| bc053425 | best practice | region | moderate | `th` | 2: entity-detail, toolpacks | 5 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| 0a73a342 | best practice | region | moderate | `th > .MuiTypography-caption.MuiTypography-root` | 1: entity-detail | 6 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 
 <a id="owner-798"></a>
 
@@ -336,14 +324,14 @@ No automated findings.
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 4d3735b0 | 1.4.3 | color-contrast | serious | .button | 4: /features/, /privacy/, /security/, /terms/ | 4 | themes: brand.dark | axe-site |
-| 05b7eb45 | 1.4.3 | color-contrast | serious | .button--primary | 1: /use-cases/ | 1 | themes: brand.dark | axe-site |
-| 5619744d | 1.4.3 | color-contrast | serious | .button--primary.button[href$="mailto:qa@portalsai.io"] | 1: /contact/ | 1 | themes: brand.dark | axe-site |
-| 0ce85bcb | 1.4.3 | color-contrast | serious | .button.button--primary[href="/"] | 1: /404.html | 1 | themes: brand.dark | axe-site |
-| ec44c0e0 | 1.4.3 | color-contrast | serious | .card > .button--primary.button[href$="app-dev.portalsai.io"] | 1: /pricing/ | 3 | themes: brand.dark | axe-site |
-| 4226979d | 1.4.3 | color-contrast | serious | .site-header__actions > .button--primary.button[href$="app-dev.portalsai.io"] | 5: /, /pricing/, /use-cases/analysts/, /use-cases/founders/, /use-cases/operations/ | 5 | themes: brand.dark | axe-site |
-| 8c8d2f4f | 1.4.3 | color-contrast | serious | a[href$="app-dev.portalsai.io"] | 2: /404.html, /contact/ | 2 | themes: brand.dark | axe-site |
-| 510cbf8b | 1.4.3 | color-contrast | serious | p > .button--primary.button[href$="app-dev.portalsai.io"] | 4: /, /use-cases/analysts/, /use-cases/founders/, /use-cases/operations/ | 4 | themes: brand.dark | axe-site |
+| 4d3735b0 | 1.4.3 | color-contrast | serious | `.button` | 4: /features/, /privacy/, /security/, /terms/ | 4 | themes: brand.dark | axe-site |
+| 05b7eb45 | 1.4.3 | color-contrast | serious | `.button--primary` | 1: /use-cases/ | 1 | themes: brand.dark | axe-site |
+| a86fa2e4 | 1.4.3 | color-contrast | serious | `.button--primary.button[href]` | 1: /contact/ | 1 | themes: brand.dark | axe-site |
+| ba9a0536 | 1.4.3 | color-contrast | serious | `.button.button--primary[href]` | 1: /404.html | 1 | themes: brand.dark | axe-site |
+| a6f1fa87 | 1.4.3 | color-contrast | serious | `.card > .button--primary.button[href]` | 1: /pricing/ | 3 | themes: brand.dark | axe-site |
+| a5b83774 | 1.4.3 | color-contrast | serious | `.site-header__actions > .button--primary.button[href]` | 5: /, /pricing/, /use-cases/analysts/, /use-cases/founders/, /use-cases/operations/ | 5 | themes: brand.dark | axe-site |
+| ce440726 | 1.4.3 | color-contrast | serious | `a[href]` | 2: /404.html, /contact/ | 2 | themes: brand.dark | axe-site |
+| b8161ce2 | 1.4.3 | color-contrast | serious | `p > .button--primary.button[href]` | 4: /, /use-cases/analysts/, /use-cases/founders/, /use-cases/operations/ | 4 | themes: brand.dark | axe-site |
 
 <a id="owner-unassigned"></a>
 
@@ -474,6 +462,8 @@ Each step says what you **do** and what you should **hear**. Anything you hear t
 | 5 | Toggle the theme | The toggle's name and its new state |
 
 ### Findings
+
+**No findings.** The six flows were walked with VoiceOver + Safari and NVDA + Firefox on 2026-11-05, and every step announced what the script expects. A later walk adds its findings to this table.
 
 | ID | Flow | Step | WCAG | Observed | AT | Owner |
 |---|---|---|---|---|---|---|
