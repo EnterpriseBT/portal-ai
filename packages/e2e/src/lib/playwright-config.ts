@@ -101,6 +101,25 @@ export function buildConfig(
             retries: 0,
             use: { storageState: SESSION_STORAGE_STATE },
           },
+          // The accessibility walks (#792): report-only, so they never fail
+          // on a finding and never retry. They join only when E2E_A11Y asks
+          // (the a11y:axe scripts set it), so a bare `test:e2e` never starts
+          // a 90-minute walk. `a11y` signs in per role from
+          // .auth/<role>.storageState.json against the dev stack;
+          // `a11y-site` walks the built site under `astro preview`.
+          ...(env.E2E_A11Y
+            ? [
+                { name: "a11y", testMatch: /a11y\/app\.a11y\.ts$/, retries: 0 },
+                {
+                  name: "a11y-site",
+                  testMatch: /a11y\/site\.a11y\.ts$/,
+                  retries: 0,
+                  use: {
+                    baseURL: env.E2E_SITE_BASE_URL || "http://localhost:3002",
+                  },
+                },
+              ]
+            : []),
         ],
   };
 }
