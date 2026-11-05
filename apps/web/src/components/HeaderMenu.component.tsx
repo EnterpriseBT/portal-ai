@@ -22,6 +22,12 @@ export interface HeaderMenuUIProps {
   children?: React.ReactNode;
 }
 
+/** A menu item that can be chosen: not a label row, not disabled. */
+const isMenuItem = (target: EventTarget): boolean =>
+  target instanceof HTMLElement &&
+  /^menuitem/.test(target.getAttribute("role") ?? "") &&
+  target.getAttribute("aria-disabled") !== "true";
+
 export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
   image,
   label,
@@ -77,6 +83,19 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
         open={open}
         onClose={handleClose}
         onClick={handleClose}
+        // A menu item chosen from the keyboard closes the menu too (#797
+        // smoke). MUI runs an item's onClick from its keydown (Enter) or
+        // keyup (Space) handler, which never reaches the Menu's onClick.
+        slotProps={{
+          list: {
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" && isMenuItem(e.target)) handleClose();
+            },
+            onKeyUp: (e: React.KeyboardEvent) => {
+              if (e.key === " " && isMenuItem(e.target)) handleClose();
+            },
+          },
+        }}
         transformOrigin={{ horizontal: "right", vertical: "top" }}
         anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
       >

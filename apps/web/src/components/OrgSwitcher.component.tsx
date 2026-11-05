@@ -45,6 +45,12 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
     return null;
   }
 
+  // MenuList's own roving focus, handed on to the current org. It's spread
+  // rather than written as an autoFocus attribute: jsx-a11y's no-autofocus
+  // targets focus stolen on page load, and this is the focus a menu owes the
+  // item it opens on (the APG menu pattern).
+  const menuFocus = { autoFocus, tabIndex };
+
   const items = memberships.map((m) => (
     <MenuItem
       key={m.organization.id}
@@ -52,8 +58,7 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
       aria-checked={m.isCurrent}
       selected={m.isCurrent}
       disabled={isSwitching}
-      autoFocus={m.isCurrent ? autoFocus : undefined}
-      tabIndex={m.isCurrent ? tabIndex : undefined}
+      {...(m.isCurrent ? menuFocus : {})}
       onClick={() => {
         if (!m.isCurrent) onSwitch(m.organization.id);
       }}
@@ -84,7 +89,7 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
  */
 export const OrgSwitcher: React.FC<
   Pick<OrgSwitcherUIProps, "autoFocus" | "tabIndex">
-> = ({ autoFocus, tabIndex }) => {
+> = (menuFocus) => {
   const queryClient = useQueryClient();
   const { data } = sdk.organizations.memberships();
   const { mutate, isPending } = sdk.organizations.switch();
@@ -107,8 +112,7 @@ export const OrgSwitcher: React.FC<
       memberships={memberships}
       onSwitch={handleSwitch}
       isSwitching={isPending}
-      autoFocus={autoFocus}
-      tabIndex={tabIndex}
+      {...menuFocus}
     />
   );
 };

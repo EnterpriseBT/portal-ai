@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, expectNoAxeViolations } from "./test-utils";
+import { render, screen, waitFor, expectNoAxeViolations } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { MenuItem, ListItemText } from "@portalai/core/ui";
 
@@ -114,5 +114,31 @@ describe("HeaderMenuUI Component", () => {
       );
       await expectNoAxeViolations(container);
     });
+  });
+
+  describe("keyboard activation closes the menu (#797 smoke)", () => {
+    it.each([
+      ["Enter", "{Enter}"],
+      ["Space", " "],
+    ])(
+      "choosing an item with %s runs it and closes the menu, as a click does",
+      async (_key, keys) => {
+        const user = userEvent.setup();
+        const onChoose = jest.fn();
+        render(
+          <HeaderMenuUI label="Jane">
+            <MenuItem onClick={onChoose}>Switch</MenuItem>
+          </HeaderMenuUI>
+        );
+        await user.click(screen.getByRole("button", { name: "Jane" }));
+        const item = await screen.findByRole("menuitem", { name: "Switch" });
+        item.focus();
+        await user.keyboard(keys);
+        expect(onChoose).toHaveBeenCalledTimes(1);
+        await waitFor(() =>
+          expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+        );
+      }
+    );
   });
 });
