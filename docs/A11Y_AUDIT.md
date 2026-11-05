@@ -39,7 +39,7 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 | `packages/core/a11y-results/eslint.json` | eslint | — | 322 | 0 |
 | `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 177 | 0 |
 | `apps/site/a11y-results/eslint.json` | eslint | — | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 414 | 24 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 414 | 72 |
 | `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
@@ -50,29 +50,77 @@ Skipped runs (not audited; each is a coverage gap until it renders):
 - `apps/web/a11y-results/stories.json` · apps/web/src/stories/GlossaryList.component.stories.tsx › Default: Cannot read properties of undefined (reading 'has')
 - `apps/web/a11y-results/stories.json` · apps/web/src/stories/GlossaryList.component.stories.tsx › FilteredToAnalytics: Cannot read properties of undefined (reading 'has')
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · owner · populated · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · owner · error · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · owner · loading · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · populated · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · error · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · loading · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · owner · populated · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · owner · error · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · owner · loading · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · populated · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · error · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · loading · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · owner · populated · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · owner · error · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · owner · loading · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · populated · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · error · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · loading · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · owner · populated · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · owner · error · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · owner · loading · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · admin · populated · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · admin · error · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · admin · loading · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · populated · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · error · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · loading · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · admin · populated · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · admin · error · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · admin · loading · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · populated · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · error · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · loading · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · admin · populated · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · admin · error · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · admin · loading · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · populated · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · error · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · loading · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · admin · populated · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · admin · error · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · admin · loading · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · member · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · member · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · member · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · member · populated · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · member · error · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · member · loading · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · member · populated · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · member · error · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · member · loading · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · member · populated · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · member · error · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · member · loading · brand: nothing to drill into at step 1: /api/curated-views on /views returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · member · populated · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · member · error · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
+- `packages/e2e/a11y-results/app.json` · entity-group-detail · member · loading · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · portal · member · populated · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · member · error · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
+- `packages/e2e/a11y-results/app.json` · portal · member · loading · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · member · populated · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · member · error · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
+- `packages/e2e/a11y-results/app.json` · portal-result-detail · member · loading · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · view-detail · member · populated · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · member · error · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
+- `packages/e2e/a11y-results/app.json` · view-detail · member · loading · brand.dark: nothing to drill into at step 1: /api/curated-views on /views returned no item
 
 ## Summary
 
@@ -81,10 +129,10 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 27 | 74 | 4.1.2 | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 20 | 84 | 1.4.3, 4.1.2 | 2 |
+| [#794 Tables, grids and lists](#owner-794) | 20 | 97 | 1.4.3, 4.1.2 | 2 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 9 | 38 | 4.1.2 | 1 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
-| [#797 App shell, navigation and landmarks](#owner-797) | 104 | 672 | 1.1.1, 1.3.1, 1.4.3, 2.1.1, 2.5.3, 4.1.2 | 5 |
+| [#797 App shell, navigation and landmarks](#owner-797) | 104 | 673 | 1.1.1, 1.3.1, 1.4.3, 2.1.1, 2.5.3, 4.1.2 | 5 |
 | [#798 Marketing site](#owner-798) | 8 | 21 | 1.4.3 | 1 |
 | Unassigned | 0 | 0 | — | 0 |
 
@@ -113,7 +161,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | 78e7ccaf | best practice | aria-allowed-role | minor | apps/web/src/stories/DeleteTagDialog.component.stories.tsx form | 3: Default, Deleting, DifferentTag | 3 | — | jest-axe |
 | 91a647f9 | best practice | aria-allowed-role | minor | apps/web/src/stories/RenameOrganizationDialog.component.stories.tsx form | 3: Default, PermissionDenied, Saving | 3 | — | jest-axe |
 | 1c5f8667 | best practice | aria-allowed-role | minor | apps/web/src/stories/TagFormModal.component.stories.tsx form | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
-| ca6a0a48 | best practice | heading-order | moderate | .MuiStack-root > h6 | 1: settings | 1 | roles: admin, member, owner · states: error, loading, populated · themes: brand, brand.dark | axe-app |
+| ca6a0a48 | best practice | heading-order | moderate | .MuiStack-root > h6 | 1: settings | 1 | roles: admin, member, owner · states: error, populated · themes: brand, brand.dark | axe-app |
 | e6d4efd6 | best practice | heading-order | moderate | apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx h6 | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
 | e4cfa0d2 | best practice | heading-order | moderate | apps/web/src/stories/TagFormModal.component.stories.tsx h6 | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
 | 2483fa7e | best practice | heading-order | moderate | apps/web/src/stories/ToolpackMetadataModal.component.stories.tsx h6 | 2: Default, Unentitled | 2 | — | jest-axe |
@@ -128,7 +176,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| 4830db52 | 1.4.3 | color-contrast | serious |  | 1: job-detail | 1 | roles: admin, member, owner · states: populated · themes: brand.dark | axe-app |
+| 4830db52 | 1.4.3 | color-contrast | serious |  | 14: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +8 more | 14 | roles: admin, member, owner · states: error, populated · themes: brand.dark | axe-app |
 | f05935f7 | 1.4.3 | color-contrast | serious |  >  > .MuiStack-root > .MuiChip-colorWarning.MuiChip-outlinedWarning > .MuiChip-label.MuiChip-labelSmall | 1: toolpacks | 5 | roles: admin, owner · states: populated · themes: brand | axe-app |
 | 5f27d59e | 1.4.3 | color-contrast | serious | .MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium | 3: entity-groups, tags, views | 3 | roles: admin, owner · states: empty, populated · themes: brand.dark | axe-app |
 | 91722e26 | 1.4.3 | color-contrast | serious | .MuiButton-outlinedError | 1: stations | 1 | roles: admin, owner · states: populated · themes: brand.dark | axe-app |
@@ -141,12 +189,12 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | 199e2593 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined | 1: Default | 1 | — | jest-axe |
 | d4cf6987 | 4.1.2 | aria-input-field-name | serious | apps/web/src/stories/PaginationToolbar.component.stories.tsx .MuiSelect-select | 11: AllFilterTypes, BooleanFilters, Default, Interactive, LastPage, MidPage, +5 more | 11 | — | jest-axe |
 | 5706fa98 | best practice | heading-order | moderate | .MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h6 | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 6328129f | best practice | heading-order | moderate | .MuiTypography-h6 | 1: connectors | 1 | roles: owner · states: empty · themes: brand | axe-app |
+| 6328129f | best practice | heading-order | moderate | .MuiTypography-h6 | 1: connectors | 1 | roles: admin, owner · states: empty · themes: brand | axe-app |
 | e86a6bdc | best practice | heading-order | moderate | apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6 | 1: Empty | 1 | — | jest-axe |
 | bff1218e | best practice | heading-order | moderate | h4 | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | 1a851f7c | best practice | heading-order | moderate | h6 | 11: column-definition-detail, column-definitions, connector-detail, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
 | d736ad8e | best practice | image-redundant-alt | minor | img[alt="E2E Test User"] | 1: connectors | 1 | roles: owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| f1bd287e | best practice | image-redundant-alt | minor | img[alt="e2e-admin@portalsai.io"] | 1: connectors | 1 | roles: admin · states: error, loading, populated · themes: brand, brand.dark | axe-app |
+| f1bd287e | best practice | image-redundant-alt | minor | img[alt="e2e-admin@portalsai.io"] | 1: connectors | 1 | roles: admin · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | 53f149ff | best practice | jsx-a11y/no-autofocus | — | apps/web/src/components/PaginationToolbar.component.tsx | 1: :747 | 1 | — | eslint |
 
 <a id="owner-795"></a>
@@ -177,10 +225,11 @@ No automated findings.
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
+| 0dd7ddee | 1.1.1 | aria-progressbar-name | serious | :root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: settings | 1 | roles: admin, member · states: loading · themes: brand | axe-app |
 | 447b49e4 | 1.1.1 | aria-progressbar-name | serious | .MuiBox-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 2: settings, stations | 2 | roles: admin, member, owner · states: loading · themes: brand, brand.dark | axe-app |
-| 723f3a15 | 1.1.1 | aria-progressbar-name | serious | .MuiCircularProgress-root | 15: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +9 more | 15 | roles: admin, member, owner · states: empty, error, loading, locked · themes: brand, brand.dark | axe-app |
-| 3d9fd228 | 1.1.1 | aria-progressbar-name | serious | .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: stations | 1 | roles: member, owner · states: loading · themes: brand, brand.dark | axe-app |
-| 89fa1ce9 | 1.1.1 | aria-progressbar-name | serious | #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: connectors | 1 | roles: admin, member, owner · states: empty · themes: brand, brand.dark | axe-app |
+| 723f3a15 | 1.1.1 | aria-progressbar-name | serious | .MuiCircularProgress-root | 15: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +9 more | 15 | roles: admin, member, owner · states: loading, locked · themes: brand, brand.dark | axe-app |
+| 3d9fd228 | 1.1.1 | aria-progressbar-name | serious | .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: stations | 1 | roles: admin, member · states: loading · themes: brand | axe-app |
+| 89fa1ce9 | 1.1.1 | aria-progressbar-name | serious | #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: connectors | 1 | roles: admin, member, owner · states: empty, error · themes: brand.dark | axe-app |
 | fabf96b1 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/modules/D3Widget/stories/D3Widget.stories.tsx .MuiCircularProgress-root | 1: Loading | 1 | — | jest-axe |
 | 8051a0be | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Authorized.stories.tsx span | 2: Loading, WithError | 2 | — | jest-axe |
 | acbca274 | 1.1.1 | aria-progressbar-name | serious | apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiStack-root > .MuiCircularProgress-root.MuiCircularProgress-indeterminate.MuiCircularProgress-colorPrimary | 1: Default | 1 | — | jest-axe |
@@ -209,7 +258,7 @@ No automated findings.
 | c10d6f4b | 2.1.1, 4.1.2 | jsx-a11y/no-static-element-interactions | — | apps/web/src/components/SidebarNavToggle.component.tsx | 1: :54 | 1 | — | eslint |
 | 3e40577f | 2.5.3 | label-content-name-mismatch | serious |  | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
 | e8886413 | 4.1.2 | aria-command-name | serious | .Mui-selected | 15: column-definition-detail, column-definitions, dashboard, entities, entity-detail, entity-groups, +9 more | 15 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 5e8aaf14 | 4.1.2 | aria-command-name | serious | .MuiListItemButton-root.MuiListItemButton-gutters | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 212 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 5e8aaf14 | 4.1.2 | aria-command-name | serious | .MuiListItemButton-root.MuiListItemButton-gutters | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 213 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
 | 1576f759 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/Authorized.layout.stories.tsx .Mui-selected | 3: Default, WithLongContent, WithMultipleElements | 3 | — | jest-axe |
 | 87c1f722 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/Authorized.layout.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters | 3: Default, WithLongContent, WithMultipleElements | 9 | — | jest-axe |
 | 97df4262 | 4.1.2 | aria-command-name | serious | apps/web/src/stories/SidebarNav.component.stories.tsx .MuiListItemButton-root.MuiListItemButton-gutters | 1: Collapsed | 3 | — | jest-axe |
@@ -234,17 +283,17 @@ No automated findings.
 | 45a5bbc9 | best practice | image-redundant-alt | minor | apps/web/src/stories/HeaderMenu.component.stories.tsx img | 1: UIWithCustomChildren | 1 | — | jest-axe |
 | c8484360 | best practice | image-redundant-alt | minor | img | 20: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +14 more | 20 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
 | ed380177 | best practice | landmark-one-main | moderate | html | 23: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +17 more | 23 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| fd3b5de4 | best practice | page-has-heading-one | moderate | html | 8: column-definition-detail, connector-detail, connectors, entity-detail, job-detail, record-detail, +2 more | 8 | roles: admin, member, owner · states: empty, error, loading, locked · themes: brand, brand.dark | axe-app |
+| fd3b5de4 | best practice | page-has-heading-one | moderate | html | 8: column-definition-detail, connector-detail, connectors, entity-detail, job-detail, record-detail, +2 more | 8 | roles: admin, member, owner · states: error, loading · themes: brand, brand.dark | axe-app |
 | 4ea83654 | best practice | region | moderate |  | 22: column-definition-detail, column-definitions, connector-detail, connectors, dashboard, entities, +16 more | 42 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
 | b27dbe16 | best practice | region | moderate |  >  | 1: toolpacks | 31 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
 | defca027 | best practice | region | moderate |  > td | 1: entity-detail | 4 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 | a8b0c07e | best practice | region | moderate | .MuiBadge-badge | 4: column-definitions, entities, entity-detail, jobs | 4 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 1564b9fe | best practice | region | moderate | .MuiBox-root | 8: column-definitions, connector-detail, entities, entity-groups, job-detail, station-detail, +2 more | 13 | roles: admin, member, owner · states: error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| 1564b9fe | best practice | region | moderate | .MuiBox-root | 8: column-definitions, connector-detail, entities, entity-groups, job-detail, station-detail, +2 more | 13 | roles: admin, member, owner · states: loading, locked, populated · themes: brand, brand.dark | axe-app |
 | 31b9c4f5 | best practice | region | moderate | .MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
 | 15517352 | best practice | region | moderate | .MuiBox-root > .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2 | 1: dashboard | 2 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
 | ca827f8c | best practice | region | moderate | .MuiBox-root > .MuiTypography-caption.MuiTypography-root | 2: connector-detail, station-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 | 6f2a980f | best practice | region | moderate | .MuiChip-colorPrimary.MuiChip-outlinedPrimary > .MuiChip-label.MuiChip-labelSmall | 1: station-detail | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| ad7ca5b6 | best practice | region | moderate | .MuiCircularProgress-root | 1: entity-detail | 1 | roles: admin · states: locked · themes: brand.dark | axe-app |
+| ad7ca5b6 | best practice | region | moderate | .MuiCircularProgress-root | 1: entity-detail | 1 | roles: owner · states: locked · themes: brand | axe-app |
 | e04b0836 | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
 | 2d21c1dc | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
 | 85f7b872 | best practice | region | moderate | .MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiStack-root > .MuiStack-root > h2 | 2: entity-detail, job-detail | 4 | roles: admin, member, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
@@ -254,16 +303,15 @@ No automated findings.
 | ebfd3502 | best practice | region | moderate | .MuiTabs-root | 3: connectors, help, settings | 3 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | 7b00596d | best practice | region | moderate | .MuiTypography-body1 | 6: column-definitions, connectors, entities, entity-groups, tags, toolpacks | 6 | roles: member · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | c7443303 | best practice | region | moderate | .MuiTypography-body2 | 1: station-detail | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| f2fab31b | best practice | region | moderate | .MuiTypography-caption | 19: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +13 more | 19 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
+| f2fab31b | best practice | region | moderate | .MuiTypography-caption | 19: column-definition-detail, column-definitions, connector-detail, connectors, entities, entity-detail, +13 more | 19 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | 0b0eec8a | best practice | region | moderate | #_r_5_ | 8: column-definitions, entities, entity-detail, entity-groups, jobs, portal-results, +2 more | 8 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
 | 94e71b13 | best practice | region | moderate | #_r_6_ | 1: stations | 1 | roles: admin, member, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
 | e7a3f965 | best practice | region | moderate | #_r_7_ | 2: column-definition-detail, connector-detail | 2 | roles: member · states: locked, populated · themes: brand, brand.dark | axe-app |
-| 543db574 | best practice | region | moderate | #_r_8_ | 1: column-definition-detail | 1 | roles: owner · states: populated · themes: brand.dark | axe-app |
-| 4c984270 | best practice | region | moderate | #_r_8_-label | 1: entity-detail | 1 | roles: admin · states: locked · themes: brand.dark | axe-app |
+| 4c984270 | best practice | region | moderate | #_r_8_-label | 1: entity-detail | 1 | roles: admin · states: populated · themes: brand, brand.dark | axe-app |
 | 274bbcff | best practice | region | moderate | #_r_9_ | 1: column-definition-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 | 851a125f | best practice | region | moderate | #_r_a_ | 1: toolpacks | 1 | roles: admin, owner · states: empty, populated · themes: brand, brand.dark | axe-app |
 | 87abde1b | best practice | region | moderate | #_r_b_ | 1: entity-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
-| f0c9c9ad | best practice | region | moderate | #_r_f_ | 1: entity-detail | 1 | roles: admin · states: locked · themes: brand.dark | axe-app |
+| 5e2cd754 | best practice | region | moderate | #_r_e_ | 1: entity-detail | 1 | roles: admin · states: populated · themes: brand, brand.dark | axe-app |
 | 5013159d | best practice | region | moderate | #_r_g_ | 1: connector-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 | 226da632 | best practice | region | moderate | #_r_k_-label | 1: entity-detail | 1 | roles: admin, owner · states: locked, populated · themes: brand, brand.dark | axe-app |
 | 71fa8b83 | best practice | region | moderate | #_r_m_ | 1: station-detail | 1 | roles: member · states: populated · themes: brand, brand.dark | axe-app |

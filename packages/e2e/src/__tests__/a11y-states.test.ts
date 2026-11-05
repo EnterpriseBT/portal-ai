@@ -1,8 +1,10 @@
-import { INTERNAL_ERROR_MESSAGE } from "@portalai/core/constants";
+import type { Page, Route } from "@playwright/test";
 
 import {
   apiPathMatcher,
+  applyState,
   emptyPayload,
+  ERROR_STATUS,
   loadErrorFixture,
   loadRunningJobFixture,
   withRunningJob,
@@ -68,11 +70,20 @@ describe("fixtures", () => {
     );
   });
 
-  it("the error body is the API's 500 envelope", () => {
+  it("the error body is the API's error envelope", () => {
     const body = loadErrorFixture();
     expect(body.success).toBe(false);
-    expect(body.message).toBe(INTERNAL_ERROR_MESSAGE);
+    expect(typeof body.message).toBe("string");
     expect(typeof body.code).toBe("string");
+  });
+
+  // The app's query client retries a 5xx three times with backoff (~14s) and
+  // never a 4xx (apps/web/src/client.ts shouldRetry), so a 4xx shows the
+  // error UI at once. The UI is the same component for both.
+  it("the error status is a 4xx the app's query client doesn't retry", () => {
+    expect(ERROR_STATUS).toBeGreaterThanOrEqual(400);
+    expect(ERROR_STATUS).toBeLessThan(500);
+    expect([401, 403, 404, 429]).not.toContain(ERROR_STATUS);
   });
 });
 
@@ -103,5 +114,51 @@ describe("apiPathMatcher", () => {
 
   it("refuses a pattern that isn't anchored at /api/", () => {
     expect(() => apiPathMatcher("**/api/stations*")).toThrow(/\/api\//);
+  });
+});
+
+describe("applyState", () => {
+  /** A Page that records its one route handler, and Routes that record how
+   *  they were answered. */
+  function fakePage() {
+    let handler: ((route: Route) => Promise<void>) | undefined;
+    const page = {
+      route: async (_m: unknown, h: (route: Route) => Promise<void>) => {
+        handler = h;
+      },
+    } as unknown as Page;
+    const route = (path: string) => {
+      const calls: string[] = [];
+      const r = {
+        request: () => ({ url: () => `http://localhost:3000${path}` }),
+        fulfill: async (o: { status: number }) =>
+          void calls.push(`fulfill ${o.status}`),
+        continue: async () => void calls.push("continue"),
+      } as unknown as Route;
+      return { r, calls };
+    };
+    return { page, route, fire: (r: Route) => handler!(r) };
+  }
+
+  it("counts the requests it handled, so a pattern that matched nothing can be told apart", async () => {
+    const { page, route, fire } = fakePage();
+    const state = await applyState(page, "error", "/api/stations");
+    expect(state.handled()).toBe(0);
+    const { r, calls } = route("/api/stations");
+    await fire(r);
+    expect(state.handled()).toBe(1);
+    expect(calls).toEqual([`fulfill ${ERROR_STATUS}`]);
+  });
+
+  it("counts a held loading request as handled, and lets it through on release", async () => {
+    const { page, route, fire } = fakePage();
+    const state = await applyState(page, "loading", "/api/stations");
+    const { r, calls } = route("/api/stations");
+    await fire(r);
+    expect(state.handled()).toBe(1);
+    expect(calls).toEqual([]);
+    state.release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toEqual(["continue"]);
   });
 });

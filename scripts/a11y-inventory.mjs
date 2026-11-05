@@ -167,8 +167,9 @@ const findingId = (tool, rule, location) => createHash("sha1").update(`${tool}|$
 
 function ownerFor({ tool, pkg, rule, file, routeOwner }) {
   if (tool === "axe-app" && isShellRule(rule)) return 797;
-  if (RULE_OWNERS[rule]) return RULE_OWNERS[rule];
+  // apps/site is #798's whatever the rule: RULE_OWNERS name app primitives.
   if (pkg === "apps/site" || tool === "axe-site") return 798;
+  if (RULE_OWNERS[rule]) return RULE_OWNERS[rule];
   if (file) {
     const probe = `/${file}`;
     for (const [pattern, owner] of PATH_OWNERS) if (pattern.test(probe)) return owner;
@@ -179,15 +180,19 @@ function ownerFor({ tool, pkg, rule, file, routeOwner }) {
 
 /** ESLint's JSON formatter output → findings. Only jsx-a11y rules count: the
  *  report config spreads the package's normal config, which `lint` keeps at
- *  zero problems. A message with no ruleId is a fatal parse error. */
+ *  zero problems. A `fatal` message is a parse error and fails the run; a
+ *  non-fatal one with no ruleId (an unused disable directive) is skipped. */
 export function normalizeEslint(results, { package: pkg, root, wcagMap = JSX_A11Y_WCAG }) {
   const findings = [];
   for (const result of results) {
     const file = path.relative(root, result.filePath).split(path.sep).join("/");
     for (const msg of result.messages ?? []) {
-      if (!msg.ruleId) {
+      if (msg.fatal) {
         throw new InventoryError(`fatal parse error in ${file}:${msg.line ?? "?"}: ${msg.message}`);
       }
+      // ESLint also reports unused-disable-directive warnings with no ruleId;
+      // they aren't findings, and they aren't failures either.
+      if (!msg.ruleId) continue;
       if (!JSX_A11Y_PREFIX.test(msg.ruleId)) continue;
       const key = msg.ruleId.replace(JSX_A11Y_PREFIX, "");
       const wcag = wcagMap[key];
@@ -509,10 +514,10 @@ export function readInputs(root) {
 // ── Self-test ───────────────────────────────────────────────────────────────
 const TEST_MAP = { "alt-text": ["1.1.1"], "anchor-is-valid": ["2.1.1"] };
 
-const eslintFile = (filePath, ruleIds) => [
+const eslintFile = (filePath, ruleIds, extra = {}) => [
   {
     filePath,
-    messages: ruleIds.map((ruleId, i) => ({ ruleId, line: 10 + i, column: 3, severity: 2, message: `${ruleId} problem` })),
+    messages: ruleIds.map((ruleId, i) => ({ ruleId, line: 10 + i, column: 3, severity: 2, message: `${ruleId} problem`, ...extra })),
   },
 ];
 
@@ -603,9 +608,21 @@ async function selfTest() {
     /made-up-rule/
   );
   throws(
-    "a fatal parse error (no ruleId) fails rather than reading as clean",
-    () => normalizeEslint(eslintFile("/repo/apps/web/src/A.tsx", [null]), { package: "apps/web", root: "/repo", wcagMap: TEST_MAP }),
+    "a fatal parse error fails rather than reading as clean",
+    () => normalizeEslint(eslintFile("/repo/apps/web/src/A.tsx", [null], { fatal: true }), { package: "apps/web", root: "/repo", wcagMap: TEST_MAP }),
     /parse|fatal/i
+  );
+  const unusedDirective = run("unused directive", () =>
+    normalizeEslint(eslintFile("/repo/apps/web/src/A.tsx", [null], { severity: 1, message: "Unused eslint-disable directive" }), {
+      package: "apps/web",
+      root: "/repo",
+      wcagMap: TEST_MAP,
+    })
+  );
+  check(
+    "a non-fatal message with no ruleId (an unused-disable warning) is skipped, not treated as a parse error",
+    Array.isArray(unusedDirective) && unusedDirective.length === 0,
+    JSON.stringify(unusedDirective)
   );
 
   // Owners
@@ -689,9 +706,22 @@ async function selfTest() {
     JSON.stringify(realRun?.map((f) => [f.rule, f.owner]))
   );
   check(
-    "an unnamed progress indicator goes to #797 wherever it renders (the shared loading primitives)",
+    "an unnamed progress indicator goes to #797 wherever it renders in the app (the shared loading primitives)",
     ownerOfRule("aria-progressbar-name") === 797,
     ownerOfRule("aria-progressbar-name")
+  );
+  const siteSpinner = run("site spinner", () =>
+    build([
+      {
+        input: INPUTS[6],
+        data: rawFile("axe-site", [{ context: { route: "/pricing/", theme: "brand" }, status: "ok", violations: [violation("aria-progressbar-name", ["wcag2a", "wcag111"])] }]),
+      },
+    ]).findings
+  );
+  check(
+    "the same rule on the marketing site goes to #798, which owns apps/site",
+    siteSpinner?.[0]?.owner === 798,
+    siteSpinner?.[0]?.owner
   );
   const hashed = run("hashed targets", () =>
     build([

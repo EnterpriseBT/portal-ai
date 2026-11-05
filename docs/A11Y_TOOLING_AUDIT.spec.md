@@ -69,7 +69,7 @@ ESLint exits 1 when it finds problems and 2 on a config or crash error. The `[ $
 
 ### jest-axe helper
 
-- **`setup.ts`** (web `apps/web/src/__tests__/setup.ts`, core `packages/core/src/__tests__/setup.ts`) adds `import { toHaveNoViolations } from "jest-axe"; expect.extend(toHaveNoViolations);`, next to the jest-dom import.
+- **Matcher registration:** `expectNoAxeViolations` registers jest-axe's `toHaveNoViolations` itself, on first use, rather than `setup.ts` doing it. Code review: registering it in setup loaded axe-core into every web and core suite. jest-axe is CommonJS, so it's imported as a default (`jestAxe.toHaveNoViolations`).
 - **Web** `apps/web/src/__tests__/test-utils.tsx` and **core** `packages/core/src/__tests__/axe.util.ts` (new) each export:
 
 ```ts
@@ -114,7 +114,7 @@ type A11yState = "populated" | "empty" | "error" | "loading" | "locked";
 
 ### Playwright projects (`packages/e2e/src/lib/playwright-config.ts`)
 
-`buildConfig` adds the following, **only when `!target.deployed`**, after `roles`:
+`buildConfig` adds the following, **only when `!target.deployed` and `env.E2E_A11Y` is set** (code review: a bare `test:e2e` mustn't start the walk), after `roles`:
 
 ```ts
 { name: "a11y", testMatch: /a11y\/app\.a11y\.ts$/, retries: 0 },
@@ -123,8 +123,8 @@ type A11yState = "populated" | "empty" | "error" | "loading" | "locked";
 ```
 
 The scripts, in `packages/e2e/package.json`:
-- `"a11y:axe": "dotenv -e .env -- playwright test --project=a11y"`
-- `"a11y:axe:site": "playwright test --project=a11y-site"`
+- `"a11y:axe": "E2E_A11Y=1 dotenv -e .env -- playwright test --project=a11y"`
+- `"a11y:axe:site": "E2E_A11Y=1 dotenv -e .env -- playwright test --project=a11y-site"`
 
 Each spec writes its `RawResultFile` to `a11y-results/{app,site}.json` in `afterAll`, and fails only on a setup problem:
 - a missing `.auth/<role>.storageState.json` (the message names `npm run e2e:auth:all`);
@@ -159,9 +159,11 @@ export const SITE_PAGES: readonly string[]; // every built page path under apps/
 | State | `page.route(apiPathMatcher(pattern), …)` behaviour (pathname-anchored at `/api/`; `*` = one segment) |
 |---|---|
 | `empty` | `route.fetch()`, then empty every array in `payload` and zero every numeric `total`/`count` key, then `route.fulfill` |
-| `error` | fulfil `500` with the API's 500 envelope (`apps/api/src/services/http.service.ts:74`: `success: false`, `message` = core's `INTERNAL_ERROR_MESSAGE`, a `code`) in `src/fixtures/a11y-error.json`; a unit test holds it to that shape |
+| `error` | fulfil `ERROR_STATUS` (400) with the API's error envelope (`success: false`, `message`, `code`) from `src/fixtures/a11y-error.json`. Code review: a 5xx is retried for about 14s by the app's query client (`shouldRetry`, `apps/web/src/client.ts`), so the page would be audited mid-retry. A 4xx isn't retried and renders the same error component. Not 401/403/404/429, which have their own handling |
 | `loading` | hold the request. Axe runs once `[role="progressbar"]` is visible, then the request continues |
 | `locked` | `route.fetch()`, then insert `src/fixtures/a11y-running-job.json` into the payload's running-jobs list. The fixture is parsed with core's job schema at load, so a drifted fixture fails setup |
+
+A state whose interception **handled no request** (its pattern matched nothing) is recorded `skipped`, never `ok`. A route whose drill fails records a skipped run for **every** declared state, not just `populated`.
 
 Theme: before navigation, `page.addInitScript` sets `localStorage["portalai-theme"] = JSON.stringify(theme)`. Site pages take `data-theme` the same way through its own init script, which reads the same key. axe runs with `withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa","wcag22aa","best-practice"])`. The D3 iframe is cross-origin to axe, so it reports the `<iframe>` element only, and `docs/A11Y_AUDIT.md` carries a manual finding for its content.
 
@@ -178,7 +180,8 @@ Theme: before navigation, `page.addInitScript` sets `localStorage["portalai-them
 ```
 
 - **WCAG criteria.** For axe results, a `wcagNNN` tag becomes `N.N.N`. A finding with no such tag goes under "Best practice". For jsx-a11y, `JSX_A11Y_WCAG: Record<string, string[]>` maps every rule in the strict preset (with the `astro/` prefix stripped). **A rule missing from the map exits 1, naming it.**
-- **Owner**, first match wins:
+- **ESLint input:** a `fatal` message (a parse error) exits 1. A non-fatal message with no `ruleId` (an unused disable directive) is skipped.
+- **Owner**, first match wins (`apps/site` is checked before any rule-level owner, so a site finding always goes to #798):
   1. Shell rules (`region`, `bypass`, `document-title`, `html-has-lang`, `page-has-heading-one`, `landmark-*`) on an app route go to #797.
   2. `apps/site/**` and `axe-site` go to #798.
   3. Path prefixes: `modules/RegionEditor` → #795; `modules/MapWidget` and `modules/D3Widget` → #796; `layouts/`, `SidebarNav`, `HeaderMenu`, `views/Loading` → #797; `ui/DataTable`, `DataTableBlock`, `PaginationToolbar`, `modules/TableWidget`, `EntityRecordDataTable`, `KeyValueTable` → #794; `ui/Modal`, `*Dialog.component.tsx`, `FormAlert`, `workflows/` → #793.

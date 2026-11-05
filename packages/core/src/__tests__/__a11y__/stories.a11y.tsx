@@ -63,6 +63,12 @@ function firstLine(err: unknown): string {
   return `${err.name || "Error"} with no message${frame ? ` ${frame.trim()}` : ""}`;
 }
 
+/** A frame or shadow-DOM target is a path of selectors. Joined exactly as
+ *  packages/e2e/src/lib/a11y-record.ts joins it, so the inventory sees one
+ *  format from every tool. */
+const selector = (t: unknown): string =>
+  Array.isArray(t) ? t.map(String).join(" >>> ") : String(t);
+
 const axeRules = Object.fromEntries(
   JSDOM_DISABLED_AXE_RULES.map((id) => [id, { enabled: false }])
 );
@@ -122,7 +128,7 @@ it("sweeps every story with axe", async () => {
             id: v.id,
             impact: v.impact ?? null,
             tags: v.tags,
-            nodes: v.nodes.map((n) => ({ target: n.target.map(String) })),
+            nodes: v.nodes.map((n) => ({ target: n.target.map(selector) })),
           })),
         });
       } catch (err) {

@@ -5,7 +5,7 @@
  * deterministic.
  *
  * - empty:   the real response with every list emptied and totals zeroed
- * - error:   the API's 500 envelope
+ * - error:   the API's error envelope with a 4xx (ERROR_STATUS)
  * - loading: the request held while axe runs
  * - locked:  the real running-jobs response plus one non-terminal job
  */
@@ -24,6 +24,16 @@ const fixture = (name: string): unknown =>
 export function loadRunningJobFixture(): Job {
   return JobSchema.parse(fixture("a11y-running-job.json"));
 }
+
+/**
+ * The status the error state answers with. The app's query client retries a
+ * 5xx three times with backoff (about 14s) and never a 4xx (`shouldRetry` in
+ * apps/web/src/client.ts), and a view renders the same error component for
+ * both. A 4xx shows it at once, rather than auditing the page mid-retry.
+ * Not 401/403/404/429: those have their own handling (sign-out, forbidden,
+ * not found, rate-limit wait).
+ */
+export const ERROR_STATUS = 400;
 
 export interface ApiErrorBody {
   success: false;
@@ -103,18 +113,22 @@ const json = (route: Route, status: number, body: unknown) =>
  * Installs the interception for `state` on requests matching `pattern` (see
  * apiPathMatcher), before navigation. `release` lets "loading"'s held
  * requests through; call it after axe has run, in a finally. `failures`
- * collects any interception that couldn't produce its state: the caller
- * records that run as skipped rather than auditing a page in the wrong state.
+ * collects any interception that couldn't produce its state, and `handled`
+ * counts the requests it caught: zero means the pattern matched nothing, so
+ * the page was never in that state. Either way the caller records the run
+ * as skipped rather than auditing a page in the wrong state.
  */
 export async function applyState(
   page: Page,
   state: Exclude<A11yState, "populated">,
   pattern: string
-): Promise<{ release: () => void; failures: string[] }> {
+): Promise<{ release: () => void; failures: string[]; handled: () => number }> {
   const held: Route[] = [];
   const failures: string[] = [];
   let released = false;
+  let handled = 0;
   await page.route(apiPathMatcher(pattern), async (route) => {
+    handled += 1;
     try {
       await fulfil(route);
     } catch (err) {
@@ -131,7 +145,7 @@ export async function applyState(
         return json(route, res.status(), emptyPayload(await res.json()));
       }
       case "error":
-        return json(route, 500, loadErrorFixture());
+        return json(route, ERROR_STATUS, loadErrorFixture());
       case "locked": {
         const res = await route.fetch();
         return json(
@@ -148,6 +162,7 @@ export async function applyState(
   }
   return {
     failures,
+    handled: () => handled,
     release: () => {
       released = true;
       for (const r of held.splice(0)) r.continue().catch(() => undefined);

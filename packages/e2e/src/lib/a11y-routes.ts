@@ -83,7 +83,12 @@ export const A11Y_ROUTES: readonly A11yRoute[] = [
     route: "settings",
     path: "/settings",
     owner: 793,
-    states: one("organization"),
+    // Settings' own request only: `/api/organization/*` would also catch the
+    // shell's org switcher (`/api/organization/memberships`).
+    states: {
+      error: "/api/organization/current",
+      loading: "/api/organization/current",
+    },
   },
 
   {

@@ -109,8 +109,8 @@ export const JSDOM_DISABLED_AXE_RULES = ["color-contrast", "region"] as const;
 /**
  * Asserts that `container` has no axe violations (WCAG 2.2 AA and best
  * practice), apart from the rules jsdom can't evaluate and any the caller
- * disables with a reason. jest-axe loads on first use: every suite imports
- * this file, and most never call it.
+ * disables with a reason. jest-axe loads, and its matcher registers, on
+ * first use: every suite imports this file, and most never call it.
  */
 export async function expectNoAxeViolations(
   container: Element,
@@ -125,6 +125,7 @@ export async function expectNoAxeViolations(
   const results = await jestAxe.axe(container, {
     rules: Object.fromEntries(disabled.map((id) => [id, { enabled: false }])),
   });
+  expect.extend(jestAxe.toHaveNoViolations);
   expect(results).toHaveNoViolations();
 }
 

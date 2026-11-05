@@ -25,5 +25,8 @@ export async function expectNoAxeViolations(
   const results = await jestAxe.axe(container, {
     rules: Object.fromEntries(disabled.map((id) => [id, { enabled: false }])),
   });
+  // Registered here rather than in setup.ts, so suites that never call
+  // this don't load axe-core.
+  expect.extend(jestAxe.toHaveNoViolations);
   expect(results).toHaveNoViolations();
 }

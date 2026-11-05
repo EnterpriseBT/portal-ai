@@ -39,6 +39,18 @@ describe("A11Y_ROUTES", () => {
     expect(covered).toEqual(leafRouteFiles(routeFiles).sort());
   });
 
+  // `/api/organization/*` also matched the shell's org switcher
+  // (`/api/organization/memberships`), so faking it broke the shell too.
+  it("intercepts only Settings' own request, not the shell's", () => {
+    const settings = A11Y_ROUTES.find((r) => r.id === "settings")!;
+    expect(Object.values(settings.states)).toEqual(
+      expect.arrayContaining(["/api/organization/current"])
+    );
+    for (const pattern of Object.values(settings.states)) {
+      expect(pattern).toBe("/api/organization/current");
+    }
+  });
+
   it("anchors every state pattern at /api/", () => {
     for (const r of A11Y_ROUTES) {
       for (const pattern of Object.values(r.states))

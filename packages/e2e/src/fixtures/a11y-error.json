@@ -1,5 +1,5 @@
 {
   "success": false,
-  "message": "Internal server error",
+  "message": "The accessibility audit's fixture error.",
   "code": "A11Y_AUDIT_FIXTURE_ERROR"
 }

@@ -102,7 +102,7 @@ Notes:
 
 ## Accessibility audit (#792)
 
-Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA inventory for epic #791. They **record** axe violations and never fail on one. They fail only on setup: a missing or expired session, a site that isn't being served, or a run that checked nothing. Both run only against a local target, and CI's `--project` list never names them.
+Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA inventory for epic #791. They **record** axe violations and never fail on one. They fail only on setup: a missing or expired session, a site that isn't being served, or a run that checked nothing. They exist only for a local target and only when `E2E_A11Y` is set, which the two scripts do, so a bare `test:e2e` never starts them and CI's `--project` list never names them.
 
 | Script | Project | Walks | Writes |
 |---|---|---|---|
@@ -118,7 +118,10 @@ Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA i
 **Preconditions for `a11y:axe:site`:** `npm run --workspace @portalai/site build`, then `npm run --workspace @portalai/site preview`, which serves on :3002 (`E2E_SITE_BASE_URL` overrides it).
 
 **How the walk works:**
-- **States** are produced by intercepting the view's own API request (`src/lib/a11y-states.ts`), not by seeding. A state's pattern is anchored at `/api/`: a `**/api/…` glob would also match the dev server's `/src/api/*.api.ts` modules.
+- **States** are produced by intercepting the view's own API request (`src/lib/a11y-states.ts`), not by seeding.
+  - A state's pattern is anchored at `/api/`: a `**/api/…` glob would also match the dev server's `/src/api/*.api.ts` modules.
+  - A state whose pattern catches no request is recorded as skipped, never as audited.
+  - The error state answers with a 400: the app retries a 5xx for about 14s, and never a 4xx.
 - **Routes with params** are reached by reading the first item's id from the index page's own list request (`drill` in the manifest), so the walk doesn't depend on how a list renders.
 - **Skips:** a route with nothing to drill into is recorded as skipped, with the reason. The inventory lists it as a coverage gap.
 - **New pages:** `a11y-routes.test.ts` fails until a new route file or site page is in the manifest.

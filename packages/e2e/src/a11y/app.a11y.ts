@@ -69,12 +69,19 @@ async function walkRoute(
     }
     const r = resolved.get(route.id);
     if (r instanceof Error) {
-      runs.push({
-        context: { ...base, state: "populated" },
-        status: "skipped",
-        error: r.message,
-        violations: [],
-      });
+      // Every state this route declares went unaudited, so each is listed
+      // as a gap, not just the populated page.
+      for (const state of [
+        "populated",
+        ...Object.keys(route.states),
+      ] as A11yState[]) {
+        runs.push({
+          context: { ...base, state },
+          status: "skipped",
+          error: r.message,
+          violations: [],
+        });
+      }
       return;
     }
     path = r;
@@ -88,9 +95,10 @@ async function walkRoute(
     const page = await context.newPage();
     let release = () => {};
     let failures: string[] = [];
+    let handled = () => 1;
     try {
       if (state !== "populated") {
-        ({ release, failures } = await applyState(
+        ({ release, failures, handled } = await applyState(
           page,
           state,
           route.states[state]!
@@ -114,6 +122,13 @@ async function walkRoute(
       }
       const violations = await analyze(page);
       if (failures.length) throw new Error(failures[0]);
+      if (handled() === 0) {
+        // The pattern matched no request, so the page never entered this
+        // state; recording it would label the populated page as this one.
+        throw new Error(
+          `no request matched ${route.states[state as Exclude<A11yState, "populated">]}, so the page never entered the ${state} state`
+        );
+      }
       runs.push({
         context: { ...base, url: path, state },
         status: "ok",
