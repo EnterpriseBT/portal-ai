@@ -12,6 +12,27 @@ export interface SidebarNavToggleProps {
   onClick: () => void;
 }
 
+/** WCAG 2.5.8: a pointer target is at least 24×24 CSS px. */
+export const MIN_TARGET_PX = 24;
+
+/** The toggle's visible width for a variant. */
+const visibleWidth = (
+  variant: "full" | "compact",
+  spacing: (n: number) => string
+): string => (variant === "full" ? spacing(4) : spacing(2));
+
+/**
+ * The width the toggle answers clicks over: its visible width, widened by an
+ * invisible ::after to MIN_TARGET_PX when narrower (the compact toggle is
+ * 16 px wide on the drawer edge, #797 KB-06).
+ */
+export function toggleTargetWidth(
+  variant: "full" | "compact",
+  spacing: (n: number) => string
+): number {
+  return Math.max(parseFloat(visibleWidth(variant, spacing)), MIN_TARGET_PX);
+}
+
 export const SidebarNavToggleUI = ({
   variant,
   collapsed,
@@ -22,13 +43,30 @@ export const SidebarNavToggleUI = ({
   return (
     <IconButton
       aria-label="toggle sidebar"
+      aria-expanded={!collapsed}
+      aria-controls="primary-nav"
       color="inherit"
       onClick={onClick}
       size="small"
-      sx={(theme) => ({
-        width: variant === "full" ? theme.spacing(4) : theme.spacing(2),
-        height: 32,
-      })}
+      sx={(theme) => {
+        const visible = parseFloat(visibleWidth(variant, theme.spacing));
+        const extra = Math.max(0, MIN_TARGET_PX - visible) / 2;
+        return {
+          width: visibleWidth(variant, theme.spacing),
+          height: 32,
+          position: "relative",
+          ...(extra > 0 && {
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: -extra,
+              right: -extra,
+            },
+          }),
+        };
+      }}
       icon={collapsed ? collapsedIcon : expandedIcon}
     />
   );

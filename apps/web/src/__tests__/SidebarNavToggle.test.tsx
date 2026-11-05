@@ -1,7 +1,10 @@
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "./test-utils";
 import { IconName } from "@portalai/core/ui";
-import { SidebarNavToggleUI } from "../components/SidebarNavToggle.component";
+import {
+  SidebarNavToggleUI,
+  toggleTargetWidth,
+} from "../components/SidebarNavToggle.component";
 
 describe("SidebarNavToggleUI", () => {
   it("renders the collapsed icon when collapsed", () => {
@@ -75,5 +78,33 @@ describe("SidebarNavToggleUI", () => {
     fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
 
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  describe("accessibility (#797)", () => {
+    it.each([
+      [true, "false"],
+      [false, "true"],
+    ])(
+      "collapsed=%s reports aria-expanded=%s and controls the nav",
+      (collapsed, expanded) => {
+        render(
+          <SidebarNavToggleUI
+            variant="compact"
+            collapsed={collapsed}
+            onClick={jest.fn()}
+          />
+        );
+        const button = screen.getByRole("button", { name: "toggle sidebar" });
+        expect(button).toHaveAttribute("aria-expanded", expanded);
+        expect(button).toHaveAttribute("aria-controls", "primary-nav");
+      }
+    );
+
+    it("gives the 16px compact toggle a target of at least 24px", () => {
+      const width = (variant: "compact" | "full") =>
+        toggleTargetWidth(variant, (n: number) => `${n * 8}px`);
+      expect(width("compact")).toBeGreaterThanOrEqual(24);
+      expect(width("full")).toBeGreaterThanOrEqual(24);
+    });
   });
 });

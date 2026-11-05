@@ -4,6 +4,17 @@ exports[`PublicLayout Component should match snapshot 1`] = `
 <div
   class="MuiBox-root css-s92abg"
 >
+  <nav
+    aria-label="Skip links"
+    class="MuiBox-root css-0"
+  >
+    <a
+      class="MuiBox-root css-l6ag35"
+      href="#main-content"
+    >
+      Skip to main content
+    </a>
+  </nav>
   <header
     class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation0 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-gwis6i-MuiPaper-root-MuiAppBar-root"
     style="--Paper-shadow: none;"
@@ -18,11 +29,11 @@ exports[`PublicLayout Component should match snapshot 1`] = `
         href="/"
         style="text-decoration: none;"
       >
-        <h3
+        <span
           class="MuiTypography-root MuiTypography-h3 css-wxvbvs-MuiTypography-root"
         >
           Portals AI
-        </h3>
+        </span>
       </a>
       <div
         class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-z9jna-MuiButtonGroup-root"
@@ -50,12 +61,14 @@ exports[`PublicLayout Component should match snapshot 1`] = `
       </div>
     </div>
   </header>
-  <div
-    class="MuiBox-root css-9eeetu"
+  <main
+    class="MuiBox-root css-1hk7ey2"
+    id="main-content"
+    tabindex="-1"
   >
     <div>
       Test Content
     </div>
-  </div>
+  </main>
 </div>
 `;

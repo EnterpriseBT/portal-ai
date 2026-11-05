@@ -12,6 +12,7 @@ import { Link } from "@tanstack/react-router";
 import { SidebarNav } from "../components/SidebarNav.component";
 import { useLayout } from "../utils";
 import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
+import { MAIN_CONTENT_ID, SkipLinks } from "../components/SkipLinks.component";
 
 export const AuthorizedLayout = ({
   children,
@@ -21,6 +22,7 @@ export const AuthorizedLayout = ({
   const { isMobileExpanded, isMobile } = useLayout();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
+      <SkipLinks />
       <AppBar position="static" sx={{ paddingY: 1 }}>
         <Toolbar
           sx={{
@@ -39,7 +41,14 @@ export const AuthorizedLayout = ({
                 alignItems: "center",
               }}
             >
-              <Typography variant="h3" color="inherit" margin="auto">
+              {/* The brand looks like a heading but isn't one: the page's h1
+                  is its first heading (#797). */}
+              <Typography
+                variant="h3"
+                component="span"
+                color="inherit"
+                margin="auto"
+              >
                 Portals AI
               </Typography>
             </Link>
@@ -54,9 +63,15 @@ export const AuthorizedLayout = ({
       <Box display="flex" position="relative" flex={1} minHeight={0}>
         <SidebarNav />
         <Box
+          component="main"
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
           flex={1}
           overflow="auto"
           sx={(theme) => ({
+            // Focus lands here from the skip link; the page, not the
+            // container, shows where the user is.
+            "&:focus": { outline: "none" },
             background: isMobileExpanded
               ? theme.darken(theme.palette.background.default, 0.2)
               : theme.palette.background.default,

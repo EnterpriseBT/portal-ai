@@ -10,6 +10,7 @@ import {
   IconName,
   Typography,
   Divider,
+  visuallyHidden,
 } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
@@ -43,9 +44,9 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
         color="inherit"
         onClick={handleClick}
         size="small"
-        aria-label="account menu"
+        // Named by its visible text, the user's name (WCAG 2.5.3, #797).
         aria-controls={open ? "account-menu" : undefined}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open ? "true" : undefined}
         sx={(theme) => ({
           display: "flex",
@@ -54,19 +55,19 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
           borderRadius: `${theme.shape.borderRadius}px`,
         })}
       >
-        {label && (
-          <Typography
-            variant="body2"
-            sx={{ display: { xs: "none", sm: "block" } }}
-          >
-            {label}
-          </Typography>
-        )}
-        <Avatar
-          src={image}
-          alt={label || "User"}
-          sx={{ width: 32, height: 32 }}
+        {/* Shown from sm up; on xs it's visually hidden but still the
+            button's name. With no user name, it reads "Account". */}
+        <Typography
+          variant="body2"
+          sx={(theme) => ({
+            [theme.breakpoints.down("sm")]: visuallyHidden,
+            ...(!label && visuallyHidden),
+          })}
         >
+          {label || "Account"}
+        </Typography>
+        {/* Decorative: the name is already the button's text. */}
+        <Avatar src={image} alt="" sx={{ width: 32, height: 32 }}>
           {!image && <Icon name={IconName.Person} />}
         </Avatar>
       </BaseIconButton>
