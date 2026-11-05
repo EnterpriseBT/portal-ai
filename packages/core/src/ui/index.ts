@@ -6,6 +6,7 @@ export * from "./Icon.js";
 export * from "./IconButton.js";
 export * from "./Tabs.js";
 export * from "./StatusMessage.js";
+export * from "./visually-hidden.js";
 export * from "./Progress.js";
 export * from "./StatusBadge.js";
 export * from "./Modal.js";

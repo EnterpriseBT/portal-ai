@@ -440,7 +440,7 @@ export const Toolpacks: React.FC = () => {
 
   return (
     <>
-      <DataResult results={{ list: listResult }}>
+      <DataResult pageTitle="Toolpacks" results={{ list: listResult }}>
         {({ list }) => (
           <ToolpacksUI
             toolpacks={list.toolpacks as Toolpack[]}

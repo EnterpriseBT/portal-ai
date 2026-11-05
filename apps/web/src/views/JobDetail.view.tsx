@@ -41,7 +41,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
   return (
     <JobDataItem id={jobId}>
       {(response) => (
-        <DataResult results={{ jobResponse: response }}>
+        <DataResult pageTitle="Job" results={{ jobResponse: response }}>
           {({ jobResponse }) => (
             <JobDataStream job={jobResponse.job}>
               {(stream) => {
