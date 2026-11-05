@@ -13,6 +13,7 @@ import {
   IconButton,
   IconName,
   Icon,
+  visuallyHidden,
 } from "@portalai/core/ui";
 import { IconButton as MuiIconButton, TextField, Tooltip } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -209,6 +210,11 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
         <Box sx={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
           <Box
             ref={setScrollNode}
+            // The APG log pattern (#797): new messages are read as they
+            // land, and a streaming reply only once it's complete.
+            role="log"
+            aria-label="Conversation"
+            aria-busy={Boolean(isStreaming)}
             onScroll={updateJumpButtons}
             onWheel={handleWheel}
             onTouchMove={handleWheel}
@@ -290,6 +296,10 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
             minRows={2}
             maxRows={6}
             fullWidth
+            // A label for assistive tech; the placeholder isn't one (#797).
+            // MUI links the helper text (the lock reason) as its description.
+            label="Message"
+            slotProps={{ inputLabel: { sx: visuallyHidden } }}
             placeholder={CHAT_INPUT_PLACEHOLDER}
             value={value}
             onChange={(e) => setValue(e.target.value)}

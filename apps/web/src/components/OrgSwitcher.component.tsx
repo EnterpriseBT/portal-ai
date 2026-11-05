@@ -1,6 +1,8 @@
 import React from "react";
 
-import { Select, Typography, Box } from "@portalai/core/ui";
+import ListSubheader from "@mui/material/ListSubheader";
+
+import { MenuItem } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk } from "../api/sdk";
@@ -13,22 +15,16 @@ export interface OrgSwitcherUIProps {
   isSwitching?: boolean;
 }
 
-const orgNameSx = (theme: { spacing: (...n: number[]) => string }) => ({
-  padding: theme.spacing(1, 2),
-});
-
 /**
- * Pure UI: the account menu's organization indicator + switcher.
+ * Pure UI: the account menu's organization indicator + switcher (#201),
+ * following the APG menu-radio pattern (#797).
  *
  * - 0 orgs → nothing.
- * - 1 org  → the org name as a plain label (nothing to switch to).
- * - 2+ orgs → a compact dropdown whose value is the current org; picking a
- *   different one switches. No "switch" label — a dropdown showing the current
- *   org is self-evidently switchable, and it stays one row tall no matter how
- *   many orgs the user has.
- *
- * Wrapped in a click-stopping Box so interacting with the dropdown doesn't
- * bubble to the parent account `<Menu onClick={close}>` and close it.
+ * - 1 org  → the org name as a disabled item (nothing to switch to).
+ * - 2+ orgs → an "Organization" label, then one `menuitemradio` per org with
+ *   the current one checked. Choosing another switches; the account menu
+ *   closes on the click, as for any of its items. A `Select` inside a menu
+ *   broke the pattern: a combobox isn't a menu item.
  */
 export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
   memberships,
@@ -39,44 +35,38 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
     return null;
   }
 
+  // One org: its name as a disabled item, so it's read in the menu but
+  // offers nothing to do.
   if (memberships.length === 1) {
     return (
-      <Typography
-        variant="subtitle2"
-        sx={(theme) => ({
-          color: theme.palette.text.secondary,
-          ...orgNameSx(theme),
-        })}
-      >
+      <MenuItem disabled sx={{ "&.Mui-disabled": { opacity: 1 } }}>
         {memberships[0].organization.name}
-      </Typography>
+      </MenuItem>
     );
   }
 
-  const currentId = memberships.find((m) => m.isCurrent)?.organization.id ?? "";
-
-  return (
-    <Box sx={orgNameSx} onClick={(e) => e.stopPropagation()}>
-      <Select
-        fullWidth
-        variant="standard"
-        value={currentId}
+  return [
+    // A visual group label. A menu may only own menu items, groups and
+    // separators, and each radio already names its org, so it's hidden
+    // from assistive tech.
+    <ListSubheader key="label" aria-hidden sx={{ lineHeight: 2.5 }}>
+      Organization
+    </ListSubheader>,
+    ...memberships.map((m) => (
+      <MenuItem
+        key={m.organization.id}
+        role="menuitemradio"
+        aria-checked={m.isCurrent}
+        selected={m.isCurrent}
         disabled={isSwitching}
-        aria-label="Organization"
-        // Drop the standard-variant underline — the account menu's Divider
-        // below already separates this row, so the underline is redundant.
-        slotProps={{ input: { disableUnderline: true } }}
-        options={memberships.map((m) => ({
-          value: m.organization.id,
-          label: m.organization.name,
-        }))}
-        onChange={(e) => {
-          const id = e.target.value;
-          if (id && id !== currentId) onSwitch(id);
+        onClick={() => {
+          if (!m.isCurrent) onSwitch(m.organization.id);
         }}
-      />
-    </Box>
-  );
+      >
+        {m.organization.name}
+      </MenuItem>
+    )),
+  ];
 };
 
 /**

@@ -167,7 +167,13 @@ const PortalSessionEmptyState: React.FC = () => (
       name={IconName.Portal}
       sx={{ fontSize: 64, color: "primary.main", mb: 2 }}
     />
-    <Typography variant="h6" sx={{ mb: 1, color: "text.primary" }}>
+    {/* Styled like a heading, but not one: the portal's h1 is the page's
+        (#797 heading order). */}
+    <Typography
+      variant="h6"
+      component="p"
+      sx={{ mb: 1, color: "text.primary" }}
+    >
       Ready when you are
     </Typography>
     <Typography variant="body2" sx={{ maxWidth: 520, mb: 1.5 }}>

@@ -3,7 +3,7 @@ import { jest } from "@jest/globals";
 
 import { render, screen, act, fireEvent } from "./test-utils";
 import { ToastProvider } from "../providers/Toast.provider";
-import { useToast } from "../utils/toast.context";
+import { useToast, useToastPresence } from "../utils/toast.context";
 import {
   TOAST_AUTO_HIDE_MS,
   TOAST_MAX_VISIBLE,
@@ -56,7 +56,16 @@ const raise = (fn: () => void) => act(() => void fn());
 /** Advance fake timers inside `act`. */
 const advance = (ms: number) => act(() => void jest.advanceTimersByTime(ms));
 
-const alerts = () => screen.queryAllByRole("alert");
+// Toasts carry no role of their own since #797 (their region announces
+// them), so they're counted by severity test id.
+const alerts = () =>
+  Array.from(
+    document.querySelectorAll<HTMLElement>(
+      ["success", "info", "warning", "error"]
+        .map((s) => `[data-testid="toast-${s}"]`)
+        .join(",")
+    )
+  );
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -312,5 +321,35 @@ describe("ToastProvider — ids (spec case 13)", () => {
     // Dismissing one leaves the other: only possible with distinct ids.
     fireEvent.click(screen.getAllByRole("button", { name: /close/i })[0]);
     expect(alerts()).toHaveLength(1);
+  });
+});
+
+describe("useToastPresence (#797)", () => {
+  const Count: React.FC = () => (
+    <span data-testid="presence">{useToastPresence()}</span>
+  );
+
+  it("follows the number of toasts on screen", () => {
+    jest.useFakeTimers();
+    try {
+      let api: ToastApi | null = null;
+      render(
+        <ToastProvider>
+          <Probe onApi={(next) => (api = next)} />
+          <Count />
+        </ToastProvider>
+      );
+      expect(screen.getByTestId("presence")).toHaveTextContent("0");
+      act(() => {
+        api!.error("Failed");
+      });
+      expect(screen.getByTestId("presence")).toHaveTextContent("1");
+      act(() => {
+        api!.dismissAll();
+      });
+      expect(screen.getByTestId("presence")).toHaveTextContent("0");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

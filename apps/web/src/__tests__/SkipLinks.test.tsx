@@ -2,6 +2,8 @@ import type React from "react";
 import { render, screen, expectNoAxeViolations } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { SkipLinks, SkipLinksUI } from "../components/SkipLinks.component";
+import { ToastPresenceContext } from "../utils/toast.context";
+import { UpdateNoticeContext } from "../utils/update-notice.context";
 
 const Page = ({ children }: { children: React.ReactNode }) => (
   <>
@@ -65,5 +67,30 @@ describe("SkipLinks", () => {
     expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual([
       "Skip to main content",
     ]);
+  });
+});
+
+describe("SkipLinks — notifications (#797)", () => {
+  const labels = () => screen.getAllByRole("link").map((l) => l.textContent);
+
+  it("offers the notifications while a toast is shown", () => {
+    render(
+      <ToastPresenceContext.Provider value={1}>
+        <SkipLinks />
+      </ToastPresenceContext.Provider>
+    );
+    expect(labels()).toEqual(["Skip to main content", "Skip to notifications"]);
+    expect(
+      screen.getByRole("link", { name: "Skip to notifications" })
+    ).toHaveAttribute("href", "#notifications");
+  });
+
+  it("offers the notifications while the update notice is up", () => {
+    render(
+      <UpdateNoticeContext.Provider value={{ open: true, dismiss: () => {} }}>
+        <SkipLinks />
+      </UpdateNoticeContext.Provider>
+    );
+    expect(labels()).toContain("Skip to notifications");
   });
 });

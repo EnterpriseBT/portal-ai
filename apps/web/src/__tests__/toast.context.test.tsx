@@ -1,7 +1,7 @@
 import React from "react";
 
 import { render } from "./test-utils";
-import { useToast } from "../utils/toast.context";
+import { useToast, useToastPresence } from "../utils/toast.context";
 import {
   TOAST_ANCHOR,
   TOAST_AUTO_HIDE_MS,
@@ -66,5 +66,15 @@ describe("useToast — no provider (spec case 14)", () => {
     rerender(<Capture />);
     expect(seen).toHaveLength(2);
     expect(seen[0]).toBe(seen[1]);
+  });
+});
+
+describe("useToastPresence with no provider (#797)", () => {
+  it("is 0", () => {
+    const Count: React.FC = () => (
+      <span data-testid="n">{useToastPresence()}</span>
+    );
+    const { getByTestId } = render(<Count />);
+    expect(getByTestId("n")).toHaveTextContent("0");
   });
 });

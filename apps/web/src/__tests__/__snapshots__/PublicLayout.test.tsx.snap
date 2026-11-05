@@ -40,7 +40,7 @@ exports[`PublicLayout Component should match snapshot 1`] = `
         role="group"
       >
         <button
-          aria-haspopup="true"
+          aria-haspopup="menu"
           aria-label="Select theme"
           class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-4gciu-MuiButtonBase-root-MuiIconButton-root"
           tabindex="0"

@@ -1,5 +1,11 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent, waitFor } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  expectNoAxeViolations,
+} from "./test-utils";
 import {
   ChatWindowUI,
   CHAT_INPUT_PLACEHOLDER,
@@ -399,6 +405,56 @@ describe("ChatWindowUI", () => {
       )!;
       fireEvent.click(backIcon.closest("button")!);
       expect(props.onExit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("accessibility (#797)", () => {
+    it("presents the feed as a log named Conversation", () => {
+      render(
+        <ChatWindowUI {...createProps()}>
+          <p>Hello</p>
+        </ChatWindowUI>
+      );
+      const log = screen.getByRole("log", { name: "Conversation" });
+      expect(log).toHaveTextContent("Hello");
+      expect(log).toHaveAttribute("aria-busy", "false");
+    });
+
+    it("marks the feed busy while a reply streams", () => {
+      render(
+        <ChatWindowUI {...createProps({ disabled: true, isStreaming: true })} />
+      );
+      expect(screen.getByRole("log")).toHaveAttribute("aria-busy", "true");
+    });
+
+    it("labels the composer Message", () => {
+      render(<ChatWindowUI {...createProps()} />);
+      expect(
+        screen.getByRole("textbox", { name: "Message" })
+      ).toBeInTheDocument();
+    });
+
+    it("describes a locked composer by its reason", () => {
+      render(
+        <ChatWindowUI
+          {...createProps({
+            disabled: true,
+            lockedReason: "Import is running.",
+          })}
+        />
+      );
+      expect(
+        screen.getByRole("textbox", { name: "Message" })
+      ).toHaveAccessibleDescription("Import is running.");
+    });
+
+    it("has no axe violations", async () => {
+      const { container } = render(
+        <ChatWindowUI {...createProps()}>
+          <p>Hello</p>
+        </ChatWindowUI>
+      );
+      await expectNoAxeViolations(container);
     });
   });
 });
