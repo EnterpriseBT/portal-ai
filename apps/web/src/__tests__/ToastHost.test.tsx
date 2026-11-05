@@ -115,17 +115,18 @@ describe("ToastHost — overflow row", () => {
 
 describe("ToastHost — announcements (#797)", () => {
   const region = () => document.getElementById("notifications");
+  const live = () => region()!.querySelector('[aria-live="polite"]')!;
 
-  it("keeps a named Notifications region in the page even when idle, outside the render container", () => {
+  it("keeps a named Notifications region with a live stack in the page even when idle, outside the render container", () => {
     const { container } = render(<ToastHost {...baseProps} toasts={[]} />);
     expect(container).toBeEmptyDOMElement();
     expect(region()).toHaveAttribute("aria-label", "Notifications");
     expect(region()).toHaveAttribute("tabindex", "-1");
-    expect(region()?.querySelector('[aria-live="assertive"]')).not.toBeNull();
     expect(region()?.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("announces errors and warnings assertively, success and info politely", () => {
+  it("announces success and info politely, errors and warnings as alerts", () => {
     render(
       <ToastHost
         {...baseProps}
@@ -137,23 +138,39 @@ describe("ToastHost — announcements (#797)", () => {
         ]}
       />
     );
-    const assertive = region()!.querySelector('[aria-live="assertive"]')!;
-    const polite = region()!.querySelector('[aria-live="polite"]')!;
-    expect(assertive).toHaveTextContent("Failed");
-    expect(assertive).toHaveTextContent("Careful");
-    expect(polite).toHaveTextContent("Saved");
-    expect(polite).toHaveTextContent("FYI");
-    expect(assertive).not.toHaveTextContent("Saved");
+    expect(live()).toHaveTextContent("Saved");
+    expect(live()).toHaveTextContent("FYI");
+    expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual([
+      "Failed",
+      "Careful",
+    ]);
   });
 
-  it("gives each toast no alert role of its own, so it's announced once", () => {
+  it("shows each message once (no hidden copies)", () => {
     render(
       <ToastHost
         {...baseProps}
         toasts={[toast({ severity: "error", message: "Failed" })]}
       />
     );
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Failed")).toHaveLength(1);
+  });
+
+  it("shows toasts in queue order, whatever their severity (#797 review)", () => {
+    render(
+      <ToastHost
+        {...baseProps}
+        toasts={[
+          toast({ id: "a", severity: "success", message: "Saved" }),
+          toast({ id: "b", severity: "error", message: "Failed" }),
+          toast({ id: "c", severity: "info", message: "FYI" }),
+        ]}
+      />
+    );
+    const shown = Array.from(
+      live().querySelectorAll('[data-testid^="toast-"]')
+    ).map((el) => el.textContent);
+    expect(shown).toEqual(["Saved", "Failed", "FYI"]);
   });
 
   it("has no axe violations", async () => {
@@ -164,5 +181,21 @@ describe("ToastHost — announcements (#797)", () => {
       />
     );
     await expectNoAxeViolations(region()!);
+  });
+});
+
+describe("ToastHost without a Notifications region (#797 review)", () => {
+  it("renders in place rather than creating one during render", () => {
+    const root = document.getElementById("notifications")!;
+    root.remove();
+    try {
+      const { container } = render(
+        <ToastHost {...baseProps} toasts={[toast({ message: "Saved" })]} />
+      );
+      expect(container).toHaveTextContent("Saved");
+      expect(document.getElementById("notifications")).toBeNull();
+    } finally {
+      document.body.appendChild(root);
+    }
   });
 });

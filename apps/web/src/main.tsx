@@ -1,4 +1,6 @@
 import { createRoot } from "react-dom/client";
+
+import { ensureNotificationsRoot } from "./utils/notifications-root.util";
 import { Application } from "./Application";
 
 import { registerD3BlockRenderer } from "./modules/D3Widget";
@@ -12,5 +14,8 @@ import "@portalai/core/styles";
 registerD3BlockRenderer();
 registerMapBlockRenderer();
 registerTableBlockRenderer();
+
+// The Notifications region toasts and the update notice portal into (#797).
+ensureNotificationsRoot();
 
 createRoot(document.getElementById("root")!).render(<Application />);

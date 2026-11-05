@@ -54,7 +54,7 @@ export const SidebarNavToggleUI = ({
       size="small"
       sx={(theme) => {
         const visible = parseFloat(visibleWidth(variant, theme.spacing));
-        const extra = Math.max(0, MIN_TARGET_PX - visible) / 2;
+        const extra = (toggleTargetWidth(variant, theme.spacing) - visible) / 2;
         return {
           width: visibleWidth(variant, theme.spacing),
           height: 32,

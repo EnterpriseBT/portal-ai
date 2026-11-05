@@ -13,6 +13,12 @@ export interface OrgSwitcherUIProps {
   memberships: UserMembership[];
   onSwitch: (organizationId: string) => void;
   isSwitching?: boolean;
+  /** Set by MUI's MenuList on its first child when the menu opens. This
+   *  component is that child, so it hands them to the current org's item;
+   *  dropped, no item would take focus and the arrow keys would do nothing
+   *  (#797 review). */
+  autoFocus?: boolean;
+  tabIndex?: number;
 }
 
 /**
@@ -20,30 +26,43 @@ export interface OrgSwitcherUIProps {
  * following the APG menu-radio pattern (#797).
  *
  * - 0 orgs → nothing.
- * - 1 org  → the org name as a disabled item (nothing to switch to).
- * - 2+ orgs → an "Organization" label, then one `menuitemradio` per org with
- *   the current one checked. Choosing another switches; the account menu
- *   closes on the click, as for any of its items. A `Select` inside a menu
- *   broke the pattern: a combobox isn't a menu item.
+ * - 1+ orgs → one `menuitemradio` per org, the current one checked (with
+ *   several, under a visual "Organization" label). Choosing another org
+ *   switches; choosing the current one does nothing. The account menu
+ *   closes on the click, as for any of its items, so `isSwitching` is
+ *   rarely seen there; the switch's outcome shows in the page reloading its
+ *   data. A `Select` inside a menu broke the pattern: a combobox isn't a
+ *   menu item.
  */
 export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
   memberships,
   onSwitch,
   isSwitching,
+  autoFocus,
+  tabIndex,
 }) => {
   if (memberships.length === 0) {
     return null;
   }
 
-  // One org: its name as a disabled item, so it's read in the menu but
-  // offers nothing to do.
-  if (memberships.length === 1) {
-    return (
-      <MenuItem disabled sx={{ "&.Mui-disabled": { opacity: 1 } }}>
-        {memberships[0].organization.name}
-      </MenuItem>
-    );
-  }
+  const items = memberships.map((m) => (
+    <MenuItem
+      key={m.organization.id}
+      role="menuitemradio"
+      aria-checked={m.isCurrent}
+      selected={m.isCurrent}
+      disabled={isSwitching}
+      autoFocus={m.isCurrent ? autoFocus : undefined}
+      tabIndex={m.isCurrent ? tabIndex : undefined}
+      onClick={() => {
+        if (!m.isCurrent) onSwitch(m.organization.id);
+      }}
+    >
+      {m.organization.name}
+    </MenuItem>
+  ));
+
+  if (memberships.length === 1) return items;
 
   return [
     // A visual group label. A menu may only own menu items, groups and
@@ -52,20 +71,7 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
     <ListSubheader key="label" aria-hidden sx={{ lineHeight: 2.5 }}>
       Organization
     </ListSubheader>,
-    ...memberships.map((m) => (
-      <MenuItem
-        key={m.organization.id}
-        role="menuitemradio"
-        aria-checked={m.isCurrent}
-        selected={m.isCurrent}
-        disabled={isSwitching}
-        onClick={() => {
-          if (!m.isCurrent) onSwitch(m.organization.id);
-        }}
-      >
-        {m.organization.name}
-      </MenuItem>
-    )),
+    ...items,
   ];
 };
 
@@ -76,7 +82,9 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
  * against the request's current org). The rare legitimate broad
  * invalidation. (#201)
  */
-export const OrgSwitcher: React.FC = () => {
+export const OrgSwitcher: React.FC<
+  Pick<OrgSwitcherUIProps, "autoFocus" | "tabIndex">
+> = ({ autoFocus, tabIndex }) => {
   const queryClient = useQueryClient();
   const { data } = sdk.organizations.memberships();
   const { mutate, isPending } = sdk.organizations.switch();
@@ -99,6 +107,8 @@ export const OrgSwitcher: React.FC = () => {
       memberships={memberships}
       onSwitch={handleSwitch}
       isSwitching={isPending}
+      autoFocus={autoFocus}
+      tabIndex={tabIndex}
     />
   );
 };

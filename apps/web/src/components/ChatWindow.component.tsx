@@ -13,7 +13,6 @@ import {
   IconButton,
   IconName,
   Icon,
-  visuallyHidden,
 } from "@portalai/core/ui";
 import { IconButton as MuiIconButton, TextField, Tooltip } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -296,10 +295,12 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
             minRows={2}
             maxRows={6}
             fullWidth
-            // A label for assistive tech; the placeholder isn't one (#797).
-            // MUI links the helper text (the lock reason) as its description.
-            label="Message"
-            slotProps={{ inputLabel: { sx: visuallyHidden } }}
+            // A name for assistive tech; the placeholder isn't one (#797).
+            // An aria-label, not a hidden `label`: an outlined field with a
+            // label hides its placeholder until focused and notches its
+            // border. MUI links the helper text (the lock reason) as its
+            // description.
+            slotProps={{ htmlInput: { "aria-label": "Message" } }}
             placeholder={CHAT_INPUT_PLACEHOLDER}
             value={value}
             onChange={(e) => setValue(e.target.value)}

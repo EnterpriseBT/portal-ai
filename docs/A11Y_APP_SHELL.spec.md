@@ -140,11 +140,16 @@ Its spinner relies on the theme default (`"Loading"`). It also renders a visuall
 
 ### Web: notifications — `ToastHost.component.tsx`, `Toast.provider.tsx`, `toast.context.tsx`, `UpdateBanner.component.tsx`
 
-- **One Notifications region.** `apps/web/src/utils/notifications-root.util.ts` exports `NOTIFICATIONS_ID = "notifications"` and `getNotificationsRoot()`, which creates `<section id="notifications" aria-label="Notifications" tabindex="-1">` on `<body>` on first use and returns it afterwards. Toasts and the update notice both portal into it.
+- **One Notifications region.** `apps/web/src/utils/notifications-root.util.ts` exports:
+  - `NOTIFICATIONS_ID = "notifications"`;
+  - `ensureNotificationsRoot()`, which creates `<section id="notifications" aria-label="Notifications" tabindex="-1">` on `<body>`. It's called once at startup (`main.tsx`, the Storybook preview, the web test setup) and never during render;
+  - `getNotificationsRoot()`, a lookup that returns null when the region is missing. The toast host and banner then render in place.
+  Toasts and the update notice both portal into the region.
 - **`ToastHost` always renders** into that region, even with no toasts, so a test's render container stays empty when idle. It renders a fixed-position `Box` at `TOAST_ANCHOR` (the `Snackbar` is gone) holding:
-  - a `Stack` with `aria-live="assertive"` for error and warning toasts;
-  - a `Stack` with `aria-live="polite"` for success and info toasts.
-  The regions use `aria-live`, not `role="alert"`/`role="status"`. The host is in the shared test harness, and an always-present `alert` role would answer every `queryByRole("alert")` in the app. Each `Alert` gets `role="none"`, so its region announces it once. `data-testid="toast-host"` is present only while toasts exist. The `+N more` row and Dismiss all are unchanged.
+  - one `Stack` with `aria-live="polite"`, which holds every toast in the queue's order;
+  - success and info `Alert`s, which get `role="none"`, so the polite region announces them;
+  - error and warning `Alert`s, which keep MUI's `role="alert"`, announced assertively when inserted.
+  No `alert` role is present while nothing has gone wrong. The host is in the shared test harness, and an always-present one would answer every `queryByRole("alert")` in the app. `data-testid="toast-host"` is present only while toasts exist. The `+N more` row and Dismiss all are unchanged.
 - **`toast.context.tsx`** adds `ToastPresenceContext` (a number, default 0) and `useToastPresence(): number`. `Toast.provider.tsx` provides the visible count. `ToastApi` is unchanged, so its identity stays stable.
 - **Update notice:** a new `apps/web/src/utils/update-notice.context.tsx` exports:
   - `UpdateNoticeProvider`, which owns `useAppVersion()` once;
@@ -155,7 +160,7 @@ Its spinner relies on the theme default (`"Loading"`). It also renders a visuall
 ### Web: header menus
 
 - **`HeaderMenuUI`:** the trigger drops `aria-label`. Its visible content (the name, or `"Account"` when there's no label) is the name. On `xs` the name is visually hidden rather than `display: none`, so it still names the button. `Avatar` gets `alt=""`. `aria-haspopup="menu"`. (This landed in slice 3: the layout's axe test needs it.)
-- **`OrgSwitcherUI`:** with two or more memberships, it renders a `ListSubheader` "Organization", then one `MenuItem` per membership with `role="menuitemradio"` and `aria-checked={isCurrent}`. Activating a non-current item calls `onSwitch(id)`. The "Organization" subheader is `aria-hidden`, since a menu may only own menu items, groups and separators, and each radio already names its org. With one membership, it renders the name as a disabled `MenuItem`. The `Select` and the click-stopping `Box` are removed. `OrgSwitcherUIProps` is unchanged.
+- **`OrgSwitcherUI`:** with two or more memberships, it renders a `ListSubheader` "Organization", then one `MenuItem` per membership with `role="menuitemradio"` and `aria-checked={isCurrent}`. Activating a non-current item calls `onSwitch(id)`. The "Organization" subheader is `aria-hidden`, since a menu may only own menu items, groups and separators, and each radio already names its org. With one membership, it renders that org as the one checked radio, which switches nothing. `OrgSwitcherUI` (and the container) take the `autoFocus`/`tabIndex` that MUI's `MenuList` clones onto its first child, and pass them to the current org's radio, so opening the menu focuses it. The `Select` and the click-stopping `Box` are removed. `OrgSwitcherUIProps` is unchanged.
 - **`ThemeSwitcherUI`:** each item is `role="menuitemradio"` with `aria-checked`, and the trigger has `aria-haspopup="menu"`.
 
 ### Web: portal chat — `ChatWindow.component.tsx`, `PortalSession.component.tsx`

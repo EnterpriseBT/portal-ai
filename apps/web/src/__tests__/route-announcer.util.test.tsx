@@ -30,6 +30,7 @@ const Shell = () => {
         <Link to="/jobs">Jobs</Link>
         <Link to="/help">Blank</Link>
         <Link to="/stations">Slow</Link>
+        <Link to="/connectors">Swap</Link>
       </nav>
       <input aria-label="Search" />
       <main id="main-content" tabIndex={-1}>
@@ -49,7 +50,17 @@ const Slow = () => {
   );
 };
 
-const renderApp = (initial = "/") => {
+/** A detail page whose loading h1 is replaced once its data lands. */
+const Swap = () => {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setReady(true), 50);
+    return () => clearTimeout(t);
+  }, []);
+  return ready ? <h1 key="real">Job 42</h1> : <h1 key="placeholder">Job</h1>;
+};
+
+const renderApp = (initial = "/", { strict = false } = {}) => {
   const root = createRootRoute({ component: Shell });
   const routes = [
     createRoute({
@@ -72,12 +83,18 @@ const renderApp = (initial = "/") => {
       path: "/stations",
       component: Slow,
     }),
+    createRoute({
+      getParentRoute: () => root,
+      path: "/connectors",
+      component: Swap,
+    }),
   ];
   const router = createRouter({
     routeTree: root.addChildren(routes),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
-  render(<RouterProvider router={router} />);
+  const app = <RouterProvider router={router} />;
+  render(strict ? <React.StrictMode>{app}</React.StrictMode> : app);
   return router;
 };
 
@@ -168,5 +185,76 @@ describe("useRouteAnnouncer (#797)", () => {
   it("puts only the page's own heading in the title (no org name)", async () => {
     renderApp("/jobs");
     await waitFor(() => expect(document.title).toBe(`Jobs · ${APP_NAME}`));
+  });
+
+  it("carries focus to the real h1 when the loading one is replaced (#797 review)", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByRole("heading", { name: "Dashboard" });
+    await user.click(screen.getByRole("link", { name: "Swap" }));
+    const real = await screen.findByRole("heading", { name: "Job 42" });
+    await waitFor(() => expect(real).toHaveFocus());
+    expect(document.title).toBe(`Job 42 · ${APP_NAME}`);
+  });
+
+  it("still moves focus under StrictMode, with a layout per route (#797 review)", async () => {
+    // Like the app: each route renders its own layout, so every navigation
+    // mounts the hook afresh, and StrictMode runs that mount's effects twice.
+    const PageLayout = ({ children }: { children: React.ReactNode }) => {
+      useRouteAnnouncer();
+      return (
+        <>
+          <nav>
+            <Link to="/help">Blank</Link>
+          </nav>
+          <main id="main-content" tabIndex={-1}>
+            {children}
+          </main>
+        </>
+      );
+    };
+    const root = createRootRoute({ component: () => <Outlet /> });
+    const router = createRouter({
+      routeTree: root.addChildren([
+        createRoute({
+          getParentRoute: () => root,
+          path: "/",
+          component: () => (
+            <PageLayout>
+              <h1>Dashboard</h1>
+            </PageLayout>
+          ),
+        }),
+        createRoute({
+          getParentRoute: () => root,
+          path: "/help",
+          component: () => (
+            <PageLayout>
+              <p>Nothing</p>
+            </PageLayout>
+          ),
+        }),
+      ]),
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+    render(
+      <React.StrictMode>
+        <RouterProvider router={router} />
+      </React.StrictMode>
+    );
+    await screen.findByRole("heading", { name: "Dashboard" });
+    jest.useFakeTimers();
+    try {
+      await act(async () => {
+        await router.navigate({ to: "/help" });
+      });
+      await screen.findByText("Nothing");
+      await act(async () => {
+        jest.advanceTimersByTime(FOCUS_FALLBACK_MS);
+      });
+      expect(screen.getByRole("main")).toHaveFocus();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

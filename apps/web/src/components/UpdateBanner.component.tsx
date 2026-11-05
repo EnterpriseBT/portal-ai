@@ -72,5 +72,6 @@ export const UpdateBanner: React.FC = () => {
     <UpdateBannerUI open={open} onReload={handleReload} onDismiss={dismiss} />
   );
   // In the Notifications region (#797), so "Skip to notifications" reaches it.
-  return createPortal(banner, getNotificationsRoot());
+  const root = getNotificationsRoot();
+  return root ? createPortal(banner, root) : banner;
 };

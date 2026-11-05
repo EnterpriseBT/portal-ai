@@ -39,23 +39,20 @@ export const ToastHost: React.FC<ToastHostProps> = ({
   onDismiss,
   onDismissAll,
 }) => {
-  // The live regions are always in the page (#797): a screen reader only
-  // announces what's added to a region that already exists. They're portalled
-  // into the Notifications region on <body>, so a test's render container stays empty when idle and the
-  // shared harness's snapshots are untouched. They carry aria-live, not
-  // role="alert"/"status": an always-present alert role would answer every
-  // `queryByRole("alert")` in the app, and each toast's own Alert role is
-  // dropped so it's announced once, by its region.
-  const urgent = toasts.filter(
-    (t) => t.severity === "error" || t.severity === "warning"
-  );
-  const routine = toasts.filter(
-    (t) => t.severity === "success" || t.severity === "info"
-  );
+  // One polite live region holds the stack, in the queue's order (#797).
+  // It's always in the page, since a screen reader only announces what's
+  // added to a region that already exists, and it uses aria-live rather than
+  // role="status". Success and info are announced by that region (role
+  // "none" on their Alert). Errors and warnings keep MUI's role="alert",
+  // which is announced assertively when it's inserted. No alert role is
+  // ever present while nothing has gone wrong, so the app's
+  // `queryByRole("alert")` checks are unaffected.
+  const isUrgent = (t: Toast) =>
+    t.severity === "error" || t.severity === "warning";
   const renderToast = (t: Toast) => (
     <Alert
       key={t.id}
-      role="none"
+      role={isUrgent(t) ? "alert" : "none"}
       severity={t.severity}
       variant="filled"
       data-testid={`toast-${t.severity}`}
@@ -89,7 +86,8 @@ export const ToastHost: React.FC<ToastHostProps> = ({
     </Alert>
   );
 
-  return createPortal(
+  const root = getNotificationsRoot();
+  const host = (
     <Box
       // Dismissal is explicit: per-toast close, or Dismiss all. Nothing
       // here closes on a click elsewhere.
@@ -102,13 +100,8 @@ export const ToastHost: React.FC<ToastHostProps> = ({
         maxWidth: 480,
       })}
     >
-      <Stack spacing={1}>
-        <Stack spacing={1} aria-live="assertive">
-          {urgent.map(renderToast)}
-        </Stack>
-        <Stack spacing={1} aria-live="polite">
-          {routine.map(renderToast)}
-        </Stack>
+      <Stack spacing={1} aria-live="polite">
+        {toasts.map(renderToast)}
         {hiddenCount > 0 ? (
           <Stack
             direction="row"
@@ -133,7 +126,7 @@ export const ToastHost: React.FC<ToastHostProps> = ({
           </Stack>
         ) : null}
       </Stack>
-    </Box>,
-    getNotificationsRoot()
+    </Box>
   );
+  return root ? createPortal(host, root) : host;
 };

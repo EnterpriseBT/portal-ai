@@ -427,11 +427,12 @@ describe("ChatWindowUI", () => {
       expect(screen.getByRole("log")).toHaveAttribute("aria-busy", "true");
     });
 
-    it("labels the composer Message", () => {
-      render(<ChatWindowUI {...createProps()} />);
-      expect(
-        screen.getByRole("textbox", { name: "Message" })
-      ).toBeInTheDocument();
+    it("labels the composer Message without a label element, keeping its placeholder", () => {
+      const { container } = render(<ChatWindowUI {...createProps()} />);
+      const box = screen.getByRole("textbox", { name: "Message" });
+      expect(box).toHaveAttribute("placeholder");
+      // A floating label would hide the placeholder and notch the outline.
+      expect(container.querySelector("label")).toBeNull();
     });
 
     it("describes a locked composer by its reason", () => {

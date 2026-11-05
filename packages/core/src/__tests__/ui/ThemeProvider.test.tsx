@@ -553,7 +553,8 @@ describe("accessibility defaults (#797)", () => {
       "aria-label": "Loading",
     });
     expect(
-      a11yComponents(THEME_MAP.brand).components?.MuiButtonBase
+      a11yComponents(THEME_MAP.brand.palette.primary.main).components
+        ?.MuiButtonBase
     ).toBeDefined();
   });
 });

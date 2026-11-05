@@ -1,6 +1,15 @@
 import { jest } from "@jest/globals";
 import React from "react";
-import { render, screen, fireEvent, expectNoAxeViolations } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  expectNoAxeViolations,
+} from "./test-utils";
+import userEvent from "@testing-library/user-event";
+import { MenuItem } from "@portalai/core/ui";
+import { HeaderMenuUI } from "../components/HeaderMenu.component";
 import MenuList from "@mui/material/MenuList";
 import { ThemeProvider } from "@portalai/core/ui";
 
@@ -41,20 +50,20 @@ describe("OrgSwitcherUI", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows a single org as a disabled item, with nothing to switch to (#797)", () => {
+  it("shows a single org as the one checked radio, which switches nothing (#797)", () => {
+    const onSwitch = jest.fn();
     renderWithTheme(
       <MenuList>
         <OrgSwitcherUI
           memberships={[org("o-1", "Solo Org", true)]}
-          onSwitch={jest.fn()}
+          onSwitch={onSwitch}
         />
       </MenuList>
     );
-    expect(screen.getByRole("menuitem", { name: "Solo Org" })).toHaveAttribute(
-      "aria-disabled",
-      "true"
-    );
-    expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument();
+    const item = screen.getByRole("menuitemradio", { name: "Solo Org" });
+    expect(item).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(item);
+    expect(onSwitch).not.toHaveBeenCalled();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
@@ -121,5 +130,33 @@ describe("OrgSwitcherUI", () => {
       </MenuList>
     );
     await expectNoAxeViolations(container);
+  });
+
+  describe("inside the account menu (#797 review)", () => {
+    it.each([
+      [
+        "several orgs",
+        [org("o-1", "Acme", false), org("o-2", "Beta", true)],
+        "Beta",
+      ],
+      ["one org", [org("o-1", "Solo Org", true)], "Solo Org"],
+    ])(
+      "focuses the current org when the menu opens (%s)",
+      async (_label, memberships, current) => {
+        const user = userEvent.setup();
+        renderWithTheme(
+          <HeaderMenuUI label="Jane">
+            <OrgSwitcherUI memberships={memberships} onSwitch={jest.fn()} />
+            <MenuItem>Settings</MenuItem>
+          </HeaderMenuUI>
+        );
+        await user.click(screen.getByRole("button", { name: "Jane" }));
+        await waitFor(() =>
+          expect(
+            screen.getByRole("menuitemradio", { name: current })
+          ).toHaveFocus()
+        );
+      }
+    );
   });
 });
