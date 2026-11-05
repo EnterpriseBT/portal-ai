@@ -15,7 +15,7 @@ Discovery: `docs/A11Y_APP_SHELL.discovery.md`. Issue: [#797](https://github.com/
 
 1. **Landmarks live in the three existing layouts** (`Authorized`, `Public`, `FullScreen`). No layout route is added and no route file moves.
 2. **Sidebar entries that navigate are links** (`<a href>` through the router's `Link`), with `aria-current="page"` on the match. Logout stays a button. Collapsed entries are named by `aria-label` and a `Tooltip`. The sidebar still defaults to collapsed.
-3. **The page's `h1` is the title source.** `RouteAnnouncer` sets `document.title` to `"<h1 text> · Portals AI"` and, after a client-side navigation (not on first load), focuses the `h1`. The org name never appears in the title.
+3. **The page's `h1` is the title source.** `useRouteAnnouncer` sets `document.title` to `"<h1 text> · Portals AI"` and, after a client-side navigation (not on first load), focuses the `h1`. The org name never appears in the title.
 4. **The focus ring and contrast come from the theme.** `buildTheme` adds the ring and the spinner's default name in code, on top of the JSON palettes. Palette values move only where a ratio test fails, keeping their hues. The test pins ratios, not hex values.
 5. **Announcements never steal focus.** Success and info are polite, error and warning assertive. Keyboard users reach a notice through a skip link that appears only while one is shown.
 6. **Status primitives are fixed at their source:** the theme names every `CircularProgress`, `StatusMessage` gets a role, and `DataResult` renders a visually hidden page `h1` while loading or failing.
@@ -96,7 +96,7 @@ export const SkipLinks: React.FC; // container
 
 ### Web: layouts — `apps/web/src/layouts/{Authorized,Public,FullScreen}.layout.tsx`
 
-- **First child:** each layout renders `<SkipLinks />` first and `<RouteAnnouncer />` anywhere.
+- **First child:** each layout renders `<SkipLinks />` first and calls `useRouteAnnouncer()`.
 - **Content:** the content container becomes `component="main"` with `id="main-content"` and `tabIndex={-1}`, with no outline on programmatic focus. `FullScreenLayout` wraps its children in that `main`.
 - **Brand:** the brand `Typography` in `Authorized` and `Public` becomes `component="span"`, keeping `variant="h3"` for its look, so no heading comes before the page's `h1`.
 
@@ -112,12 +112,14 @@ export const SkipLinks: React.FC; // container
 - **`SidebarNav`:** passes `href={item.route}` (and Settings and Help's routes). `handleClick`'s `router.navigate` is removed, and the mobile collapse stays as `onClick`.
 - **`SidebarNavToggleUI`:** gets `aria-expanded={!collapsed}` and `aria-controls="primary-nav"` (the drawer paper's id). The compact variant's hit area grows to at least 24×24 px with an invisible pseudo-element, so the 16 px visual is unchanged.
 
-### Web: `RouteAnnouncer` — `apps/web/src/components/RouteAnnouncer.component.tsx` (new)
+### Web: `useRouteAnnouncer` — `apps/web/src/utils/route-announcer.util.ts` (new)
+
+A hook rather than a component: it renders nothing and owns effects, and the Component File Policy keeps a single-component file pure UI. Each layout calls `useRouteAnnouncer()`.
 
 ```ts
 export const APP_NAME = "Portals AI";
 export function pageTitle(h1Text: string | null | undefined): string; // "<trimmed> · Portals AI", or "Portals AI" when blank
-export const RouteAnnouncer: React.FC; // renders null
+export function useRouteAnnouncer(): void;
 ```
 
 Behavior, keyed on `useRouterState({ select: s => s.location.pathname })`:
@@ -157,7 +159,7 @@ Its spinner relies on the theme default (`"Loading"`). It also renders a visuall
 ### Web: portal chat — `ChatWindow.component.tsx`, `PortalSession.component.tsx`
 
 - **Feed:** the scroll `Box` that holds `children` gets `role="log"`, `aria-label="Conversation"` and `aria-busy={streaming}` (a new `ChatWindowUI` prop `streaming?: boolean`, passed by `PortalSession` while `streamingBlocks` is non-empty).
-- **Composer:** the `TextField` gets `label="Message"` with `slotProps.inputLabel.sx = visuallyHidden`. `lockedReason` stays its `helperText`, which MUI wires to `aria-describedby`. `autoFocus` stays: it's the page's primary input, and RouteAnnouncer leaves focus where it already is.
+- **Composer:** the `TextField` gets `label="Message"` with `slotProps.inputLabel.sx = visuallyHidden`. `lockedReason` stays its `helperText`, which MUI wires to `aria-describedby`. `autoFocus` stays: it's the page's primary input, and `useRouteAnnouncer` leaves focus where it already is.
 - **Empty state:** the `h6` at `PortalSession.component.tsx:170` becomes `Typography variant="h6" component="p"`.
 
 ### Web: sign-in
@@ -219,7 +221,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
   - the version caption is a button named "App version".
   **3**
 - `SidebarNavToggle.test.tsx`: `aria-expanded` follows collapsed, `aria-controls` names the drawer, and the compact hit area is ≥ 24px. **3**
-- `RouteAnnouncer.test.tsx` (new):
+- `route-announcer.util.test.tsx` (new):
   - `pageTitle` formats and falls back;
   - first load sets the title without moving focus;
   - navigation focuses the new `h1`;
@@ -274,7 +276,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
 
 ## Risks & rollback
 
-- **Focus theft.** If RouteAnnouncer moves focus at the wrong time, it could pull focus out of a dialog or a field the page auto-focuses. It guards against both: it only moves focus when focus sits on `body` or `main`, and only once per navigation. Tests cover both cases. Rollback is removing `<RouteAnnouncer />` from the layouts; titles and focus then go back to today's behavior.
+- **Focus theft.** If `useRouteAnnouncer` moves focus at the wrong time, it could pull focus out of a dialog or a field the page auto-focuses. It guards against both: it only moves focus when focus sits on `body` or `main`, and only once per navigation. Tests cover both cases. Rollback is removing the `useRouteAnnouncer()` calls from the layouts; titles and focus then go back to today's behavior.
 - **Palette shifts are visible.** They're bounded by the ratio test and the same hues, and the site's next build carries them. They show up in screenshots and Storybook, not as breakage. Rollback is reverting the JSON values.
 - **Sidebar links change click behavior.** A middle-click now opens a tab, which is intended. Gating (`visibleNavItems`) is untouched, and `SidebarNavGating.test.tsx` holds it.
 - **The always-mounted toast region appears in every render.** Tests that snapshot the whole body may need updating, so `toast.harness.test.tsx` checks that the region holds no text when idle.
@@ -289,8 +291,8 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
   - new `src/ui/visually-hidden.ts` and its `ui/index.ts` export;
   - tests: new `ui/theme-contrast.test.ts`, and `ThemeProvider.test.tsx` and `StatusMessage.test.tsx`.
 - **Web, new:**
-  - `components/SkipLinks.component.tsx`, `components/RouteAnnouncer.component.tsx`, `utils/update-notice.context.tsx`;
-  - tests `SkipLinks.test.tsx`, `RouteAnnouncer.test.tsx`, `FullScreenLayout.test.tsx`.
+  - `components/SkipLinks.component.tsx`, `utils/route-announcer.util.ts`, `utils/update-notice.context.tsx`;
+  - tests `SkipLinks.test.tsx`, `route-announcer.util.test.tsx`, `FullScreenLayout.test.tsx`.
 - **Web, edited:**
   - the layouts: `layouts/Authorized.layout.tsx`, `Public.layout.tsx`, `FullScreen.layout.tsx`;
   - the sidebar: `components/SidebarNav.component.tsx`, `SidebarNavItem.component.tsx`, `SidebarNavToggle.component.tsx`;
@@ -305,7 +307,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
     - a new route needs an `h1`;
     - navigation is links;
     - a status message goes through `StatusMessage` or a toast, never a local live region;
-  - `apps/web/README.md` (testing note on `RouteAnnouncer`).
+  - `apps/web/README.md` (testing note on `useRouteAnnouncer`).
 
 ## Next step
 
@@ -313,6 +315,6 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/web && npm ru
 1. Core: theme ring, spinner name, palette and the contrast test.
 2. Core and web: `StatusMessage`, `visuallyHidden`, `DataResult.pageTitle` and `LoadingView`.
 3. Web: layouts, skip links and sidebar links.
-4. Web: `RouteAnnouncer`.
+4. Web: `useRouteAnnouncer`.
 5. Web: notifications (toast regions, presence, update notice), header menus and the chat.
 6. Re-walk: `a11y:report`, the KB re-walk, and the docs.
