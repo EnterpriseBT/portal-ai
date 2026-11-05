@@ -15,7 +15,7 @@ describe("buildSandboxTheme", () => {
       "#5b3fc0",
       "#185fa5",
       "#1a7a4a",
-      "#d4900e",
+      "#9a690a",
       "#dc2626",
       "#185fa5",
     ]);

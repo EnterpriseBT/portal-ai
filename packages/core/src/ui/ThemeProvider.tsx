@@ -17,8 +17,46 @@ import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type:
  * means components can use `variant="h1"` / `variant="h2"` without redefining
  * responsive `fontSize` rules at every call site — the theme owns the scale.
  */
-const buildTheme = (options: ThemeOptions): Theme =>
-  responsiveFontSizes(createTheme(options));
+const buildTheme = (options: ThemeOptions): Theme => {
+  const base = createTheme(options);
+  return responsiveFontSizes(createTheme(options, a11yComponents(base)));
+};
+
+/** Width of the keyboard focus ring every theme draws (#797). */
+export const FOCUS_RING_WIDTH = 2;
+
+/**
+ * The accessibility overrides every theme gets, whatever its JSON says
+ * (#797, WCAG 2.4.7 / 1.4.11 / 4.1.2):
+ *
+ * - a focus ring on every keyboard-focused control, in `primary.main`, which
+ *   the contrast test holds at 3:1 or more against both backgrounds. MUI's
+ *   ripple alone is too faint to see;
+ * - a name for every `CircularProgress`, so an unnamed spinner announces
+ *   "Loading". A caller's own `aria-label` still wins.
+ *
+ * `createTheme(options, this)` deep-merges, so a JSON override for the same
+ * component keeps its other keys.
+ */
+export function a11yComponents(theme: Theme): ThemeOptions {
+  const ring = {
+    outline: `${FOCUS_RING_WIDTH}px solid ${theme.palette.primary.main}`,
+    outlineOffset: 2,
+  };
+  return {
+    components: {
+      MuiButtonBase: {
+        styleOverrides: { root: { "&.Mui-focusVisible": ring } },
+      },
+      MuiLink: {
+        styleOverrides: { root: { "&:focus-visible": ring } },
+      },
+      MuiCircularProgress: {
+        defaultProps: { "aria-label": "Loading" },
+      },
+    },
+  };
+}
 
 export const THEME_MAP = {
   brand: buildTheme(brandTheme as ThemeOptions),

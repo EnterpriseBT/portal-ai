@@ -52,7 +52,7 @@ export const FOCUS_RING_WIDTH = 2; // px
 `a11yComponents` returns:
 - **`MuiButtonBase.styleOverrides.root`:** `"&.Mui-focusVisible": { outline: "2px solid <palette.primary.main>", outlineOffset: 2 }`. That covers buttons, icon buttons, list items, menu items, tabs and chips.
 - **`MuiLink.styleOverrides.root`:** the same ring under `"&:focus-visible"`.
-- **`MuiInputBase.styleOverrides.root`:** the same ring under `"&.Mui-focused"` when not `outlined`. Outlined inputs keep their existing `.Mui-focused` border.
+- Inputs get no extra ring: outlined, filled and standard inputs already draw their own `.Mui-focused` border or underline.
 - **`MuiCircularProgress.defaultProps`:** `{ "aria-label": "Loading" }`. A caller's own `aria-label` or `aria-labelledby` still wins.
 
 Merging is deep: a JSON override for the same component keeps its other keys.
