@@ -10,6 +10,9 @@ export interface SidebarNavToggleProps {
   expandedIcon?: IconName;
   variant: "full" | "compact";
   onClick: () => void;
+  /** The id of the navigation this toggle shows and hides. Only set where
+   *  that element exists, or aria-controls would dangle. */
+  controlsId?: string;
 }
 
 /** WCAG 2.5.8: a pointer target is at least 24×24 CSS px. */
@@ -39,12 +42,13 @@ export const SidebarNavToggleUI = ({
   collapsedIcon = IconName.KeyboardArrowRight,
   expandedIcon = IconName.KeyboardArrowLeft,
   onClick,
+  controlsId,
 }: SidebarNavToggleProps) => {
   return (
     <IconButton
       aria-label="toggle sidebar"
       aria-expanded={!collapsed}
-      aria-controls="primary-nav"
+      aria-controls={controlsId}
       color="inherit"
       onClick={onClick}
       size="small"
@@ -89,13 +93,20 @@ export const SidebarNavToggle = () => {
   );
 
   return (
-    <span onClick={stopClickAwayEvents} onTouchEnd={stopClickAwayEvents}>
+    // Only stops the click reaching the drawer's ClickAwayListener; the
+    // button inside is the control.
+    <span
+      role="presentation"
+      onClick={stopClickAwayEvents}
+      onTouchEnd={stopClickAwayEvents}
+    >
       <SidebarNavToggleUI
         variant={isMobile ? "full" : "compact"}
         collapsed={isCollapsed}
         collapsedIcon={isMobile ? IconName.Menu : undefined}
         expandedIcon={isMobile ? IconName.Close : undefined}
         onClick={() => toggle()}
+        controlsId="primary-nav"
       />
     </span>
   );

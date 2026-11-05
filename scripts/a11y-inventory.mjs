@@ -403,13 +403,17 @@ function groupFindings(findings, appRouteCount) {
   );
 }
 
-/** Counts the hand-written KB-/SR- rows per owner. The owner is the row's
- *  last cell, written "#79x". */
+/** Counts the open hand-written KB-/SR- rows per owner. The owner is the
+ *  row's last cell, written "#79x"; a row whose Observed cell starts
+ *  "Closed:" isn't counted. */
 export function parseManual(doc) {
   const counts = {};
   for (const line of doc.split("\n")) {
     if (!/^\|\s*(KB|SR)-\d+\s*\|/.test(line)) continue;
     const cells = line.split("|").map((c) => c.trim()).filter((c, i, all) => i > 0 && i < all.length - 1);
+    // A row whose Observed cell (the fifth) starts "Closed:" is fixed and kept
+    // for the record; it no longer counts against its owner.
+    if (/^\**Closed:/.test(cells[4] ?? "")) continue;
     const m = /#(\d+)/.exec(cells[cells.length - 1] ?? "");
     const owner = m && OWNERS[m[1]] ? m[1] : "unassigned";
     counts[owner] = (counts[owner] ?? 0) + 1;
@@ -911,6 +915,16 @@ async function selfTest() {
     ])
   );
   const manual = run("manual parse", () => parseManual(DOC_FIXTURE));
+  check(
+    "a row whose Observed cell starts Closed: isn't counted against its owner",
+    JSON.stringify(
+      parseManual(
+        "| KB-01 | All | Tab | 2.4.1 | **Closed:** skip link added (#797) | keyboard | #797 |\n" +
+          "| KB-02 | All | Tab | 2.4.3 | still open | keyboard | #797 |\n"
+      )
+    ) === JSON.stringify({ 797: 1 }),
+    "closed row counted"
+  );
   check(
     "keyboard and screen-reader rows are counted per owner",
     manual?.[797] === 1 && manual?.[793] === 1 && manual?.[798] === 1,

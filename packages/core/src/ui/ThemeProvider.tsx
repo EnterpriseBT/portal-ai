@@ -54,6 +54,9 @@ export function a11yComponents(theme: Theme): ThemeOptions {
       MuiCircularProgress: {
         defaultProps: { "aria-label": "Loading" },
       },
+      MuiLinearProgress: {
+        defaultProps: { "aria-label": "Progress" },
+      },
     },
   };
 }

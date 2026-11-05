@@ -92,6 +92,7 @@ describe("SidebarNavToggleUI", () => {
             variant="compact"
             collapsed={collapsed}
             onClick={jest.fn()}
+            controlsId="primary-nav"
           />
         );
         const button = screen.getByRole("button", { name: "toggle sidebar" });
@@ -106,5 +107,14 @@ describe("SidebarNavToggleUI", () => {
       expect(width("compact")).toBeGreaterThanOrEqual(24);
       expect(width("full")).toBeGreaterThanOrEqual(24);
     });
+  });
+
+  it("names no controlled element when it isn't told one (no dangling aria-controls)", () => {
+    render(
+      <SidebarNavToggleUI variant="compact" collapsed onClick={jest.fn()} />
+    );
+    expect(
+      screen.getByRole("button", { name: "toggle sidebar" })
+    ).not.toHaveAttribute("aria-controls");
   });
 });

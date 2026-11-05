@@ -26,12 +26,12 @@ exports[`HttpError Component should match snapshot 1`] = `
   >
     404
   </h1>
-  <h4
+  <h2
     class="MuiTypography-root MuiTypography-h4 css-cqf26c-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Not Found
-  </h4>
+  </h2>
   <div
     class="MuiBox-root css-10egq61"
   >

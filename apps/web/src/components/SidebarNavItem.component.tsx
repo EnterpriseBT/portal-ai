@@ -108,7 +108,8 @@ export const SidebarNavItemUI = ({
       {button}
       {hasChildren && (
         <Collapse in={open && !collapsed}>
-          <List disablePadding>
+          {/* A div, not a ul: its children are buttons, not list items. */}
+          <List disablePadding component="div">
             {items?.map((item) => (
               <ListItemButton
                 key={item.label}

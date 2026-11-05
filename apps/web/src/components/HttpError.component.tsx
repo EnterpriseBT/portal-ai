@@ -69,7 +69,12 @@ export const HttpError: React.FC<HttpErrorProps> = ({
         {statusCode}
       </Typography>
 
-      <Typography variant="h4" style={{ marginBottom: theme.spacing(2) }}>
+      {/* Looks like an h4; one level under the status code's h1 (#797). */}
+      <Typography
+        variant="h4"
+        component="h2"
+        style={{ marginBottom: theme.spacing(2) }}
+      >
         {title}
       </Typography>
 

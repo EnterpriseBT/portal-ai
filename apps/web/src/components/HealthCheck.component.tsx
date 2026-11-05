@@ -42,6 +42,8 @@ export const HealthCheckUI: React.FC<HealthCheckUIProps> = ({
   return (
     <Tooltip title={`Healthy — last checked: ${timestamp}`}>
       <Box
+        // The tooltip names it; a plain div may not carry that label (#797).
+        role="img"
         className={className}
         {...rest}
         sx={{
@@ -89,6 +91,7 @@ export const HealthCheck: React.FC<HealthCheckProps> = ({
             withLabel(
               <Tooltip title={error.message ?? "Health check failed"}>
                 <Box
+                  role="img"
                   className={className}
                   {...rest}
                   sx={{
@@ -104,6 +107,7 @@ export const HealthCheck: React.FC<HealthCheckProps> = ({
             withLabel(
               <Tooltip title="Checking health...">
                 <Box
+                  role="img"
                   className={className}
                   {...rest}
                   sx={{

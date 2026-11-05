@@ -272,4 +272,14 @@ describe("SidebarNavItemUI", () => {
       }
     );
   });
+
+  it("has no axe violations with its children open (#797)", async () => {
+    jest.useRealTimers();
+    const { container } = render(
+      <nav aria-label="Primary">
+        <SidebarNavItemUI {...defaultProps} items={[{ label: "Child" }]} open />
+      </nav>
+    );
+    await expectNoAxeViolations(container);
+  });
 });

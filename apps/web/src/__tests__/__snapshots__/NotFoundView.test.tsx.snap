@@ -26,12 +26,12 @@ exports[`NotFoundView Component should match snapshot 1`] = `
   >
     404
   </h1>
-  <h4
+  <h2
     class="MuiTypography-root MuiTypography-h4 css-cqf26c-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Page Not Found
-  </h4>
+  </h2>
   <p
     class="MuiTypography-root MuiTypography-body1 css-1jshwn9-MuiTypography-root"
     style="color: rgb(74, 68, 104); max-width: 480px; margin-bottom: 32px;"

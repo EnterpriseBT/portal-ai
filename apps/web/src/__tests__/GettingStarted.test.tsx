@@ -73,3 +73,13 @@ describe("GettingStarted", () => {
     }
   });
 });
+
+describe("GettingStarted heading order (#797)", () => {
+  it("titles each step at h3, under its section's h2", () => {
+    render(<GettingStarted steps={fixture} onNavigate={jest.fn()} />);
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(
+      fixture.length
+    );
+    expect(screen.queryByRole("heading", { level: 6 })).not.toBeInTheDocument();
+  });
+});

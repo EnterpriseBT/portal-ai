@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
 import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import {
   a11yComponents,
   FOCUS_RING_WIDTH,
@@ -554,5 +555,18 @@ describe("accessibility defaults (#797)", () => {
     expect(
       a11yComponents(THEME_MAP.brand).components?.MuiButtonBase
     ).toBeDefined();
+  });
+});
+
+describe("linear progress name (#797)", () => {
+  it("names an unnamed LinearProgress 'Progress'", () => {
+    render(
+      <ThemeProvider>
+        <LinearProgress value={40} variant="determinate" />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Progress" })
+    ).toBeInTheDocument();
   });
 });
