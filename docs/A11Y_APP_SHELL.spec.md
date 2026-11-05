@@ -102,7 +102,7 @@ export const SkipLinks: React.FC; // container
 
 ### Web: sidebar — `SidebarNav.component.tsx`, `SidebarNavItem.component.tsx`, `SidebarNavToggle.component.tsx`
 
-- **Drawer:** `SidebarNavUI`'s drawer paper renders as `component="nav"` with `aria-label="Primary"` (via `slotProps.paper`). The version caption becomes a `ButtonBase` named `"App version"`.
+- **Drawer:** `SidebarNavUI`'s drawer paper renders as `component="nav"` with `aria-label="Primary"` (via `slotProps.paper`). The version caption becomes `SidebarVersionCaptionUI` (new `components/SidebarVersionCaption.component.tsx`), a `ButtonBase` named by its visible text plus a visually hidden "(app version)". An `aria-label` of "App version" would break 2.5.3, since the name has to contain the visible text.
 - **Item props:** `SidebarNavItemUIProps` gains `href?: string`.
   - **With `href`:** the `ListItemButton` renders `component={Link} to={href}`, with `aria-current="page"` when `selected`.
   - **`onClick`:** if given, it still runs on activation (mobile collapse) and never calls `navigate`.
@@ -140,26 +140,27 @@ Its spinner relies on the theme default (`"Loading"`). It also renders a visuall
 
 ### Web: notifications — `ToastHost.component.tsx`, `Toast.provider.tsx`, `toast.context.tsx`, `UpdateBanner.component.tsx`
 
-- **`ToastHost` always renders** `<Box component="section" id="notifications" aria-label="Notifications" tabIndex={-1}>`, even with no toasts. It holds:
-  - a `<div role="status" aria-live="polite">` for success and info toasts;
-  - a `<div role="alert" aria-live="assertive">` for error and warning toasts.
-  The `Snackbar` and stack render only when toasts exist, as now. Each `Alert` gets `role={undefined}`, so its container announces it once. The `+N more` row and Dismiss all are unchanged.
+- **One Notifications region.** `apps/web/src/utils/notifications-root.util.ts` exports `NOTIFICATIONS_ID = "notifications"` and `getNotificationsRoot()`, which creates `<section id="notifications" aria-label="Notifications" tabindex="-1">` on `<body>` on first use and returns it afterwards. Toasts and the update notice both portal into it.
+- **`ToastHost` always renders** into that region, even with no toasts, so a test's render container stays empty when idle. It renders a fixed-position `Box` at `TOAST_ANCHOR` (the `Snackbar` is gone) holding:
+  - a `Stack` with `aria-live="assertive"` for error and warning toasts;
+  - a `Stack` with `aria-live="polite"` for success and info toasts.
+  The regions use `aria-live`, not `role="alert"`/`role="status"`. The host is in the shared test harness, and an always-present `alert` role would answer every `queryByRole("alert")` in the app. Each `Alert` gets `role="none"`, so its region announces it once. `data-testid="toast-host"` is present only while toasts exist. The `+N more` row and Dismiss all are unchanged.
 - **`toast.context.tsx`** adds `ToastPresenceContext` (a number, default 0) and `useToastPresence(): number`. `Toast.provider.tsx` provides the visible count. `ToastApi` is unchanged, so its identity stays stable.
 - **Update notice:** a new `apps/web/src/utils/update-notice.context.tsx` exports:
   - `UpdateNoticeProvider`, which owns `useAppVersion()` once;
   - `useUpdateNotice(): { open: boolean; dismiss(): void }`.
   `Application.tsx` wraps `RouterProvider` and `UpdateBanner` in it, and `UpdateBanner` reads it instead of calling `useAppVersion` itself.
-- **`UpdateBannerUI`:** its `Alert` becomes `role="status"` (polite). It's rendered inside a `section` with `id="update-notice"` and `aria-label="Update available"`. Because the skip link targets `#notifications`, `UpdateBanner` portals its section into `#notifications` when that element exists, and falls back to its current position otherwise.
+- **`UpdateBannerUI`:** its `Alert` becomes `role="status"` (polite). `UpdateBanner` portals it into `getNotificationsRoot()`, so "Skip to notifications" reaches it.
 
 ### Web: header menus
 
-- **`HeaderMenuUI`:** the trigger drops `aria-label`. Its visible content (the name, or `"Account"` when there's no label) is the name. `Avatar` gets `alt=""`. `aria-haspopup="menu"`.
-- **`OrgSwitcherUI`:** with two or more memberships, it renders a `ListSubheader` "Organization", then one `MenuItem` per membership with `role="menuitemradio"` and `aria-checked={isCurrent}`. Activating a non-current item calls `onSwitch(id)`. With one membership, it renders the name as the `ListSubheader`. The `Select` and the click-stopping `Box` are removed. `OrgSwitcherUIProps` is unchanged.
+- **`HeaderMenuUI`:** the trigger drops `aria-label`. Its visible content (the name, or `"Account"` when there's no label) is the name. On `xs` the name is visually hidden rather than `display: none`, so it still names the button. `Avatar` gets `alt=""`. `aria-haspopup="menu"`. (This landed in slice 3: the layout's axe test needs it.)
+- **`OrgSwitcherUI`:** with two or more memberships, it renders a `ListSubheader` "Organization", then one `MenuItem` per membership with `role="menuitemradio"` and `aria-checked={isCurrent}`. Activating a non-current item calls `onSwitch(id)`. The "Organization" subheader is `aria-hidden`, since a menu may only own menu items, groups and separators, and each radio already names its org. With one membership, it renders the name as a disabled `MenuItem`. The `Select` and the click-stopping `Box` are removed. `OrgSwitcherUIProps` is unchanged.
 - **`ThemeSwitcherUI`:** each item is `role="menuitemradio"` with `aria-checked`, and the trigger has `aria-haspopup="menu"`.
 
 ### Web: portal chat — `ChatWindow.component.tsx`, `PortalSession.component.tsx`
 
-- **Feed:** the scroll `Box` that holds `children` gets `role="log"`, `aria-label="Conversation"` and `aria-busy={streaming}` (a new `ChatWindowUI` prop `streaming?: boolean`, passed by `PortalSession` while `streamingBlocks` is non-empty).
+- **Feed:** the scroll `Box` that holds `children` gets `role="log"`, `aria-label="Conversation"` and `aria-busy={Boolean(isStreaming)}`, using the existing `isStreaming` prop that `PortalSession` already passes.
 - **Composer:** the `TextField` gets `label="Message"` with `slotProps.inputLabel.sx = visuallyHidden`. `lockedReason` stays its `helperText`, which MUI wires to `aria-describedby`. `autoFocus` stays: it's the page's primary input, and `useRouteAnnouncer` leaves focus where it already is.
 - **Empty state:** the `h6` at `PortalSession.component.tsx:170` becomes `Typography variant="h6" component="p"`.
 
