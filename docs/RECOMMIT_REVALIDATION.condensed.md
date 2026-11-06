@@ -26,7 +26,11 @@
 
 **Return shape.** `reconcileFieldMappings` returns `{ mappings, rulesChanged }` instead of the bare array. It has one production caller, and the integration test updates with it. No compatibility alias is kept, since this is an internal rename.
 
-**Counting.** A forced rewrite of a row whose checksum matched counts as `updated`, not `unchanged`, because its stored normalized values and validity were rewritten. The commit result's contract doesn't change.
+**Counting.** A forced rewrite of a row whose checksum matched counts as `updated`, not `unchanged`, because its stored normalized values and validity were rewritten. The commit result's contract doesn't change: `recordCounts.invalid` counts invalid rows **this run wrote**, so a later commit that skips them reports `invalid: 0` while the records stay invalid.
+
+**Cost.** A rule-changing commit rewrites every row of the entity in its per-target transaction. That's the same work a first commit does, and the same rows a revalidation job would rewrite. Writing only rows whose result changed would need each row's stored normalized values, which live in the wide table, read back and compared. That isn't worth it for an event as rare as a plan edit.
+
+**One rule list (code review).** The field-mapping PATCH route and the `field_mapping_update` tool each kept their own list of fields that trigger a revalidation, and both lists left out `columnDefinitionId` and the reference keys. All three paths now share `changesValidationRule` from `reconcile.ts`, so a PATCH that swaps a mapping's column definition queues a revalidation too.
 
 ## Plan — 1 slice
 
@@ -51,3 +55,4 @@
 - REST sync: its rules change only through the field-mapping and column-definition routes, which already queue revalidation.
 - Changes to a column definition's own `validationPattern` or `canonicalFormat`: these are already covered by `column-definition.router.ts:830`.
 - Revalidating entities a commit doesn't target, such as another entity whose reference mapping points at this one.
+- Recovering from a route-queued revalidation that was refused or lost (the next commit sees no rule change, so it won't re-check). Fixing that needs a per-record rules fingerprint, which is a schema change for a separate ticket.

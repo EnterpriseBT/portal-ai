@@ -35,6 +35,7 @@ import { ParentAccessService } from "../services/parent-access.service.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { CuratedViewDependencyService } from "../services/curated-view-dependency.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
+import { changesValidationRule } from "../services/field-mappings/reconcile.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
@@ -835,19 +836,10 @@ fieldMappingRouter.patch(
       logger.info({ id }, "Field mapping updated");
 
       // Trigger revalidation if normalization-affecting fields changed
-      const REVALIDATION_FIELDS = [
-        "format",
-        "required",
-        "enumValues",
-        "defaultValue",
-        "normalizedKey",
-      ] as const;
-      const needsRevalidation = REVALIDATION_FIELDS.some(
-        (field) =>
-          field in parsed.data &&
-          // By value: enumValues is an array (#769 review).
-          JSON.stringify((parsed.data as Record<string, unknown>)[field]) !==
-            JSON.stringify((existing as Record<string, unknown>)[field])
+      // (#973: the same rule list a recommit's reconcile checks).
+      const needsRevalidation = changesValidationRule(
+        parsed.data,
+        existing as FieldMappingSelect
       );
 
       // Reconcile the wide table. Most PATCHes don't change the wide-table

@@ -862,21 +862,21 @@ describe("reconcileFieldMappings — integration", () => {
     });
 
     it.each([
+      // The key is pinned, so only the column definition differs.
       ["the column definition", { columnDefinitionId: "ALT" }],
       ["required", { required: true }],
       ["the format", { format: "lowercase" }],
       ["the enum values", { enumValues: ["x", "y"] }],
       ["the default value", { defaultValue: "n/a" }],
     ])("is true when %s changes", async (_label, change) => {
-      await run([
-        { ...base, columnDefinitionId: colStringId, enumValues: ["x"] },
-      ]);
-      const next: Record<string, unknown> = {
+      const pinned = {
         ...base,
         columnDefinitionId: colStringId,
+        normalizedKey: "email",
         enumValues: ["x"],
-        ...change,
       };
+      await run([pinned]);
+      const next: Record<string, unknown> = { ...pinned, ...change };
       if (next.columnDefinitionId === "ALT") {
         next.columnDefinitionId = colStringAltId;
       }

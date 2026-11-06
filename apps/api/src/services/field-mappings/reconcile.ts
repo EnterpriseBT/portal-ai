@@ -126,6 +126,24 @@ export const VALIDATION_RULE_FIELDS = [
   "refNormalizedKey",
 ] as const;
 
+/**
+ * Whether `next` changes a validation rule `prior` holds. A field `next`
+ * leaves undefined isn't being set, so it doesn't count. Compared by value,
+ * since enumValues is an array. Shared by reconcile, the field-mapping PATCH
+ * route and the field_mapping_update tool, so the commit and an edit agree
+ * on what needs a re-check.
+ */
+export function changesValidationRule(
+  next: Partial<Record<(typeof VALIDATION_RULE_FIELDS)[number], unknown>>,
+  prior: Partial<Record<(typeof VALIDATION_RULE_FIELDS)[number], unknown>>
+): boolean {
+  return VALIDATION_RULE_FIELDS.some(
+    (field) =>
+      next[field] !== undefined &&
+      JSON.stringify(next[field]) !== JSON.stringify(prior[field] ?? null)
+  );
+}
+
 export interface ReconcileFieldMappingsResult {
   mappings: FieldMappingSelect[];
   /**
@@ -325,13 +343,7 @@ export async function reconcileFieldMappings(
     if (!rulesChanged) {
       const prior = liveByKey.get(normalizedKey);
       rulesChanged =
-        prior === undefined ||
-        VALIDATION_RULE_FIELDS.some(
-          // By value: enumValues is an array.
-          (field) =>
-            JSON.stringify(prior[field] ?? null) !==
-            JSON.stringify(values[field] ?? null)
-        );
+        prior === undefined || changesValidationRule(values, prior);
     }
     const row =
       await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(
