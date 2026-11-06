@@ -44,7 +44,7 @@ A presigned URL names one host, and three clients must reach it: the API (in `de
 3. The same upload from the agent's in-container Playwright browser works (`/smoke-walk`).
 4. Upload a file and stop at Draw regions (uncommitted; a commit deletes its file by design, `file-upload-session.service.ts:802`). Rebuild the devcontainer, then `curl localhost:9092/portalai-uploads-local/` still lists its key.
 5. `npm run e2e:stack:up` then `e2e:stack:down`. Both succeed, and a local upload afterwards still works.
-6. Stop `s3mock-dev` and upload. The dialog shows the S3 PUT failure. Then `docker compose up -d s3mock-dev` brings uploads back.
+6. Stop `s3mock-dev` and upload. The dialog shows "Network error uploading <file>" (the PUT is refused). Then `docker compose up -d s3mock-dev` brings uploads back.
 7. Real-S3 opt-in (`— manual`, needs an MFA-backed `aws login`): unset the endpoint, set a real bucket and profile; the upload lands in AWS.
 
 ## Out of scope
