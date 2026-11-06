@@ -23,6 +23,17 @@
 - A 404 on a later refetch means the portal is gone, so the chat unmounts. `usePortalStream` closes its EventSource when it unmounts.
 - Any other refetch error keeps the cached portal and the live chat.
 
+The header follows the same rule. `DataResult` is handed the query with its error cleared while `showPortal` holds, so a transient refetch error doesn't swap the header for an error page above a live chat.
+
+## Decision — the error state carries its own exit
+
+The route is `FullScreenLayout`, which has no app chrome. Before this fix, the composer's **Exit** was the only in-page way out, so removing the chat left the not-found page a dead end. The smoke walk found this. The error now renders `HttpError` (`components/HttpError.component.tsx`), the app's existing 404 page, through `DataResult`'s `renderError`:
+- a 404 shows "Portal not found";
+- any other first-load error shows "Couldn't load this portal";
+- both have **Go Back** and **Go Home**.
+
+The view also reads its single portal query directly. The inline `PortalDataItem` wrapper is gone.
+
 The view's queries also use the session's own params (`{ include: "pinnedResults" }`), so the view and the session share one cache entry and one request. A cold load then makes one request, not two in sequence.
 
 ## Plan — one slice
@@ -30,15 +41,19 @@ The view's queries also use the session's own params (`{ include: "pinnedResults
 **Files**
 - Edit: `apps/web/src/views/Portal.view.tsx`:
   - add `PORTAL_QUERY_PARAMS`;
-  - compute `portalGone` / `showSession` from the view's query;
-  - render `{showSession && <PortalSession …/>}` outside `DataResult`.
+  - compute `portalGone` / `showPortal` from the view's query;
+  - render `{showPortal && <PortalSession …/>}` outside `DataResult`;
+  - give `DataResult` the cleared-error result while `showPortal` holds;
+  - render `HttpError` through `renderError`;
+  - remove `PortalDataItem`.
 
 **Tests** (test first)
-- Edit: `apps/web/src/__tests__/PortalView.gates.test.tsx`. Five cases:
-  - a 404 `ApiError` on first load shows no session;
+- Edit: `apps/web/src/__tests__/PortalView.gates.test.tsx`. Six cases:
+  - a 404 `ApiError` on first load shows no session, plus Go Home and Go Back;
+  - a 500 on first load shows "Couldn't load this portal" with Go Home, and no session;
   - while loading, no session;
   - once loaded, the session shows;
-  - a refetch that fails with a 429 while data is cached keeps the session;
+  - a refetch that fails with a 429 while data is cached keeps the session and the header;
   - a refetch that fails with a 404 while data is cached removes it.
 - Run `npm run test:unit -- --testPathPattern PortalView` (web), then `type-check` and `lint`.
 
@@ -46,7 +61,7 @@ The view's queries also use the session's own params (`{ include: "pinnedResults
 
 1. Open a portal, send a prompt → the chat and composer work as before, and the header shows Rename/Delete.
 2. Delete the portal from **More actions** → you land on the Dashboard.
-3. Press **Back** to the portal URL → "Portal not found" shows, with **no** "Ready when you are" empty state, **no** composer, and no Exit/Cancel/Reset/Submit buttons. Focus is not in a textarea (`document.activeElement` is not the "Message" field).
+3. Press **Back** to the portal URL → "Portal not found" shows, with **no** "Ready when you are" empty state, **no** composer, and no Exit/Cancel/Reset/Submit buttons. Focus is not in a textarea (`document.activeElement` is not the "Message" field). **Go Back** and **Go Home** show, and Go Home lands on the Dashboard.
 4. Visit `/portals/<random-uuid>` directly → the same not-found state, with no chat.
 5. (Optional, as the e2e member) open another user's private portal URL → not-found, with no chat.
 6. Hard-reload an existing portal → during the brief load, no composer flashes before the portal resolves; after it resolves the chat appears and the composer auto-focuses as before. In devtools' Network tab, the load makes **one** `GET /api/portals/<id>?include=pinnedResults`, not two.
@@ -54,5 +69,5 @@ The view's queries also use the session's own params (`{ include: "pinnedResults
 
 ## Out of scope
 
-- The not-found page's `h1` "Portal" and document title "Portal · Portals AI". These are the generic route chrome, and making them read "not found" is a separate copy change that isn't the reported harm.
+- The document title on the not-found page. It's the generic route title, and making it read "not found" is a separate copy change that isn't the reported harm.
 - Backend changes. The API already 404s a deleted or unreadable portal; the bug is only the client rendering past it.

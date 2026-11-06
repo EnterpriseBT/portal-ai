@@ -190,6 +190,25 @@ describe("PortalView session mount (#971)", () => {
     render(<PortalView portalId="portal-1" />);
     expect(await screen.findByText(/Portal not found/)).toBeInTheDocument();
     expect(screen.queryByTestId("portal-session")).toBeNull();
+    // The page is full-screen, so the not-found state carries its own exit.
+    expect(screen.getByRole("button", { name: "Go Home" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go Back" })).toBeInTheDocument();
+  });
+
+  it("gives a portal that failed to load a way out too", async () => {
+    mockPortalsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isSuccess: false,
+      error: new ApiError("Internal server error", "PORTAL_FETCH_FAILED", 500),
+    });
+    render(<PortalView portalId="portal-1" />);
+    expect(
+      await screen.findByText("Couldn't load this portal")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go Home" })).toBeInTheDocument();
+    expect(screen.queryByTestId("portal-session")).toBeNull();
   });
 
   it("renders no session while the portal is loading", () => {
@@ -221,6 +240,9 @@ describe("PortalView session mount (#971)", () => {
     });
     rerender(<PortalView portalId="portal-1" />);
     expect(screen.getByTestId("portal-session")).toBeInTheDocument();
+    // The header keeps the cached portal rather than an error page.
+    expect(screen.getByText("Sales Analysis")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load this portal")).toBeNull();
   });
 
   it("removes the session when a refetch finds the portal gone", async () => {
