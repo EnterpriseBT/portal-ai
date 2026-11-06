@@ -14,7 +14,7 @@ import { PortalHeaderMeta } from "../components/PortalHeaderMeta.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { RenamePortalDialog } from "../components/RenamePortalDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { toServerError } from "../utils/api.util";
+import { ApiError, toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -24,8 +24,12 @@ interface PortalDataItemProps {
   children: (data: ReturnType<typeof sdk.portals.get>) => React.ReactNode;
 }
 
+// #971: the same params PortalSession reads with, so the view and the session
+// share one cache entry and one request rather than fetching the row twice.
+const PORTAL_QUERY_PARAMS = { include: "pinnedResults" } as const;
+
 const PortalDataItem: React.FC<PortalDataItemProps> = ({ id, children }) => {
-  const res = sdk.portals.get(id);
+  const res = sdk.portals.get(id, PORTAL_QUERY_PARAMS);
   return <>{children(res)}</>;
 };
 
@@ -44,8 +48,15 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
   const touchMutation = sdk.portals.touch(portalId);
   // #690: the same cached query PortalDataItem reads. Its capabilities decide
   // the header's actions and whether opening the portal records lastOpened.
-  const canWrite =
-    sdk.portals.get(portalId).data?.portal.capabilities.write ?? false;
+  const portalQuery = sdk.portals.get(portalId, PORTAL_QUERY_PARAMS);
+  const canWrite = portalQuery.data?.portal.capabilities.write ?? false;
+  // #971: the chat mounts only for a portal that exists and is readable. No
+  // data yet (loading, or a deleted/unreadable portal's 404) means no chat. A
+  // 404 on a later refetch means it's gone now, so the chat unmounts. Any other
+  // refetch error keeps the cached portal, and the live chat with it.
+  const portalGone =
+    portalQuery.error instanceof ApiError && portalQuery.error.status === 404;
+  const showSession = portalQuery.data !== undefined && !portalGone;
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -180,15 +191,12 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                   isPending={removeMutation.isPending}
                   serverError={toServerError(removeMutation.error)}
                 />
-
-                {/* #971: only a portal that loaded gets a chat. A deleted or
-                    unreadable one (404) shows its not-found state alone. */}
-                <PortalSession portalId={portalId} />
               </>
             )}
           </DataResult>
         )}
       </PortalDataItem>
+      {showSession && <PortalSession portalId={portalId} />}
     </Box>
   );
 };

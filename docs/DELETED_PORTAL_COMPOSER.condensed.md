@@ -15,22 +15,32 @@
 
 ## Decision — where the session mounts
 
-- **A. Move `PortalSession` inside `DataResult`'s children** (after the dialogs, in the same fragment). The fragment's children already sit directly in the outer flex column, so the layout (`flex: 1; minHeight: 0`) is unchanged.
-- **B. Keep it outside and gate it on `sdk.portals.get(portalId).isSuccess`.** This is a second copy of DataResult's state logic, and it can drift from what the header shows.
+- **A. Move `PortalSession` inside `DataResult`'s children.** This was tried first and reverted after code review. `DataResult` checks `isError` before anything else, and React Query v5 sets `isError` on a failed **refetch** even while the cached data is still there. A transient refetch error (a 429 or 5xx after a focus refetch or the touch's invalidation) would then unmount a live chat, along with its stream and draft. It also turned the view's and the session's two parallel `GET /api/portals/:id` requests into a sequential pair.
+- **B. Keep the session outside `DataResult` and gate it on the view's query.** This is the chosen option.
 
-**Decision: A.** There is one source of truth for "the portal exists and is readable". The session also no longer mounts during the initial load, which is correct: it has nothing to show before the portal resolves. The view-level `canWrite`/touch effect is unaffected, because it already reads `data?.` and is false on error.
+**Decision: B.** `showSession = data !== undefined && !(error is a 404 ApiError)`:
+- No data means no chat. That covers loading, and a deleted or unreadable portal's first-load 404.
+- A 404 on a later refetch means the portal is gone, so the chat unmounts. `usePortalStream` closes its EventSource when it unmounts.
+- Any other refetch error keeps the cached portal and the live chat.
+
+The view's queries also use the session's own params (`{ include: "pinnedResults" }`), so the view and the session share one cache entry and one request. A cold load then makes one request, not two in sequence.
 
 ## Plan — one slice
 
 **Files**
-- Edit: `apps/web/src/views/Portal.view.tsx`. Move `<PortalSession portalId={portalId} />` into the `DataResult` children fragment, and add a one-line `#971` comment on why it lives there.
+- Edit: `apps/web/src/views/Portal.view.tsx`:
+  - add `PORTAL_QUERY_PARAMS`;
+  - compute `portalGone` / `showSession` from the view's query;
+  - render `{showSession && <PortalSession …/>}` outside `DataResult`.
 
 **Tests** (test first)
-- Edit: `apps/web/src/__tests__/PortalView.gates.test.tsx`, or add a sibling `PortalView.states.test.tsx` if that reads cleaner. Three cases:
-  - Portal query **errored** (404 `ApiError`): the not-found message renders and `portal-session` is **absent**.
-  - Portal query **loading**: `portal-session` is absent.
-  - Portal query **succeeded**: `portal-session` is present (a regression guard on the happy path).
-- Run `npm run test:unit -- --testPathPattern PortalView` (web), then `npm run type-check` and `npm run lint`.
+- Edit: `apps/web/src/__tests__/PortalView.gates.test.tsx`. Five cases:
+  - a 404 `ApiError` on first load shows no session;
+  - while loading, no session;
+  - once loaded, the session shows;
+  - a refetch that fails with a 429 while data is cached keeps the session;
+  - a refetch that fails with a 404 while data is cached removes it.
+- Run `npm run test:unit -- --testPathPattern PortalView` (web), then `type-check` and `lint`.
 
 ## Smoke (manual, against your dev stack)
 
@@ -39,7 +49,8 @@
 3. Press **Back** to the portal URL → "Portal not found" shows, with **no** "Ready when you are" empty state, **no** composer, and no Exit/Cancel/Reset/Submit buttons. Focus is not in a textarea (`document.activeElement` is not the "Message" field).
 4. Visit `/portals/<random-uuid>` directly → the same not-found state, with no chat.
 5. (Optional, as the e2e member) open another user's private portal URL → not-found, with no chat.
-6. Hard-reload an existing portal → during the brief load, no composer flashes before the portal resolves; after it resolves the chat appears and the composer auto-focuses as before.
+6. Hard-reload an existing portal → during the brief load, no composer flashes before the portal resolves; after it resolves the chat appears and the composer auto-focuses as before. In devtools' Network tab, the load makes **one** `GET /api/portals/<id>?include=pinnedResults`, not two.
+7. With a portal open, delete it from a second tab, then refocus the first tab → the refetch 404s, and the not-found state replaces the page with no chat left behind.
 
 ## Out of scope
 

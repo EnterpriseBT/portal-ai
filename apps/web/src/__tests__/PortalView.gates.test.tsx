@@ -45,6 +45,7 @@ jest.unstable_mockModule("../components/PortalSession.component", () => ({
 const { render, screen, waitFor } = await import("./test-utils");
 const { QueryClient } = await import("@tanstack/react-query");
 const { PortalView } = await import("../views/Portal.view");
+const { ApiError } = await import("../utils/api.util");
 
 const portalResult = (capabilities: {
   read: boolean;
@@ -172,7 +173,11 @@ describe("PortalView gates (#690)", () => {
 });
 
 // #971: the chat mounts only for a portal that exists and is readable. A
-// deleted or unreadable portal (404) shows its not-found state and no composer.
+// deleted or unreadable portal (404) shows its not-found state and no composer,
+// while a transient refetch error keeps the cached portal's live chat.
+const notFound = () =>
+  new ApiError("Portal not found", "PORTAL_NOT_FOUND", 404);
+
 describe("PortalView session mount (#971)", () => {
   it("renders no session when the portal isn't found", async () => {
     mockPortalsGet.mockReturnValue({
@@ -180,7 +185,7 @@ describe("PortalView session mount (#971)", () => {
       isLoading: false,
       isError: true,
       isSuccess: false,
-      error: new Error("Portal not found"),
+      error: notFound(),
     });
     render(<PortalView portalId="portal-1" />);
     expect(await screen.findByText(/Portal not found/)).toBeInTheDocument();
@@ -199,5 +204,39 @@ describe("PortalView session mount (#971)", () => {
     );
     render(<PortalView portalId="portal-1" />);
     expect(await screen.findByTestId("portal-session")).toBeInTheDocument();
+  });
+
+  it("keeps the session through a refetch that fails transiently", async () => {
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    const { rerender } = render(<PortalView portalId="portal-1" />);
+    expect(await screen.findByTestId("portal-session")).toBeInTheDocument();
+
+    mockPortalsGet.mockReturnValue({
+      ...portalResult({ read: true, write: true, delete: true }),
+      isError: true,
+      isSuccess: false,
+      error: new ApiError("Too many requests", "API_RATE_LIMITED", 429),
+    });
+    rerender(<PortalView portalId="portal-1" />);
+    expect(screen.getByTestId("portal-session")).toBeInTheDocument();
+  });
+
+  it("removes the session when a refetch finds the portal gone", async () => {
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    const { rerender } = render(<PortalView portalId="portal-1" />);
+    expect(await screen.findByTestId("portal-session")).toBeInTheDocument();
+
+    mockPortalsGet.mockReturnValue({
+      ...portalResult({ read: true, write: true, delete: true }),
+      isError: true,
+      isSuccess: false,
+      error: notFound(),
+    });
+    rerender(<PortalView portalId="portal-1" />);
+    expect(screen.queryByTestId("portal-session")).toBeNull();
   });
 });
