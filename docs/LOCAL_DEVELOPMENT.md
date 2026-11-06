@@ -25,7 +25,16 @@ UPLOAD_S3_FORCE_PATH_STYLE=true
 
 and restart the API. `curl http://localhost:9092/` lists the bucket. Files uploaded to the AWS dev bucket before the switch aren't copied over; re-upload anything you need.
 
-**Opting into real S3.** Comment out `UPLOAD_S3_ENDPOINT` and `UPLOAD_S3_FORCE_PATH_STYLE`, set a real `UPLOAD_S3_BUCKET`, and give the SDK working credentials. The admin IAM user is MFA-gated, so static access keys are denied. Use an `aws login` session instead: leave the two `AWS_*` keys **empty** (an empty value stops `.env`'s keys from being loaded, and the SDK moves on to the profile), and start the API with `AWS_PROFILE` set to a profile whose `credential_process` runs `aws configure export-credentials --format process`, so the short-lived session refreshes on its own.
+The two `AWS_*` keys replace any real ones your `.env` held, and they are process-wide: every AWS client in the API (Marketplace, Secrets Manager) signs with them, not only uploads. Local work against real AWS uses the credentials below instead. `s3mock-dev` also holds port 9193 (its unused HTTPS listener) inside `dev`.
+
+**Opting into real S3.** Comment out `UPLOAD_S3_ENDPOINT` and `UPLOAD_S3_FORCE_PATH_STYLE`, set a real `UPLOAD_S3_BUCKET`, and give the SDK working credentials. The admin IAM user is MFA-gated, so static access keys are denied. Use an `aws login` session instead: start the API with `AWS_PROFILE` set to a profile like the one below. With `AWS_PROFILE` set, the SDK uses the profile and ignores static keys, but it logs a warning when both are present, so remove the two `AWS_*` keys from `.env` (and unset any your shell exported, e.g. by an earlier `eval "$(aws configure export-credentials --format env)"`).
+
+```ini
+[profile portalai-api]
+credential_process = aws configure export-credentials --profile <your aws login profile> --format process
+```
+
+The `--profile` must name the `aws login` profile, not this one: the child `aws` inherits `AWS_PROFILE`, so without it the process resolves itself forever. The short-lived session then refreshes on its own.
 
 The e2e stack has its own `s3mock` (port 9090, bucket `portalai-uploads-e2e`), which `e2e:stack:up` / `down` start and stop. The two never share a bucket or a port.
 
