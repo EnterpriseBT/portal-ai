@@ -9,27 +9,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { HttpError } from "../components/HttpError.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { PortalHeaderMeta } from "../components/PortalHeaderMeta.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { RenamePortalDialog } from "../components/RenamePortalDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { toServerError } from "../utils/api.util";
+import { ApiError, toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 
-// ── Portal data item component ──────────────────────────────────────
-
-interface PortalDataItemProps {
-  id: string;
-  children: (data: ReturnType<typeof sdk.portals.get>) => React.ReactNode;
-}
-
-const PortalDataItem: React.FC<PortalDataItemProps> = ({ id, children }) => {
-  const res = sdk.portals.get(id);
-  return <>{children(res)}</>;
-};
-
-// ── Portal view ─────────────────────────────────────────────────────
+// #971: the same params PortalSession reads with, so the view and the session
+// share one cache entry and one request rather than fetching the row twice.
+const PORTAL_QUERY_PARAMS = { include: "pinnedResults" } as const;
 
 interface PortalViewProps {
   portalId: string;
@@ -42,10 +33,22 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
   const renameMutation = sdk.portals.rename(portalId);
   const removeMutation = sdk.portals.remove(portalId);
   const touchMutation = sdk.portals.touch(portalId);
-  // #690: the same cached query PortalDataItem reads. Its capabilities decide
-  // the header's actions and whether opening the portal records lastOpened.
-  const canWrite =
-    sdk.portals.get(portalId).data?.portal.capabilities.write ?? false;
+  // #690: the portal's capabilities decide the header's actions and whether
+  // opening the portal records lastOpened.
+  const portalQuery = sdk.portals.get(portalId, PORTAL_QUERY_PARAMS);
+  const canWrite = portalQuery.data?.portal.capabilities.write ?? false;
+  // #971: the chat mounts only for a portal that exists and is readable. No
+  // data yet (loading, or a deleted/unreadable portal's 404) means no chat. A
+  // 404 on a later refetch means it's gone now, so the chat unmounts. Any other
+  // refetch error keeps the cached portal, and the live chat with it.
+  const portalGone =
+    portalQuery.error instanceof ApiError && portalQuery.error.status === 404;
+  const showPortal = portalQuery.data !== undefined && !portalGone;
+  // The header follows the same rule, so a transient refetch error can't swap
+  // it for an error page above a live chat.
+  const headerResult = showPortal
+    ? { ...portalQuery, isError: false, error: null }
+    : portalQuery;
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -106,86 +109,103 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
 
   return (
     <Box display="flex" flexDirection="column" flex={1} minHeight={0}>
-      <PortalDataItem id={portalId}>
-        {(itemResult) => (
-          <DataResult results={{ item: itemResult }}>
-            {({ item }: { item: PortalGetResponsePayload }) => (
-              <>
-                <Box
-                  sx={{
-                    flexShrink: 0,
-                    px: { xs: 2, sm: 4 },
-                    pt: 2,
-                    pb: 1,
-                    borderBottom: 1,
-                    borderColor: "divider",
-                  }}
-                >
-                  <PageHeader
-                    title={item.portal.name}
-                    primaryAction={
-                      <GatedButton
-                        size="small"
-                        variant="contained"
-                        startIcon={<EditIcon />}
-                        onClick={() => {
-                          // A failed rename's error belongs to that attempt,
-                          // not the next opening.
-                          renameMutation.reset();
-                          setRenameOpen(true);
-                        }}
-                        gate={decideActionGate({
-                          allowed: item.portal.capabilities.write,
-                        })}
-                      >
-                        Rename
-                      </GatedButton>
-                    }
-                    secondaryActions={[
-                      {
-                        label: "Delete",
-                        icon: <DeleteIcon />,
-                        onClick: () => setDeleteOpen(true),
-                        color: "error",
-                        gate: decideActionGate({
-                          allowed: item.portal.capabilities.delete,
-                        }),
-                      },
-                    ]}
+      <DataResult
+        results={{ item: headerResult }}
+        options={{
+          item: {
+            // #971: the page is full-screen, so the error state carries its own
+            // way out (the chat's Exit is gone with the chat).
+            renderError: () => (
+              <HttpError
+                statusCode={portalGone ? 404 : 500}
+                title={
+                  portalGone ? "Portal not found" : "Couldn't load this portal"
+                }
+                description={
+                  portalGone
+                    ? "It may have been deleted, or you may not have access to it."
+                    : "Something went wrong loading this portal. Try again in a moment."
+                }
+              />
+            ),
+          },
+        }}
+      >
+        {({ item }: { item: PortalGetResponsePayload }) => (
+          <>
+            <Box
+              sx={{
+                flexShrink: 0,
+                px: { xs: 2, sm: 4 },
+                pt: 2,
+                pb: 1,
+                borderBottom: 1,
+                borderColor: "divider",
+              }}
+            >
+              <PageHeader
+                title={item.portal.name}
+                primaryAction={
+                  <GatedButton
+                    size="small"
+                    variant="contained"
+                    startIcon={<EditIcon />}
+                    onClick={() => {
+                      // A failed rename's error belongs to that attempt,
+                      // not the next opening.
+                      renameMutation.reset();
+                      setRenameOpen(true);
+                    }}
+                    gate={decideActionGate({
+                      allowed: item.portal.capabilities.write,
+                    })}
                   >
-                    <PortalHeaderMeta stationId={item.portal.stationId} />
-                  </PageHeader>
-                </Box>
+                    Rename
+                  </GatedButton>
+                }
+                secondaryActions={[
+                  {
+                    label: "Delete",
+                    icon: <DeleteIcon />,
+                    onClick: () => setDeleteOpen(true),
+                    color: "error",
+                    gate: decideActionGate({
+                      allowed: item.portal.capabilities.delete,
+                    }),
+                  },
+                ]}
+              >
+                <PortalHeaderMeta stationId={item.portal.stationId} />
+              </PageHeader>
+            </Box>
 
-                {renameOpen && (
-                  <RenamePortalDialog
-                    key={item.portal.name}
-                    open={renameOpen}
-                    onClose={() => setRenameOpen(false)}
-                    currentName={item.portal.name}
-                    onSubmit={handleRenameSubmit}
-                    isPending={renameMutation.isPending}
-                    serverError={toServerError(renameMutation.error)}
-                  />
-                )}
-
-                <DeletePortalDialog
-                  open={deleteOpen}
-                  onClose={() => {
-                    removeMutation.reset();
-                    setDeleteOpen(false);
-                  }}
-                  portalName={item.portal.name}
-                  onConfirm={handleDeleteConfirm}
-                  isPending={removeMutation.isPending}
-                  serverError={toServerError(removeMutation.error)}
-                />
-              </>
+            {renameOpen && (
+              <RenamePortalDialog
+                key={item.portal.name}
+                open={renameOpen}
+                onClose={() => setRenameOpen(false)}
+                currentName={item.portal.name}
+                onSubmit={handleRenameSubmit}
+                isPending={renameMutation.isPending}
+                serverError={toServerError(renameMutation.error)}
+              />
             )}
-          </DataResult>
+
+            <DeletePortalDialog
+              open={deleteOpen}
+              onClose={() => {
+                removeMutation.reset();
+                setDeleteOpen(false);
+              }}
+              portalName={item.portal.name}
+              onConfirm={handleDeleteConfirm}
+              isPending={removeMutation.isPending}
+              serverError={toServerError(removeMutation.error)}
+            />
+          </>
         )}
-      </PortalDataItem>
-      <PortalSession portalId={portalId} />
+      </DataResult>
+      {showPortal && <PortalSession portalId={portalId} />}
     </Box>
   );
 };
