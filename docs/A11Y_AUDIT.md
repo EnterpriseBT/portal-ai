@@ -36,13 +36,13 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-05 20:05 | 898 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 20:10 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-05 20:05 | 324 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 20:10 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-05 20:06 | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-05 20:45 | 414 | 72 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-05 20:45 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:54 | 898 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 23:59 | 281 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:55 | 324 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 23:59 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:55 | 31 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-06 00:31 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-06 00:31 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -54,9 +54,6 @@ Skipped runs (not audited; each is a coverage gap until it renders):
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · populated · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · error · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · loading · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · populated · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · error · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · loading · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
@@ -66,9 +63,6 @@ Skipped runs (not audited; each is a coverage gap until it renders):
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · populated · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · error · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · loading · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · populated · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · error · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · owner · loading · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · populated · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · error · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · owner · loading · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
@@ -78,9 +72,6 @@ Skipped runs (not audited; each is a coverage gap until it renders):
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · populated · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · error · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · loading · brand: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · populated · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · error · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · loading · brand: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
@@ -90,9 +81,6 @@ Skipped runs (not audited; each is a coverage gap until it renders):
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · populated · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · error · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · admin · loading · brand.dark: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · populated · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · error · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
-- `packages/e2e/a11y-results/app.json` · portal · admin · loading · brand.dark: nothing to drill into at step 2: /api/portals on /stations/5a26b111-c344-41bc-ad44-6414edd439eb returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · populated · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · error · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
 - `packages/e2e/a11y-results/app.json` · portal-result-detail · admin · loading · brand.dark: nothing to drill into at step 1: /api/portal-results on /portal-results returned no item
@@ -131,7 +119,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 24 | 71 | 4.1.2 | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 9 | 44 | 4.1.2 | 2 |
+| [#794 Tables, grids and lists](#owner-794) | 9 | 45 | 4.1.2 | 2 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 9 | 38 | 4.1.2 | 1 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
@@ -166,7 +154,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | 2483fa7e | best practice | heading-order | moderate | `apps/web/src/stories/ToolpackMetadataModal.component.stories.tsx h6` | 2: Default, Unentitled | 2 | — | jest-axe |
 | 3f08377b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiTypography-subtitle1` | 4: Step1_InvalidRegion, Step1_RegionsDrawn_Valid, Step2_AllGreen, Step2_BlockerPresent | 4 | — | jest-axe |
 | 595fdf3b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx h6` | 1: Step1_Empty | 1 | — | jest-axe |
-| e7dac676 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/ChatWindow.component.tsx` | 1: :294 | 1 | — | eslint |
+| e7dac676 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/ChatWindow.component.tsx` | 1: :293 | 1 | — | eslint |
 | af258267 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/SsoLoginForm.component.tsx` | 1: :108 | 1 | — | eslint |
 
 <a id="owner-794"></a>
@@ -182,7 +170,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | 5706fa98 | best practice | heading-order | moderate | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h6` | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
 | 6328129f | best practice | heading-order | moderate | `.MuiTypography-h6` | 1: connectors | 1 | roles: admin, owner · states: empty · themes: brand, brand.dark | axe-app |
 | e86a6bdc | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6` | 1: Empty | 1 | — | jest-axe |
-| 1a851f7c | best practice | heading-order | moderate | `h6` | 11: column-definition-detail, column-definitions, connector-detail, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| 1a851f7c | best practice | heading-order | moderate | `h6` | 12: column-definition-detail, column-definitions, connector-detail, dashboard, entities, entity-groups, +6 more | 12 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
 | 53f149ff | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/PaginationToolbar.component.tsx` | 1: :747 | 1 | — | eslint |
 
 <a id="owner-795"></a>
