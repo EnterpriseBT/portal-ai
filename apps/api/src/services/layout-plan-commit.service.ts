@@ -855,7 +855,7 @@ export class LayoutPlanCommitService {
     // made Postgres parse it, and one unparseable cell (`10 HP` in a number
     // column) failed the whole commit with 22P02. Read in this transaction,
     // after reconcile wrote the mappings.
-    const mappings = await NormalizationService.loadMappings(
+    const normalizationMappings = await NormalizationService.loadMappings(
       connectorEntityId,
       tx
     );
@@ -907,9 +907,18 @@ export class LayoutPlanCommitService {
           normalizedKeyByRecordFieldKey.get(k) ?? catalogById.get(k)?.key ?? k;
         keyedData[key] = v;
       }
-      // Keyed by normalizedKey, which the normalizer reads first.
+      // Keyed by normalizedKey, which the normalizer reads first. A mapping
+      // whose key the record lacks gets an explicit empty slot: otherwise
+      // the normalizer falls back to its sourceField (its header text), which
+      // can be another binding's normalizedKey and hand it that value.
+      for (const m of normalizationMappings) {
+        if (!(m.normalizedKey in keyedData)) keyedData[m.normalizedKey] = null;
+      }
       const { normalizedData, validationErrors, isValid } =
-        NormalizationService.normalizeWithMappings(mappings, keyedData);
+        NormalizationService.normalizeWithMappings(
+          normalizationMappings,
+          keyedData
+        );
       if (!isValid) invalid++;
 
       // Resurrection branch: a prior soft-delete (manual "clear records"

@@ -26,7 +26,9 @@ export function coerceNumber(
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (typeof value === "number") {
-    if (Number.isNaN(value)) return { value: null, error: "Expected a number" };
+    if (!Number.isFinite(value)) {
+      return { value: null, error: "Expected a number" };
+    }
     return applyNumberFormat(value, format);
   }
 
@@ -45,10 +47,13 @@ export function coerceNumber(
   // #968: what's left must be wholly a number. parseFloat alone kept a
   // leading number and dropped the rest ("10 HP" → 10, "25 + 1/s" → 25),
   // losing the value silently instead of reporting it.
-  if (!NUMERIC_LITERAL.test(str)) {
+  // An exponent can still overflow ("1e400" → Infinity), which no numeric
+  // column stores.
+  const num = NUMERIC_LITERAL.test(str) ? Number(str) : NaN;
+  if (!Number.isFinite(num)) {
     return { value: null, error: "Expected a number" };
   }
-  return applyNumberFormat(Number(str), format);
+  return applyNumberFormat(num, format);
 }
 
 function applyNumberFormat(
@@ -105,7 +110,15 @@ function normalizeDateFormat(fmt: string): string {
   return fmt.replace(/YYYY/g, "yyyy").replace(/YY/g, "yy").replace(/DD/g, "dd");
 }
 
+/** An ISO 8601 date, optionally with a time and offset. */
+const ISO_8601 =
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
 function parseDate(value: unknown, format?: string | null): Date | null {
+  // A typed spreadsheet date (#968): already a date, whatever the format.
+  if (value instanceof Date) {
+    return utcDateFactory.fns.isValid(value) ? value : null;
+  }
   const str = String(value).trim();
   if (str === "") return null;
 
@@ -117,7 +130,11 @@ function parseDate(value: unknown, format?: string | null): Date | null {
         normalizedFormat,
         new Date(0)
       );
-      return utcDateFactory.fns.isValid(parsed) ? parsed : null;
+      if (utcDateFactory.fns.isValid(parsed)) return parsed;
+      // A format describes how a text date is written. A typed spreadsheet
+      // date reaches us as ISO 8601, which is unambiguous, so it still
+      // parses when it doesn't match the binding's format (#968).
+      if (!ISO_8601.test(str)) return null;
     }
 
     // No format: try native parsing via DateFactory

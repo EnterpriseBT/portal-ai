@@ -122,6 +122,23 @@ describe("coerceNumber", () => {
     expect(coerceNumber(input)).toEqual({ value: expected });
   });
 
+  it.each(["1e400", "-1e400"])(
+    "rejects %p, which overflows to infinity",
+    (input) => {
+      expect(coerceNumber(input)).toEqual({
+        value: null,
+        error: "Expected a number",
+      });
+    }
+  );
+
+  it("rejects a non-finite number value", () => {
+    expect(coerceNumber(Infinity)).toEqual({
+      value: null,
+      error: "Expected a number",
+    });
+  });
+
   it("rejects trailing text in EU format too", () => {
     expect(coerceNumber("1.234,56 EUR", "eu")).toEqual({
       value: null,
@@ -283,13 +300,52 @@ describe("coerceDate", () => {
   it("returns date error gracefully for a completely malformed format string", () => {
     // Should not throw even if date-fns cannot interpret the format at all
     expect(() => coerceDate("2021-09-05", "!!!invalid!!!")).not.toThrow();
-    const result = coerceDate("2021-09-05", "!!!invalid!!!");
+    const result = coerceDate("05/09/2021", "!!!invalid!!!");
     expect(result.value).toBeNull();
     expect(result.error).toBe("Expected a valid date");
+    // An ISO value is unambiguous, so it parses whatever the format (#968).
+    expect(coerceDate("2021-09-05", "!!!invalid!!!").error).toBeUndefined();
   });
 });
 
 // ── coerceDatetime ──────────────────────────────────────────────────
+
+// #968: a format describes how a text date is written. A typed spreadsheet
+// date arrives as ISO 8601 (or a Date), which is unambiguous, so it parses
+// even when it doesn't match the binding's format.
+describe("date coercion with a format, given ISO input (#968)", () => {
+  it("parses an ISO date the format doesn't match", () => {
+    expect(coerceDate("2026-01-02", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+    expect(coerceDate("2026-01-02T00:00:00.000Z", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+  });
+
+  it("parses an ISO datetime the format doesn't match, keeping milliseconds", () => {
+    expect(
+      coerceDatetime("2026-01-02T03:04:05.678Z", "MM/dd/yyyy HH:mm")
+    ).toEqual({ value: "2026-01-02T03:04:05.678Z" });
+  });
+
+  it("parses a Date object whatever the format", () => {
+    expect(
+      coerceDatetime(new Date("2026-01-02T03:04:05.678Z"), "MM/dd/yyyy")
+    ).toEqual({ value: "2026-01-02T03:04:05.678Z" });
+  });
+
+  it("still applies the format to text it matches", () => {
+    expect(coerceDate("01/02/2026", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+  });
+
+  it("still rejects text that is neither the format nor ISO", () => {
+    expect(coerceDate("Academy", "MM/dd/yyyy").error).toBeDefined();
+    expect(coerceDate("02/01/2026x", "MM/dd/yyyy").error).toBeDefined();
+  });
+});
 
 describe("coerceDatetime", () => {
   it("returns null for null", () => {
@@ -330,9 +386,11 @@ describe("coerceDatetime", () => {
 
   it("returns datetime error gracefully for a completely malformed format string", () => {
     expect(() => coerceDatetime("2021-09-05", "!!!invalid!!!")).not.toThrow();
-    const result = coerceDatetime("2021-09-05", "!!!invalid!!!");
+    const result = coerceDatetime("05/09/2021", "!!!invalid!!!");
     expect(result.value).toBeNull();
     expect(result.error).toBe("Expected a valid datetime");
+    // An ISO value is unambiguous, so it parses whatever the format (#968).
+    expect(coerceDatetime("2021-09-05", "!!!invalid!!!").error).toBeUndefined();
   });
 });
 
