@@ -46,7 +46,7 @@ Accepted gap: a write that **fails** after the user navigated away shows nothing
 - New: `apps/web/src/__tests__/auth-mutation-unmount-callbacks.test.tsx`, mirroring `auth-mutation-single-flight.test.tsx`. It covers:
   1. `mutate(v, { onSuccess, onSettled })` runs both after the component unmounts mid-request, and so does `onError` on a failure;
   2. `mutateAsync(v, { onSuccess })` the same;
-  3. a deduped duplicate's callbacks don't run;
+  3. a deduped duplicate's callbacks don't run (already covered by `auth-mutation-single-flight.test.tsx` › "runs only the first call's per-call callbacks", which still passes);
   4. the hook-level `onSuccess` runs before the per-call one;
   5. two different requests each run their own `onSuccess`.
 - Existing tests to re-run: `auth-mutation-single-flight`, `auth-mutation-permission-denied`, `auth-mutation-timeout`, `auth-mutation-no-content`, `dialog-single-flight.integration`, `MembersTab` tests. Run them with `npm run test:unit -- --testPathPattern …` in `apps/web`, plus `type-check` and `lint`.

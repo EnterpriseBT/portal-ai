@@ -484,31 +484,114 @@ const useApiMutation = <TData, TVariables>(
   // and checked synchronously, so a second activation inside the render lag
   // (before `isPending` disables the button) can't send again.
   const inFlight = useRef(new Map<string, Promise<TData>>());
-  const latest = useRef({ mutation, url, body, method, dedupe });
+  const latest = useRef({
+    mutation,
+    url,
+    body,
+    method,
+    dedupe,
+    queryClient,
+    mutationOptions,
+  });
   // A layout effect, not a render-time write (refs aren't read or written
   // during render): it runs after each commit, before any later input.
   useLayoutEffect(() => {
-    latest.current = { mutation, url, body, method, dedupe };
+    latest.current = {
+      mutation,
+      url,
+      body,
+      method,
+      dedupe,
+      queryClient,
+      mutationOptions,
+    };
   });
 
   type MutateAsync = typeof mutation.mutateAsync;
-  const mutateAsync = useCallback<MutateAsync>((variables, callOptions) => {
-    const current = latest.current;
-    const key = current.dedupe ? safeRequestKey(current, variables) : null;
-    if (key === null) {
-      return current.mutation.mutateAsync(variables, callOptions);
-    }
-    const running = inFlight.current.get(key);
-    if (running) return running;
-    const request = current.mutation.mutateAsync(variables, callOptions);
-    inFlight.current.set(key, request);
-    void request
-      .finally(() => {
-        if (inFlight.current.get(key) === request) inFlight.current.delete(key);
-      })
-      .catch(() => {});
-    return request;
-  }, []);
+  type CallOptions = Parameters<MutateAsync>[1];
+
+  /** Starts `variables`' request, or joins the identical one in flight. */
+  const run = useCallback(
+    (variables: TVariables): { request: Promise<TData>; started: boolean } => {
+      const current = latest.current;
+      const key = current.dedupe ? safeRequestKey(current, variables) : null;
+      if (key !== null) {
+        const running = inFlight.current.get(key);
+        if (running) return { request: running, started: false };
+      }
+      const request = current.mutation.mutateAsync(variables);
+      if (key !== null) {
+        inFlight.current.set(key, request);
+        void request
+          .finally(() => {
+            if (inFlight.current.get(key) === request) {
+              inFlight.current.delete(key);
+            }
+          })
+          .catch(() => {});
+      }
+      return { request, started: true };
+    },
+    []
+  );
+
+  /**
+   * #970: run a call's own `onSuccess` / `onError` / `onSettled` from its
+   * request's promise. React Query runs per-call callbacks only while the
+   * caller's observer is mounted, so a toast or invalidation raised there
+   * was lost when the caller unmounted first (browser Back during a pending
+   * invite). The promise settles after the hook-level callbacks, so the order
+   * is unchanged. A throwing callback is reported, never turned into the
+   * call's error.
+   */
+  const attachCallbacks = useCallback(
+    (
+      request: Promise<TData>,
+      variables: TVariables,
+      callOptions: CallOptions
+    ) => {
+      if (!callOptions) return;
+      const { onSuccess, onError, onSettled } = callOptions;
+      if (!onSuccess && !onError && !onSettled) return;
+      const { queryClient: client, mutationOptions: opts } = latest.current;
+      const context = {
+        client,
+        meta: opts?.meta,
+        mutationKey: opts?.mutationKey,
+      };
+      const guarded = (fn: () => void) => {
+        try {
+          fn();
+        } catch (error) {
+          void Promise.reject(error);
+        }
+      };
+      void request.then(
+        (data) => {
+          guarded(() => onSuccess?.(data, variables, undefined, context));
+          guarded(() => onSettled?.(data, null, variables, undefined, context));
+        },
+        (error: ApiError) => {
+          guarded(() => onError?.(error, variables, undefined, context));
+          guarded(() =>
+            onSettled?.(undefined, error, variables, undefined, context)
+          );
+        }
+      );
+    },
+    []
+  );
+
+  // #751: a duplicate of a request in flight joins it and doesn't run its
+  // own callbacks; only the call that started the request does.
+  const mutateAsync = useCallback<MutateAsync>(
+    (variables, callOptions) => {
+      const { request, started } = run(variables);
+      if (started) attachCallbacks(request, variables, callOptions);
+      return request;
+    },
+    [run, attachCallbacks]
+  );
 
   type Mutate = typeof mutation.mutate;
   // Like react-query's `mutate`: never throws; errors reach `onError` and
