@@ -86,6 +86,8 @@
     ]
   },
   "enabledMcpjsonServers": [
-    "playwright"
+    "playwright",
+    "playwright-app-dev",
+    "playwright-prod"
   ]
 }
