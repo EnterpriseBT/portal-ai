@@ -258,3 +258,33 @@ describe("DataResult Component", () => {
     });
   });
 });
+
+describe("DataResult page title (#797)", () => {
+  it.each([
+    ["loading", loadingQuery()],
+    ["error", errorQuery("Boom")],
+  ])("keeps the page's h1 while %s", (_state, query) => {
+    render(
+      <DataResult pageTitle="Job" results={{ item: query }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Job" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders no extra h1 on success, or when no title is given", () => {
+    const { unmount } = render(
+      <DataResult pageTitle="Job" results={{ item: successQuery(1) }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    unmount();
+    render(
+      <DataResult results={{ item: loadingQuery() }}>{() => null}</DataResult>
+    );
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+});

@@ -186,7 +186,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
     <Box>
       <StationDataItem id={stationId}>
         {(itemResult) => (
-          <DataResult results={{ item: itemResult }}>
+          <DataResult pageTitle="Station" results={{ item: itemResult }}>
             {({ item }: { item: StationGetResponsePayload }) => {
               const station = item.station;
               const attachments = toStationAttachmentItems(station);

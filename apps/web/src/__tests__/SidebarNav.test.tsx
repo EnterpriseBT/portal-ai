@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import { useState } from "react";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
@@ -89,6 +90,57 @@ describe("SidebarNavUI", () => {
       .getByText("Nav Content")
       .closest(".MuiDrawer-root")?.parentElement;
     expect(wrapper).not.toHaveStyle({ display: "none" });
+  });
+
+  // Adversarial walk F2: the open mobile drawer ignored Escape.
+  describe("Escape (#797)", () => {
+    it("calls onEscape for an Escape pressed inside the drawer", async () => {
+      const onEscape = jest.fn();
+      render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores other keys, and Escape without an onEscape", async () => {
+      const onEscape = jest.fn();
+      const { rerender } = render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Enter}");
+      expect(onEscape).not.toHaveBeenCalled();
+      rerender(
+        <SidebarNavUI {...defaultProps}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).not.toHaveBeenCalled();
+    });
+
+    it("leaves an Escape inside a dialog the drawer opened to that dialog", async () => {
+      const onEscape = jest.fn();
+      render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <Dialog open>
+            <DialogContent>
+              <button type="button">Inside</button>
+            </DialogContent>
+          </Dialog>
+        </SidebarNavUI>
+      );
+      screen.getByRole("button", { name: "Inside" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).not.toHaveBeenCalled();
+    });
   });
 });
 

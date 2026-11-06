@@ -58,10 +58,16 @@ export const StatusMessage = React.forwardRef<
         alignItems="center"
         gap={1}
         className={className}
+        // An error interrupts; anything else (loading included) waits its
+        // turn (WCAG 4.1.3, #797).
+        role={variant === "error" && !loading ? "alert" : "status"}
         {...rest}
       >
         {loading ? (
-          <CircularProgress size={20} />
+          <CircularProgress
+            size={20}
+            aria-label={displayMessage || "Loading"}
+          />
         ) : (
           <Icon
             name={variantIconMap[variant]}

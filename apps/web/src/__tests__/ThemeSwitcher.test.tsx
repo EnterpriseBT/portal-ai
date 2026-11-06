@@ -110,7 +110,7 @@ describe("ThemeSwitcherUI Component", () => {
     await user.click(button);
 
     const menu = screen.getByRole("menu");
-    const menuItems = within(menu).getAllByRole("menuitem");
+    const menuItems = within(menu).getAllByRole("menuitemradio");
 
     // Each menu item should have an icon
     menuItems.forEach((item) => {
@@ -172,7 +172,9 @@ describe("ThemeSwitcherUI Component", () => {
     await user.click(button);
 
     const menu = screen.getByRole("menu");
-    const lightItem = within(menu).getByRole("menuitem", { name: /light/i });
+    const lightItem = within(menu).getByRole("menuitemradio", {
+      name: /light/i,
+    });
 
     expect(lightItem).toHaveClass("Mui-selected");
   });
@@ -206,5 +208,27 @@ describe("ThemeSwitcherUI Component", () => {
     const menu = screen.getByRole("menu");
     expect(within(menu).getByText("Ocean")).toBeInTheDocument();
     expect(within(menu).getByText("Sunset")).toBeInTheDocument();
+  });
+
+  describe("accessibility (#797)", () => {
+    it("opens a menu of radio items, the current theme checked", async () => {
+      const user = userEvent.setup();
+      render(
+        <ThemeSwitcherUI
+          availableThemes={availableThemes}
+          currentThemeName="brand.dark"
+          onThemeSelect={mockOnThemeSelect}
+        />
+      );
+      const button = screen.getByRole("button", { name: /select theme/i });
+      expect(button).toHaveAttribute("aria-haspopup", "menu");
+      await user.click(button);
+      expect(
+        screen.getByRole("menuitemradio", { name: "Dark" })
+      ).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.getByRole("menuitemradio", { name: "Light" })
+      ).toHaveAttribute("aria-checked", "false");
+    });
   });
 });

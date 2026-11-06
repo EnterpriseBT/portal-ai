@@ -13,6 +13,15 @@ jest.unstable_mockModule("../utils/app-version.util", () => ({
 const { render, screen } = await import("./test-utils");
 const { UpdateBannerUI, UpdateBanner } =
   await import("../components/UpdateBanner.component");
+const { UpdateNoticeProvider } = await import("../utils/update-notice.context");
+
+/** The banner reads the shared notice (#797), owned by its provider. */
+const renderBanner = () =>
+  render(
+    <UpdateNoticeProvider>
+      <UpdateBanner />
+    </UpdateNoticeProvider>
+  );
 
 // ── UpdateBannerUI (pure) ───────────────────────────────────────────
 
@@ -69,7 +78,7 @@ describe("UpdateBanner", () => {
       dismiss: jest.fn(),
     });
 
-    render(<UpdateBanner />);
+    renderBanner();
     expect(screen.getByText("A new version is available.")).toBeInTheDocument();
   });
 
@@ -79,7 +88,7 @@ describe("UpdateBanner", () => {
       dismiss: jest.fn(),
     });
 
-    render(<UpdateBanner />);
+    renderBanner();
     expect(
       screen.queryByText("A new version is available.")
     ).not.toBeInTheDocument();
@@ -90,8 +99,47 @@ describe("UpdateBanner", () => {
     const dismiss = jest.fn();
     mockUseAppVersion.mockReturnValue({ updateAvailable: true, dismiss });
 
-    render(<UpdateBanner />);
+    renderBanner();
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("UpdateBanner accessibility (#797)", () => {
+  it("announces itself politely, inside the Notifications region", () => {
+    mockUseAppVersion.mockReturnValue({
+      updateAvailable: true,
+      dismiss: jest.fn(),
+    });
+    renderBanner();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("A new version is available.");
+    expect(document.getElementById("notifications")).toContainElement(status);
+  });
+
+  it("shares its open state through useUpdateNotice", async () => {
+    const { useUpdateNotice } = await import("../utils/update-notice.context");
+    mockUseAppVersion.mockReturnValue({
+      updateAvailable: true,
+      dismiss: jest.fn(),
+    });
+    const Probe = () => (
+      <span data-testid="open">{String(useUpdateNotice().open)}</span>
+    );
+    render(
+      <UpdateNoticeProvider>
+        <Probe />
+      </UpdateNoticeProvider>
+    );
+    expect(screen.getByTestId("open")).toHaveTextContent("true");
+  });
+
+  it("is closed with no provider", async () => {
+    const { useUpdateNotice } = await import("../utils/update-notice.context");
+    const Probe = () => (
+      <span data-testid="open">{String(useUpdateNotice().open)}</span>
+    );
+    render(<Probe />);
+    expect(screen.getByTestId("open")).toHaveTextContent("false");
   });
 });

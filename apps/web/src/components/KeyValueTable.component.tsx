@@ -13,6 +13,8 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 
+import { visuallyHidden } from "@portalai/core/ui";
+
 import { newKeyValueRow, type KeyValueRow } from "../utils/key-value-rows.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 
@@ -165,17 +167,3 @@ export const KeyValueTableUI: React.FC<KeyValueTableUIProps> = ({
     </Box>
   );
 };
-
-/** Screen-reader-only text: MUI's `visuallyHidden` recipe, kept local
- *  because `@mui/utils` isn't a declared dependency of this app. */
-const visuallyHidden = {
-  border: 0,
-  clip: "rect(0 0 0 0)",
-  height: "1px",
-  margin: "-1px",
-  overflow: "hidden",
-  padding: 0,
-  position: "absolute",
-  whiteSpace: "nowrap",
-  width: "1px",
-} as const;

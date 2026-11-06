@@ -54,6 +54,15 @@ export async function useTheme(
  *  the app holds SSE streams open. */
 export async function settle(page: Page, timeout = 15_000): Promise<void> {
   await page.waitForLoadState("load");
+  // The SPA mounts after "load". Every app layout renders a main landmark
+  // (#797), and so does every site page, so wait for one: under a long
+  // walk's load the app can take longer than the grace below, and axe
+  // would scan an empty #root (missing main and h1 by mistake).
+  await page
+    .locator("main")
+    .first()
+    .waitFor({ state: "attached", timeout })
+    .catch(() => undefined);
   await page
     .locator('[role="progressbar"]')
     .first()

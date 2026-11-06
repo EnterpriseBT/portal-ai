@@ -241,7 +241,10 @@ export const ColumnDefinitionDetailView: React.FC<
     <Box>
       <ColumnDefinitionDataItem id={columnDefinitionId}>
         {(itemResult) => (
-          <DataResult results={{ item: itemResult }}>
+          <DataResult
+            pageTitle="Column definition"
+            results={{ item: itemResult }}
+          >
             {({ item }: { item: ColumnDefinitionGetResponsePayload }) => {
               const cd = item.columnDefinition;
               const gates = columnDefinitionActionGates({

@@ -530,6 +530,8 @@ it("has no accessibility violations", async () => {
 });
 ```
 
+**The shell (#797).** Each layout starts with a skip link and wraps the page in `main#main-content`. `useRouteAnnouncer()` (`src/utils/route-announcer.util.ts`) sets the tab title from the page's `h1` and moves focus to it after a navigation. To test a page's title or focus behaviour, render it inside a router with a `main#main-content` and call `resetRouteAnnouncer()` in `beforeEach`. The first page of a test counts as a first load, so wait for it to render before navigating (`src/__tests__/route-announcer.util.test.tsx` shows the pattern). Toasts render into the Notifications region on `<body>`, outside a test's container. Find them by `data-testid="toast-<severity>"`, since they carry no `alert` role of their own.
+
 ### Test Coverage
 
 Minimum coverage thresholds are configured at 60% for:

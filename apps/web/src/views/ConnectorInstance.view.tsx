@@ -356,7 +356,10 @@ export const ConnectorInstanceView = ({
     <Box>
       <ConnectorInstanceDataItem id={connectorInstanceId}>
         {(instanceResult) => (
-          <DataResult results={{ instance: instanceResult }}>
+          <DataResult
+            pageTitle="Connector"
+            results={{ instance: instanceResult }}
+          >
             {({
               instance,
             }: {

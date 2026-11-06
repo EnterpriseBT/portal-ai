@@ -13,6 +13,17 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
   <div
     class="MuiBox-root css-s92abg"
   >
+    <nav
+      aria-label="Skip links"
+      class="MuiBox-root css-0"
+    >
+      <a
+        class="MuiBox-root css-l6ag35"
+        href="#main-content"
+      >
+        Skip to main content
+      </a>
+    </nav>
     <header
       class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation0 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-gwis6i-MuiPaper-root-MuiAppBar-root"
       style="--Paper-shadow: none;"
@@ -27,20 +38,20 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
           href="/"
           style="text-decoration: none;"
         >
-          <h3
+          <span
             class="MuiTypography-root MuiTypography-h3 css-wxvbvs-MuiTypography-root"
           >
             Portals AI
-          </h3>
+          </span>
         </a>
         <div
           class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-z9jna-MuiButtonGroup-root"
           role="group"
         >
           <button
-            aria-haspopup="true"
+            aria-haspopup="menu"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-vc969v-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-4gciu-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -59,14 +70,22 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
         </div>
       </div>
     </header>
-    <div
-      class="MuiBox-root css-9eeetu"
+    <main
+      class="MuiBox-root css-1hk7ey2"
+      id="main-content"
+      tabindex="-1"
     >
       <div
         class="MuiBox-root css-1l4w6pd"
         data-testid="loading-view"
       >
+        <h1
+          class="MuiBox-root css-ty8jgw"
+        >
+          Loading
+        </h1>
         <span
+          aria-label="Loading"
           class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
           role="progressbar"
           style="width: 40px; height: 40px;"
@@ -86,7 +105,7 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
           </svg>
         </span>
       </div>
-    </div>
+    </main>
   </div>
 </div>
 `;
@@ -96,6 +115,17 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
   <div
     class="MuiBox-root css-s92abg"
   >
+    <nav
+      aria-label="Skip links"
+      class="MuiBox-root css-0"
+    >
+      <a
+        class="MuiBox-root css-l6ag35"
+        href="#main-content"
+      >
+        Skip to main content
+      </a>
+    </nav>
     <header
       class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation0 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-gwis6i-MuiPaper-root-MuiAppBar-root"
       style="--Paper-shadow: none;"
@@ -110,20 +140,20 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           href="/"
           style="text-decoration: none;"
         >
-          <h3
+          <span
             class="MuiTypography-root MuiTypography-h3 css-wxvbvs-MuiTypography-root"
           >
             Portals AI
-          </h3>
+          </span>
         </a>
         <div
           class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-z9jna-MuiButtonGroup-root"
           role="group"
         >
           <button
-            aria-haspopup="true"
+            aria-haspopup="menu"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-vc969v-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-4gciu-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -142,14 +172,22 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
         </div>
       </div>
     </header>
-    <div
-      class="MuiBox-root css-9eeetu"
+    <main
+      class="MuiBox-root css-1hk7ey2"
+      id="main-content"
+      tabindex="-1"
     >
       <div
         class="MuiBox-root css-1l4w6pd"
         data-testid="loading-view"
       >
+        <h1
+          class="MuiBox-root css-ty8jgw"
+        >
+          Loading
+        </h1>
         <span
+          aria-label="Loading"
           class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
           role="progressbar"
           style="width: 40px; height: 40px;"
@@ -169,7 +207,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           </svg>
         </span>
       </div>
-    </div>
+    </main>
   </div>
 </div>
 `;

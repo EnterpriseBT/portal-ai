@@ -5,19 +5,19 @@
       "main": "#8b6fe0",
       "light": "#b09af0",
       "dark": "#3d2a8a",
-      "contrastText": "#f0eeff"
+      "contrastText": "#0f0f1f"
     },
     "secondary": {
       "main": "#4a8fd4",
       "light": "#7ab3e8",
       "dark": "#0c3d6e",
-      "contrastText": "#f0eeff"
+      "contrastText": "#0f0f1f"
     },
     "error": {
-      "main": "#c0392b",
+      "main": "#cc6055",
       "light": "#f87171",
       "dark": "#7f1d1d",
-      "contrastText": "#ffffff"
+      "contrastText": "#0f0f1f"
     },
     "warning": {
       "main": "#c98a00",
@@ -29,13 +29,13 @@
       "main": "#4a8fd4",
       "light": "#7ab3e8",
       "dark": "#0c3d6e",
-      "contrastText": "#f0eeff"
+      "contrastText": "#0f0f1f"
     },
     "success": {
       "main": "#1f9e5e",
       "light": "#34c97a",
       "dark": "#0d6b3e",
-      "contrastText": "#ffffff"
+      "contrastText": "#0f0f1f"
     },
     "grey": {
       "50": "#1e1e38",

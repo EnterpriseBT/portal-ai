@@ -26,12 +26,12 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
   >
     401
   </h1>
-  <h4
+  <h2
     class="MuiTypography-root MuiTypography-h4 css-cqf26c-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Unauthorized
-  </h4>
+  </h2>
   <p
     class="MuiTypography-root MuiTypography-body1 css-1jshwn9-MuiTypography-root"
     style="color: rgb(74, 68, 104); max-width: 480px; margin-bottom: 32px;"
@@ -42,7 +42,7 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
     class="MuiBox-root css-10egq61"
   >
     <button
-      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-54uywz-MuiButtonBase-root-MuiButton-root"
+      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-bxy2q9-MuiButtonBase-root-MuiButton-root"
       style="border-color: rgba(91, 63, 192, 0.5);"
       tabindex="0"
       type="button"
@@ -50,7 +50,7 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
       Go Back
     </button>
     <button
-      class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-w0xxa4-MuiButtonBase-root-MuiButton-root"
+      class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-1to75o3-MuiButtonBase-root-MuiButton-root"
       tabindex="0"
       type="button"
     >

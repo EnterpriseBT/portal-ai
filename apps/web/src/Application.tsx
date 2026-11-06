@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { ApplicationProvider } from "./providers/Application.provider";
 import { UpdateBanner } from "./components/UpdateBanner.component";
+import { UpdateNoticeProvider } from "./utils/update-notice.context";
 
 // #884: a completed login navigates (replace) through the router; the session
 // stays loading until it lands, and the callback's ?code=&state= go.
@@ -14,8 +15,10 @@ const returnAfterLogin = (href: string) =>
 export const Application: React.FC = () => {
   return (
     <ApplicationProvider onLoginReturn={returnAfterLogin}>
-      <RouterProvider router={router} />
-      <UpdateBanner />
+      <UpdateNoticeProvider>
+        <RouterProvider router={router} />
+        <UpdateBanner />
+      </UpdateNoticeProvider>
     </ApplicationProvider>
   );
 };

@@ -1,5 +1,11 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent, act } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  expectNoAxeViolations,
+} from "./test-utils";
 import { IconName } from "@portalai/core/ui";
 import { SidebarNavItemUI } from "../components/SidebarNavItem.component";
 
@@ -192,5 +198,88 @@ describe("SidebarNavItemUI", () => {
     fireEvent.click(screen.getByRole("button", { name: /Dashboard/i }));
 
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  describe("navigation semantics (#797)", () => {
+    beforeEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("renders a destination as a link to its route", () => {
+      render(<SidebarNavItemUI {...defaultProps} href="/connectors" />);
+      expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+        "href",
+        "/connectors"
+      );
+    });
+
+    it("marks the current page", () => {
+      render(<SidebarNavItemUI {...defaultProps} href="/" selected />);
+      expect(screen.getByRole("link")).toHaveAttribute("aria-current", "page");
+    });
+
+    it("leaves other pages unmarked", () => {
+      // The test router sits at "/", so another route isn't current.
+      render(<SidebarNavItemUI {...defaultProps} href="/connectors" />);
+      expect(screen.getByRole("link")).not.toHaveAttribute("aria-current");
+    });
+
+    it("names a collapsed item by its label and shows it as a tooltip on focus", async () => {
+      render(<SidebarNavItemUI {...defaultProps} collapsed href="/" />);
+      const link = screen.getByRole("link", { name: "Dashboard" });
+      act(() => link.focus());
+      expect(await screen.findByRole("tooltip")).toHaveTextContent("Dashboard");
+    });
+
+    it("still runs onClick alongside the link (the mobile drawer closes)", () => {
+      const onClick = jest.fn();
+      render(<SidebarNavItemUI {...defaultProps} href="/" onClick={onClick} />);
+      fireEvent.click(screen.getByRole("link"));
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an action with no route (Logout) a button", () => {
+      render(<SidebarNavItemUI {...defaultProps} label="Logout" />);
+      expect(
+        screen.getByRole("button", { name: "Logout" })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
+
+    it("tells whether a parent is expanded", () => {
+      render(
+        <SidebarNavItemUI {...defaultProps} items={[{ label: "Child" }]} open />
+      );
+      expect(screen.getByRole("button", { name: "Dashboard" })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      );
+    });
+
+    it.each([false, true])(
+      "has no axe violations (collapsed: %s)",
+      async (collapsed) => {
+        const { container } = render(
+          <nav aria-label="Primary">
+            <SidebarNavItemUI
+              {...defaultProps}
+              collapsed={collapsed}
+              href="/"
+            />
+          </nav>
+        );
+        await expectNoAxeViolations(container);
+      }
+    );
+  });
+
+  it("has no axe violations with its children open (#797)", async () => {
+    jest.useRealTimers();
+    const { container } = render(
+      <nav aria-label="Primary">
+        <SidebarNavItemUI {...defaultProps} items={[{ label: "Child" }]} open />
+      </nav>
+    );
+    await expectNoAxeViolations(container);
   });
 });

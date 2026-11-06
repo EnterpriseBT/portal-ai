@@ -154,6 +154,15 @@ describe("HealthCheck Component", () => {
     });
   });
 
+  it.each([
+    ["loading", { isLoading: true }, /checking health/i],
+    ["error", { isError: true, error: new Error("down") }, /down/i],
+  ])("names its %s dot as an image (#797)", (_state, query, name) => {
+    currentQuery = makeQuery(query);
+    render(<HealthCheck />);
+    expect(screen.getByRole("img", { name })).toBeInTheDocument();
+  });
+
   describe("Error State", () => {
     it("should render an indicator", () => {
       currentQuery = makeQuery({
@@ -197,5 +206,20 @@ describe("HealthCheck Component", () => {
       render(<HealthCheck data-testid="health-indicator" />);
       expect(screen.getByTestId("health-indicator")).toBeInTheDocument();
     });
+  });
+});
+
+describe("HealthCheckUI accessibility (#797)", () => {
+  it("is an image named by its status, so its tooltip label is allowed", () => {
+    render(
+      <HealthCheckUI
+        data={{
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1",
+          sha: "abc",
+        }}
+      />
+    );
+    expect(screen.getByRole("img", { name: /healthy/i })).toBeInTheDocument();
   });
 });

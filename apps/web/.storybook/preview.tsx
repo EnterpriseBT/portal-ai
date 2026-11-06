@@ -1,6 +1,10 @@
 import type { Preview } from "@storybook/react";
 import { type ThemeName } from "@portalai/core/ui";
 import { ApplicationProvider } from "../src/providers/Application.provider";
+import { ensureNotificationsRoot } from "../src/utils/notifications-root.util";
+
+// The Notifications region toasts and the update notice portal into (#797).
+ensureNotificationsRoot();
 import {
   createRootRoute,
   createRouter,

@@ -116,3 +116,8 @@ if (typeof Element !== "undefined") {
     Element.prototype.hasPointerCapture = () => false;
   }
 }
+
+// The Notifications region toasts and the update notice portal into (#797);
+// main.tsx creates it at startup, so the tests do too.
+import { ensureNotificationsRoot } from "../utils/notifications-root.util";
+ensureNotificationsRoot();

@@ -1,5 +1,5 @@
 import React from "react";
-import { StatusMessage } from "@portalai/core/ui";
+import { Box, StatusMessage, visuallyHidden } from "@portalai/core/ui";
 
 export interface QueryResultLike<TData = unknown> {
   data: TData | undefined;
@@ -30,6 +30,10 @@ export interface DataResultProps<T extends ResultsMap> {
   options?: { [K in keyof T]?: ResultOptions };
   children: (data: ExtractDataMap<T>) => React.ReactNode;
   loadingMessage?: string;
+  /** The page's name (e.g. "Job"). A detail view whose PageHeader renders
+   *  only once its data loads passes it, so the loading and error states
+   *  keep an h1 for screen readers and the tab title (#797). */
+  pageTitle?: string;
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -39,10 +43,21 @@ export function DataResult<T extends ResultsMap>({
   options,
   children,
   loadingMessage = "Loading...",
+  pageTitle,
   className,
   ...rest
 }: DataResultProps<T>): React.ReactElement | null {
   const entries = Object.entries(results) as [string, QueryResultLike][];
+  const withTitle = (status: React.ReactNode) => (
+    <>
+      {pageTitle && (
+        <Box component="h1" sx={visuallyHidden}>
+          {pageTitle}
+        </Box>
+      )}
+      {status}
+    </>
+  );
 
   // Error: find first errored entry
   const errorEntry = entries.find(([, query]) => query.isError && query.error);
@@ -52,11 +67,11 @@ export function DataResult<T extends ResultsMap>({
     const opts = options?.[key];
 
     if (opts?.renderError) {
-      return <>{opts.renderError(error)}</>;
+      return withTitle(opts.renderError(error));
     }
 
     if (opts?.errorMessage) {
-      return (
+      return withTitle(
         <StatusMessage
           variant="error"
           message={opts.errorMessage}
@@ -66,7 +81,7 @@ export function DataResult<T extends ResultsMap>({
       );
     }
 
-    return (
+    return withTitle(
       <StatusMessage
         variant="error"
         error={error}
@@ -83,10 +98,10 @@ export function DataResult<T extends ResultsMap>({
     const opts = options?.[key];
 
     if (opts?.renderLoading) {
-      return <>{opts.renderLoading()}</>;
+      return withTitle(opts.renderLoading());
     }
 
-    return (
+    return withTitle(
       <StatusMessage
         loading
         message={opts?.loadingMessage ?? loadingMessage}

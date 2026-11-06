@@ -529,7 +529,10 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   }, [deleteMutation, queryClient, navigate, entityId]);
 
   return (
-    <DataResult results={{ entity: entityResult, record: recordResult }}>
+    <DataResult
+      pageTitle="Record"
+      results={{ entity: entityResult, record: recordResult }}
+    >
       {({
         entity: entityPayload,
         record: recordPayload,

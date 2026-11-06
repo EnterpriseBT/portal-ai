@@ -875,7 +875,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   );
 
   return (
-    <DataResult results={{ entity: entityResult }}>
+    <DataResult pageTitle="Entity" results={{ entity: entityResult }}>
       {({
         entity: entityPayload,
       }: {

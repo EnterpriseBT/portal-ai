@@ -114,7 +114,7 @@ const PATH_OWNERS = [
   // The shell and page-level status: layouts, nav, loading, error pages,
   // Help and the dashboard, and the page-structure primitives.
   [
-    /(\/layouts\/|SidebarNav|HeaderMenu|\/(Authorized|Loading)\.|HttpError|BadRequest|Forbidden|NotFound|ServerError|Unauthorized|\/Help\.view|\/Dashboard\.view|PageSection|PageHeader|HealthCheck)/,
+    /(\/layouts\/|SidebarNav|SidebarVersionCaption|HeaderMenu|OrgSwitcher|ThemeSwitcher|SkipLinks|ToastHost|UpdateBanner|route-announcer|\/(Authorized|Loading)\.|HttpError|BadRequest|Forbidden|NotFound|ServerError|Unauthorized|\/Help\.view|\/Dashboard\.view|PageSection|PageHeader|HealthCheck)/,
     797,
   ],
   [
@@ -348,8 +348,9 @@ const IMPACT_ORDER = ["critical", "serious", "moderate", "minor"];
  * One row per rule × element: the same violation on the same component,
  * wherever it was seen, with the pages (routes, stories or lines) it was seen
  * on and an instance count. A group whose findings have different owners
- * is a shared component: on at least half the walked app routes it's
- * shared chrome (#797), otherwise it goes to its most common owner.
+ * is a shared component: on at least half the walked app routes, and in
+ * their error and loading states too, it's shared chrome (#797); otherwise
+ * it goes to its most common owner.
  */
 function groupFindings(findings, appRouteCount) {
   const byKey = new Map();
@@ -366,7 +367,12 @@ function groupFindings(findings, appRouteCount) {
     let owner = owners[0];
     if (new Set(owners).size > 1) {
       const routes = new Set(members.map((m) => m.where));
-      if (first.tool === "axe-app" && appRouteCount > 0 && routes.size * 2 >= appRouteCount) owner = 797;
+      // Shell chrome renders whatever state the page is in, so it's seen in
+      // the error and loading states too; a list-card title on many routes
+      // isn't, since those states have no rows (#797 smoke).
+      const states = new Set(members.flatMap((m) => m.seen.map((x) => x.state)));
+      const everyState = states.has("error") && states.has("loading");
+      if (first.tool === "axe-app" && appRouteCount > 0 && routes.size * 2 >= appRouteCount && everyState) owner = 797;
       else {
         const tally = {};
         for (const o of owners) tally[o] = (tally[o] ?? 0) + 1;
@@ -403,13 +409,17 @@ function groupFindings(findings, appRouteCount) {
   );
 }
 
-/** Counts the hand-written KB-/SR- rows per owner. The owner is the row's
- *  last cell, written "#79x". */
+/** Counts the open hand-written KB-/SR- rows per owner. The owner is the
+ *  row's last cell, written "#79x"; a row whose Observed cell starts
+ *  "Closed:" isn't counted. */
 export function parseManual(doc) {
   const counts = {};
   for (const line of doc.split("\n")) {
     if (!/^\|\s*(KB|SR)-\d+\s*\|/.test(line)) continue;
     const cells = line.split("|").map((c) => c.trim()).filter((c, i, all) => i > 0 && i < all.length - 1);
+    // A row whose Observed cell (the fifth) starts "Closed:" is fixed and kept
+    // for the record; it no longer counts against its owner.
+    if (/^\**Closed:/.test(cells[4] ?? "")) continue;
     const m = /#(\d+)/.exec(cells[cells.length - 1] ?? "");
     const owner = m && OWNERS[m[1]] ? m[1] : "unassigned";
     counts[owner] = (counts[owner] ?? 0) + 1;
@@ -696,7 +706,7 @@ async function selfTest() {
         data: rawFile("jest-axe", [
           { context: { file: "apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx", story: "Default" }, status: "ok", violations: [violation("aria-roles", ["wcag2a", "wcag412"])] },
           { context: { file: "apps/web/src/components/RenameDialog.component.stories.tsx", story: "Open" }, status: "ok", violations: [violation("label", ["wcag2a", "wcag412"])] },
-          { context: { file: "apps/web/src/components/ToastHost.stories.tsx", story: "Stack" }, status: "ok", violations: [violation("aria-roles", ["wcag2a", "wcag412"])] },
+          { context: { file: "apps/web/src/components/UnplacedWidget.stories.tsx", story: "Stack" }, status: "ok", violations: [violation("aria-roles", ["wcag2a", "wcag412"])] },
         ]),
       },
       {
@@ -730,7 +740,7 @@ async function selfTest() {
       ownerOf(byRule("jsx-a11y/anchor-is-valid")) === 797,
     JSON.stringify(appInv?.map((f) => [f.rule, f.location, f.owner]))
   );
-  check("a finding no rule places is unassigned, never guessed", ownerOf(byRule("aria-roles", "ToastHost")) === "unassigned", ownerOf(byRule("aria-roles", "ToastHost")));
+  check("a finding no rule places is unassigned, never guessed", ownerOf(byRule("aria-roles", "UnplacedWidget")) === "unassigned", ownerOf(byRule("aria-roles", "UnplacedWidget")));
   check("a finding with no wcag tag is best practice (no criteria)", byRule("region")?.wcag.length === 0, JSON.stringify(byRule("region")));
 
   // Owner rules added from the first real run (#792 slice 6)
@@ -808,6 +818,15 @@ async function selfTest() {
           appRun("stations", 794, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(5) > div"])]),
           appRun("settings", 793, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(3) > div"])]),
           appRun("help", 797, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(1) > div"])]),
+          // The nav is chrome: it renders in the error and loading states too.
+          appRun("jobs", 794, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(2) > div"])], { state: "error" }),
+          appRun("jobs", 794, [violation("aria-command-name", ["wcag412"], [".MuiList-root > li:nth-child(2) > div"])], { state: "loading" }),
+          // A list-card title on half the routes, but only where the list has
+          // rows: content, not chrome (#797 smoke).
+          appRun("jobs", 794, [violation("heading-order", ["best-practice"], ["div.card > h6"])]),
+          appRun("stations", 794, [violation("heading-order", ["best-practice"], ["div.card > h6"])]),
+          appRun("tags", 794, [violation("heading-order", ["best-practice"], ["div.card > h6"])]),
+          appRun("dashboard", 797, [violation("heading-order", ["best-practice"], ["div.card > h6"])]),
           appRun("tags", 794, [violation("label", ["wcag412"], ["#\\:r5\\: input"])]),
           appRun("views", 794, [violation("label", ["wcag412"], ["#\\:r9\\: input"])]),
           appRun("dashboard", 797, []),
@@ -836,9 +855,14 @@ async function selfTest() {
     JSON.stringify(nav)
   );
   check(
-    "an element seen on at least half the walked app routes is shared chrome, owned by #797",
+    "an element seen on at least half the walked app routes, in their error and loading states too, is shared chrome, owned by #797",
     nav[0]?.owner === 797,
     nav[0]?.owner
+  );
+  check(
+    "an element on half the routes but only in populated pages is content, not chrome: it keeps its most common owner",
+    groupOf("heading-order")[0]?.owner === 794,
+    JSON.stringify(groupOf("heading-order"))
   );
   check(
     "generated MUI ids don't split a group",
@@ -911,6 +935,16 @@ async function selfTest() {
     ])
   );
   const manual = run("manual parse", () => parseManual(DOC_FIXTURE));
+  check(
+    "a row whose Observed cell starts Closed: isn't counted against its owner",
+    JSON.stringify(
+      parseManual(
+        "| KB-01 | All | Tab | 2.4.1 | **Closed:** skip link added (#797) | keyboard | #797 |\n" +
+          "| KB-02 | All | Tab | 2.4.3 | still open | keyboard | #797 |\n"
+      )
+    ) === JSON.stringify({ 797: 1 }),
+    "closed row counted"
+  );
   check(
     "keyboard and screen-reader rows are counted per owner",
     manual?.[797] === 1 && manual?.[793] === 1 && manual?.[798] === 1,

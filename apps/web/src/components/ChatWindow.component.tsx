@@ -209,6 +209,11 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
         <Box sx={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
           <Box
             ref={setScrollNode}
+            // The APG log pattern (#797): new messages are read as they
+            // land, and a streaming reply only once it's complete.
+            role="log"
+            aria-label="Conversation"
+            aria-busy={Boolean(isStreaming)}
             onScroll={updateJumpButtons}
             onWheel={handleWheel}
             onTouchMove={handleWheel}
@@ -290,6 +295,12 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
             minRows={2}
             maxRows={6}
             fullWidth
+            // A name for assistive tech; the placeholder isn't one (#797).
+            // An aria-label, not a hidden `label`: an outlined field with a
+            // label hides its placeholder until focused and notches its
+            // border. MUI links the helper text (the lock reason) as its
+            // description.
+            slotProps={{ htmlInput: { "aria-label": "Message" } }}
             placeholder={CHAT_INPUT_PLACEHOLDER}
             value={value}
             onChange={(e) => setValue(e.target.value)}

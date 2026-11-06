@@ -183,3 +183,15 @@ describe("HttpError Component", () => {
     });
   });
 });
+
+describe("HttpError heading order (#797)", () => {
+  it("puts its title one level under the status code", () => {
+    renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "404" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Not Found" })
+    ).toBeInTheDocument();
+  });
+});

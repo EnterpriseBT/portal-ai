@@ -10,6 +10,7 @@ import {
   IconName,
   Typography,
   Divider,
+  visuallyHidden,
 } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
@@ -20,6 +21,12 @@ export interface HeaderMenuUIProps {
   label?: string;
   children?: React.ReactNode;
 }
+
+/** A menu item that can be chosen: not a label row, not disabled. */
+const isMenuItem = (target: EventTarget): boolean =>
+  target instanceof HTMLElement &&
+  /^menuitem/.test(target.getAttribute("role") ?? "") &&
+  target.getAttribute("aria-disabled") !== "true";
 
 export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
   image,
@@ -43,9 +50,9 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
         color="inherit"
         onClick={handleClick}
         size="small"
-        aria-label="account menu"
+        // Named by its visible text, the user's name (WCAG 2.5.3, #797).
         aria-controls={open ? "account-menu" : undefined}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open ? "true" : undefined}
         sx={(theme) => ({
           display: "flex",
@@ -54,19 +61,19 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
           borderRadius: `${theme.shape.borderRadius}px`,
         })}
       >
-        {label && (
-          <Typography
-            variant="body2"
-            sx={{ display: { xs: "none", sm: "block" } }}
-          >
-            {label}
-          </Typography>
-        )}
-        <Avatar
-          src={image}
-          alt={label || "User"}
-          sx={{ width: 32, height: 32 }}
+        {/* Shown from sm up; on xs it's visually hidden but still the
+            button's name. With no user name, it reads "Account". */}
+        <Typography
+          variant="body2"
+          sx={(theme) => ({
+            [theme.breakpoints.down("sm")]: visuallyHidden,
+            ...(!label && visuallyHidden),
+          })}
         >
+          {label || "Account"}
+        </Typography>
+        {/* Decorative: the name is already the button's text. */}
+        <Avatar src={image} alt="" sx={{ width: 32, height: 32 }}>
           {!image && <Icon name={IconName.Person} />}
         </Avatar>
       </BaseIconButton>
@@ -76,6 +83,19 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
         open={open}
         onClose={handleClose}
         onClick={handleClose}
+        // A menu item chosen from the keyboard closes the menu too (#797
+        // smoke). MUI runs an item's onClick from its keydown (Enter) or
+        // keyup (Space) handler, which never reaches the Menu's onClick.
+        slotProps={{
+          list: {
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" && isMenuItem(e.target)) handleClose();
+            },
+            onKeyUp: (e: React.KeyboardEvent) => {
+              if (e.key === " " && isMenuItem(e.target)) handleClose();
+            },
+          },
+        }}
         transformOrigin={{ horizontal: "right", vertical: "top" }}
         anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
       >

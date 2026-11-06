@@ -13,6 +13,7 @@ import { NAV_PAGE_IDS } from "@portalai/core/models";
 import { useLayout } from "../utils";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { SidebarNavItem } from "./SidebarNavItem.component";
+import { SidebarVersionCaptionUI } from "./SidebarVersionCaption.component";
 import { useRouter } from "@tanstack/react-router";
 import { ApplicationRoute } from "../utils/routes.util";
 import { sdk } from "../api/sdk";
@@ -126,6 +127,8 @@ export interface SidebarNavUIProps {
   frozen?: boolean;
   footer?: React.ReactNode | (() => React.ReactNode);
   onClickAway?: () => void;
+  /** Escape pressed inside the drawer (#797): closes the mobile overlay. */
+  onEscape?: () => void;
 }
 
 export const SidebarNavUI = ({
@@ -136,11 +139,22 @@ export const SidebarNavUI = ({
   showSideBarToggle = true,
   frozen = false,
   onClickAway,
+  onEscape,
 }: SidebarNavUIProps) => {
   const resolvedFooter = typeof footer === "function" ? footer() : footer;
 
+  // React bubbles keys through portals, so a dialog the drawer opened (the
+  // app version) would reach here; only an Escape from the drawer's own DOM
+  // closes it.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Escape" || e.defaultPrevented || !onEscape) return;
+    if (!e.currentTarget.contains(e.target as Node)) return;
+    onEscape();
+  };
+
   const drawer = (
     <Box
+      onKeyDown={handleKeyDown}
       sx={{
         position: "relative",
         display: hidden ? "none" : "block",
@@ -149,6 +163,14 @@ export const SidebarNavUI = ({
       <Drawer
         variant="permanent"
         open={!collapsed}
+        // The primary navigation landmark (#797); the toggle controls it.
+        slotProps={{
+          paper: {
+            component: "nav",
+            id: "primary-nav",
+            "aria-label": "Primary",
+          } as React.HTMLAttributes<HTMLElement>,
+        }}
         sx={() => ({
           height: "100%",
           "& .MuiDrawer-paper": {
@@ -227,9 +249,18 @@ export const SidebarNav = () => {
   const { logout } = sdk.auth.logout();
   const [versionOpen, setVersionOpen] = useState(false);
   const pathname = router.state.location.pathname;
-  const handleClick = (path: string) => {
+  // Items are links (#797): the router navigates; this only closes the
+  // mobile drawer on the way.
+  const handleClick = () => {
     if (isMobileExpanded) toggle();
-    router.navigate({ to: path });
+  };
+  // Escape closes the mobile overlay and returns focus to the header toggle
+  // that opened it, rather than leaving it in the hidden drawer.
+  const closeFromKeyboard = () => {
+    toggle();
+    document
+      .querySelector<HTMLElement>('button[aria-controls="primary-nav"]')
+      ?.focus();
   };
   return (
     <SidebarNavUI
@@ -238,43 +269,33 @@ export const SidebarNav = () => {
       frozen={isMobileExpanded}
       showSideBarToggle={!isMobile}
       onClickAway={isMobileExpanded ? toggle : undefined}
+      onEscape={isMobileExpanded ? closeFromKeyboard : undefined}
       footer={
         <>
           <SidebarNavItem
             icon={IconName.Settings}
             label="Settings"
+            href={ApplicationRoute.Settings}
             selected={pathname === ApplicationRoute.Settings}
-            onClick={() => handleClick(ApplicationRoute.Settings)}
+            onClick={handleClick}
           />
           <SidebarNavItem
             icon={IconName.HelpOutline}
             label="Help"
+            href={ApplicationRoute.Help}
             selected={pathname.startsWith(ApplicationRoute.Help)}
-            onClick={() => handleClick(ApplicationRoute.Help)}
+            onClick={handleClick}
           />
           <SidebarNavItem
             icon={IconName.Logout}
             label="Logout"
             onClick={logout}
           />
-          <Typography
-            variant="caption"
-            color="text.secondary"
+          <SidebarVersionCaptionUI
+            collapsed={isCollapsed}
+            year={new Date().getFullYear()}
             onClick={() => setVersionOpen(true)}
-            sx={{
-              display: "block",
-              textAlign: "center",
-              py: 0.5,
-              px: 1,
-              fontSize: "0.65rem",
-              cursor: "pointer",
-              "&:hover": { textDecoration: "underline" },
-            }}
-          >
-            {isCollapsed
-              ? `\u00A9 ${new Date().getFullYear()}`
-              : `Portalsai \u00A9 ${new Date().getFullYear()}`}
-          </Typography>
+          />
           <Modal
             open={versionOpen}
             onClose={() => setVersionOpen(false)}
@@ -315,7 +336,8 @@ export const SidebarNav = () => {
               ? pathname === item.route
               : pathname.startsWith(item.route)
           }
-          onClick={() => handleClick(item.route)}
+          href={item.route}
+          onClick={handleClick}
         />
       ))}
     </SidebarNavUI>

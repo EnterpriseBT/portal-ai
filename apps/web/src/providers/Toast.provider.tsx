@@ -12,7 +12,7 @@ import {
   TOAST_MAX_VISIBLE,
   TOAST_QUEUE_CAP,
 } from "../utils/toast.constants";
-import { ToastContext } from "../utils/toast.context";
+import { ToastContext, ToastPresenceContext } from "../utils/toast.context";
 
 import type { Toast, ToastApi, ToastOptions } from "../utils/toast.context";
 
@@ -149,13 +149,15 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
   return (
     <ToastContext.Provider value={api}>
-      {children}
-      <ToastHost
-        toasts={visible}
-        hiddenCount={queue.length - visible.length}
-        onDismiss={dismiss}
-        onDismissAll={dismissAll}
-      />
+      <ToastPresenceContext.Provider value={visible.length}>
+        {children}
+        <ToastHost
+          toasts={visible}
+          hiddenCount={queue.length - visible.length}
+          onDismiss={dismiss}
+          onDismissAll={dismissAll}
+        />
+      </ToastPresenceContext.Provider>
     </ToastContext.Provider>
   );
 };

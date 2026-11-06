@@ -4,6 +4,7 @@ import {
   createTheme,
   responsiveFontSizes,
   useTheme as useMuiTheme,
+  type SimplePaletteColorOptions,
   type Theme,
   type ThemeOptions,
 } from "@mui/material/styles";
@@ -17,8 +18,54 @@ import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type:
  * means components can use `variant="h1"` / `variant="h2"` without redefining
  * responsive `fontSize` rules at every call site — the theme owns the scale.
  */
-const buildTheme = (options: ThemeOptions): Theme =>
-  responsiveFontSizes(createTheme(options));
+const buildTheme = (options: ThemeOptions): Theme => {
+  // The ring takes the palette's primary; the JSON themes always set one, so
+  // the theme is built once. A theme without one gets MUI's default primary.
+  const primary =
+    (options.palette?.primary as SimplePaletteColorOptions | undefined)?.main ??
+    createTheme().palette.primary.main;
+  return responsiveFontSizes(createTheme(options, a11yComponents(primary)));
+};
+
+/** Width of the keyboard focus ring every theme draws (#797). */
+export const FOCUS_RING_WIDTH = 2;
+
+/**
+ * The accessibility overrides every theme gets, whatever its JSON says
+ * (#797, WCAG 2.4.7 / 1.4.11 / 4.1.2):
+ *
+ * - a focus ring on every keyboard-focused control, in `ringColor` (the
+ *   palette's `primary.main`), which
+ *   the contrast test holds at 3:1 or more against both backgrounds. MUI's
+ *   ripple alone is too faint to see;
+ * - a name for every `CircularProgress`, so an unnamed spinner announces
+ *   "Loading". A caller's own `aria-label` still wins.
+ *
+ * `createTheme(options, this)` deep-merges, so a JSON override for the same
+ * component keeps its other keys.
+ */
+export function a11yComponents(ringColor: string): ThemeOptions {
+  const ring = {
+    outline: `${FOCUS_RING_WIDTH}px solid ${ringColor}`,
+    outlineOffset: 2,
+  };
+  return {
+    components: {
+      MuiButtonBase: {
+        styleOverrides: { root: { "&.Mui-focusVisible": ring } },
+      },
+      MuiLink: {
+        styleOverrides: { root: { "&:focus-visible": ring } },
+      },
+      MuiCircularProgress: {
+        defaultProps: { "aria-label": "Loading" },
+      },
+      MuiLinearProgress: {
+        defaultProps: { "aria-label": "Progress" },
+      },
+    },
+  };
+}
 
 export const THEME_MAP = {
   brand: buildTheme(brandTheme as ThemeOptions),

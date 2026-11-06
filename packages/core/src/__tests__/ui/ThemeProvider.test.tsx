@@ -2,7 +2,11 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
+import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import {
+  a11yComponents,
+  FOCUS_RING_WIDTH,
   ThemeProvider,
   useTheme,
   ThemeContext,
@@ -503,5 +507,67 @@ describe("ThemeProvider Component", () => {
         "brand.dark"
       );
     });
+  });
+});
+
+describe("accessibility defaults (#797)", () => {
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s draws a 2px focus ring on a keyboard-focused ButtonBase",
+    (name) => {
+      const overrides = THEME_MAP[name].components?.MuiButtonBase
+        ?.styleOverrides?.root as Record<string, Record<string, unknown>>;
+      expect(overrides["&.Mui-focusVisible"]).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${THEME_MAP[name].palette.primary.main}`,
+        outlineOffset: 2,
+      });
+    }
+  );
+
+  it("names an unnamed CircularProgress 'Loading'", () => {
+    render(
+      <ThemeProvider>
+        <CircularProgress />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Loading" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a caller's own name", () => {
+    render(
+      <ThemeProvider>
+        <CircularProgress aria-label="Saving" />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Saving" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the JSON's own overrides for the same component", () => {
+    expect(
+      THEME_MAP.brand.components?.MuiCircularProgress?.defaultProps
+    ).toMatchObject({
+      thickness: 3.6,
+      "aria-label": "Loading",
+    });
+    expect(
+      a11yComponents(THEME_MAP.brand.palette.primary.main).components
+        ?.MuiButtonBase
+    ).toBeDefined();
+  });
+});
+
+describe("linear progress name (#797)", () => {
+  it("names an unnamed LinearProgress 'Progress'", () => {
+    render(
+      <ThemeProvider>
+        <LinearProgress value={40} variant="determinate" />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Progress" })
+    ).toBeInTheDocument();
   });
 });
