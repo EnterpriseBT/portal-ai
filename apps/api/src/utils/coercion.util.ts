@@ -17,6 +17,9 @@ export function coerceString(value: unknown): CoercionResult {
   return { value: String(value) };
 }
 
+/** A whole numeric literal, once currency and grouping are stripped. */
+const NUMERIC_LITERAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
 export function coerceNumber(
   value: unknown,
   format?: string | null
@@ -30,19 +33,22 @@ export function coerceNumber(
   let str = String(value).trim();
   if (str === "") return { value: null };
 
-  // European format: 1.234,56 → 1234.56
+  // Strip currency symbols and whitespace, then the grouping separator.
+  str = str.replace(/[$€£¥\s]/g, "");
   if (format && (format === "eu" || format.includes(","))) {
+    // European format: 1.234,56 → 1234.56
     str = str.replace(/\./g, "").replace(",", ".");
   } else {
-    // Standard: strip currency symbols, commas, whitespace
-    str = str.replace(/[$€£¥\s]/g, "").replace(/,/g, "");
+    str = str.replace(/,/g, "");
   }
 
-  const num = parseFloat(str);
-  if (Number.isNaN(num)) {
+  // #968: what's left must be wholly a number. parseFloat alone kept a
+  // leading number and dropped the rest ("10 HP" → 10, "25 + 1/s" → 25),
+  // losing the value silently instead of reporting it.
+  if (!NUMERIC_LITERAL.test(str)) {
     return { value: null, error: "Expected a number" };
   }
-  return applyNumberFormat(num, format);
+  return applyNumberFormat(Number(str), format);
 }
 
 function applyNumberFormat(

@@ -99,6 +99,36 @@ describe("coerceNumber", () => {
     expect(coerceNumber("  42  ")).toEqual({ value: 42 });
   });
 
+  // #968: parseFloat kept the leading number and dropped the rest.
+  it.each(["10 HP", "25 + 1/s", "10%", "5kg", "1.2.3", "12abc", "-", "."])(
+    "rejects %p, which isn't wholly a number",
+    (input) => {
+      expect(coerceNumber(input)).toEqual({
+        value: null,
+        error: "Expected a number",
+      });
+    }
+  );
+
+  it.each([
+    ["-7", -7],
+    ["+3.5", 3.5],
+    [".5", 0.5],
+    ["5.", 5],
+    ["1e3", 1000],
+    ["2.5E-2", 0.025],
+    ["$ 1 234", 1234],
+  ])("accepts %p as %p", (input, expected) => {
+    expect(coerceNumber(input)).toEqual({ value: expected });
+  });
+
+  it("rejects trailing text in EU format too", () => {
+    expect(coerceNumber("1.234,56 EUR", "eu")).toEqual({
+      value: null,
+      error: "Expected a number",
+    });
+  });
+
   it("rounds to 2 decimal places with currency format", () => {
     expect(coerceNumber("$19.999", "currency")).toEqual({ value: 20 });
     expect(coerceNumber("$1,234.567", "currency")).toEqual({ value: 1234.57 });

@@ -9,7 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import postgres from "postgres";
 
 import type { LayoutPlan, WorkbookData } from "@portalai/core/contracts";
@@ -164,7 +164,8 @@ async function seedColumnDefinition(
   db: Db,
   organizationId: string,
   key: string,
-  label: string = key
+  label: string = key,
+  type: "string" | "number" | "datetime" = "string"
 ): Promise<string> {
   const id = generateId();
   await db.insert(schema.columnDefinitions).values({
@@ -172,7 +173,7 @@ async function seedColumnDefinition(
     organizationId,
     key,
     label,
-    type: "string",
+    type,
     description: null,
     validationPattern: null,
     validationMessage: null,
@@ -370,6 +371,78 @@ function sparseToDenseRows(
     }
   }
   return dense;
+}
+
+/**
+ * #968: three rows from the prod upload, plus one clean row. `energy_cost`
+ * is bound to a number column and `researched_at` to a datetime one, so the
+ * first three rows each carry a cell that doesn't coerce.
+ */
+const TYPED_ROWS: [string, string, string][] = [
+  ["Stim Packs", "10 HP", "Academy"],
+  ["Lockdown", "100", "Covert Ops"],
+  ["Personnel Cloaking", "25 + 1/s", "Covert Ops"],
+  ["Yamato Cannon", "150", "2026-01-02T03:04:05Z"],
+];
+
+function makeTypedWorkbook(): WorkbookData {
+  const header = ["name", "energy_cost", "researched_at"];
+  const rows = [header, ...TYPED_ROWS];
+  return {
+    sheets: [
+      {
+        name: "Sheet1",
+        dimensions: { rows: rows.length, cols: 3 },
+        cells: rows.flatMap((row, r) =>
+          row.map((value, c) => ({ row: r + 1, col: c + 1, value }))
+        ),
+      },
+    ],
+  };
+}
+
+function makeTypedPlan(ids: {
+  name: string;
+  energyCost: string;
+  researchedAt: string;
+}): LayoutPlan {
+  const base = makePlan(ids.name, ids.energyCost);
+  const region = base.regions[0]!;
+  const binding = (name: string, columnDefinitionId: string) => ({
+    sourceLocator: {
+      kind: "byHeaderName" as const,
+      axis: "row" as const,
+      name,
+    },
+    columnDefinitionId,
+    confidence: 0.9,
+  });
+  return {
+    ...base,
+    workbookFingerprint: {
+      sheetNames: ["Sheet1"],
+      dimensions: { Sheet1: { rows: TYPED_ROWS.length + 1, cols: 3 } },
+      anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "name" }],
+    },
+    regions: [
+      {
+        ...region,
+        targetEntityDefinitionId: "upgrades",
+        bounds: {
+          startRow: 1,
+          startCol: 1,
+          endRow: TYPED_ROWS.length + 1,
+          endCol: 3,
+        },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+        columnBindings: [
+          binding("name", ids.name),
+          binding("energy_cost", ids.energyCost),
+          binding("researched_at", ids.researchedAt),
+        ],
+      },
+    ],
+  };
 }
 
 describe("Layout Plans Draft Router", () => {
@@ -744,6 +817,92 @@ describe("Layout Plans Draft Router", () => {
           eq(connectorEntities.connectorInstanceId, result.connectorInstanceId)
         );
       expect(entities.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("#968: a cell that doesn't parse as its column type is stored null and its record invalid, rather than failing the commit", async () => {
+      const ids = {
+        name: await seedColumnDefinition(db as Db, organizationId, "name"),
+        energyCost: await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "energy_cost",
+          "Energy cost",
+          "number"
+        ),
+        researchedAt: await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "researched_at",
+          "Researched at",
+          "datetime"
+        ),
+      };
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeTypedWorkbook(),
+        userId
+      );
+
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "Upgrades",
+        plan: makeTypedPlan(ids),
+        uploadSessionId,
+      });
+
+      expect(result.recordCounts).toMatchObject({ created: 4, invalid: 3 });
+      const [entity] = await (db as Db)
+        .select()
+        .from(connectorEntities)
+        .where(
+          eq(connectorEntities.connectorInstanceId, result.connectorInstanceId)
+        );
+      const records = await (db as Db)
+        .select()
+        .from(schema.entityRecords)
+        .where(eq(schema.entityRecords.connectorEntityId, entity!.id));
+      const bySource = new Map(
+        records.map((r) => [
+          (r.data as Record<string, unknown>)[ids.name] ?? r.sourceId,
+          r,
+        ])
+      );
+      const errorsOf = (name: string) =>
+        (bySource.get(name)?.validationErrors ?? [])
+          .map((e) => `${e.field}: ${e.error}`)
+          .sort();
+      expect(records).toHaveLength(4);
+      expect(bySource.get("Stim Packs")?.isValid).toBe(false);
+      expect(errorsOf("Stim Packs")).toEqual([
+        "energy_cost: Expected a number",
+        expect.stringMatching(/^researched_at: /),
+      ]);
+      expect(errorsOf("Lockdown")).toEqual([
+        expect.stringMatching(/^researched_at: /),
+      ]);
+      expect(errorsOf("Personnel Cloaking")).toHaveLength(2);
+      expect(bySource.get("Yamato Cannon")?.isValid).toBe(true);
+      expect(bySource.get("Yamato Cannon")?.validationErrors).toBeNull();
+
+      // The typed columns hold the coerced values, and null where coercion failed.
+      const wide = (await (db as Db).execute(
+        sql.raw(
+          `SELECT c_name, c_energy_cost, c_researched_at FROM "er__${entity!.id}" ORDER BY c_name`
+        )
+      )) as unknown as Array<Record<string, unknown>>;
+      expect(
+        wide.map((r) => [
+          r.c_name,
+          r.c_energy_cost === null ? null : Number(r.c_energy_cost),
+          r.c_researched_at === null ? null : "set",
+        ])
+      ).toEqual([
+        ["Lockdown", 100, null],
+        ["Personnel Cloaking", null, null],
+        ["Stim Packs", null, null],
+        ["Yamato Cannon", 150, "set"],
+      ]);
     });
 
     // #805: the session writer strips U+0000 on ingest and records how many
