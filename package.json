@@ -43,7 +43,7 @@
 		"yaml": "^2.9.0",
 		"zod": "^4.3.6"
 	},
-	"packageManager": "npm@10.9.2",
+	"packageManager": "npm@11.21.1",
 	"workspaces": [
 		"apps/*",
 		"packages/*"
