@@ -1,5 +1,12 @@
 FROM node:22 AS dev
 
+# Pin npm to the version that writes package-lock.json (package.json's
+# `packageManager`). node:22 bundles npm 10, which re-serializes the lockfile
+# on every `npm i`: it drops the platform packages' `libc` fields and rewrites
+# dev/peer flags. onCreateCommand's install then leaves a lockfile diff on
+# every container boot. Bump this and `packageManager` together.
+RUN npm install -g npm@11.21.1
+
 # Install git, git autocomplete, ngrok CLI, and AWS CLI v2
 RUN apt-get update && apt-get install -y \
     git \
