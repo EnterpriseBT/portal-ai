@@ -17,6 +17,26 @@ export function coerceString(value: unknown): CoercionResult {
   return { value: String(value) };
 }
 
+/**
+ * Whether a mapping's number format means a comma decimal separator: `eu`, a
+ * bare `,`, or a pattern whose decimal separator is the comma (`#.##0,00`,
+ * `0,00`). A display pattern like `#,##0.00` or `$#,##0` uses the comma for
+ * grouping, and the catalog's Decimal and Integer columns carry one by
+ * default: treating any comma as European read "12.5" as 125 (#968).
+ */
+function isEuropeanNumberFormat(format?: string | null): boolean {
+  if (!format) return false;
+  if (format === "eu" || format === ",") return true;
+  const pattern = format.replace(/[^#0.,]/g, "");
+  const lastComma = pattern.lastIndexOf(",");
+  if (lastComma < 0) return false;
+  const lastDot = pattern.lastIndexOf(".");
+  if (lastDot >= 0) return lastComma > lastDot;
+  // Only commas: a grouping comma is followed by exactly three digits
+  // (`#,##0`); anything else after the last comma is decimals (`0,00`).
+  return pattern.length - lastComma - 1 !== 3;
+}
+
 /** A whole numeric literal, once currency and grouping are stripped. */
 const NUMERIC_LITERAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
@@ -37,7 +57,7 @@ export function coerceNumber(
 
   // Strip currency symbols and whitespace, then the grouping separator.
   str = str.replace(/[$€£¥\s]/g, "");
-  if (format && (format === "eu" || format.includes(","))) {
+  if (isEuropeanNumberFormat(format)) {
     // European format: 1.234,56 → 1234.56
     str = str.replace(/\./g, "").replace(",", ".");
   } else {
@@ -110,6 +130,24 @@ function normalizeDateFormat(fmt: string): string {
   return fmt.replace(/YYYY/g, "yyyy").replace(/YY/g, "yy").replace(/DD/g, "dd");
 }
 
+/**
+ * Whether an ISO 8601 value names a real calendar date and time. Native
+ * parsing rolls an impossible one over ("2026-02-30" → 2026-03-02) and
+ * reports it valid (#968).
+ */
+function isRealIsoDate(str: string): boolean {
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(str);
+  if (!m) return true; // not ISO: nothing to check here
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (month < 1 || month > 12 || day < 1) return false;
+  if (day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return false;
+  if (m[4] !== undefined && (Number(m[4]) > 23 || Number(m[5]) > 59)) {
+    return false;
+  }
+  return m[6] === undefined || Number(m[6]) <= 59;
+}
+
 /** An ISO 8601 date, optionally with a time and offset. */
 const ISO_8601 =
   /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -121,6 +159,7 @@ function parseDate(value: unknown, format?: string | null): Date | null {
   }
   const str = String(value).trim();
   if (str === "") return null;
+  if (!isRealIsoDate(str)) return null;
 
   try {
     if (format) {

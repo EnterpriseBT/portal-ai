@@ -58,3 +58,40 @@
 - Naming the failing column in a database error's message (#540 keeps database errors redacted). After this fix, a coercion failure becomes a field error, not a database error.
 - Making the interpreter better at guessing types (`_at` headers → datetime).
 - Rolling back targets that committed before a later one failed (a partial commit stays visible as an `error` connector).
+
+## Adversarial
+
+Probes for how coerce-on-commit breaks. Each runs through the upload dialog against the dev stack (the API needs S3 credentials that work), binding the named column as stated, then reads the record page. Expected SAFE throughout: **the commit completes**, a value that doesn't fit is stored empty with a field error naming the column, and nothing else changes.
+
+§2 Auth, §4 Multi-tenant and §5 Concurrency are N/A. The change adds no route or permission check. Mappings load by the commit's own entity id. Writes still run under the existing per-entity lock.
+
+### §1 — Boundary values (one CSV, `amount` → Decimal, `when` → Date & Time)
+- [ ] `amount` cells `1e400`, `-1e400`, `1e308`, `0`, `-0`, `.5`, `5.`, `  42  `, `$1,234.56`, `1 234` → `1e400`/`-1e400` invalid ("Expected a number"); the rest stored as 1e308, 0, 0, 0.5, 5, 42, 1234.56, 1234; no 22P02.
+- [ ] `when` cells `2026-01-02`, `2026-01-02T03:04:05.678Z`, `2026-01-02 03:04`, `9999-12-31`, `0000-00-00` → the first four stored; `0000-00-00` invalid.
+- [ ] A 50,000-character cell in a Decimal column → invalid with "Expected a number"; the commit completes in normal time.
+
+### §3 — Malformed input
+- [ ] `amount` cells `Infinity`, `NaN`, `0x10`, `1_000`, `١٢٣` (Arabic-Indic digits), `=1+1`, `'100`, `１００` (full-width) → each invalid with "Expected a number"; none stored as a number.
+- [ ] `when` cells `Academy`, `2026-13-45`, `2026-02-30`, `<script>alert(1)</script>` → each invalid; the record page shows the error as text, and no script runs.
+- [ ] A Boolean binding with cells `yes`, `Y`, `true`, `maybe` → `maybe` invalid ("Expected a boolean"); `Y` invalid too (not in the accepted set); the rest stored.
+
+### §6 — Lifecycle
+- [ ] Clear the entity's records (Delete records), then upload the same file into the same connector (Edit → recommit) → the records come back (resurrected); invalid ones are still marked invalid with the same errors; no duplicates.
+- [ ] Recommit after changing `amount` from Decimal to Text → the previously invalid cells are now valid text **only for rows whose content changed**; unchanged rows keep their old flags. Known: #973. Record it, don't fail on it.
+- [ ] Delete the connector that a failed partial commit left in `error` (`— backend`: produce one with the slice-2 integration fixture against the dev DB) → the delete succeeds and its entities go with it.
+
+### §7 — Misuse sequences
+- [ ] Set a binding's Format to `MM/dd/yyyy` on a Date column whose cells are ISO (`2026-01-02`) → stored as 2026-01-02 (ISO still parses), not invalid.
+- [ ] Set Format `eu` on a Decimal column with US-formatted cells (`1,234.56`, `12.5`) → expected SAFE: invalid, never a different number. By the code, `1,234.56` is read as **1.23456** and `12.5` as **125**, silently. That predates #968 (the EU rule is unchanged), but this PR makes it reach every upload. Record the stored values.
+- [ ] Mark `amount` Required and leave a cell empty → that record invalid ("required"); the commit completes.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §1 Decimal/Integer under the catalog's default format | `#,##0.00` / `#,##0` (display patterns) were parsed as European: `.5` → 5, `$1,234.56` → 1.23456, stored valid | high | fixed-in-PR: only `eu`, a bare `,` or a pattern whose decimal separator is the comma is European; re-validated live, `.5` → 0.5, `$1,234.56` → 1234.56 |
+| §1 `2026-02-30` | Rolled over to 2026-03-02, stored valid | med | fixed-in-PR: an ISO date or time that doesn't exist is invalid; re-validated live, invalid |
+| §7 Format `eu` on US numbers | `1,234.56` → 1.23456, `12.5` → 125, stored valid | low | waived: the user chose `eu`, which says the comma is the decimal separator; after the first fix, `eu` applies only when someone sets it |
+
+Sign-off: every probe walked, and each finding fixed or waived with a reason. `<date + name>`: confirmed against my own running stack.
+
+Bug-filing template: Section · Probe · Expected (safe) · Got · Repro · Identifiers (org/job/entity ids).

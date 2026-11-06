@@ -139,6 +139,36 @@ describe("coerceNumber", () => {
     });
   });
 
+  // #968 adversarial walk: the catalog's Decimal and Integer columns carry
+  // display patterns with a grouping comma. Any comma used to switch to the
+  // European rule, so "12.5" was stored as 125 and ".5" as 5.
+  it.each([
+    ["12.5", "#,##0.00", 12.5],
+    [".5", "#,##0.00", 0.5],
+    ["$1,234.56", "#,##0.00", 1234.56],
+    ["1,234.56", "$#,##0.00", 1234.56],
+    ["1,234.567", "#,##0.000", 1234.567],
+    ["1,234", "#,##0", 1234],
+    ["¥1,234", "¥#,##0", 1234],
+  ])(
+    "reads %p under the US display pattern %p as %p",
+    (input, format, expected) => {
+      expect(coerceNumber(input, format)).toEqual({ value: expected });
+    }
+  );
+
+  it.each([
+    ["1.234,56", "eu", 1234.56],
+    ["1.234,56", ",", 1234.56],
+    ["1.234,56", "#.##0,00", 1234.56],
+    ["12,5", "0,00", 12.5],
+  ])(
+    "reads %p under the European format %p as %p",
+    (input, format, expected) => {
+      expect(coerceNumber(input, format)).toEqual({ value: expected });
+    }
+  );
+
   it("rejects trailing text in EU format too", () => {
     expect(coerceNumber("1.234,56 EUR", "eu")).toEqual({
       value: null,
@@ -309,6 +339,38 @@ describe("coerceDate", () => {
 });
 
 // ── coerceDatetime ──────────────────────────────────────────────────
+
+// #968 adversarial walk: native parsing rolled an impossible day over
+// ("2026-02-30" → 2026-03-02) and stored it as valid.
+describe("impossible ISO dates (#968)", () => {
+  it.each([
+    "2026-02-30",
+    "2026-02-29",
+    "2026-04-31",
+    "2026-00-10",
+    "2026-01-32",
+  ])("rejects %p rather than rolling it over", (input) => {
+    expect(coerceDate(input).error).toBe("Expected a valid date");
+    expect(coerceDatetime(input).error).toBe("Expected a valid datetime");
+    expect(coerceDate(input, "MM/dd/yyyy").error).toBe("Expected a valid date");
+  });
+
+  it.each([
+    "2026-01-02T24:00:00Z",
+    "2026-01-02T12:60:00Z",
+    "2026-01-02T12:00:61Z",
+  ])("rejects the impossible time %p", (input) => {
+    expect(coerceDatetime(input).error).toBe("Expected a valid datetime");
+  });
+
+  it("still accepts a leap day and the last day of a month", () => {
+    expect(coerceDate("2024-02-29")).toEqual({ value: "2024-02-29" });
+    expect(coerceDate("2026-04-30")).toEqual({ value: "2026-04-30" });
+    expect(coerceDatetime("2026-12-31T23:59:59Z")).toEqual({
+      value: "2026-12-31T23:59:59.000Z",
+    });
+  });
+});
 
 // #968: a format describes how a text date is written. A typed spreadsheet
 // date arrives as ISO 8601 (or a Date), which is unambiguous, so it parses
