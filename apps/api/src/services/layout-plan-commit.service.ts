@@ -322,7 +322,7 @@ export class LayoutPlanCommitService {
           { targets: new Set([targetId]), catalogById }
         );
 
-        await reconcileFieldMappings(
+        const { rulesChanged } = await reconcileFieldMappings(
           {
             connectorEntityId: entity.id,
             organizationId,
@@ -334,6 +334,12 @@ export class LayoutPlanCommitService {
           },
           tx
         );
+        if (rulesChanged) {
+          logger.info(
+            { event: "commit.rules_changed", connectorEntityId: entity.id },
+            "Field rules changed; re-checking every record of the entity"
+          );
+        }
 
         // Reconcile the wide table for this entity. The field-mappings
         // reconciler just landed the canonical mappings; the wide-table
@@ -369,7 +375,8 @@ export class LayoutPlanCommitService {
           userId,
           tx,
           syncOptions.syncedAt,
-          reportRowsWritten
+          reportRowsWritten,
+          rulesChanged
         );
         totals.created += counts.created;
         totals.updated += counts.updated;
@@ -812,7 +819,13 @@ export class LayoutPlanCommitService {
      * 10..85 percentage that feeds Bull's progress event. Optional —
      * sync's call path doesn't currently pass one.
      */
-    reportRowsWritten?: (rowsThisChunk: number) => void
+    reportRowsWritten?: (rowsThisChunk: number) => void,
+    /**
+     * #973: this commit changed the entity's validation rules, so a row
+     * whose checksum matches is still normalized and validated again rather
+     * than skipped. It counts as `updated`.
+     */
+    revalidateUnchanged = false
   ): Promise<LayoutPlanCommitResult["recordCounts"]> {
     if (records.length === 0) {
       return { created: 0, updated: 0, unchanged: 0, invalid: 0 };
@@ -891,7 +904,12 @@ export class LayoutPlanCommitService {
 
     for (const record of dedupedRecords) {
       const prev = existingBySourceId.get(record.sourceId);
-      if (prev && prev.checksum === record.checksum && prev.deleted === null) {
+      if (
+        !revalidateUnchanged &&
+        prev &&
+        prev.checksum === record.checksum &&
+        prev.deleted === null
+      ) {
         unchanged++;
         unchangedIds.push(prev.id);
         continue;

@@ -824,4 +824,81 @@ describe("reconcileFieldMappings — integration", () => {
       });
     });
   });
+
+  describe("rulesChanged (#973)", () => {
+    const base = { columnDefinitionId: "", sourceField: "Email" };
+
+    async function run(bindings: Array<Record<string, unknown>>) {
+      return reconcileFieldMappings(
+        {
+          connectorEntityId: subjectEntityId,
+          organizationId: orgId,
+          userId,
+          bindings: bindings as never,
+          catalogById,
+        },
+        db
+      );
+    }
+
+    it("is true on a first reconcile (every mapping is new)", async () => {
+      const result = await run([{ ...base, columnDefinitionId: colStringId }]);
+      expect(result.rulesChanged).toBe(true);
+      expect(result.mappings).toHaveLength(1);
+    });
+
+    it("is false when the same bindings are reconciled again", async () => {
+      const bindings = [
+        {
+          ...base,
+          columnDefinitionId: colStringId,
+          required: true,
+          enumValues: ["a", "b"],
+        },
+        { columnDefinitionId: colStringAltId, sourceField: "Name" },
+      ];
+      await run(bindings);
+      expect((await run(bindings)).rulesChanged).toBe(false);
+    });
+
+    it.each([
+      ["the column definition", { columnDefinitionId: "ALT" }],
+      ["required", { required: true }],
+      ["the format", { format: "lowercase" }],
+      ["the enum values", { enumValues: ["x", "y"] }],
+      ["the default value", { defaultValue: "n/a" }],
+    ])("is true when %s changes", async (_label, change) => {
+      await run([
+        { ...base, columnDefinitionId: colStringId, enumValues: ["x"] },
+      ]);
+      const next: Record<string, unknown> = {
+        ...base,
+        columnDefinitionId: colStringId,
+        enumValues: ["x"],
+        ...change,
+      };
+      if (next.columnDefinitionId === "ALT") {
+        next.columnDefinitionId = colStringAltId;
+      }
+      expect((await run([next])).rulesChanged).toBe(true);
+    });
+
+    it("is true when a mapping is added", async () => {
+      await run([{ ...base, columnDefinitionId: colStringId }]);
+      const result = await run([
+        { ...base, columnDefinitionId: colStringId },
+        { columnDefinitionId: colStringAltId, sourceField: "Name" },
+      ]);
+      expect(result.rulesChanged).toBe(true);
+    });
+
+    it("is true when a mapping is dropped", async () => {
+      await run([
+        { ...base, columnDefinitionId: colStringId },
+        { columnDefinitionId: colStringAltId, sourceField: "Name" },
+      ]);
+      const result = await run([{ ...base, columnDefinitionId: colStringId }]);
+      expect(result.rulesChanged).toBe(true);
+    });
+  });
 });

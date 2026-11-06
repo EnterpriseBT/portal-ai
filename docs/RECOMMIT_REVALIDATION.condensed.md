@@ -2,7 +2,9 @@
 
 **Issue:** [EnterpriseBT/portal-ai#973](https://github.com/EnterpriseBT/portal-ai/issues/973) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** Since #968 a commit coerces and validates each row it writes, but `writeRecords` skips rows whose checksum didn't change and only bumps their `synced_at`. When a plan edit changes the rules a column is checked against (column type, required, format, enum values, default) and the same file is recommitted, or a Google Sheets / Excel sync runs after the edit, those unchanged rows keep their old `isValid`, `validationErrors` and normalized values, and `recordCounts.invalid` misses them. The fix touches `apps/api` only.
+**Why.** Since #968 a commit coerces and validates each row it writes, but `writeRecords` skips rows whose checksum didn't change and only bumps their `synced_at`. When a plan edit changes the rules a column is checked against (required, format, enum values, default) and the same file is recommitted, or a Google Sheets / Excel sync runs after the edit, those unchanged rows keep their old `isValid`, `validationErrors` and normalized values, and `recordCounts.invalid` misses them. The fix touches `apps/api` only.
+
+**Correction to the issue's repro.** Rebinding a populated column from a string column to a number column on an existing entity is refused before any record is written (`422 WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED`, from the wide-table reconciler), so that exact repro can't happen. A rebind between two columns of the same type still counts as a rule change. The rules that reach records through a plan edit are required, format, enum values (checked only on `enum`-typed columns) and default.
 
 ## Current shape
 
@@ -34,15 +36,15 @@
 
 **Tests**
 - `apps/api/src/__tests__/__integration__/services/field-mappings/reconcile.integration.test.ts`: `rulesChanged` is false on an identical re-reconcile; true when a type, required, format or enumValues value changes, when a mapping is added and when one is dropped. A first reconcile reports true too. That's harmless, because a new entity has no rows to skip.
-- `apps/api/src/__tests__/__integration__/routes/connector-instance-layout-plans.router.integration.test.ts`: commit a CSV with `hp` bound to a string column (`10`, `10 HP`, `20`) and check that every row is valid. Rebind `hp` to a number column and recommit the same file. Expect the `10 HP` row to have `isValid=false` with `Expected a number`, and `recordCounts.invalid === 1`. A third recommit with no plan change reports every row `unchanged`, so the skip is still there.
+- `apps/api/src/__tests__/__integration__/routes/layout-plans.router.integration.test.ts` (next to the #968 typed-commit test): commit the 4-row upgrades workbook with `energy_cost` bound to an `enum` column with no values allowed, so all rows are valid. Add `enumValues: ["100", "150"]` to the binding in the stored plan and recommit the same workbook. Expect `updated: 4, unchanged: 0, invalid: 2`, with `Stim Packs` and `Personnel Cloaking` invalid. A third recommit with no plan change reports `unchanged: 4`, and the two rows stay invalid. With the fix disabled the second commit reports `unchanged: 4, invalid: 0`, which is the bug.
 - Run `npm run test:unit` and `npm run test:integration` for those paths only, plus `type-check` and `lint` in `apps/api`.
 
 ## Smoke (manual, against your dev stack)
 
-1. Upload a CSV whose `hp` column holds `10`, `10 HP` and `20`. Bind `hp` to a **string** column and commit. On the entity's records, all 3 rows are valid.
-2. Edit the connector's layout plan, rebind `hp` to a **number** column, and recommit the same file. When the job finishes, its result shows `invalid: 1`, and the `10 HP` record shows as invalid with "Expected a number". The other two are valid.
-3. Recommit again without changing anything. The job result shows all rows `unchanged` and `invalid: 0` from this run, and the `10 HP` row is still invalid.
-4. Edit the plan to mark another field **required** on a column where one row is blank, then recommit. That row turns invalid without a manual Re-validate All.
+1. Create an **enum** column definition (no values) and connect a Google Sheet with a `size` column holding `S`, `M` and `XL`. Bind `size` to the enum column and commit. On the entity's records, all 3 rows are valid.
+2. Edit the connector's layout plan, set the `size` binding's allowed values to `S, M`, and save so it recommits the same sheet. When the job finishes, the `XL` record shows as invalid, the other two are valid, and the job result counts 1 invalid.
+3. Sync again without changing anything. The job result shows all rows `unchanged`, and the `XL` row is still invalid.
+4. Edit the plan to mark another field **required** on a column where one row's cell is blank, then recommit. That row turns invalid without a manual Re-validate All.
 
 ## Out of scope
 

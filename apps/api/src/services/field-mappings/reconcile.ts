@@ -110,10 +110,36 @@ export function resolveNormalizedKey(
   );
 }
 
+/**
+ * #973: the mapping fields a record's normalization and validation read. A
+ * change to any of them means a row whose content didn't change may still
+ * normalize or validate differently.
+ */
+export const VALIDATION_RULE_FIELDS = [
+  "columnDefinitionId",
+  "required",
+  "defaultValue",
+  "format",
+  "enumValues",
+  "normalizedKey",
+  "refEntityKey",
+  "refNormalizedKey",
+] as const;
+
+export interface ReconcileFieldMappingsResult {
+  mappings: FieldMappingSelect[];
+  /**
+   * True when this reconcile created, removed, or changed a validation rule
+   * on a mapping (#973). The commit then re-checks every row it writes,
+   * since an unchanged checksum no longer means an unchanged result.
+   */
+  rulesChanged: boolean;
+}
+
 export async function reconcileFieldMappings(
   input: ReconcileFieldMappingsInput,
   client: DbClient = db
-): Promise<FieldMappingSelect[]> {
+): Promise<ReconcileFieldMappingsResult> {
   const {
     connectorEntityId,
     organizationId,
@@ -262,42 +288,60 @@ export async function reconcileFieldMappings(
       .where(inArray(fieldMappings.id, staleIds));
   }
 
-  // Upsert each desired mapping.
+  // Upsert each desired mapping, noting whether any validation rule moved.
+  const liveByKey = new Map(
+    (existing as FieldMappingSelect[])
+      .filter((m) => m.deleted === null)
+      .map((m) => [m.normalizedKey, m])
+  );
+  let rulesChanged = staleIds.length > 0;
   const results: FieldMappingSelect[] = [];
   for (const { binding, normalizedKey } of desired) {
     const catalog = catalogById.get(binding.columnDefinitionId);
+    const values = {
+      id: SystemUtilities.id.v4.generate(),
+      organizationId,
+      connectorEntityId,
+      columnDefinitionId: binding.columnDefinitionId,
+      sourceField: binding.sourceField,
+      isPrimaryKey: binding.isPrimaryKey ?? false,
+      normalizedKey,
+      required: binding.required ?? false,
+      defaultValue: binding.defaultValue ?? null,
+      format:
+        binding.format !== undefined
+          ? binding.format
+          : (catalog?.canonicalFormat ?? null),
+      enumValues: binding.enumValues ?? null,
+      refNormalizedKey: binding.refNormalizedKey ?? null,
+      refEntityKey: binding.refEntityKey ?? null,
+      created: now,
+      createdBy: userId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    if (!rulesChanged) {
+      const prior = liveByKey.get(normalizedKey);
+      rulesChanged =
+        prior === undefined ||
+        VALIDATION_RULE_FIELDS.some(
+          // By value: enumValues is an array.
+          (field) =>
+            JSON.stringify(prior[field] ?? null) !==
+            JSON.stringify(values[field] ?? null)
+        );
+    }
     const row =
       await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(
-        {
-          id: SystemUtilities.id.v4.generate(),
-          organizationId,
-          connectorEntityId,
-          columnDefinitionId: binding.columnDefinitionId,
-          sourceField: binding.sourceField,
-          isPrimaryKey: binding.isPrimaryKey ?? false,
-          normalizedKey,
-          required: binding.required ?? false,
-          defaultValue: binding.defaultValue ?? null,
-          format:
-            binding.format !== undefined
-              ? binding.format
-              : (catalog?.canonicalFormat ?? null),
-          enumValues: binding.enumValues ?? null,
-          refNormalizedKey: binding.refNormalizedKey ?? null,
-          refEntityKey: binding.refEntityKey ?? null,
-          created: now,
-          createdBy: userId,
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        },
+        values,
         client
       );
     results.push(row);
   }
 
-  return results;
+  return { mappings: results, rulesChanged };
 }
 
 /**
