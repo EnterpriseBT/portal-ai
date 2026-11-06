@@ -170,3 +170,34 @@ describe("PortalView gates (#690)", () => {
     expect(mockTouchMutateAsync).not.toHaveBeenCalled();
   });
 });
+
+// #971: the chat mounts only for a portal that exists and is readable. A
+// deleted or unreadable portal (404) shows its not-found state and no composer.
+describe("PortalView session mount (#971)", () => {
+  it("renders no session when the portal isn't found", async () => {
+    mockPortalsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isSuccess: false,
+      error: new Error("Portal not found"),
+    });
+    render(<PortalView portalId="portal-1" />);
+    expect(await screen.findByText(/Portal not found/)).toBeInTheDocument();
+    expect(screen.queryByTestId("portal-session")).toBeNull();
+  });
+
+  it("renders no session while the portal is loading", () => {
+    mockPortalsGet.mockReturnValue(loading());
+    render(<PortalView portalId="portal-1" />);
+    expect(screen.queryByTestId("portal-session")).toBeNull();
+  });
+
+  it("renders the session once the portal loads", async () => {
+    mockPortalsGet.mockReturnValue(
+      portalResult({ read: true, write: true, delete: true })
+    );
+    render(<PortalView portalId="portal-1" />);
+    expect(await screen.findByTestId("portal-session")).toBeInTheDocument();
+  });
+});

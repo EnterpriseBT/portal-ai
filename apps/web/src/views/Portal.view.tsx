@@ -180,12 +180,15 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                   isPending={removeMutation.isPending}
                   serverError={toServerError(removeMutation.error)}
                 />
+
+                {/* #971: only a portal that loaded gets a chat. A deleted or
+                    unreadable one (404) shows its not-found state alone. */}
+                <PortalSession portalId={portalId} />
               </>
             )}
           </DataResult>
         )}
       </PortalDataItem>
-      <PortalSession portalId={portalId} />
     </Box>
   );
 };
