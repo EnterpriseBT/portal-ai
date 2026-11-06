@@ -706,4 +706,54 @@ describe("googleSheetsAdapter.syncInstance", () => {
     expect(liveAlice[0]?.deleted).toBeNull();
     expect(liveAlice[0]?.deletedBy).toBeNull();
   });
+
+  // #968: a resurrected record is coerced like any other. "Alice" can't be a
+  // number, so it's stored null and the record is invalid, not a 22P02.
+  it("coerces a resurrected record's values and marks it invalid when one doesn't parse", async () => {
+    const { instance, entityId, nameColumnDefinitionId } =
+      await seedCommittedInstance({
+        rows: [
+          { email: "alice@example.com", name: "Alice" },
+          { email: "bob@example.com", name: "Bob" },
+        ],
+      });
+    await db
+      .update(schema.columnDefinitions)
+      .set({ type: "number" })
+      .where(eq(schema.columnDefinitions.id, nameColumnDefinitionId));
+    await db
+      .update(entityRecords)
+      .set({ deleted: Date.now(), deletedBy: userId })
+      .where(
+        and(
+          eq(entityRecords.connectorEntityId, entityId),
+          eq(entityRecords.sourceId, "alice@example.com")
+        )
+      );
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "alice@example.com", name: "Alice" },
+          { email: "bob@example.com", name: "Bob" },
+        ])
+      )
+    );
+
+    await googleSheetsAdapter.syncInstance!(instance, userId);
+
+    const [alice] = await db
+      .select()
+      .from(entityRecords)
+      .where(
+        and(
+          eq(entityRecords.connectorEntityId, entityId),
+          eq(entityRecords.sourceId, "alice@example.com"),
+          isNull(entityRecords.deleted)
+        )
+      );
+    expect(alice?.isValid).toBe(false);
+    expect(alice?.validationErrors).toEqual([
+      { field: "name", error: "Expected a number" },
+    ]);
+  });
 });

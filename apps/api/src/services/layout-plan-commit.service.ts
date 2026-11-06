@@ -26,6 +26,7 @@ import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import { NormalizationService } from "./normalization.service.js";
 import { ApiError } from "./http.service.js";
 import { CuratedViewDependencyService } from "./curated-view-dependency.service.js";
 import { ParentAccessService } from "./parent-access.service.js";
@@ -849,6 +850,16 @@ export class LayoutPlanCommitService {
       existingRows.map((r) => [r.sourceId, r])
     );
 
+    // #968: coerce each value to its column's type, as REST sync and
+    // revalidation do. Raw cell text bound into a typed wide-table column
+    // made Postgres parse it, and one unparseable cell (`10 HP` in a number
+    // column) failed the whole commit with 22P02. Read in this transaction,
+    // after reconcile wrote the mappings.
+    const normalizationMappings = await NormalizationService.loadMappings(
+      connectorEntityId,
+      tx
+    );
+
     const toUpsert: EntityRecordInsert[] = [];
     /**
      * `normalizedData` lives on the wide table after slice 6; carry it
@@ -874,6 +885,7 @@ export class LayoutPlanCommitService {
     let created = 0;
     let updated = 0;
     let unchanged = 0;
+    let invalid = 0;
     const now = Date.now();
     const syncedAt = syncedAtOverride ?? now;
 
@@ -885,7 +897,7 @@ export class LayoutPlanCommitService {
         continue;
       }
 
-      const normalizedData: Record<string, unknown> = {};
+      const keyedData: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(record.fields)) {
         // Map the record-field key (columnDefinitionId for statics, source
         // name for pivot/cellValueField) to the same normalizedKey reconcile
@@ -893,8 +905,21 @@ export class LayoutPlanCommitService {
         // last-resort fallbacks for entries no binding covered.
         const key =
           normalizedKeyByRecordFieldKey.get(k) ?? catalogById.get(k)?.key ?? k;
-        normalizedData[key] = v;
+        keyedData[key] = v;
       }
+      // Keyed by normalizedKey, which the normalizer reads first. A mapping
+      // whose key the record lacks gets an explicit empty slot: otherwise
+      // the normalizer falls back to its sourceField (its header text), which
+      // can be another binding's normalizedKey and hand it that value.
+      for (const m of normalizationMappings) {
+        if (!(m.normalizedKey in keyedData)) keyedData[m.normalizedKey] = null;
+      }
+      const { normalizedData, validationErrors, isValid } =
+        NormalizationService.normalizeWithMappings(
+          normalizationMappings,
+          keyedData
+        );
+      if (!isValid) invalid++;
 
       // Resurrection branch: a prior soft-delete (manual "clear records"
       // or watermark reap) left a row with this `(connector_entity_id,
@@ -920,8 +945,8 @@ export class LayoutPlanCommitService {
             data: record.fields,
             checksum: record.checksum,
             syncedAt,
-            validationErrors: null,
-            isValid: true,
+            validationErrors,
+            isValid,
             updated: now,
             updatedBy: userId,
             deleted: null,
@@ -947,8 +972,8 @@ export class LayoutPlanCommitService {
         checksum: record.checksum,
         syncedAt,
         origin: "sync",
-        validationErrors: null,
-        isValid: true,
+        validationErrors,
+        isValid,
         created: prev?.created ?? now,
         // #731: the record's audit stamp (kept on update), not a permission object.
         createdBy: prev?.createdBy ?? userId,
@@ -1062,7 +1087,7 @@ export class LayoutPlanCommitService {
     // actual mapping writes happen in reconcileFieldMappings.
     void fieldMappings;
 
-    return { created, updated, unchanged, invalid: 0 };
+    return { created, updated, unchanged, invalid };
   }
 }
 

@@ -17,29 +17,60 @@ export function coerceString(value: unknown): CoercionResult {
   return { value: String(value) };
 }
 
+/**
+ * Whether a mapping's number format means a comma decimal separator: `eu`, a
+ * bare `,`, or a pattern whose decimal separator is the comma (`#.##0,00`,
+ * `0,00`). A display pattern like `#,##0.00` or `$#,##0` uses the comma for
+ * grouping, and the catalog's Decimal and Integer columns carry one by
+ * default: treating any comma as European read "12.5" as 125 (#968).
+ */
+function isEuropeanNumberFormat(format?: string | null): boolean {
+  if (!format) return false;
+  if (format === "eu" || format === ",") return true;
+  const pattern = format.replace(/[^#0.,]/g, "");
+  const lastComma = pattern.lastIndexOf(",");
+  if (lastComma < 0) return false;
+  const lastDot = pattern.lastIndexOf(".");
+  if (lastDot >= 0) return lastComma > lastDot;
+  // Only commas: a grouping comma is followed by exactly three digits
+  // (`#,##0`); anything else after the last comma is decimals (`0,00`).
+  return pattern.length - lastComma - 1 !== 3;
+}
+
+/** A whole numeric literal, once currency and grouping are stripped. */
+const NUMERIC_LITERAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
 export function coerceNumber(
   value: unknown,
   format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (typeof value === "number") {
-    if (Number.isNaN(value)) return { value: null, error: "Expected a number" };
+    if (!Number.isFinite(value)) {
+      return { value: null, error: "Expected a number" };
+    }
     return applyNumberFormat(value, format);
   }
 
   let str = String(value).trim();
   if (str === "") return { value: null };
 
-  // European format: 1.234,56 → 1234.56
-  if (format && (format === "eu" || format.includes(","))) {
+  // Strip currency symbols and whitespace, then the grouping separator.
+  str = str.replace(/[$€£¥\s]/g, "");
+  if (isEuropeanNumberFormat(format)) {
+    // European format: 1.234,56 → 1234.56
     str = str.replace(/\./g, "").replace(",", ".");
   } else {
-    // Standard: strip currency symbols, commas, whitespace
-    str = str.replace(/[$€£¥\s]/g, "").replace(/,/g, "");
+    str = str.replace(/,/g, "");
   }
 
-  const num = parseFloat(str);
-  if (Number.isNaN(num)) {
+  // #968: what's left must be wholly a number. parseFloat alone kept a
+  // leading number and dropped the rest ("10 HP" → 10, "25 + 1/s" → 25),
+  // losing the value silently instead of reporting it.
+  // An exponent can still overflow ("1e400" → Infinity), which no numeric
+  // column stores.
+  const num = NUMERIC_LITERAL.test(str) ? Number(str) : NaN;
+  if (!Number.isFinite(num)) {
     return { value: null, error: "Expected a number" };
   }
   return applyNumberFormat(num, format);
@@ -99,9 +130,36 @@ function normalizeDateFormat(fmt: string): string {
   return fmt.replace(/YYYY/g, "yyyy").replace(/YY/g, "yy").replace(/DD/g, "dd");
 }
 
+/**
+ * Whether an ISO 8601 value names a real calendar date and time. Native
+ * parsing rolls an impossible one over ("2026-02-30" → 2026-03-02) and
+ * reports it valid (#968).
+ */
+function isRealIsoDate(str: string): boolean {
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(str);
+  if (!m) return true; // not ISO: nothing to check here
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (month < 1 || month > 12 || day < 1) return false;
+  if (day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return false;
+  if (m[4] !== undefined && (Number(m[4]) > 23 || Number(m[5]) > 59)) {
+    return false;
+  }
+  return m[6] === undefined || Number(m[6]) <= 59;
+}
+
+/** An ISO 8601 date, optionally with a time and offset. */
+const ISO_8601 =
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
 function parseDate(value: unknown, format?: string | null): Date | null {
+  // A typed spreadsheet date (#968): already a date, whatever the format.
+  if (value instanceof Date) {
+    return utcDateFactory.fns.isValid(value) ? value : null;
+  }
   const str = String(value).trim();
   if (str === "") return null;
+  if (!isRealIsoDate(str)) return null;
 
   try {
     if (format) {
@@ -111,7 +169,11 @@ function parseDate(value: unknown, format?: string | null): Date | null {
         normalizedFormat,
         new Date(0)
       );
-      return utcDateFactory.fns.isValid(parsed) ? parsed : null;
+      if (utcDateFactory.fns.isValid(parsed)) return parsed;
+      // A format describes how a text date is written. A typed spreadsheet
+      // date reaches us as ISO 8601, which is unambiguous, so it still
+      // parses when it doesn't match the binding's format (#968).
+      if (!ISO_8601.test(str)) return null;
     }
 
     // No format: try native parsing via DateFactory
