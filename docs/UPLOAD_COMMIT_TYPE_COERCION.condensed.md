@@ -40,8 +40,9 @@
 **Slice 2 — rollback marks a stranded instance failed.**
 - Edit: `apps/api/src/services/layout-plan-draft.service.ts`.
 - Tests:
-  - `__tests__/queues/processors/layout-plan-commit.processor.test.ts`: a fresh instance whose delete throws is flipped to `error` with the reason, and its plan is kept.
-  - Integration: a two-target commit whose second target fails leaves the instance `error`, not `pending` (red before the fix). A single-target failure still deletes both rows.
+  - The processor's unit test mocks the rollback away, so both cases live in the integration suite (`__integration__/routes/layout-plans.router.integration.test.ts`), with a target's reconcile made to fail:
+    - a two-target commit whose second target fails leaves the instance `error`, with its plan, not `pending` (red before the fix);
+    - a single-target failure still deletes both rows.
 - Run with `npm run test:unit` and `npm run test:integration -- --testPathPattern <file>` in `apps/api`, plus `lint` and `type-check`.
 
 ## Smoke (manual, against your dev stack)

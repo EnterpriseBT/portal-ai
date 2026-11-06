@@ -982,6 +982,145 @@ describe("Layout Plans Draft Router", () => {
       }
     });
 
+    // #968: a commit that fails on its final attempt. Each target commits
+    // in its own transaction, so when a later one fails, an earlier one's
+    // entity holds a foreign key on the new instance.
+    async function commitFailingOnReconcile(opts: {
+      targets: 1 | 2;
+      failOnCall: number;
+    }) {
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
+      const real = wideTableReconcilerService.reconcileEntity.bind(
+        wideTableReconcilerService
+      );
+      let calls = 0;
+      const spy = jest
+        .spyOn(wideTableReconcilerService, "reconcileEntity")
+        .mockImplementation(async (...args) => {
+          calls++;
+          if (calls === opts.failOnCall) throw new Error("reconcile failed");
+          return real(...args);
+        });
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const single = makeWorkbook();
+      const workbook: WorkbookData =
+        opts.targets === 1
+          ? single
+          : {
+              sheets: [
+                ...single.sheets,
+                { ...single.sheets[0]!, name: "Sheet2" },
+              ],
+            };
+      const base = makePlan(emailId, nameId);
+      const plan: LayoutPlan =
+        opts.targets === 1
+          ? base
+          : {
+              ...base,
+              workbookFingerprint: {
+                ...base.workbookFingerprint,
+                sheetNames: ["Sheet1", "Sheet2"],
+                dimensions: {
+                  Sheet1: { rows: 3, cols: 2 },
+                  Sheet2: { rows: 3, cols: 2 },
+                },
+              },
+              regions: [
+                base.regions[0]!,
+                {
+                  ...base.regions[0]!,
+                  id: "r2",
+                  sheet: "Sheet2",
+                  targetEntityDefinitionId: "contacts-2",
+                  headerStrategyByAxis: {
+                    row: {
+                      kind: "row",
+                      locator: { kind: "row", sheet: "Sheet2", row: 1 },
+                      confidence: 0.95,
+                    },
+                  },
+                  identityStrategy: {
+                    kind: "column",
+                    sourceLocator: { kind: "column", sheet: "Sheet2", col: 1 },
+                    confidence: 0.9,
+                  },
+                },
+              ],
+              confidence: { overall: 0.9, perRegion: { r1: 0.9, r2: 0.9 } },
+            };
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        workbook,
+        userId
+      );
+      try {
+        await expect(
+          runDraftCommitInline({
+            connectorDefinitionId,
+            name: "Failing upload",
+            plan,
+            uploadSessionId,
+          })
+        ).rejects.toThrow("reconcile failed");
+      } finally {
+        spy.mockRestore();
+      }
+      const instances = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Failing upload"));
+      const plans = instances[0]
+        ? await (db as Db)
+            .select()
+            .from(connectorInstanceLayoutPlans)
+            .where(
+              eq(
+                connectorInstanceLayoutPlans.connectorInstanceId,
+                instances[0].id
+              )
+            )
+        : [];
+      return { instances, plans };
+    }
+
+    it("#968: a failed commit that wrote an earlier target marks its new instance `error`, rather than leaving it `pending`", async () => {
+      const { instances, plans } = await commitFailingOnReconcile({
+        targets: 2,
+        failOnCall: 2,
+      });
+
+      expect(instances).toHaveLength(1);
+      expect(instances[0]!.status).toBe("error");
+      expect(instances[0]!.lastErrorMessage).toBeTruthy();
+      // The plan stays with it, so the instance can still be opened.
+      expect(plans).toHaveLength(1);
+    });
+
+    it("#968: a failed commit that wrote nothing still deletes its new instance and plan", async () => {
+      const { instances } = await commitFailingOnReconcile({
+        targets: 1,
+        failOnCall: 1,
+      });
+
+      expect(instances).toHaveLength(0);
+      const orphanPlans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans);
+      expect(orphanPlans).toHaveLength(0);
+    });
+
     it("omits the NUL-stripped count when the session stripped nothing", async () => {
       const result = await commitWithSessionCount();
       expect(result).not.toHaveProperty("nulStrippedValues");
