@@ -165,7 +165,7 @@ async function seedColumnDefinition(
   organizationId: string,
   key: string,
   label: string = key,
-  type: "string" | "number" | "datetime" = "string"
+  type: "string" | "number" | "datetime" | "enum" = "string"
 ): Promise<string> {
   const id = generateId();
   await db.insert(schema.columnDefinitions).values({
@@ -903,6 +903,126 @@ describe("Layout Plans Draft Router", () => {
         ["Stim Packs", null, null],
         ["Yamato Cannon", 150, "set"],
       ]);
+    });
+
+    // #973: a recommit that changes a field's rules re-checks the rows whose
+    // content didn't change, rather than keeping their old validity.
+    describe("#973: a recommit that changes field rules", () => {
+      async function commitThenEdit(
+        edit: (binding: Record<string, unknown>) => void
+      ) {
+        const ids = {
+          name: await seedColumnDefinition(db as Db, organizationId, "name"),
+          // An enum column with no values allowed yet: the first commit
+          // checks nothing, and the plan edit adds the values.
+          energyCost: await seedColumnDefinition(
+            db as Db,
+            organizationId,
+            "energy_cost",
+            "Energy cost",
+            "enum"
+          ),
+          researchedAt: await seedColumnDefinition(
+            db as Db,
+            organizationId,
+            "researched_at"
+          ),
+        };
+        const uploadSessionId = await seedUploadSession(
+          db as Db,
+          organizationId,
+          makeTypedWorkbook(),
+          userId
+        );
+        const first = await runDraftCommitInline({
+          connectorDefinitionId,
+          name: "Upgrades",
+          plan: makeTypedPlan(ids),
+          uploadSessionId,
+        });
+        expect(first.recordCounts).toMatchObject({ created: 4, invalid: 0 });
+
+        const [planRow] = await (db as Db)
+          .select()
+          .from(schema.connectorInstanceLayoutPlans)
+          .where(
+            eq(
+              schema.connectorInstanceLayoutPlans.connectorInstanceId,
+              first.connectorInstanceId
+            )
+          );
+        const plan = structuredClone(planRow!.plan) as LayoutPlan;
+        const binding = plan.regions[0]!.columnBindings.find(
+          (b) =>
+            b.sourceLocator.kind === "byHeaderName" &&
+            b.sourceLocator.name === "energy_cost"
+        ) as unknown as Record<string, unknown>;
+        edit(binding);
+        await (db as Db)
+          .update(schema.connectorInstanceLayoutPlans)
+          .set({ plan })
+          .where(eq(schema.connectorInstanceLayoutPlans.id, planRow!.id));
+
+        const { LayoutPlanCommitService } =
+          await import("../../../services/layout-plan-commit.service.js");
+        const recommit = () =>
+          LayoutPlanCommitService.commit(
+            first.connectorInstanceId,
+            planRow!.id,
+            organizationId,
+            userId,
+            { workbook: makeTypedWorkbook() }
+          );
+        return { recommit, instanceId: first.connectorInstanceId };
+      }
+
+      async function invalidNames(connectorInstanceId: string) {
+        const [entity] = await (db as Db)
+          .select()
+          .from(connectorEntities)
+          .where(
+            eq(connectorEntities.connectorInstanceId, connectorInstanceId)
+          );
+        const records = await (db as Db)
+          .select()
+          .from(schema.entityRecords)
+          .where(eq(schema.entityRecords.connectorEntityId, entity!.id));
+        return records
+          .filter((r) => !r.isValid)
+          .map((r) => ({
+            name: (r.data as Record<string, unknown>).name,
+            errors: (r.validationErrors ?? []).map(
+              (e) => `${e.field}: ${e.error}`
+            ),
+          }))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      }
+
+      it("re-checks unchanged rows against a new enum, and the next recommit skips them again", async () => {
+        const { recommit, instanceId } = await commitThenEdit((b) => {
+          b.enumValues = ["100", "150"];
+        });
+
+        const second = await recommit();
+        expect(second.recordCounts).toMatchObject({
+          unchanged: 0,
+          updated: 4,
+          invalid: 2,
+        });
+        expect((await invalidNames(instanceId)).map((r) => r.name)).toEqual([
+          "Personnel Cloaking",
+          "Stim Packs",
+        ]);
+
+        const third = await recommit();
+        expect(third.recordCounts).toMatchObject({
+          unchanged: 4,
+          updated: 0,
+          invalid: 0,
+        });
+        // The skip keeps the flags the second commit wrote.
+        expect(await invalidNames(instanceId)).toHaveLength(2);
+      });
     });
 
     // #805: the session writer strips U+0000 on ingest and records how many

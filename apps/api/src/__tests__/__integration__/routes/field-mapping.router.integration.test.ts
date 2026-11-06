@@ -2246,6 +2246,51 @@ describe("Field Mapping Router", () => {
     }
   });
 
+  // #973: the route shares the rule list a recommit's reconcile checks, so
+  // swapping the column definition re-checks the entity too.
+  it("triggers revalidation when the column definition changes", async () => {
+    const { connectorEntityId, columnDefinitionId, organizationId } =
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+    const otherColDef = createColDef(organizationId);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(columnDefinitions)
+      .values(otherColDef as never);
+    const mapping = createFieldMap(
+      organizationId,
+      connectorEntityId,
+      columnDefinitionId
+    );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(fieldMappings)
+      .values(mapping as never);
+
+    const res = await request(app)
+      .patch(`/api/field-mappings/${mapping.id}`)
+      .set("Authorization", "Bearer test-token")
+      .send({
+        sourceField: mapping.sourceField,
+        columnDefinitionId: otherColDef.id,
+      });
+
+    expect(res.status).toBe(200);
+    const jobRows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, "revalidation"),
+          eq(jobs.organizationId, organizationId)
+        )
+      );
+    expect(
+      jobRows.some(
+        (j) =>
+          (j.metadata as Record<string, unknown>).connectorEntityId ===
+          connectorEntityId
+      )
+    ).toBe(true);
+  });
+
   describe("Phase 4 — GET response includes new fields", () => {
     it("should include normalizedKey, required, defaultValue, format, enumValues in response", async () => {
       const { connectorEntityId, columnDefinitionId, organizationId } =
