@@ -9,6 +9,26 @@ npm run dev          # all dev servers — web :3000, api :3001, site :3002
 ```
 `apps/api`'s `dev` runs the server (nodemon) **and** an ngrok tunnel concurrently (`concurrently --names server,tunnel`). To run just the API without the tunnel: `npm run dev:server` (from `apps/api`).
 
+## File uploads (local object storage)
+
+Uploads go to **`s3mock-dev`**, a local S3 stand-in that starts with the devcontainer (#974). No AWS credentials are involved. It shares the `dev` container's network, so `http://localhost:9092` is the same store for the API, for the agent's Playwright browser inside the container, and for your browser on the host (`dev` publishes 9092). That matters because a presigned upload URL names one host. Its bucket, `portalai-uploads-local`, lives on the `s3mock-data` volume, so uploads survive restarts and rebuilds.
+
+`apps/api/.env.example` is set up for it. To switch an existing `apps/api/.env`, set:
+
+```bash
+AWS_ACCESS_KEY_ID=local          # s3mock ignores signatures; any value signs
+AWS_SECRET_ACCESS_KEY=local
+UPLOAD_S3_BUCKET=portalai-uploads-local
+UPLOAD_S3_ENDPOINT=http://localhost:9092
+UPLOAD_S3_FORCE_PATH_STYLE=true
+```
+
+and restart the API. `curl http://localhost:9092/` lists the bucket. Files uploaded to the AWS dev bucket before the switch aren't copied over; re-upload anything you need.
+
+**Opting into real S3.** Comment out `UPLOAD_S3_ENDPOINT` and `UPLOAD_S3_FORCE_PATH_STYLE`, set a real `UPLOAD_S3_BUCKET`, and give the SDK working credentials. The admin IAM user is MFA-gated, so static access keys are denied. Use an `aws login` session instead: leave the two `AWS_*` keys **empty** (an empty value stops `.env`'s keys from being loaded, and the SDK moves on to the profile), and start the API with `AWS_PROFILE` set to a profile whose `credential_process` runs `aws configure export-credentials --format process`, so the short-lived session refreshes on its own.
+
+The e2e stack has its own `s3mock` (port 9090, bucket `portalai-uploads-e2e`), which `e2e:stack:up` / `down` start and stop. The two never share a bucket or a port.
+
 ## Fresh reset → fully provisioned
 
 After a full local reset (`docker compose down -v` + devcontainer rebuild, or `portalops db reset --env local --yes`), **one command** provisions everything — pending migrations, the system seed (bootstrap `standard` tier + connector definitions), and the tier catalog with env-local Stripe price ids. The last step matters: `db:seed` alone is deliberately bootstrap-only (#218), so without it a freshly reset stack silently shows only the `standard` tier.
@@ -88,9 +108,12 @@ The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforc
 2. **Stripe loop:** `stripe listen --forward-to localhost:3001/api/webhooks/stripe` prints a `whsec_…`; with it set as `STRIPE_WEBHOOK_SECRET`, `stripe trigger checkout.session.completed` shows the event forwarded and a `200` from the local endpoint (no `400 WEBHOOK_INVALID_SIGNATURE`).
 3. **Mock toolpack:** `npm run webhook:toolpack` starts the mock server; a toolpack registered against its local URL passes schema fetch + a runtime call (with `MOCK_TOOLPACK_SIGNING_SECRET` set, unsigned calls get `401`).
 4. **Tunnel:** `npm run tunnel` prints a public `https://…ngrok…` URL that reaches `curl <ngrok-url>/api/health` → 200.
+5. **Uploads:** `curl localhost:9092/` lists `portalai-uploads-local`, and a CSV uploaded from Connectors → File Upload reaches Draw regions (its PUT goes to `localhost:9092`).
 
 ## Troubleshooting
 
+- **An upload fails with "S3 PUT failed … HTTP 403".** `apps/api/.env` still points at AWS with static keys, which the MFA requirement denies. Switch it to `s3mock-dev` (see "File uploads" above) and restart the API.
+- **An upload fails with a network error, or `curl localhost:9092` refuses.** `s3mock-dev` isn't running. Start it with `docker compose up -d s3mock-dev` from the host (or Rebuild Container). It shares `dev`'s network, so it must start after `dev`, and a recreated `dev` needs it recreated too.
 - **After a pull, services don't resolve by name, or the e2e stack can't reach them.** The compose network was renamed from `mcp-net` to `portal-net` (#882). A container started before the pull stays on the old network, and one recreated since (say by `e2e:stack:up`) is on the new one, so the two can't see each other. It shows up two ways:
   - an app process fails with `getaddrinfo ENOTFOUND postgres` (or `redis`);
   - `e2e:stack:up` can't resolve `postgres-test`, so it falls back to `localhost:5433` / `:6380` / `:9090`. Those reach nothing inside the devcontainer, so the error is `ECONNREFUSED` on localhost, or a service that "did not come up".
