@@ -110,7 +110,7 @@ export const SkipLinks: React.FC; // container
   - **Parents with children:** they stay buttons, with `aria-expanded={open}`.
 - **Collapsed items:** an item carries `aria-label={label}` and is wrapped in `<Tooltip title={label} placement="right">`. Expanded items rely on their visible text.
 - **`SidebarNav`:** passes `href={item.route}` (and Settings and Help's routes). `handleClick`'s `router.navigate` is removed, and the mobile collapse stays as `onClick`.
-- **`SidebarNavToggleUI`:** gets `aria-expanded={!collapsed}` and `aria-controls="primary-nav"` (the drawer paper's id). The compact variant's hit area grows to at least 24×24 px with an invisible pseudo-element, so the 16 px visual is unchanged.
+- **`SidebarNavToggleUI`:** gets `aria-expanded={!collapsed}` and `aria-controls="primary-nav"` (the drawer paper's id). The compact variant's hit area grows to at least 24×24 px with an invisible pseudo-element, so the 16 px visual is unchanged. On mobile, Escape on the toggle or inside the open drawer closes it and leaves focus on the toggle, and `main` is `inert` while the drawer covers it (adversarial F2).
 
 ### Web: `useRouteAnnouncer` — `apps/web/src/utils/route-announcer.util.ts` (new)
 
@@ -149,7 +149,7 @@ Its spinner relies on the theme default (`"Loading"`). It also renders a visuall
   - one `Stack` with `aria-live="polite"`, which holds every toast in the queue's order;
   - success and info `Alert`s, which get `role="none"`, so the polite region announces them;
   - error and warning `Alert`s, which keep MUI's `role="alert"`, announced assertively when inserted.
-  No `alert` role is present while nothing has gone wrong. The host is in the shared test harness, and an always-present one would answer every `queryByRole("alert")` in the app. `data-testid="toast-host"` is present only while toasts exist. The `+N more` row and Dismiss all are unchanged.
+  No `alert` role is present while nothing has gone wrong. The host is in the shared test harness, and an always-present one would answer every `queryByRole("alert")` in the app. `data-testid="toast-host"` is present only while toasts exist. The `+N more` row and Dismiss all are unchanged. When a toast holding keyboard focus goes (its Close, Dismiss all or its own timer), focus moves to the close button of the toast that takes its place, else Dismiss all, else `main#main-content`; it never falls to the body (adversarial F1).
 - **`toast.context.tsx`** adds `ToastPresenceContext` (a number, default 0) and `useToastPresence(): number`. `Toast.provider.tsx` provides the visible count. `ToastApi` is unchanged, so its identity stays stable.
 - **Update notice:** a new `apps/web/src/utils/update-notice.context.tsx` exports:
   - `UpdateNoticeProvider`, which owns `useAppVersion()` once;

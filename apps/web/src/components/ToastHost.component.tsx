@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import Alert from "@mui/material/Alert";
@@ -9,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
 
+import { MAIN_CONTENT_ID } from "./SkipLinks.component";
 import { getNotificationsRoot } from "../utils/notifications-root.util";
 import { TOAST_ANCHOR } from "../utils/toast.constants";
 
@@ -32,6 +33,10 @@ export interface ToastHostProps {
  * and info in a polite one (#797), portalled into the page's Notifications
  * region (`getNotificationsRoot`), which the skip links target while a toast
  * is shown.
+ *
+ * When a toast holding keyboard focus goes (its Close, Dismiss all, or its
+ * own timer), focus moves to the close button of the toast that takes its
+ * place, else Dismiss all, else `main`, so it never falls to the body.
  */
 export const ToastHost: React.FC<ToastHostProps> = ({
   toasts,
@@ -47,11 +52,57 @@ export const ToastHost: React.FC<ToastHostProps> = ({
   // which is announced assertively when it's inserted. No alert role is
   // ever present while nothing has gone wrong, so the app's
   // `queryByRole("alert")` checks are unaffected.
+  const hostRef = useRef<HTMLDivElement>(null);
+  /**
+   * Where focus sits in the stack: a toast's position, or `toasts.length`
+   * for the overflow row. Null when focus is outside it.
+   */
+  const focusedAt = useRef<number | null>(null);
+
+  const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
+    const holder = (e.target as HTMLElement).closest("[data-toast-id]");
+    const index = holder
+      ? toasts.findIndex((t) => t.id === holder.getAttribute("data-toast-id"))
+      : -1;
+    focusedAt.current = index >= 0 ? index : toasts.length;
+  };
+  const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && hostRef.current?.contains(next)) return;
+    // A blur from a node being removed isn't the user leaving; one from a
+    // node still in the page is (a click on the page, Tab out).
+    if ((e.target as Node).isConnected) focusedAt.current = null;
+  };
+
+  // Runs before paint, after React has removed the gone toast's nodes.
+  useLayoutEffect(() => {
+    const at = focusedAt.current;
+    if (at === null) return;
+    const active = document.activeElement;
+    const lost = !active || active === document.body || !active.isConnected;
+    if (!lost) {
+      if (!hostRef.current?.contains(active)) focusedAt.current = null;
+      return;
+    }
+    focusedAt.current = null;
+    const host = hostRef.current;
+    const heir = toasts[Math.min(at, toasts.length - 1)];
+    const target =
+      (heir &&
+        host?.querySelector<HTMLElement>(
+          `[data-toast-id="${heir.id}"] button[aria-label="Close"]`
+        )) ||
+      host?.querySelector<HTMLElement>('[data-testid="toast-dismiss-all"]') ||
+      document.getElementById(MAIN_CONTENT_ID);
+    target?.focus();
+  }, [toasts, hiddenCount]);
+
   const isUrgent = (t: Toast) =>
     t.severity === "error" || t.severity === "warning";
   const renderToast = (t: Toast) => (
     <Alert
       key={t.id}
+      data-toast-id={t.id}
       role={isUrgent(t) ? "alert" : "none"}
       severity={t.severity}
       variant="filled"
@@ -89,6 +140,9 @@ export const ToastHost: React.FC<ToastHostProps> = ({
   const root = getNotificationsRoot();
   const host = (
     <Box
+      ref={hostRef}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       // Dismissal is explicit: per-toast close, or Dismiss all. Nothing
       // here closes on a click elsewhere.
       data-testid={toasts.length > 0 ? "toast-host" : undefined}

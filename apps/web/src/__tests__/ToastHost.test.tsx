@@ -68,6 +68,96 @@ describe("ToastHost — dismissal", () => {
   });
 });
 
+// Adversarial walk F1: closing a toast removed the focused button and left
+// focus on <body>, so a keyboard user lost their place.
+describe("ToastHost — focus after a toast goes (#797)", () => {
+  let main: HTMLElement;
+  beforeEach(() => {
+    main = document.createElement("main");
+    main.id = "main-content";
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+  });
+  afterEach(() => main.remove());
+
+  const three = [
+    toast({ id: "a", message: "One", severity: "error" }),
+    toast({ id: "b", message: "Two", severity: "error" }),
+    toast({ id: "c", message: "Three", severity: "error" }),
+  ];
+  const closeButtons = () => screen.getAllByRole("button", { name: /close/i });
+
+  it("moves focus to the close button of the toast that takes its place", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[1].focus();
+    rerender(<ToastHost {...baseProps} toasts={[three[0], three[2]]} />);
+    expect(document.activeElement).toBe(closeButtons()[1]);
+    expect(
+      closeButtons()[1]
+        .closest("[data-toast-id]")
+        ?.getAttribute("data-toast-id")
+    ).toBe("c");
+  });
+
+  it("moves focus to the previous toast when the last one goes", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[2].focus();
+    rerender(<ToastHost {...baseProps} toasts={[three[0], three[1]]} />);
+    expect(document.activeElement).toBe(closeButtons()[1]);
+  });
+
+  it("moves focus to main when Dismiss all empties the stack", () => {
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={three} hiddenCount={2} />
+    );
+    screen.getByRole("button", { name: "Dismiss all" }).focus();
+    rerender(<ToastHost {...baseProps} toasts={[]} hiddenCount={0} />);
+    expect(document.activeElement).toBe(main);
+  });
+
+  it("moves focus to main when the only toast closes", () => {
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={[three[0]]} />
+    );
+    closeButtons()[0].focus();
+    rerender(<ToastHost {...baseProps} toasts={[]} />);
+    expect(document.activeElement).toBe(main);
+  });
+
+  it("covers a toast that hides itself while focused", () => {
+    const success = toast({ id: "s", message: "Saved", severity: "success" });
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={[three[0], success]} />
+    );
+    closeButtons()[1].focus();
+    // The provider's timer drops it; no click was involved.
+    rerender(<ToastHost {...baseProps} toasts={[three[0]]} />);
+    expect(document.activeElement).toBe(closeButtons()[0]);
+  });
+
+  it("never takes focus the user put somewhere else", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+      closeButtons()[0].focus();
+      outside.focus();
+      rerender(<ToastHost {...baseProps} toasts={[three[1], three[2]]} />);
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("leaves focus alone when the user had left for the page body", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[0].focus();
+    closeButtons()[0].blur();
+    rerender(<ToastHost {...baseProps} toasts={[three[1], three[2]]} />);
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
 describe("ToastHost — actions", () => {
   it("renders an action label and invokes it", () => {
     const onClick = jest.fn();

@@ -118,3 +118,30 @@ describe("SidebarNavToggleUI", () => {
     ).not.toHaveAttribute("aria-controls");
   });
 });
+
+describe("SidebarNavToggleUI Escape (#797)", () => {
+  it("calls onEscape when Escape is pressed on it", () => {
+    const onEscape = jest.fn();
+    render(
+      <SidebarNavToggleUI
+        variant="full"
+        collapsed={false}
+        onClick={jest.fn()}
+        onEscape={onEscape}
+      />
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "toggle sidebar" }), {
+      key: "Escape",
+    });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing on Escape without onEscape", () => {
+    const onClick = jest.fn();
+    render(<SidebarNavToggleUI variant="full" collapsed onClick={onClick} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "toggle sidebar" }), {
+      key: "Escape",
+    });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+});

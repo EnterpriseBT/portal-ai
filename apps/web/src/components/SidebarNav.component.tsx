@@ -127,6 +127,8 @@ export interface SidebarNavUIProps {
   frozen?: boolean;
   footer?: React.ReactNode | (() => React.ReactNode);
   onClickAway?: () => void;
+  /** Escape pressed inside the drawer (#797): closes the mobile overlay. */
+  onEscape?: () => void;
 }
 
 export const SidebarNavUI = ({
@@ -137,11 +139,22 @@ export const SidebarNavUI = ({
   showSideBarToggle = true,
   frozen = false,
   onClickAway,
+  onEscape,
 }: SidebarNavUIProps) => {
   const resolvedFooter = typeof footer === "function" ? footer() : footer;
 
+  // React bubbles keys through portals, so a dialog the drawer opened (the
+  // app version) would reach here; only an Escape from the drawer's own DOM
+  // closes it.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Escape" || e.defaultPrevented || !onEscape) return;
+    if (!e.currentTarget.contains(e.target as Node)) return;
+    onEscape();
+  };
+
   const drawer = (
     <Box
+      onKeyDown={handleKeyDown}
       sx={{
         position: "relative",
         display: hidden ? "none" : "block",
@@ -241,6 +254,14 @@ export const SidebarNav = () => {
   const handleClick = () => {
     if (isMobileExpanded) toggle();
   };
+  // Escape closes the mobile overlay and returns focus to the header toggle
+  // that opened it, rather than leaving it in the hidden drawer.
+  const closeFromKeyboard = () => {
+    toggle();
+    document
+      .querySelector<HTMLElement>('button[aria-controls="primary-nav"]')
+      ?.focus();
+  };
   return (
     <SidebarNavUI
       collapsed={isCollapsed}
@@ -248,6 +269,7 @@ export const SidebarNav = () => {
       frozen={isMobileExpanded}
       showSideBarToggle={!isMobile}
       onClickAway={isMobileExpanded ? toggle : undefined}
+      onEscape={isMobileExpanded ? closeFromKeyboard : undefined}
       footer={
         <>
           <SidebarNavItem

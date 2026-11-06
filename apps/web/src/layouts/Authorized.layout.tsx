@@ -68,6 +68,9 @@ export const AuthorizedLayout = ({
           component="main"
           id={MAIN_CONTENT_ID}
           tabIndex={-1}
+          // Behind the open mobile drawer the page is dimmed and blocks the
+          // pointer; inert takes it out of the Tab order too (#797).
+          inert={isMobileExpanded || undefined}
           flex={1}
           overflow="auto"
           sx={(theme) => ({

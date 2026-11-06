@@ -13,6 +13,8 @@ export interface SidebarNavToggleProps {
   /** The id of the navigation this toggle shows and hides. Only set where
    *  that element exists, or aria-controls would dangle. */
   controlsId?: string;
+  /** Escape on the toggle: closes the open mobile drawer (#797). */
+  onEscape?: () => void;
 }
 
 /** WCAG 2.5.8: a pointer target is at least 24×24 CSS px. */
@@ -43,6 +45,7 @@ export const SidebarNavToggleUI = ({
   expandedIcon = IconName.KeyboardArrowLeft,
   onClick,
   controlsId,
+  onEscape,
 }: SidebarNavToggleProps) => {
   return (
     <IconButton
@@ -51,6 +54,13 @@ export const SidebarNavToggleUI = ({
       aria-controls={controlsId}
       color="inherit"
       onClick={onClick}
+      onKeyDown={
+        onEscape
+          ? (e: React.KeyboardEvent) => {
+              if (e.key === "Escape") onEscape();
+            }
+          : undefined
+      }
       size="small"
       sx={(theme) => {
         const visible = parseFloat(visibleWidth(variant, theme.spacing));
@@ -107,6 +117,7 @@ export const SidebarNavToggle = () => {
         expandedIcon={isMobile ? IconName.Close : undefined}
         onClick={() => toggle()}
         controlsId="primary-nav"
+        onEscape={isMobile && !isCollapsed ? toggle : undefined}
       />
     </span>
   );
