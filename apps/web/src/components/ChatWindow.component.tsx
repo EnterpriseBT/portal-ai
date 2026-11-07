@@ -289,8 +289,9 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
           )}
         </Box>
         <Box sx={{ flexShrink: 0, p: 2, borderTop: 1, borderColor: "divider" }}>
+          {/* No autoFocus (#793): on arrival focus goes to the page heading
+              with every other page (#797's route announcer). */}
           <TextField
-            autoFocus
             multiline
             minRows={2}
             maxRows={6}

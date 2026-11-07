@@ -127,6 +127,22 @@ const PATH_OWNERS = [
   ],
 ];
 
+/** Row-level owners, checked before the path owners: a finding whose file
+ *  belongs to one area but whose element belongs to another. The RegionEditor
+ *  canvas renders inside the FileUpload workflow's stories, so its corner
+ *  header (and the selector-less aria-prohibited-attr rows those stories
+ *  report for it) would otherwise land on #793 by the workflow's path; the
+ *  canvas is #795's (decided on #793). */
+const ROW_OWNERS = [
+  [({ target }) => /data-corner-header/.test(target ?? ""), 795],
+  [
+    ({ rule, file }) =>
+      rule === "aria-prohibited-attr" &&
+      /\/FileUpload(ConnectorWorkflow|RegionDrawingStep)\.stories\.tsx$/.test(file ?? ""),
+    795,
+  ],
+];
+
 /** Rules owned by one child wherever they're found: an unnamed progress
  *  indicator comes from the shared loading primitives (StatusMessage,
  *  Loading, DataResult), which #797 owns with the rest of page status. */
@@ -180,10 +196,11 @@ function compareCriteria(a, b) {
 
 const findingId = (tool, rule, location) => createHash("sha1").update(`${tool}|${rule}|${location}`).digest("hex").slice(0, 8);
 
-function ownerFor({ tool, pkg, rule, file, routeOwner }) {
+function ownerFor({ tool, pkg, rule, file, target, routeOwner }) {
   if (tool === "axe-app" && isShellRule(rule)) return 797;
   // apps/site is #798's whatever the rule: RULE_OWNERS name app primitives.
   if (pkg === "apps/site" || tool === "axe-site") return 798;
+  for (const [matches, owner] of ROW_OWNERS) if (matches({ rule, file, target })) return owner;
   if (RULE_OWNERS[rule]) return RULE_OWNERS[rule];
   if (file) {
     const probe = `/${file}`;
@@ -261,7 +278,7 @@ export function normalizeRaw(data, { package: pkg }) {
           subject: file ? `${file} ${target}`.trim() : target,
           where: file ? (ctx.story ?? "") : (ctx.route ?? ctx.url ?? "?"),
           seen: [{ role: ctx.role ?? null, state: ctx.state ?? null, theme: ctx.theme ?? null }],
-          owner: ownerFor({ tool: data.tool, pkg, rule: v.id, file, routeOwner: ctx.owner }),
+          owner: ownerFor({ tool: data.tool, pkg, rule: v.id, file, target, routeOwner: ctx.owner }),
         });
       }
     }
@@ -707,6 +724,8 @@ async function selfTest() {
           { context: { file: "apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx", story: "Default" }, status: "ok", violations: [violation("aria-roles", ["wcag2a", "wcag412"])] },
           { context: { file: "apps/web/src/components/RenameDialog.component.stories.tsx", story: "Open" }, status: "ok", violations: [violation("label", ["wcag2a", "wcag412"])] },
           { context: { file: "apps/web/src/components/UnplacedWidget.stories.tsx", story: "Stack" }, status: "ok", violations: [violation("aria-roles", ["wcag2a", "wcag412"])] },
+          { context: { file: "apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx", story: "Empty" }, status: "ok", violations: [violation("aria-prohibited-attr", ["wcag2a", "wcag412"], ["div[data-corner-header]"])] },
+          { context: { file: "apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx", story: "Step1_Empty" }, status: "ok", violations: [violation("aria-prohibited-attr", ["wcag2a", "wcag412"])] },
         ]),
       },
       {
@@ -739,6 +758,12 @@ async function selfTest() {
       ownerOf(byRule("jsx-a11y/alt-text")) === 796 &&
       ownerOf(byRule("jsx-a11y/anchor-is-valid")) === 797,
     JSON.stringify(appInv?.map((f) => [f.rule, f.location, f.owner]))
+  );
+  check(
+    "the RegionEditor canvas's rows in the FileUpload stories go to #795, not the workflow's #793",
+    ownerOf(byRule("aria-prohibited-attr", "FileUploadRegionDrawingStep")) === 795 &&
+      ownerOf(byRule("aria-prohibited-attr", "FileUploadConnectorWorkflow")) === 795,
+    JSON.stringify(appInv?.filter((f) => f.rule === "aria-prohibited-attr").map((f) => [f.location, f.owner]))
   );
   check("a finding no rule places is unassigned, never guessed", ownerOf(byRule("aria-roles", "UnplacedWidget")) === "unassigned", ownerOf(byRule("aria-roles", "UnplacedWidget")));
   check("a finding with no wcag tag is best practice (no criteria)", byRule("region")?.wcag.length === 0, JSON.stringify(byRule("region")));
