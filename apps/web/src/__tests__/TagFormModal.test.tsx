@@ -325,3 +325,17 @@ describe("TagFormModal — a name saved before the limit (#801)", () => {
     expect(body.description).toBe("Prod only");
   });
 });
+
+// #793: a color error belongs to the picker's field, not a loose caption.
+describe("TagFormModal — color error (#793)", () => {
+  it("is the hex field's description, with aria-invalid", async () => {
+    render(
+      <TagFormModal {...defaultProps} tag={{ ...existingTag, color: "red" }} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    const hex = screen.getByRole("textbox", { name: /Hex color value/ });
+    await waitFor(() => expect(hex).toHaveAttribute("aria-invalid", "true"));
+    expect(hex).toHaveAccessibleDescription(/./);
+    expect(screen.getByRole("group", { name: "Color" })).toContainElement(hex);
+  });
+});

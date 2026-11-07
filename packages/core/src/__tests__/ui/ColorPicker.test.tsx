@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { jest } from "@jest/globals";
 
 import { ColorPicker } from "../../ui/ColorPicker.js";
+import { expectNoAxeViolations } from "../axe.util";
 
 // Mock canvas context
 function mockCanvasContext() {
@@ -387,5 +388,48 @@ describe("ColorPicker", () => {
       expect(canvas).toHaveAttribute("width", "150");
       expect(canvas).toHaveAttribute("height", "150");
     });
+  });
+});
+
+// #793: the picker is a labelled group, and a form's required/error state
+// reaches its field.
+describe("ColorPicker accessibility (#793)", () => {
+  beforeEach(() => {
+    mockCanvasContext();
+  });
+
+  it("is a group named by its label", () => {
+    render(<ColorPicker label="Color" value="#ff0000" />);
+    expect(screen.getByRole("group", { name: "Color" })).toBeInTheDocument();
+  });
+
+  it("passes required, error and helper text to its hex field", () => {
+    render(
+      <ColorPicker
+        label="Color"
+        value=""
+        required
+        error
+        helperText="Pick a color"
+      />
+    );
+    const field = screen.getByRole("textbox", { name: /Hex color value/ });
+    expect(field).toBeRequired();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription("Pick a color");
+  });
+
+  it("is not invalid by default", () => {
+    render(<ColorPicker label="Color" value="#ff0000" />);
+    expect(
+      screen.getByRole("textbox", { name: /Hex color value/ })
+    ).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ColorPicker label="Color" value="#ff0000" error helperText="Bad" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useId, useRef } from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -59,6 +59,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const selectionId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -144,16 +145,25 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
 
   return (
     <Stack spacing={0.5} sx={{ width: fullWidth ? "100%" : undefined }}>
-      {/* Selected value display */}
+      {/* Selected value display. The input stays empty for searching, so
+          the selection is the combobox's description (#793), and the chip,
+          a button, removes it. */}
       {selectedOption && (
         <Chip
           label={selectedOption?.label ?? value}
+          aria-label={`Remove ${selectedOption?.label ?? value}`}
+          onClick={disabled ? undefined : handleClear}
           onDelete={disabled ? undefined : handleClear}
           size={size}
           color="primary"
           variant="outlined"
           sx={{ alignSelf: "flex-start", maxWidth: "100%" }}
         />
+      )}
+      {selectedOption && (
+        <span id={selectionId} hidden>
+          {`Selected: ${selectedOption.label}`}
+        </span>
       )}
 
       {/* Search input */}
@@ -169,6 +179,8 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         getOptionLabel={(option) => option.label}
         filterOptions={(x) => x}
         loading={loading}
+        // A status, so the wait is announced when the list opens (#793).
+        loadingText={<span role="status">Loading…</span>}
         disabled={disabled}
         size={size}
         fullWidth={fullWidth}
@@ -181,8 +193,21 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
             placeholder={placeholder}
             helperText={helperText}
             error={error}
-            required={required}
+            // Satisfied by the chip: the input itself stays empty (#793).
+            required={required && !selectedOption}
             slotProps={{
+              htmlInput: {
+                ...params.inputProps,
+                // Setting this replaces MUI's link to the helper text, so
+                // that's restored alongside the selection.
+                "aria-describedby":
+                  [
+                    selectedOption ? selectionId : null,
+                    helperText ? `${params.id}-helper-text` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined,
+              },
               input: {
                 ...params.InputProps,
                 endAdornment: (

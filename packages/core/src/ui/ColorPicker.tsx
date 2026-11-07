@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from "react";
+import React, { useRef, useEffect, useCallback, useId, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -41,6 +41,15 @@ export interface ColorPickerProps {
   label?: string;
   /** Whether the picker is disabled */
   disabled?: boolean;
+  /** A form's required state, on the hex field (#793). */
+  required?: boolean;
+  /** A form's error state, on the hex field (#793). */
+  error?: boolean;
+  /** A form's error or hint text, under the hex field and read as its
+   *  description (#793). */
+  helperText?: React.ReactNode;
+  /** The hex field's id. */
+  id?: string;
 }
 
 const HEX_REGEX = /^#[0-9a-fA-F]{6}$/;
@@ -173,7 +182,12 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   wheelSize = 200,
   label,
   disabled = false,
+  required,
+  error,
+  helperText,
+  id,
 }) => {
+  const labelId = useId();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -325,19 +339,28 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   );
 
   return (
-    <Stack spacing={1.5} sx={{ opacity: disabled ? 0.5 : 1 }}>
+    <Stack
+      spacing={1.5}
+      sx={{ opacity: disabled ? 0.5 : 1 }}
+      // #793: the field, wheel and samples are one labelled control.
+      role={label ? "group" : undefined}
+      aria-labelledby={label ? labelId : undefined}
+    >
       {label && (
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography id={labelId} variant="subtitle2" color="text.secondary">
           {label}
         </Typography>
       )}
 
       <Stack direction="row" spacing={1} alignItems="center">
         <TextField
+          id={id}
           size="small"
           value={inputValue}
           onChange={handleInputChange}
           disabled={disabled}
+          required={required}
+          helperText={helperText}
           slotProps={{
             input: {
               startAdornment: (
@@ -363,7 +386,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
               maxLength: 7,
             },
           }}
-          error={inputValue.length > 1 && !isValidHex(inputValue)}
+          error={error || (inputValue.length > 1 && !isValidHex(inputValue))}
           sx={{ width: 160 }}
         />
         <MuiIconButton
