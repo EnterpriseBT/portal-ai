@@ -1078,6 +1078,8 @@ export const PaginationToolbar = React.forwardRef<
               size="small"
               value={limit}
               onChange={(e) => onLimitChange(Number(e.target.value))}
+              // Its only visible context is the page count beside it (#793).
+              inputProps={{ "aria-label": "Rows per page" }}
               sx={{ minWidth: 70, "& .MuiSelect-select": { py: 0.5 } }}
             >
               {limitOptions.map((opt) => (

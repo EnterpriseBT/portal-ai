@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { EditEntityGroupDialog } =
   await import("../components/EditEntityGroupDialog.component");
 
@@ -25,6 +25,22 @@ describe("EditEntityGroupDialog", () => {
     render(<EditEntityGroupDialog {...defaultProps} />);
     expect(screen.getByText("Edit Entity Group")).toBeInTheDocument();
     expect(nameField()).toHaveValue("Customers");
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<EditEntityGroupDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <EditEntityGroupDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {

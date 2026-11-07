@@ -29,6 +29,10 @@
  *   directly, skipping Enter, implicit submission and the disabled default
  *   button, so it passed even when Enter did nothing (#758). Tests press a
  *   real Enter instead (`pressEnter` in test-utils, or user-event).
+ * - R6: every component that renders a `Modal` has a test file of its own
+ *   (`<Name>.test.tsx`, or `.component.test.tsx` / `.view.test.tsx`), and
+ *   that file runs the shared axe assertion (`expectNoAxeViolations`) on
+ *   the open dialog (#793). A dialog with no test of its own is a gap too.
  * - R7: no `Button` or `IconButton` in a dialog's file is `disabled` by the
  *   flag its `Modal` passes as `pending` (#793). A natively disabled button
  *   drops focus to the page the moment the request starts. It renders
@@ -235,6 +239,30 @@ export function disabledReadsPending(source: string): number[] {
   return lines;
 }
 
+/** R6: whether a test source runs the shared axe assertion. */
+export function runsAxe(source: string): boolean {
+  return /\bexpectNoAxeViolations\(/.test(withoutComments(source));
+}
+
+/** R6: the test files named for a component file. */
+function pairedTests(componentPath: string, tests: string[]): string[] {
+  const name = componentPath
+    .split("/")
+    .pop()!
+    .replace(/\.tsx$/, "")
+    .replace(/\.(component|view|layout)$/, "");
+  return tests.filter((t) =>
+    [
+      `${name}.test.tsx`,
+      `${name}.component.test.tsx`,
+      `${name}.view.test.tsx`,
+    ].includes(t.split("/").pop()!)
+  );
+}
+
+// R6's allowlist. Empty; it only shrinks.
+const AXE_EXEMPT: Record<string, string> = {};
+
 // R7's allowlist. Empty; it only shrinks.
 const PENDING_DISABLED_EXEMPT: Record<string, string> = {};
 
@@ -429,6 +457,30 @@ describe("the guard's own rules (fixtures, R7)", () => {
   });
 });
 
+describe("the guard's own rules (fixtures, R6)", () => {
+  it("R6 sees the axe call, and not one named in a comment", () => {
+    expect(
+      runsAxe(`await expectNoAxeViolations(screen.getByRole("dialog"));`)
+    ).toBe(true);
+    expect(runsAxe(`// TODO: expectNoAxeViolations(dialog)`)).toBe(false);
+    expect(runsAxe(`render(<X />);`)).toBe(false);
+  });
+
+  it("R6 pairs a component with its test by name", () => {
+    const tests = [
+      "__tests__/RenamePortalDialog.test.tsx",
+      "__tests__/AdvancedFilterBuilder.component.test.tsx",
+      "__tests__/RenamePortal.test.tsx",
+    ];
+    expect(
+      pairedTests("components/RenamePortalDialog.component.tsx", tests)
+    ).toEqual(["__tests__/RenamePortalDialog.test.tsx"]);
+    expect(
+      pairedTests("components/AdvancedFilterBuilder.component.tsx", tests)
+    ).toEqual(["__tests__/AdvancedFilterBuilder.component.test.tsx"]);
+  });
+});
+
 describe("dialogs meet the Modal contract (#789)", () => {
   it("finds the dialogs (so the guard can't pass vacuously)", () => {
     expect(withModals.length).toBeGreaterThanOrEqual(45);
@@ -485,6 +537,26 @@ describe("dialogs meet the Modal contract (#789)", () => {
     (path, source) => {
       if (path in PENDING_DISABLED_EXEMPT) return;
       expect(disabledReadsPending(source).map((l) => `line ${l}`)).toEqual([]);
+    }
+  );
+
+  const allTests = testFiles(webSrc).map((path) => relative(webSrc, path));
+
+  it("pairs enough dialogs with tests (so R6 can't pass vacuously)", () => {
+    expect(
+      withModals.filter((f) => pairedTests(f.path, allTests).length > 0).length
+    ).toBeGreaterThanOrEqual(55);
+  });
+
+  it.each(withModals.map((f) => [f.path]))(
+    "%s: has a test of its own that runs axe on the dialog (R6)",
+    (path) => {
+      if (path in AXE_EXEMPT) return;
+      const paired = pairedTests(path, allTests);
+      expect(paired).not.toEqual([]);
+      expect(
+        paired.some((t) => runsAxe(readFileSync(join(webSrc, t), "utf8")))
+      ).toBe(true);
     }
   );
 

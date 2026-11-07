@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 
 // Mock the sdk modules to avoid real API calls in the dialog
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -95,6 +96,22 @@ describe("CreatePortalDialog", () => {
   it("should render 'New Portal' title", () => {
     render(<MockedCreatePortalDialog {...defaultProps} />);
     expect(screen.getByText("New Portal")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<MockedCreatePortalDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <MockedCreatePortalDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should render station select field", () => {

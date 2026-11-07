@@ -38,8 +38,14 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   ServerError: {},
 }));
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { CreateConnectorEntityDialog } =
   await import("../components/CreateConnectorEntityDialog.component");
 
@@ -83,6 +89,22 @@ describe("CreateConnectorEntityDialog", () => {
     expect(
       screen.getByRole("combobox", { name: "Connector Instance" })
     ).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<CreateConnectorEntityDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <CreateConnectorEntityDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render dialog content when open is false", () => {

@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import type { SearchResult } from "../../../api/types";
 import {
@@ -80,6 +84,24 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
     render(<RestApiConnectorWorkflowUI {...makeProps({ onStepChange })} />);
     await user.type(nameField(), "x{Enter}");
     expect(onStepChange).toHaveBeenCalledWith(1);
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    const onStepChange = jest.fn();
+    render(<RestApiConnectorWorkflowUI {...makeProps({ onStepChange })} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    const onStepChange = jest.fn();
+    render(
+      <RestApiConnectorWorkflowUI
+        {...makeProps({ onStepChange })}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not advance on Enter when the step can't", async () => {

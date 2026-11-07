@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import type { EntityTag } from "@portalai/core/models";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { TagFormModal } = await import("../components/TagFormModal.component");
 
 // Mock canvas context for ColorPicker's color wheel
@@ -52,6 +53,22 @@ describe("TagFormModal", () => {
   it("should render 'Create Tag' title when tag is null", () => {
     render(<TagFormModal {...defaultProps} />);
     expect(screen.getByText("Create Tag")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <TagFormModal
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should render empty form fields in create mode", () => {

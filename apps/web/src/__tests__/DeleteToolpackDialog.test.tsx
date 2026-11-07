@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteToolpackDialogUI } =
   await import("../components/DeleteToolpackDialog.component");
 
@@ -22,6 +23,22 @@ describe("DeleteToolpackDialogUI", () => {
     render(<DeleteToolpackDialogUI {...defaultProps} />);
     expect(screen.getByText("Delete toolpack")).toBeInTheDocument();
     expect(screen.getByText(/customer_intel/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteToolpackDialogUI {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteToolpackDialogUI
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open is false", () => {

@@ -146,6 +146,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         <div
           aria-expanded="false"
           aria-haspopup="listbox"
+          aria-label="Rows per page"
           class="MuiSelect-select MuiSelect-outlined MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall css-vzq58p-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input"
           role="combobox"
           tabindex="0"

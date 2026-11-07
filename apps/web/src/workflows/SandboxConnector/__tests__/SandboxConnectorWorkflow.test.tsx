@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } =
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
   await import("../../../__tests__/test-utils");
 const { SandboxConnectorWorkflowUI } =
   await import("../SandboxConnectorWorkflow.component");
@@ -41,6 +41,22 @@ describe("SandboxConnectorWorkflowUI", () => {
     render(<SandboxConnectorWorkflowUI {...makeProps()} />);
     expect(screen.getByText("Connect Sandbox")).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<SandboxConnectorWorkflowUI {...makeProps()} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <SandboxConnectorWorkflowUI
+        {...makeProps()}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open is false", () => {

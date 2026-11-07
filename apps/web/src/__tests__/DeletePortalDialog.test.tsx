@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeletePortalDialog } =
   await import("../components/DeletePortalDialog.component");
 
@@ -20,6 +21,22 @@ describe("DeletePortalDialog", () => {
   it("should render 'Delete Portal' title", () => {
     render(<DeletePortalDialog {...defaultProps} />);
     expect(screen.getByText("Delete Portal")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeletePortalDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeletePortalDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should display portal name in the confirmation message", () => {

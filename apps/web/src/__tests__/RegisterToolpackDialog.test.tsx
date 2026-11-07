@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { RegisterToolpackDialogUI, appendAuthHeaderBoilerplate } =
   await import("../components/RegisterToolpackDialog.component");
 
@@ -49,6 +55,22 @@ describe("RegisterToolpackDialogUI", () => {
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Schema endpoint/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Runtime endpoint/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RegisterToolpackDialogUI
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("renders a single tabbed accordion at the bottom for each endpoint's expected shape", () => {

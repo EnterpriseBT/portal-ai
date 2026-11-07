@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import type { Member } from "@portalai/core/contracts";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { RemoveMemberDialog } =
   await import("../components/RemoveMemberDialog.component");
 
@@ -26,6 +26,22 @@ describe("RemoveMemberDialog", () => {
     render(<RemoveMemberDialog {...defaultProps} />);
     expect(screen.getByText("Remove member")).toBeInTheDocument();
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RemoveMemberDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RemoveMemberDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {

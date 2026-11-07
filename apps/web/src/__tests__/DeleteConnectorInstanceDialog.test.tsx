@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { ConnectorInstanceImpact } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteConnectorInstanceDialog } =
   await import("../components/DeleteConnectorInstanceDialog.component");
 
@@ -43,6 +44,22 @@ describe("DeleteConnectorInstanceDialog", () => {
   it("should render dialog when open is true", () => {
     render(<DeleteConnectorInstanceDialog {...defaultProps} />);
     expect(screen.getByText("Delete Connector Instance")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteConnectorInstanceDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteConnectorInstanceDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render content when open is false", () => {

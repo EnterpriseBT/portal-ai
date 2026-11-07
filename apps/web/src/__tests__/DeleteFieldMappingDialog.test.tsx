@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { FieldMappingImpactResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteFieldMappingDialog } =
   await import("../components/DeleteFieldMappingDialog.component");
 
@@ -80,6 +81,22 @@ describe("DeleteFieldMappingDialog", () => {
   it("should render dialog when open is true", () => {
     render(<DeleteFieldMappingDialog {...defaultProps} />);
     expect(screen.getByText("Delete Field Mapping")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteFieldMappingDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render when open is false", () => {

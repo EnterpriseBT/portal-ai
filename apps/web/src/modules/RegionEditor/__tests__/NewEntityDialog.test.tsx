@@ -3,6 +3,7 @@ import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { NewEntityDialogUI } from "../NewEntityDialog.component";
 
@@ -133,6 +134,23 @@ describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
     expect(validateKey).toHaveBeenCalledWith("order");
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText(/already used by CRM Export/i)).toBeInTheDocument();
+  });
+
+  test("has no axe violations when open (#793)", async () => {
+    const onSubmit = jest.fn<(key: string, label: string) => void>();
+    const validateKey = jest.fn<
+      (key: string) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>
+    >(async () => ({ ok: false, ownedBy: "CRM Export" }));
+    render(
+      <NewEntityDialogUI
+        open
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        existingKeys={[]}
+        validateKey={validateKey}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   test("submit proceeds when the async check resolves ok", async () => {

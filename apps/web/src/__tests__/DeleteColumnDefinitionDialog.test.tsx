@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { ColumnDefinitionImpactResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteColumnDefinitionDialog } =
   await import("../components/DeleteColumnDefinitionDialog.component");
 
@@ -35,6 +36,22 @@ describe("DeleteColumnDefinitionDialog", () => {
   it("should render title when open is true", () => {
     render(<DeleteColumnDefinitionDialog {...defaultProps} />);
     expect(screen.getByText("Delete Column Definition")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteColumnDefinitionDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteColumnDefinitionDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render when open is false", () => {

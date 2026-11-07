@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { CreateColumnDefinitionDialog } =
   await import("../components/CreateColumnDefinitionDialog.component");
 
@@ -22,6 +28,22 @@ describe("CreateColumnDefinitionDialog", () => {
   it("should render 'New Column Definition' title", () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
     expect(screen.getByText("New Column Definition")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <CreateColumnDefinitionDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   // #2

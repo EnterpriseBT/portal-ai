@@ -1,6 +1,12 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, fireEvent, pressEnter } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  pressEnter,
+  expectNoAxeViolations,
+} from "./test-utils";
 import { PinResultDialog } from "../components/PinResultDialog.component";
 import type { ServerError } from "../utils/api.util";
 
@@ -36,6 +42,22 @@ describe("PinResultDialog — rendering", () => {
     render(<PinResultDialog {...baseProps} />);
     expect(screen.getByText("Name this result")).toBeInTheDocument();
     expect(nameField()).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<PinResultDialog {...baseProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <PinResultDialog
+        {...baseProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("renders nothing when closed", () => {

@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteStationDialog } =
   await import("../components/DeleteStationDialog.component");
 
@@ -35,6 +36,22 @@ describe("DeleteStationDialog", () => {
   it("should render 'Delete Station' title", () => {
     render(<DeleteStationDialog {...defaultProps} />);
     expect(screen.getByText("Delete Station")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteStationDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteStationDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should display station name in the confirmation message", () => {

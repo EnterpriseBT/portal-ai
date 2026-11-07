@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { ToolpackMetadataModalUI } =
   await import("../components/ToolpackMetadataModal.component");
 
@@ -49,6 +49,17 @@ describe("ToolpackMetadataModalUI", () => {
     expect(screen.getByText("Run SQL queries.")).toBeInTheDocument();
     expect(screen.getByText("sql_query")).toBeInTheDocument();
     expect(screen.getByText("Execute a SQL query.")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(
+      <ToolpackMetadataModalUI
+        toolpack={fixturePack}
+        open
+        onClose={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   // Case 55

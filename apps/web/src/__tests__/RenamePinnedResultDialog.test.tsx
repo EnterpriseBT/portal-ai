@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { RenamePinnedResultDialog } =
   await import("../components/RenamePinnedResultDialog.component");
 
@@ -27,6 +28,22 @@ describe("RenamePinnedResultDialog", () => {
     render(<RenamePinnedResultDialog {...defaultProps} />);
     expect(screen.getByText("Rename Pinned Result")).toBeInTheDocument();
     expect(nameField()).toHaveValue("Revenue Summary");
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RenamePinnedResultDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RenamePinnedResultDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {

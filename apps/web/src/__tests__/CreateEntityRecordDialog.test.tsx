@@ -8,8 +8,14 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent, pressEnter, waitFor } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  pressEnter,
+  waitFor,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CreateEntityRecordDialog } =
   await import("../components/CreateEntityRecordDialog.component");
@@ -102,6 +108,22 @@ describe("CreateEntityRecordDialog — rendering", () => {
     expect(screen.getByLabelText("Age")).toBeInTheDocument();
     expect(screen.getByRole("checkbox")).toBeInTheDocument();
     expect(screen.getByLabelText("Metadata")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<CreateEntityRecordDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <CreateEntityRecordDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open={false}", () => {
