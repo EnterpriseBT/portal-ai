@@ -240,6 +240,12 @@ export const SidebarNavUI = ({
   return drawer;
 };
 
+/** The brand themes register a `typography.code` variant that MUI's types
+ *  don't declare (as `sandbox-theme.util.ts` does for `monospace`). */
+interface CodeTypography {
+  code?: { fontFamily?: string };
+}
+
 export const SidebarNav = () => {
   const { isMobile, isCollapsed, isMobileExpanded, isMobileCollapsed, toggle } =
     useLayout();
@@ -308,8 +314,8 @@ export const SidebarNav = () => {
               sx={(theme) => ({
                 display: "block",
                 wordBreak: "break-all",
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                fontFamily: (theme.typography as any).code?.fontFamily,
+                fontFamily: (theme.typography as unknown as CodeTypography).code
+                  ?.fontFamily,
                 fontSize: "0.75rem",
                 backgroundColor: theme.palette.action.hover,
                 borderRadius: 1,

@@ -9,7 +9,7 @@
 | Piece | Location | Note |
 |---|---|---|
 | The version dialog | `apps/web/src/components/SidebarNav.component.tsx:299` | A `Modal` with `showCloseButton={false}` and `aria-label="App version"` (#793), and a body `Typography` that repeats "App version" as text |
-| `Modal`'s header | `packages/core/src/ui/Modal.tsx:116` | `showHeader = !!title \|\| showCloseButton`. The default close `IconButton` (`aria-label="close"`) sits in the header's `data-dialog-controls` box (:177). A `title` names the dialog through MUI's `aria-labelledby`; `aria-label` is only for a dialog with no visible title (:131) |
+| `Modal`'s header | `packages/core/src/ui/Modal.tsx:116` | `showHeader = !!title \|\| showCloseButton`. The default close `IconButton` (`aria-label="close"`) sits in the header's `data-dialog-controls` box (:165). A `title` names the dialog through MUI's `aria-labelledby`; `aria-label` is only for a dialog with no visible title (:138) |
 | The real dialog's test | `apps/web/src/__tests__/SidebarNav.test.tsx:26` | Opens `<SidebarNav />` and runs axe on the dialog (R6) |
 | The "Version footer" tests | `apps/web/src/__tests__/SidebarNav.test.tsx:156` | Render a hand-built `VersionFooter` with raw MUI `Dialog`, **not** the shipped dialog, so they would pass whatever `SidebarNav` renders |
 
@@ -25,14 +25,14 @@ Initial focus doesn't change: MUI focuses the dialog container, and the first Ta
 ## Plan — 1 slice
 
 **Files**
-- Edit: `apps/web/src/components/SidebarNav.component.tsx` (`title`, default close button, no `aria-label`, no body label)
+- Edit: `apps/web/src/components/SidebarNav.component.tsx` (`title`, default close button, no `aria-label`, no body label). Code review: the code block reads the theme's `code` font through a typed `CodeTypography` interface (the `sandbox-theme.util.ts` pattern), not `as any` behind an `eslint-disable` that gave no reason
 - Edit: `apps/web/src/__tests__/SidebarNav.test.tsx` (drop `VersionFooter` and its raw-`Dialog` import; new tests below)
 
 **Tests** (failing first; `cd apps/web && npm run test:unit -- --testPathPattern SidebarNav`)
 - Opening the caption shows a dialog named "App version", with a heading "App version" and the version code.
 - The dialog holds a focusable `close` button, and pressing Tab from the open dialog lands on it.
 - Clicking `close` closes the dialog, and Escape still does.
-- The existing axe test stays green.
+- The existing axe test stays green, and moves into the dialog's own `describe`. Initial focus is inside the dialog but not on `close`, so the Tab test proves Tab moved it there. The version text is asserted exactly: Jest has no Vite env, so the fallback `dev (local)`.
 - Then `npm run lint && npm run type-check && npm run format:check` in `apps/web`.
 
 ## Smoke (manual, against your dev stack)

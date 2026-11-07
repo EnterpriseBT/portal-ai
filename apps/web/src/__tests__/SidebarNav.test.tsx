@@ -27,15 +27,6 @@ describe("SidebarNavUI", () => {
     expect(screen.getByText("Nav Content")).toBeInTheDocument();
   });
 
-  it("has no axe violations when open (#793)", async () => {
-    const user = userEvent.setup();
-    render(<SidebarNav />);
-    await user.click(screen.getByRole("button", { name: /app version/ }));
-    await expectNoAxeViolations(
-      await screen.findByRole("dialog", { name: "App version" })
-    );
-  });
-
   it("renders footer as ReactNode", () => {
     render(
       <SidebarNavUI {...defaultProps} footer={<div>Footer Content</div>}>
@@ -181,12 +172,17 @@ describe("Version dialog", () => {
       within(dialog).getByRole("heading", { name: "App version" })
     ).toBeInTheDocument();
     expect(within(dialog).getAllByText("App version")).toHaveLength(1);
-    expect(dialog.querySelector("code")?.textContent).toMatch(/^\S+ \(\S+\)$/);
+    // Jest has no Vite env, so the build's version and SHA fall back.
+    expect(dialog.querySelector("code")).toHaveTextContent(/^dev \(local\)$/);
   });
 
   it("holds a focusable close button that Tab reaches", async () => {
     const { user, dialog } = await openVersionDialog();
     const close = within(dialog).getByRole("button", { name: "close" });
+    // Focus opens on the dialog itself, not already on Close.
+    const root = dialog.closest(".MuiDialog-root");
+    expect(root).toContainElement(document.activeElement as HTMLElement);
+    expect(close).not.toHaveFocus();
     await user.tab();
     expect(close).toHaveFocus();
   });
@@ -197,6 +193,11 @@ describe("Version dialog", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    const { dialog } = await openVersionDialog();
+    await expectNoAxeViolations(dialog);
   });
 
   it("still closes on Escape", async () => {
