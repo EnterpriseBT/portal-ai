@@ -1,0 +1,53 @@
+# Detail pages keep their h1 when not found — Condensed design (#982)
+
+**Issue:** [EnterpriseBT/portal-ai#982](https://github.com/EnterpriseBT/portal-ai/issues/982) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc). Child of epic #791; branches from and merges into `epic/a11y-conformance`.
+
+**Why.** #797 requires every page to render exactly one `h1`, so a screen reader can land on it and `useRouteAnnouncer` can title the tab and focus it. A detail page whose header waits on data passes `pageTitle` to `DataResult`, which keeps a hidden `h1` while loading or failing. Three detail views skip this, so their loading and not-found states have no `h1`. #793's adversarial walk found this on an entity group deleted in another tab. Only `apps/web` is touched.
+
+## Current shape
+
+| Piece | Location | Note |
+|---|---|---|
+| `DataResult`'s `pageTitle` | `apps/web/src/components/DataResult.component.tsx:36` | Renders a `visuallyHidden` `<Box component="h1">` before the loading/error status (`withTitle`, :51) |
+| Entity group | `apps/web/src/views/EntityGroupDetail.view.tsx:560` | `<DataResult results={{ group }}>` with **no** `pageTitle` |
+| Pinned result | `apps/web/src/views/PinnedResultDetail.view.tsx:377` | `<DataResult results={{ result }}>` with **no** `pageTitle` |
+| Curated view | `apps/web/src/views/CuratedViewDetail.view.tsx:271` | No `DataResult`. With no fresh view, it renders `PageEmptyState "View not found"` (:275), whose title is an `h6` (core `PageEmptyState.tsx:50`), or else `return null` (:282) while loading. **No `h1` in either.** The issue's table missed this one |
+| The other detail views | Station, Entity, EntityRecord, ColumnDefinition, ConnectorInstance, Job, Portal | Already pass `pageTitle` |
+| Why the audit didn't catch it | `packages/e2e/src/lib/a11y-routes.ts` (`entity-group-detail`, `portal-result-detail`, `view-detail`) | The axe walk runs `best-practice` (`page-has-heading-one`) on these routes' populated, error and loading states, but all 9 runs are **skipped**: the e2e fixture has no group, pinned result or curated view to drill into |
+
+## Decision — one hidden-heading component, used by every not-yet-loaded page
+
+- **A. Pass `pageTitle` to the two `DataResult`s, and inline a hidden `h1` in CuratedViewDetail's two early returns.** It's smallest, but it copies `DataResult`'s markup into a view.
+- **B. Rewrite CuratedViewDetail onto `DataResult`.** `DataResult` shows a refetch error over cached data, as `freshData` does (#713), but it renders a `StatusMessage`. That would replace the "View not found" empty state's copy and icon, which is a UI change this bug doesn't need.
+- **C (chosen). Extract `HiddenPageHeading`** (`components/HiddenPageHeading.component.tsx`, pure UI: `{ children }` → a `visuallyHidden` `h1`). `DataResult`'s `withTitle` renders it, the two views pass `pageTitle`, and CuratedViewDetail renders it in both early returns. The hidden-`h1` markup then lives in one place, and the empty state keeps its look.
+
+The titles follow the other detail views, naming the kind of page: **"Entity group"**, **"Pinned result"**, **"View"**. The tab reads "View · Portals AI" until the data loads and `PageHeader`'s visible `h1` replaces it.
+
+**No source guard.** A rule like "a view's first `DataResult` passes `pageTitle`" can't see CuratedViewDetail's shape, which is the case the issue missed. The durable check is axe's `page-has-heading-one` on these routes' error and loading states, which #799 will gate. That needs the fixture coverage under Out of scope.
+
+## Plan — 1 slice
+
+**Files**
+- New: `apps/web/src/components/HiddenPageHeading.component.tsx`
+- Edit: `apps/web/src/components/DataResult.component.tsx` (`withTitle` renders `HiddenPageHeading`)
+- Edit: `apps/web/src/views/EntityGroupDetail.view.tsx` (`pageTitle="Entity group"`), `apps/web/src/views/PinnedResultDetail.view.tsx` (`pageTitle="Pinned result"`), `apps/web/src/views/CuratedViewDetail.view.tsx` (`HiddenPageHeading` "View" in the not-found and loading returns)
+
+**Tests** (failing first; `cd apps/web && npm run test:unit -- --testPathPattern …`)
+- `__tests__/DataResult.test.tsx`: the existing `pageTitle` cases stay green (one hidden `h1` while loading and on error, none once loaded).
+- `__tests__/EntityGroupDetailView.test.tsx` and `__tests__/PinnedResultDetail.test.tsx`: the container with its get query erroring and then loading has exactly one `h1`, named "Entity group" / "Pinned result".
+- `__tests__/CuratedViewDetail.container.test.tsx`: "View not found" has exactly one `h1` "View"; the loading state has one too.
+- Then `npm run lint && npm run type-check && npm run format:check` in `apps/web`.
+
+## Smoke (manual, against your dev stack)
+
+1. As the e2e owner, create a group "Smoke 982 G" and open it. Delete it from a second tab, then refocus the first tab (or reload). The page reads "Entity group not found". The headings list has exactly one `h1` "Entity group", and the tab title is "Entity group · Portals AI".
+2. Open `/entity-groups/00000000-0000-0000-0000-000000000000`. Same result: one `h1` "Entity group".
+3. Open `/portal-results/00000000-0000-0000-0000-000000000000`. One `h1` "Pinned result", and the tab title follows it.
+4. Open `/views/00000000-0000-0000-0000-000000000000`. "View not found" shows as before (icon, copy), and the page has one `h1` "View".
+5. With DevTools on "Slow 3G", open an existing group, a pinned result and a view. While each loads, the page already has its one `h1`. Once loaded, the visible `PageHeader` title is the only `h1`.
+6. Delete "Smoke 982 G" if step 1 didn't.
+
+## Out of scope
+
+- **Fixture coverage for the axe walk:** seeding a group, a pinned result and a curated view into `e2e-fixture`, so the 9 skipped runs execute and #799 can gate this. It belongs with #799 (the gates need every route audited) or the audit's "Skipped runs" list.
+- `PageEmptyState`'s `h6` title (a heading-order row on empty states) is #794's.
