@@ -76,4 +76,4 @@ N/A: **boundary & limit inputs** (no new input or pagination), **concurrency** (
 ### Findings
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| §4 Back/Forward through `/stations` | `h1` and title correct, but focus lands on the toolbar's "Search..." input, not the `h1`: `PaginationToolbar`'s search has `autoFocus` (#649), taking focus from the route announcer on every paginated page | low | out of #982's scope (pre-existing, not on these pages); file under epic #791 |
+| §4 Back/Forward through `/stations` | `h1` and title correct, but focus lands on the toolbar's "Search..." input, not the `h1`: `PaginationToolbar`'s search has `autoFocus` (from `bf945a5c`), taking focus from the route announcer on every paginated page | low | out of #982's scope (pre-existing, not on these pages); filed as #988 under epic #791 |
