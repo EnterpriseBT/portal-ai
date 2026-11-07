@@ -34,16 +34,43 @@ function argumentsAt(source: string, open: number): string {
   return source.slice(open + 1);
 }
 
-/** Every `toast.error(…)` whose argument reads a raw `.message`. */
-export function rawMessageToastsIn(source: string): string[] {
-  const found: string[] = [];
-  for (const m of source.matchAll(/\btoast\.error\(/g)) {
-    const args = argumentsAt(source, m.index! + m[0].length - 1);
-    if (/\.message\b/.test(args) && !/\bserverErrorMessage\(/.test(args)) {
-      found.push(args.replace(/\s+/g, " ").trim());
+/** The balanced `{…}` body starting at `open`. */
+function bracesAt(source: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}" && --depth === 0) {
+      return source.slice(open + 1, i);
     }
   }
+  return source.slice(open + 1);
+}
+
+/**
+ * Every error toast's message expression: each `toast.error(…)` argument,
+ * and (#970) each `error:` entry of a mutation's `toast: { … }` option, which
+ * `useAuthMutation` raises itself.
+ */
+export function errorToastsIn(source: string): string[] {
+  const found: string[] = [];
+  for (const m of source.matchAll(/\btoast\.error\(/g)) {
+    found.push(argumentsAt(source, m.index! + m[0].length - 1));
+  }
+  for (const m of source.matchAll(/\btoast:\s*\{/g)) {
+    const body = bracesAt(source, m.index! + m[0].length - 1);
+    const entry = /\berror:/.exec(body);
+    if (entry) found.push(body.slice(entry.index + entry[0].length));
+  }
   return found;
+}
+
+/** Every error toast whose message reads a raw `.message`. */
+export function rawMessageToastsIn(source: string): string[] {
+  return errorToastsIn(source)
+    .filter(
+      (args) => /\.message\b/.test(args) && !/\bserverErrorMessage\(/.test(args)
+    )
+    .map((args) => args.replace(/\s+/g, " ").trim());
 }
 
 function sourceFiles(dir: string): string[] {
@@ -66,7 +93,7 @@ describe("toasts show server errors through serverErrorMessage (#711)", () => {
 
   it("finds the app's toasts (so the guard can't pass vacuously)", () => {
     const toasts = files.reduce(
-      (n, f) => n + (f.source.match(/\btoast\.error\(/g)?.length ?? 0),
+      (n, f) => n + errorToastsIn(f.source).length,
       0
     );
     expect(toasts).toBeGreaterThanOrEqual(15);
@@ -103,6 +130,22 @@ describe("toasts show server errors through serverErrorMessage (#711)", () => {
     ).toEqual([]);
     expect(
       rawMessageToastsIn("toast.error(`Failed: ${serverErrorMessage(err)}`)")
+    ).toEqual([]);
+  });
+
+  it("checks a mutation's toast option too (#970)", () => {
+    expect(
+      rawMessageToastsIn(`m.mutate(v, { toast: { error: (e) => e.message } })`)
+    ).toHaveLength(1);
+    expect(
+      rawMessageToastsIn(
+        `m.mutate(v, { toast: { success: "Saved", error: "Failed to save" } })`
+      )
+    ).toEqual([]);
+    expect(
+      rawMessageToastsIn(
+        "m.mutate(v, { toast: { error: (e) => `x: ${serverErrorMessage(e)}` } })"
+      )
     ).toEqual([]);
   });
 });
