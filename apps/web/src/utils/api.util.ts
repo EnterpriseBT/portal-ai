@@ -13,7 +13,11 @@ import type {
 } from "@portalai/core/contracts";
 import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
-import { isPermissionDenied } from "./permission-denied.util";
+import {
+  isPermissionDenied,
+  serverErrorMessage,
+} from "./permission-denied.util";
+import { useToast } from "./toast.context";
 import {
   apiReadPauseRemainingMs,
   isApiRateLimited,
@@ -307,6 +311,33 @@ interface AuthMutationConfig<TData, TVariables> {
   timeoutMs?: number;
 }
 
+/**
+ * #970: what a call reports to the app, run from its request's promise in
+ * the hook, so it still happens when the caller unmounts before the request
+ * settles (browser Back during a pending invite). React Query runs a call's
+ * own `onSuccess` / `onError` only while the caller is mounted, which is
+ * right for page-local work (closing a dialog, navigating, local state) and
+ * wrong for a toast or a cache refresh.
+ */
+export interface AppCallOptions<TData, TVariables> {
+  toast?: {
+    /** Raised on success. */
+    success?: string | ((data: TData, variables: TVariables) => string);
+    /** The success toast's severity. Defaults to `success`. */
+    successSeverity?: "success" | "info";
+    /**
+     * Raised on failure: a fallback for `serverErrorMessage`, or a function
+     * that builds the message. Omit it when a dialog shows the error in its
+     * `FormAlert`.
+     */
+    error?: string | ((error: ApiError, variables: TVariables) => string);
+  };
+  /** Query keys invalidated on success. */
+  invalidate?:
+    | QueryKey[]
+    | ((data: TData, variables: TVariables) => QueryKey[]);
+}
+
 interface BuiltRequest {
   method: string;
   url: string;
@@ -484,6 +515,7 @@ const useApiMutation = <TData, TVariables>(
   // and checked synchronously, so a second activation inside the render lag
   // (before `isPending` disables the button) can't send again.
   const inFlight = useRef(new Map<string, Promise<TData>>());
+  const toastApi = useToast();
   const latest = useRef({
     mutation,
     url,
@@ -491,7 +523,7 @@ const useApiMutation = <TData, TVariables>(
     method,
     dedupe,
     queryClient,
-    mutationOptions,
+    toastApi,
   });
   // A layout effect, not a render-time write (refs aren't read or written
   // during render): it runs after each commit, before any later input.
@@ -503,23 +535,74 @@ const useApiMutation = <TData, TVariables>(
       method,
       dedupe,
       queryClient,
-      mutationOptions,
+      toastApi,
     };
   });
 
-  type MutateAsync = typeof mutation.mutateAsync;
-  type CallOptions = Parameters<MutateAsync>[1];
+  type RqCallOptions = Parameters<typeof mutation.mutateAsync>[1];
+  type CallOptions = RqCallOptions & AppCallOptions<TData, TVariables>;
 
-  /** Starts `variables`' request, or joins the identical one in flight. */
-  const run = useCallback(
-    (variables: TVariables): { request: Promise<TData>; started: boolean } => {
+  /** #970: the call's toast and invalidations, whether or not it's mounted. */
+  const reportToApp = useCallback(
+    (
+      request: Promise<TData>,
+      variables: TVariables,
+      app: AppCallOptions<TData, TVariables>
+    ) => {
+      const { toast: notify, invalidate } = app;
+      if (!notify && !invalidate) return;
+      const { toastApi, queryClient: client } = latest.current;
+      void request.then(
+        (data) => {
+          const keys =
+            typeof invalidate === "function"
+              ? invalidate(data, variables)
+              : (invalidate ?? []);
+          for (const queryKey of keys) {
+            void client.invalidateQueries({ queryKey });
+          }
+          const success = notify?.success;
+          if (success !== undefined) {
+            const message =
+              typeof success === "function"
+                ? success(data, variables)
+                : success;
+            if (notify?.successSeverity === "info") toastApi.info(message);
+            else toastApi.success(message);
+          }
+        },
+        (error: ApiError) => {
+          const failure = notify?.error;
+          if (failure === undefined) return;
+          toastApi.error(
+            typeof failure === "function"
+              ? failure(error, variables)
+              : serverErrorMessage(error, failure)
+          );
+        }
+      );
+    },
+    []
+  );
+
+  const mutateAsync = useCallback(
+    (variables: TVariables, callOptions?: CallOptions): Promise<TData> => {
+      const {
+        toast: notify,
+        invalidate,
+        ...rqOptions
+      } = callOptions ?? ({} as CallOptions);
       const current = latest.current;
       const key = current.dedupe ? safeRequestKey(current, variables) : null;
       if (key !== null) {
+        // #751: a duplicate joins the running request and reports nothing.
         const running = inFlight.current.get(key);
-        if (running) return { request: running, started: false };
+        if (running) return running;
       }
-      const request = current.mutation.mutateAsync(variables);
+      const request = current.mutation.mutateAsync(
+        variables,
+        rqOptions as RqCallOptions
+      );
       if (key !== null) {
         inFlight.current.set(key, request);
         void request
@@ -530,74 +613,16 @@ const useApiMutation = <TData, TVariables>(
           })
           .catch(() => {});
       }
-      return { request, started: true };
-    },
-    []
-  );
-
-  /**
-   * #970: run a call's own `onSuccess` / `onError` / `onSettled` from its
-   * request's promise. React Query runs per-call callbacks only while the
-   * caller's observer is mounted, so a toast or invalidation raised there
-   * was lost when the caller unmounted first (browser Back during a pending
-   * invite). The promise settles after the hook-level callbacks, so the order
-   * is unchanged. A throwing callback is reported, never turned into the
-   * call's error.
-   */
-  const attachCallbacks = useCallback(
-    (
-      request: Promise<TData>,
-      variables: TVariables,
-      callOptions: CallOptions
-    ) => {
-      if (!callOptions) return;
-      const { onSuccess, onError, onSettled } = callOptions;
-      if (!onSuccess && !onError && !onSettled) return;
-      const { queryClient: client, mutationOptions: opts } = latest.current;
-      const context = {
-        client,
-        meta: opts?.meta,
-        mutationKey: opts?.mutationKey,
-      };
-      const guarded = (fn: () => void) => {
-        try {
-          fn();
-        } catch (error) {
-          void Promise.reject(error);
-        }
-      };
-      void request.then(
-        (data) => {
-          guarded(() => onSuccess?.(data, variables, undefined, context));
-          guarded(() => onSettled?.(data, null, variables, undefined, context));
-        },
-        (error: ApiError) => {
-          guarded(() => onError?.(error, variables, undefined, context));
-          guarded(() =>
-            onSettled?.(undefined, error, variables, undefined, context)
-          );
-        }
-      );
-    },
-    []
-  );
-
-  // #751: a duplicate of a request in flight joins it and doesn't run its
-  // own callbacks; only the call that started the request does.
-  const mutateAsync = useCallback<MutateAsync>(
-    (variables, callOptions) => {
-      const { request, started } = run(variables);
-      if (started) attachCallbacks(request, variables, callOptions);
+      reportToApp(request, variables, { toast: notify, invalidate });
       return request;
     },
-    [run, attachCallbacks]
+    [reportToApp]
   );
 
-  type Mutate = typeof mutation.mutate;
   // Like react-query's `mutate`: never throws; errors reach `onError` and
   // `mutation.error`.
-  const mutate = useCallback<Mutate>(
-    (variables, callOptions) => {
+  const mutate = useCallback(
+    (variables: TVariables, callOptions?: CallOptions): void => {
       void mutateAsync(variables, callOptions).catch(() => {});
     },
     [mutateAsync]

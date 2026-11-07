@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { Button, MetadataList, Modal, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
@@ -14,7 +13,6 @@ import {
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
 import { useRbacObjectSearch } from "../../api/rbac-objects.api";
-import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
 import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
@@ -161,8 +159,6 @@ export const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
   const create = sdk.policies.create();
   const update = sdk.policies.update(policy?.id ?? "");
   const search = useRbacObjectSearch();
-  const toast = useToast();
-  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     if (open) {
@@ -178,11 +174,9 @@ export const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
     mutation.mutate(
       { name: name.trim(), description: description || null, statements },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.policies.root });
-          toast.success(policy ? "Policy updated" : "Policy created");
-          onClose();
-        },
+        invalidate: [queryKeys.policies.root],
+        toast: { success: policy ? "Policy updated" : "Policy created" },
+        onSuccess: () => onClose(),
       }
     );
   };

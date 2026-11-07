@@ -1,8 +1,10 @@
 /**
- * #970: a call's own `onSuccess` / `onError` / `onSettled` run even when the
- * caller unmounts before its request settles. React Query runs per-call
- * callbacks only while the caller's observer is mounted, so browser Back
- * during a pending invite lost its "Invitation created" toast.
+ * #970: a call's `toast` and `invalidate` run from the hook, so they still
+ * happen when the caller unmounts before the request settles (browser Back
+ * during a pending invite lost its "Invitation created" toast). The call's own
+ * `onSuccess` / `onError` keep React Query's rule: they run only while the
+ * caller is mounted, so page-local work (closing a dialog, `navigate`) never
+ * runs on a page the user has left.
  */
 import { jest } from "@jest/globals";
 import React from "react";
@@ -31,6 +33,17 @@ const { renderHook, waitFor, act } = await import("@testing-library/react");
 const { QueryClient, QueryClientProvider } =
   await import("@tanstack/react-query");
 const { useAuthMutation } = await import("../utils/api.util");
+const { ToastContext } = await import("../utils/toast.context");
+
+const toastApi = {
+  success: jest.fn(() => ""),
+  info: jest.fn(() => ""),
+  warning: jest.fn(() => ""),
+  error: jest.fn(() => ""),
+  show: jest.fn(() => ""),
+  dismiss: jest.fn(),
+  dismissAll: jest.fn(),
+};
 
 type Settle = { ok: (payload: unknown) => void; fail: () => void };
 
@@ -74,10 +87,13 @@ const renderMutation = (
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
+  const invalidate = jest.spyOn(queryClient, "invalidateQueries");
   const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <ToastContext.Provider value={toastApi}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ToastContext.Provider>
   );
-  return renderHook(
+  const rendered = renderHook(
     () =>
       useAuthMutation<unknown, Vars>({
         url: (v) => `/api/stations/${v.id}`,
@@ -87,103 +103,139 @@ const renderMutation = (
       }),
     { wrapper }
   );
+  return { ...rendered, invalidate };
 };
 
 /** Lets the hook's async token fetch reach `fetch`. */
 const flush = () => act(async () => {});
 
-describe("useAuthMutation per-call callbacks after unmount (#970)", () => {
-  it("runs mutate's onSuccess and onSettled after the caller unmounts", async () => {
+describe("useAuthMutation toast and invalidate after unmount (#970)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("raises the success toast and invalidates after the caller unmounts, but skips onSuccess", async () => {
     const { pending } = deferredFetch();
-    const { result, unmount } = renderMutation();
+    const { result, unmount, invalidate } = renderMutation();
     const onSuccess = jest.fn();
-    const onSettled = jest.fn();
 
     act(() =>
-      result.current.mutate({ id: "s1", name: "A" }, { onSuccess, onSettled })
+      result.current.mutate(
+        { id: "s1", name: "A" },
+        {
+          onSuccess,
+          invalidate: [["invitations"]],
+          toast: { success: "Invitation created" },
+        }
+      )
     );
     await flush();
     unmount();
     await act(async () => pending[0].ok({ id: "s1" }));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-    expect(onSuccess.mock.calls[0]?.slice(0, 2)).toEqual([
-      { id: "s1" },
-      { id: "s1", name: "A" },
-    ]);
-    expect(onSettled).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(toastApi.success).toHaveBeenCalledWith("Invitation created")
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["invitations"] });
+    // Page-local work never runs on a page the user has left.
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 
-  it("runs mutate's onError and onSettled after the caller unmounts", async () => {
+  it("raises the error toast through serverErrorMessage after the caller unmounts", async () => {
     const { pending } = deferredFetch();
-    const { result, unmount } = renderMutation();
-    const onError = jest.fn();
-    const onSettled = jest.fn();
+    const { result, unmount, invalidate } = renderMutation();
 
     act(() =>
-      result.current.mutate({ id: "s1", name: "A" }, { onError, onSettled })
+      result.current.mutate(
+        { id: "s1" },
+        { invalidate: [["stations"]], toast: { error: "Failed to save" } }
+      )
     );
     await flush();
     unmount();
     await act(async () => pending[0].fail());
 
-    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
-    expect((onError.mock.calls[0]?.[0] as { code: string }).code).toBe(
-      "STATION_CONFLICT"
+    await waitFor(() =>
+      expect(toastApi.error).toHaveBeenCalledWith("Conflict")
     );
-    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it("runs mutateAsync's onSuccess after the caller unmounts", async () => {
+  it("builds messages from functions, and raises an info toast when asked", async () => {
+    const { pending } = deferredFetch();
+    const { result } = renderMutation();
+
+    act(() =>
+      result.current.mutate(
+        { id: "s1" },
+        {
+          toast: {
+            success: (data, vars) =>
+              `${(data as { n: number }).n} for ${vars.id}`,
+            successSeverity: "info",
+          },
+        }
+      )
+    );
+    await flush();
+    await act(async () => pending[0].ok({ n: 3 }));
+
+    await waitFor(() => expect(toastApi.info).toHaveBeenCalledWith("3 for s1"));
+    expect(toastApi.success).not.toHaveBeenCalled();
+  });
+
+  it("still runs onSuccess while mounted, alongside the toast", async () => {
+    const { pending } = deferredFetch();
+    const { result } = renderMutation();
+    const onSuccess = jest.fn();
+
+    act(() =>
+      result.current.mutate(
+        { id: "s1" },
+        { onSuccess, toast: { success: "Saved" } }
+      )
+    );
+    await flush();
+    await act(async () => pending[0].ok({}));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(toastApi.success).toHaveBeenCalledWith("Saved");
+  });
+
+  it("mutateAsync reports the same way and still resolves", async () => {
     const { pending } = deferredFetch();
     const { result, unmount } = renderMutation();
-    const onSuccess = jest.fn();
 
     let request!: Promise<unknown>;
     act(() => {
-      request = result.current.mutateAsync({ id: "s1" }, { onSuccess });
+      request = result.current.mutateAsync(
+        { id: "s1" },
+        { toast: { success: "Done" } }
+      );
     });
     await flush();
     unmount();
     await act(async () => pending[0].ok({ id: "s1" }));
 
     await expect(request).resolves.toEqual({ id: "s1" });
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledWith("Done"));
   });
 
-  it("runs the hook-level onSuccess before the per-call one", async () => {
+  it("a deduped duplicate raises no second toast", async () => {
     const { pending } = deferredFetch();
-    const order: string[] = [];
-    const { result } = renderMutation({
-      mutationOptions: { onSuccess: () => void order.push("hook") },
-    });
+    const { result } = renderMutation();
 
-    act(() =>
+    act(() => {
       result.current.mutate(
-        { id: "s1" },
-        { onSuccess: () => void order.push("call") }
-      )
-    );
+        { id: "s1", name: "A" },
+        { toast: { success: "Once" } }
+      );
+      result.current.mutate(
+        { id: "s1", name: "A" },
+        { toast: { success: "Once" } }
+      );
+    });
     await flush();
     await act(async () => pending[0].ok({}));
 
-    await waitFor(() => expect(order).toEqual(["hook", "call"]));
-  });
-
-  it("runs each different request's own callbacks, not only the latest's", async () => {
-    const { pending } = deferredFetch();
-    const { result } = renderMutation();
-    const first = jest.fn();
-    const second = jest.fn();
-
-    act(() => {
-      result.current.mutate({ id: "s1" }, { onSuccess: first });
-      result.current.mutate({ id: "s2" }, { onSuccess: second });
-    });
-    await flush();
-    await act(async () => pending.forEach((p) => p.ok({})));
-
-    await waitFor(() => expect(first).toHaveBeenCalledTimes(1));
-    expect(second).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledTimes(1));
   });
 });

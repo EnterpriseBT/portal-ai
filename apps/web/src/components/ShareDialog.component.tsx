@@ -30,7 +30,6 @@ import { useToast } from "../utils/toast.context";
 import { FormAlert } from "./FormAlert.component";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { serverErrorMessage } from "../utils/permission-denied.util";
 
 const TEAM_VALUE = "__team__";
 
@@ -373,12 +372,8 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     revoke.mutate(
       { id },
       {
-        onSuccess: () => {
-          invalidate();
-          toast.success("Share revoked");
-        },
-        onError: (error) =>
-          toast.error(serverErrorMessage(error, "Failed to revoke")),
+        onSuccess: invalidate,
+        toast: { success: "Share revoked", error: "Failed to revoke" },
       }
     );
   };

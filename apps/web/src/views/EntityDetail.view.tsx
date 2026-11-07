@@ -757,15 +757,16 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const handleClearRecords = useCallback(() => {
     clearRecordsMutation.mutate(undefined, {
+      toast: {
+        success: "Deleting records… this can take a few minutes.",
+        successSeverity: "info",
+      },
+      // The lock alert + disabled action appear immediately rather than
+      // waiting for the first SSE event to land.
+      invalidate: [queryKeys.connectorEntities.runningJobs(entityId)],
       onSuccess: ({ job }) => {
         setClearRecordsDialogOpen(false);
         clearRecordsMutation.reset();
-        toast.info("Deleting records… this can take a few minutes.");
-        // The lock alert + disabled action appear immediately rather than
-        // waiting for the first SSE event to land.
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorEntities.runningJobs(entityId),
-        });
         // Await THIS job directly rather than relying on the running-jobs
         // effect: a small clear finishes in milliseconds — before the
         // refetch above can even see it — so the effect never subscribes

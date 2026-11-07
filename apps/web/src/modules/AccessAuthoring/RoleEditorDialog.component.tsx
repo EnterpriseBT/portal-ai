@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 
-import { useQueryClient } from "@tanstack/react-query";
-
 import {
   Button,
   MetadataList,
@@ -17,7 +15,6 @@ import {
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
-import { useToast } from "../../utils/toast.context";
 import { FormAlert } from "../../components/FormAlert.component";
 import { NameField } from "./NameField.component";
 import { toServerError, type ServerError } from "../../utils/api.util";
@@ -149,8 +146,6 @@ export const RoleEditorDialog: React.FC<RoleEditorDialogProps> = ({
   const policiesQuery = sdk.policies.list({ enabled: open });
   const create = sdk.roles.create();
   const update = sdk.roles.update(role?.id ?? "");
-  const toast = useToast();
-  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     if (open) {
@@ -169,11 +164,9 @@ export const RoleEditorDialog: React.FC<RoleEditorDialogProps> = ({
     mutation.mutate(
       { name: name.trim(), policyIds },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.roles.root });
-          toast.success(role ? "Role updated" : "Role created");
-          onClose();
-        },
+        invalidate: [queryKeys.roles.root],
+        toast: { success: role ? "Role updated" : "Role created" },
+        onSuccess: () => onClose(),
       }
     );
   };
