@@ -9,6 +9,7 @@ import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   GatedButton,
+  HiddenPageHeading,
   Icon,
   IconName,
   MetadataList,
@@ -269,17 +270,20 @@ export const CuratedViewDetail: React.FC = () => {
   // #713: a failed refetch (the view deleted, or access revoked under the
   // open page) shows "View not found", not the cached view and its Edit.
   const view = freshData(viewResult)?.curatedView;
+  // #982: the page keeps its one h1 (#797) until the view's header renders.
   if (!view) {
-    if (viewResult.isError) {
-      return (
-        <PageEmptyState
-          icon={<Icon name={IconName.Layers} />}
-          title="View not found"
-          description="This view does not exist or is not available to you."
-        />
-      );
-    }
-    return null;
+    return (
+      <>
+        <HiddenPageHeading>View</HiddenPageHeading>
+        {viewResult.isError && (
+          <PageEmptyState
+            icon={<Icon name={IconName.Layers} />}
+            title="View not found"
+            description="This view does not exist or is not available to you."
+          />
+        )}
+      </>
+    );
   }
 
   const handleDelete = () => {

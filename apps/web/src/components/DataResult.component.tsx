@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, StatusMessage, visuallyHidden } from "@portalai/core/ui";
+import { HiddenPageHeading, StatusMessage } from "@portalai/core/ui";
 
 export interface QueryResultLike<TData = unknown> {
   data: TData | undefined;
@@ -50,11 +50,7 @@ export function DataResult<T extends ResultsMap>({
   const entries = Object.entries(results) as [string, QueryResultLike][];
   const withTitle = (status: React.ReactNode) => (
     <>
-      {pageTitle && (
-        <Box component="h1" sx={visuallyHidden}>
-          {pageTitle}
-        </Box>
-      )}
+      {pageTitle && <HiddenPageHeading>{pageTitle}</HiddenPageHeading>}
       {status}
     </>
   );
@@ -91,8 +87,14 @@ export function DataResult<T extends ResultsMap>({
     );
   }
 
-  // Loading: find first loading entry
-  const loadingEntry = entries.find(([, query]) => query.isLoading);
+  // Loading: find first entry with no data yet. React Query v5's isLoading
+  // is isPending && isFetching, so a query paused offline has no data but
+  // isn't "loading"; it waits here (keeping the page's h1, #982) rather than
+  // handing children undefined data.
+  const loadingEntry = entries.find(
+    ([, query]) =>
+      query.isLoading || (!query.isSuccess && query.data === undefined)
+  );
   if (loadingEntry) {
     const [key] = loadingEntry;
     const opts = options?.[key];

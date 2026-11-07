@@ -374,7 +374,7 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     : (payload?.portalResult.definer?.displayName ?? null);
 
   return (
-    <DataResult results={{ result: resultQuery }}>
+    <DataResult pageTitle="Pinned result" results={{ result: resultQuery }}>
       {() => {
         if (!portalResult) return null;
         return (
