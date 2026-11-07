@@ -478,9 +478,12 @@ describe("FileUploadConnectorWorkflowUI — commit blocks dismissal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  test("the close button is disabled while committing", () => {
+  test("the close button is aria-disabled while committing", () => {
     render(<FileUploadConnectorWorkflowUI {...committing()} />);
-    expect(screen.getByLabelText("close")).toBeDisabled();
+    expect(screen.getByLabelText("close")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   test("Escape closes the wizard when nothing is committing", async () => {

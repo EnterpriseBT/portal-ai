@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import Dialog, { type DialogProps } from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import Box from "@mui/material/Box";
+import { styled } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
@@ -17,12 +19,16 @@ import {
 
 interface ModalBaseProps extends Omit<
   DialogProps,
-  "title" | "onClose" | "open" | "onSubmit"
+  "title" | "onClose" | "open" | "onSubmit" | "aria-label"
 > {
   open: boolean;
   /** Never called while `pending`. */
   onClose: () => void;
-  title?: React.ReactNode;
+  /**
+   * A short message the dialog is about: a confirm's sentence (#793).
+   * Rendered above `children` and read as the dialog's description.
+   */
+  description?: React.ReactNode;
   actions?: React.ReactNode;
   showCloseButton?: boolean;
   /**
@@ -62,12 +68,35 @@ interface ModalPlainProps {
   pending?: boolean;
 }
 
-export type ModalProps = ModalBaseProps & (ModalFormProps | ModalPlainProps);
+/** Every dialog has a name (#793): its title, or an `aria-label` when it
+ *  shows none. */
+type ModalName =
+  | { title: React.ReactNode; "aria-label"?: never }
+  | { title?: undefined; "aria-label": string };
+
+export type ModalProps = ModalBaseProps &
+  ModalName &
+  (ModalFormProps | ModalPlainProps);
+
+/**
+ * A form dialog's body (#793). The form sits inside the dialog rather than
+ * being its paper, because `role="dialog"` isn't allowed on a `<form>`. It
+ * takes the paper's flex column so the title, the scrolling content and the
+ * actions lay out as they would directly in the paper. The layout lives here
+ * because no MUI component (and so no theme key) owns this element.
+ */
+const ModalForm = styled("form")({
+  display: "flex",
+  flexDirection: "column",
+  flex: "1 1 auto",
+  minHeight: 0,
+});
 
 export const Modal: React.FC<ModalProps> = ({
   open,
   onClose,
   title,
+  description,
   actions,
   showCloseButton = true,
   maximizable = false,
@@ -77,8 +106,11 @@ export const Modal: React.FC<ModalProps> = ({
   pending = false,
   children,
   slotProps,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedby,
   ...props
 }) => {
+  const descriptionId = useId();
   const [maximized, setMaximized] = useState(maximizable && defaultMaximized);
   const showHeader = !!title || showCloseButton;
   const showMaximizeButton = maximizable && showHeader;
@@ -98,35 +130,20 @@ export const Modal: React.FC<ModalProps> = ({
     onClose();
   };
 
-  // A form dialog's paper is the form. It gets a default button so Enter
-  // submits it however many fields it has (see FormDefaultButton).
-  const paperSlot = isForm
-    ? {
-        ...(slotProps?.paper as object | undefined),
-        component: "form",
-        noValidate: true,
-        onSubmit: handleOwnSubmit(() => {
-          if (!submitDisabled && !pending) onSubmit();
-        }),
-        onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-          preventToggleEnterSubmit(event);
-          (
-            slotProps?.paper as
-              | { onKeyDown?: React.KeyboardEventHandler<HTMLElement> }
-              | undefined
-          )?.onKeyDown?.(event);
-        },
-      }
-    : slotProps?.paper;
+  // A dialog with no visible title is named by its aria-label, on the paper
+  // that carries role="dialog"; MUI's generated aria-labelledby would point
+  // at a title that isn't there.
+  const paperSlot =
+    ariaLabel !== undefined && !title
+      ? {
+          ...(slotProps?.paper as object | undefined),
+          "aria-label": ariaLabel,
+          "aria-labelledby": undefined,
+        }
+      : slotProps?.paper;
 
-  return (
-    <Dialog
-      {...props}
-      slotProps={{ ...slotProps, paper: paperSlot } as DialogProps["slotProps"]}
-      open={open}
-      onClose={handleClose}
-      fullScreen={maximizable && maximized}
-    >
+  const body = (
+    <>
       {showHeader && (
         <DialogTitle
           sx={{
@@ -157,10 +174,12 @@ export const Modal: React.FC<ModalProps> = ({
                 </IconButton>
               )}
               {showCloseButton && (
+                // #793: aria-disabled, not disabled, while pending, so a
+                // focused close button keeps focus when the request starts.
                 <IconButton
                   aria-label="close"
-                  onClick={onClose}
-                  disabled={pending}
+                  aria-disabled={pending || undefined}
+                  onClick={pending ? undefined : onClose}
                   size="small"
                 >
                   <CloseIcon />
@@ -170,11 +189,47 @@ export const Modal: React.FC<ModalProps> = ({
           )}
         </DialogTitle>
       )}
-      <DialogContent>{children}</DialogContent>
+      <DialogContent>
+        {description && (
+          <DialogContentText id={descriptionId} sx={{ mb: children ? 2 : 0 }}>
+            {description}
+          </DialogContentText>
+        )}
+        {children}
+      </DialogContent>
       {actions && (
         <DialogActions data-dialog-controls="">{actions}</DialogActions>
       )}
-      {isForm && <FormDefaultButton disabled={submitDisabled || pending} />}
+    </>
+  );
+
+  return (
+    <Dialog
+      {...props}
+      slotProps={{ ...slotProps, paper: paperSlot } as DialogProps["slotProps"]}
+      open={open}
+      onClose={handleClose}
+      fullScreen={maximizable && maximized}
+      aria-describedby={
+        ariaDescribedby ?? (description ? descriptionId : undefined)
+      }
+    >
+      {isForm ? (
+        // A form dialog's body is a form, with a default button so Enter
+        // submits it however many fields it has (see FormDefaultButton).
+        <ModalForm
+          noValidate
+          onSubmit={handleOwnSubmit(() => {
+            if (!submitDisabled && !pending) onSubmit();
+          })}
+          onKeyDown={preventToggleEnterSubmit}
+        >
+          {body}
+          <FormDefaultButton disabled={submitDisabled || pending} />
+        </ModalForm>
+      ) : (
+        body
+      )}
     </Dialog>
   );
 };

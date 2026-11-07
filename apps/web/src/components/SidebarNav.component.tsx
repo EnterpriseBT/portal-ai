@@ -299,6 +299,7 @@ export const SidebarNav = () => {
           <Modal
             open={versionOpen}
             onClose={() => setVersionOpen(false)}
+            aria-label="App version"
             maxWidth="xs"
             showCloseButton={false}
           >

@@ -115,7 +115,10 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
       />
     );
     await user.keyboard("{Escape}");
-    expect(screen.getByLabelText("close")).toBeDisabled();
+    expect(screen.getByLabelText("close")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(onClose).not.toHaveBeenCalled();
   });

@@ -1,15 +1,18 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import ReactDOM from "react-dom";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Modal } from "../../ui/Modal";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Modal Component", () => {
   const defaultProps = {
     open: true,
     onClose: jest.fn(),
   };
+  // #793: a dialog with no title needs a name.
+  const untitled = { ...defaultProps, "aria-label": "Test dialog" };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -18,7 +21,7 @@ describe("Modal Component", () => {
   describe("Rendering", () => {
     it("should render children when open", () => {
       render(
-        <Modal {...defaultProps}>
+        <Modal {...untitled}>
           <p>Modal content</p>
         </Modal>
       );
@@ -27,7 +30,7 @@ describe("Modal Component", () => {
 
     it("should not render content when closed", () => {
       render(
-        <Modal {...defaultProps} open={false}>
+        <Modal {...untitled} open={false}>
           <p>Modal content</p>
         </Modal>
       );
@@ -45,7 +48,7 @@ describe("Modal Component", () => {
 
     it("should render actions when provided", () => {
       render(
-        <Modal {...defaultProps} actions={<button>Save</button>}>
+        <Modal {...untitled} actions={<button>Save</button>}>
           <p>Content</p>
         </Modal>
       );
@@ -54,7 +57,7 @@ describe("Modal Component", () => {
 
     it("should not render actions section when no actions provided", () => {
       const { container } = render(
-        <Modal {...defaultProps}>
+        <Modal {...untitled}>
           <p>Content</p>
         </Modal>
       );
@@ -230,7 +233,7 @@ describe("Modal Component", () => {
       // Without a header (no title, no close button) there is nowhere to
       // anchor the toggle — suppressed for layout consistency.
       render(
-        <Modal {...defaultProps} maximizable showCloseButton={false}>
+        <Modal {...untitled} maximizable showCloseButton={false}>
           <p>Content</p>
         </Modal>
       );
@@ -545,9 +548,31 @@ describe("Modal Component", () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
-    it("disables the close button while pending", () => {
-      renderPending(true);
-      expect(screen.getByLabelText("close")).toBeDisabled();
+    // #793: aria-disabled, not disabled, so a focused close button keeps
+    // focus when the request starts.
+    it("marks the close button aria-disabled while pending, still focusable", async () => {
+      const user = userEvent.setup();
+      const onClose = renderPending(true);
+      const close = screen.getByRole("button", { name: "close" });
+      expect(close).toHaveAttribute("aria-disabled", "true");
+      expect(close).not.toBeDisabled();
+      await user.click(close);
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("keeps focus on the close button when pending starts", () => {
+      const props = {
+        open: true,
+        onClose: jest.fn(),
+        title: "Saving",
+        onSubmit: jest.fn(),
+        submitDisabled: false,
+      };
+      const { rerender } = render(<Modal {...props} pending={false} />);
+      const close = screen.getByRole("button", { name: "close" });
+      close.focus();
+      rerender(<Modal {...props} pending />);
+      expect(close).toHaveFocus();
     });
 
     it("blocks dismissal for a plain (non-form) Modal that is pending", async () => {
@@ -560,7 +585,10 @@ describe("Modal Component", () => {
       );
       await user.keyboard("{Escape}");
       expect(onClose).not.toHaveBeenCalled();
-      expect(screen.getByLabelText("close")).toBeDisabled();
+      expect(screen.getByLabelText("close")).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
     });
 
     it("a caller can't replace the guarded onClose through spread props", async () => {
@@ -629,5 +657,139 @@ describe("Modal Component", () => {
         screen.getByLabelText("close").closest("[data-dialog-controls]")
       ).not.toBeNull();
     });
+  });
+});
+
+describe("Modal accessibility (#793)", () => {
+  it("is named by its title", () => {
+    render(
+      <Modal open onClose={jest.fn()} title="Rename portal">
+        <p>Body</p>
+      </Modal>
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Rename portal" })
+    ).toBeInTheDocument();
+  });
+
+  it("is named by aria-label when it has no title", () => {
+    render(
+      <Modal open onClose={jest.fn()} aria-label="Pick a sheet">
+        <p>Body</p>
+      </Modal>
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Pick a sheet" })
+    ).toBeInTheDocument();
+  });
+
+  it("requires a title or an aria-label (type-level)", () => {
+    // @ts-expect-error: a dialog needs a name.
+    const unnamed = <Modal open onClose={jest.fn()} />;
+    expect(unnamed).toBeTruthy();
+  });
+
+  it("is described by its description", () => {
+    render(
+      <Modal
+        open
+        onClose={jest.fn()}
+        title="Delete tag"
+        description="This removes the tag from every record."
+      >
+        <p>Extra</p>
+      </Modal>
+    );
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription(
+      "This removes the tag from every record."
+    );
+  });
+
+  it("has no description without one", () => {
+    render(
+      <Modal open onClose={jest.fn()} title="Plain">
+        <p>Body</p>
+      </Modal>
+    );
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-describedby");
+  });
+
+  const renderForm = () =>
+    render(
+      <Modal
+        open
+        onClose={jest.fn()}
+        title="Create tag"
+        onSubmit={jest.fn()}
+        submitDisabled={false}
+        pending={false}
+        actions={<button type="button">Save</button>}
+      >
+        <label>
+          Name
+          <input />
+        </label>
+      </Modal>
+    );
+
+  it("puts the form inside the dialog, not on it", () => {
+    renderForm();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.tagName).not.toBe("FORM");
+    const forms = dialog.querySelectorAll("form");
+    expect(forms).toHaveLength(1);
+    const form = forms[0] as HTMLFormElement;
+    expect(form).toContainElement(screen.getByText("Create tag"));
+    expect(form).toContainElement(screen.getByLabelText("Name"));
+    expect(form).toContainElement(screen.getByRole("button", { name: "Save" }));
+  });
+
+  it("renders no form when it doesn't submit", () => {
+    render(
+      <Modal open onClose={jest.fn()} title="Viewer">
+        <p>Body</p>
+      </Modal>
+    );
+    expect(screen.getByRole("dialog").querySelector("form")).toBeNull();
+  });
+
+  it("returns focus to the button that opened it", async () => {
+    const user = userEvent.setup();
+    const Harness = () => {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Hello">
+            <p>Body</p>
+          </Modal>
+        </>
+      );
+    };
+    render(<Harness />);
+    const opener = screen.getByRole("button", { name: "Open" });
+    await user.click(opener);
+    await user.click(screen.getByRole("button", { name: "close" }));
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("has no axe violations as a form dialog", async () => {
+    renderForm();
+    await expectNoAxeViolations(screen.getByRole("dialog"));
+  });
+
+  it("has no axe violations as a plain dialog with a description", async () => {
+    render(
+      <Modal
+        open
+        onClose={jest.fn()}
+        title="Delete"
+        description="This can't be undone."
+        actions={<button type="button">Delete</button>}
+      />
+    );
+    await expectNoAxeViolations(screen.getByRole("dialog"));
   });
 });
