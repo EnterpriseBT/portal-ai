@@ -2,10 +2,12 @@ import React, { useState } from "react";
 
 import {
   Button,
+  GatedButton,
   MetadataList,
   Modal,
-  Stack,
   MultiSearchableSelect,
+  pendingGate,
+  Stack,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import {
@@ -73,14 +75,15 @@ export const RoleEditorDialogUI: React.FC<RoleEditorDialogUIProps> = ({
             {readOnly ? "Close" : "Cancel"}
           </Button>
           {!readOnly && (
-            <Button
+            <GatedButton
               type="button"
               variant="contained"
               onClick={onSubmit}
-              disabled={isPending || !name.trim()}
+              gate={pendingGate(isPending)}
+              disabled={!name.trim()}
             >
               {isPending ? "Saving…" : "Save"}
-            </Button>
+            </GatedButton>
           )}
         </Stack>
       }

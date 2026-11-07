@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import MuiMenu from "@mui/material/Menu";
 import MuiMenuItem from "@mui/material/MenuItem";
 import ListItemIcon from "@mui/material/ListItemIcon";
@@ -44,6 +44,7 @@ export const ActionsMenu: React.FC<ActionsMenuProps> = ({
   ariaLabel = "More actions",
 }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const reasonIdBase = useId();
   const open = Boolean(anchorEl);
   const visible = visibleActionItems(items);
 
@@ -75,19 +76,24 @@ export const ActionsMenu: React.FC<ActionsMenuProps> = ({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        {visible.map((item) => {
+        {visible.map((item, index) => {
           const gate = item.gate;
           const disabled = gate?.kind === "disable";
           const upsell = gate?.kind === "upsell" ? gate : null;
+          const reason =
+            disabled || upsell ? (gate as { reason: string }).reason : null;
+          // #793: the reason is the item's description, not only its
+          // tooltip. A hidden element inside the item: aria-describedby
+          // reads it, and hidden text doesn't join the item's name.
+          const reasonId = reason ? `${reasonIdBase}-${index}` : undefined;
           const entry = (
             <MuiMenuItem
               key={item.label}
               // aria-disabled, not MUI's `disabled` (pointer-events: none
-              // would block the tooltip that says why).
+              // would block the tooltip that says why). The theme gives it
+              // its look (a11yComponents, #793).
               aria-disabled={disabled ? "true" : undefined}
-              sx={
-                disabled ? { cursor: "not-allowed", opacity: 0.38 } : undefined
-              }
+              aria-describedby={reasonId}
               onClick={() => {
                 if (disabled) return;
                 handleClose();
@@ -109,6 +115,11 @@ export const ActionsMenu: React.FC<ActionsMenuProps> = ({
               >
                 {item.label}
               </ListItemText>
+              {reason && (
+                <span id={reasonId} hidden>
+                  {reason}
+                </span>
+              )}
             </MuiMenuItem>
           );
           return gate?.kind === "disable" || gate?.kind === "upsell" ? (

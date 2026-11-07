@@ -3,6 +3,7 @@ import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { NewEntityDialogUI } from "../NewEntityDialog.component";
 
@@ -135,6 +136,23 @@ describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
     expect(screen.getByText(/already used by CRM Export/i)).toBeInTheDocument();
   });
 
+  test("has no axe violations when open (#793)", async () => {
+    const onSubmit = jest.fn<(key: string, label: string) => void>();
+    const validateKey = jest.fn<
+      (key: string) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>
+    >(async () => ({ ok: false, ownedBy: "CRM Export" }));
+    render(
+      <NewEntityDialogUI
+        open
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        existingKeys={[]}
+        validateKey={validateKey}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   test("submit proceeds when the async check resolves ok", async () => {
     const onSubmit = jest.fn<(key: string, label: string) => void>();
     const validateKey = jest.fn<
@@ -206,8 +224,14 @@ describe("NewEntityDialogUI — while the key check runs", () => {
     const { validateKey, answer } = deferredCheck();
     const { onClose } = setup({ validateKey });
     await user.type(screen.getByLabelText(/label/i), "Orders{Enter}");
-    expect(screen.getByRole("button", { name: "Checking..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Checking..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => answer(false));

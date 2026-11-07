@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import type { EntityTag } from "@portalai/core/models";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { TagFormModal } = await import("../components/TagFormModal.component");
 
 // Mock canvas context for ColorPicker's color wheel
@@ -52,6 +53,22 @@ describe("TagFormModal", () => {
   it("should render 'Create Tag' title when tag is null", () => {
     render(<TagFormModal {...defaultProps} />);
     expect(screen.getByText("Create Tag")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <TagFormModal
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should render empty form fields in create mode", () => {
@@ -213,8 +230,14 @@ describe("TagFormModal", () => {
 
   it("should show 'Saving...' and disable buttons when pending", () => {
     render(<TagFormModal {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should display server error message and code", () => {
@@ -323,5 +346,39 @@ describe("TagFormModal — a name saved before the limit (#801)", () => {
     const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(body).not.toHaveProperty("name");
     expect(body.description).toBe("Prod only");
+  });
+});
+
+// #793: a color error belongs to the picker's field, not a loose caption.
+describe("TagFormModal — color error (#793)", () => {
+  it("is the hex field's description, with aria-invalid", async () => {
+    render(
+      <TagFormModal {...defaultProps} tag={{ ...existingTag, color: "red" }} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    const hex = screen.getByRole("textbox", { name: /Hex color value/ });
+    await waitFor(() => expect(hex).toHaveAttribute("aria-invalid", "true"));
+    expect(hex).toHaveAccessibleDescription(/./);
+    expect(screen.getByRole("group", { name: "Color" })).toContainElement(hex);
+  });
+
+  // The adversarial walk typed "not-a-color" and Create saved the default
+  // color, because the draft never reached the form.
+  it("blocks Create on a typed hex that isn't valid, and says why", async () => {
+    const onSubmit = jest.fn();
+    render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Test" },
+    });
+    const hex = screen.getByRole("textbox", { name: /Hex color value/ });
+    fireEvent.change(hex, { target: { value: "#not-a-c" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(hex).toHaveAccessibleDescription(
+        "Color must be a valid hex code (e.g. #FF0000)"
+      )
+    );
+    expect(hex).toHaveAttribute("aria-invalid", "true");
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

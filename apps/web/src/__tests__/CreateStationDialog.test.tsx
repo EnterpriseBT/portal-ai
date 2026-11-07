@@ -1,8 +1,14 @@
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { CreateStationDialog } =
   await import("../components/CreateStationDialog.component");
 
@@ -22,6 +28,22 @@ describe("CreateStationDialog", () => {
   it("should render 'New Station' title", () => {
     render(<CreateStationDialog {...defaultProps} />);
     expect(screen.getByText("New Station")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <CreateStationDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should render empty form fields", () => {
@@ -80,8 +102,14 @@ describe("CreateStationDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<CreateStationDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should display server error message and code", () => {

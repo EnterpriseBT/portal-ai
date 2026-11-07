@@ -6,9 +6,10 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import type { EntityGroupImpactResponsePayload } from "@portalai/core/contracts";
 import {
-  Button,
   CircularProgress,
+  GatedButton,
   Modal,
+  pendingGate,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -92,25 +93,26 @@ export const DeleteEntityGroupDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={() => {
               if (!deleteDisabled) onConfirm();
             }}
+            gate={pendingGate(isPending, "Deleting…")}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

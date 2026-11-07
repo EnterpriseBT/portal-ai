@@ -1,8 +1,8 @@
 import { jest } from "@jest/globals";
 import { useState } from "react";
-import { render, screen } from "./test-utils";
+import { render, screen, expectNoAxeViolations } from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import { SidebarNavUI } from "../components/SidebarNav.component";
+import { SidebarNav, SidebarNavUI } from "../components/SidebarNav.component";
 import { Box, Typography } from "@portalai/core/ui";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -21,6 +21,15 @@ describe("SidebarNavUI", () => {
     );
 
     expect(screen.getByText("Nav Content")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    const user = userEvent.setup();
+    render(<SidebarNav />);
+    await user.click(screen.getByRole("button", { name: /app version/ }));
+    await expectNoAxeViolations(
+      await screen.findByRole("dialog", { name: "App version" })
+    );
   });
 
   it("renders footer as ReactNode", () => {

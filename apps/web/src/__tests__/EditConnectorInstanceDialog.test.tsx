@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { EditConnectorInstanceDialog } =
   await import("../components/EditConnectorInstanceDialog.component");
 
@@ -20,6 +21,22 @@ describe("EditConnectorInstanceDialog", () => {
   it("should render dialog when open is true", () => {
     render(<EditConnectorInstanceDialog {...defaultProps} />);
     expect(screen.getByText("Edit Connector Instance")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <EditConnectorInstanceDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render content when open is false", () => {
@@ -49,7 +66,10 @@ describe("EditConnectorInstanceDialog", () => {
 
   it("should disable Save button when isPending is true", () => {
     render(<EditConnectorInstanceDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should call onConfirm with new name when Save is clicked", () => {

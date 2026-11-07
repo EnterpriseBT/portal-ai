@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { EditFieldMappingDialog } =
   await import("../components/EditFieldMappingDialog.component");
 
@@ -43,6 +49,22 @@ describe("EditFieldMappingDialog", () => {
   it("should render title when open", () => {
     render(<EditFieldMappingDialog {...defaultProps} />);
     expect(screen.getByText("Edit Field Mapping")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<EditFieldMappingDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should not render when open is false", () => {
@@ -279,8 +301,14 @@ describe("EditFieldMappingDialog", () => {
 
   it("should show Saving... and disable buttons when isPending", () => {
     render(<EditFieldMappingDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided", () => {

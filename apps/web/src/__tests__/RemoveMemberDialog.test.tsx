@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import type { Member } from "@portalai/core/contracts";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { RemoveMemberDialog } =
   await import("../components/RemoveMemberDialog.component");
 
@@ -26,6 +26,27 @@ describe("RemoveMemberDialog", () => {
     render(<RemoveMemberDialog {...defaultProps} />);
     expect(screen.getByText("Remove member")).toBeInTheDocument();
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RemoveMemberDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<RemoveMemberDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RemoveMemberDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {
@@ -60,7 +81,10 @@ describe("RemoveMemberDialog", () => {
     render(
       <RemoveMemberDialog {...defaultProps} onClose={onClose} isPending />
     );
-    expect(screen.getByRole("button", { name: "Removing..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Removing..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();
   });

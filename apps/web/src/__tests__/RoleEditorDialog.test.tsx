@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, pressEnter } = await import("./test-utils");
+const { render, screen, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { RoleEditorDialogUI } =
   await import("../modules/AccessAuthoring/RoleEditorDialog.component");
 
@@ -32,6 +33,23 @@ describe("RoleEditorDialogUI (#691)", () => {
     expect(screen.getByText("FullAccess")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RoleEditorDialogUI {...props} role={role("system")} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RoleEditorDialogUI
+        {...props}
+        role={role("system")}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("a custom role opens as an editable form", () => {

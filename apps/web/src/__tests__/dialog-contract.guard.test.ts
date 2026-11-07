@@ -29,6 +29,15 @@
  *   directly, skipping Enter, implicit submission and the disabled default
  *   button, so it passed even when Enter did nothing (#758). Tests press a
  *   real Enter instead (`pressEnter` in test-utils, or user-event).
+ * - R6: every component that renders a `Modal` has a test file of its own
+ *   (`<Name>.test.tsx`, or `.component.test.tsx` / `.view.test.tsx`), and
+ *   that file runs the shared axe assertion (`expectNoAxeViolations`) on
+ *   the open dialog (#793). A dialog with no test of its own is a gap too.
+ * - R7: no `Button` or `IconButton` in a dialog's file is `disabled` by the
+ *   flag its `Modal` passes as `pending` (#793). A natively disabled button
+ *   drops focus to the page the moment the request starts. It renders
+ *   through `GatedButton` with `gate={pendingGate(pending)}` instead, which
+ *   stays focusable and reads as unavailable with "Saving…".
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -152,6 +161,130 @@ export function importsRawDialog(source: string): boolean {
     );
   });
 }
+
+/** The names a Modal's `pending` reads (`isPending`, `mutation.isPending`). */
+function pendingNames(source: string): string[] {
+  const file = ts.createSourceFile(
+    "dialog.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const names = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      tagName(node) === "Modal"
+    ) {
+      for (const a of node.attributes.properties) {
+        if (
+          ts.isJsxAttribute(a) &&
+          a.name.getText() === "pending" &&
+          a.initializer &&
+          ts.isJsxExpression(a.initializer) &&
+          a.initializer.expression
+        ) {
+          for (const m of a.initializer.expression
+            .getText()
+            .matchAll(/[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/g)) {
+            if (!["true", "false", "undefined", "null"].includes(m[0]))
+              names.add(m[0]);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return [...names];
+}
+
+/** R7: lines of `Button`/`IconButton`s whose `disabled` reads `pending`. */
+export function disabledReadsPending(source: string): number[] {
+  const names = pendingNames(source);
+  if (names.length === 0) return [];
+  const reads = (text: string) =>
+    names.some((n) =>
+      new RegExp(`(^|[^\\w$.])${n.replace(/[.$]/g, "\\$&")}(?![\\w$])`).test(
+        text
+      )
+    );
+  const file = ts.createSourceFile(
+    "dialog.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  // A flag derived from pending (`const deleteDisabled = isPending || …`)
+  // reads it too: follow local consts, a few levels deep.
+  const consts = new Map<string, string>();
+  const collect = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      consts.set(node.name.text, node.initializer.getText());
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(file);
+  const readsDeep = (text: string, depth = 0): boolean =>
+    reads(text) ||
+    (depth < 3 &&
+      [...text.matchAll(/[A-Za-z_$][\w$]*/g)].some(
+        (m) => consts.has(m[0]) && readsDeep(consts.get(m[0])!, depth + 1)
+      ));
+  const lines: number[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ["Button", "IconButton"].includes(tagName(node))
+    ) {
+      const disabled = node.attributes.properties.find(
+        (a): a is ts.JsxAttribute =>
+          ts.isJsxAttribute(a) && a.name.getText() === "disabled"
+      );
+      if (disabled?.initializer && readsDeep(disabled.initializer.getText())) {
+        lines.push(
+          file.getLineAndCharacterOfPosition(node.getStart()).line + 1
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return lines;
+}
+
+/** R6: whether a test source runs the shared axe assertion. */
+export function runsAxe(source: string): boolean {
+  return /\bexpectNoAxeViolations\(/.test(withoutComments(source));
+}
+
+/** R6: the test files named for a component file. */
+function pairedTests(componentPath: string, tests: string[]): string[] {
+  const name = componentPath
+    .split("/")
+    .pop()!
+    .replace(/\.tsx$/, "")
+    .replace(/\.(component|view|layout)$/, "");
+  return tests.filter((t) =>
+    [
+      `${name}.test.tsx`,
+      `${name}.component.test.tsx`,
+      `${name}.view.test.tsx`,
+    ].includes(t.split("/").pop()!)
+  );
+}
+
+// R6's allowlist. Empty; it only shrinks.
+const AXE_EXEMPT: Record<string, string> = {};
+
+// R7's allowlist. Empty; it only shrinks.
+const PENDING_DISABLED_EXEMPT: Record<string, string> = {};
 
 /** R4: mutations whose error a dialog shows but the file never resets. */
 export function unresetDialogErrors(source: string): string[] {
@@ -297,6 +430,86 @@ describe("the guard's own rules (fixtures, R5)", () => {
   });
 });
 
+describe("the guard's own rules (fixtures, R7)", () => {
+  const dialog = (button: string) => `
+    <Modal open onClose={c} title="T" pending={isPending}
+      actions={${button}} />`;
+
+  it("R7 flags a button disabled by the Modal's pending flag", () => {
+    expect(
+      disabledReadsPending(dialog(`<Button disabled={isPending}>Save</Button>`))
+    ).toHaveLength(1);
+    expect(
+      disabledReadsPending(
+        dialog(`<Button disabled={isPending || !name}>Save</Button>`)
+      )
+    ).toHaveLength(1);
+    expect(
+      disabledReadsPending(
+        dialog(`<IconButton aria-label="x" disabled={isPending} />`)
+      )
+    ).toHaveLength(1);
+  });
+
+  it("R7 passes a gated button, and a disabled that doesn't read pending", () => {
+    expect(
+      disabledReadsPending(
+        dialog(
+          `<GatedButton gate={pendingGate(isPending)} disabled={!name}>Save</GatedButton>`
+        )
+      )
+    ).toEqual([]);
+    expect(
+      disabledReadsPending(dialog(`<Button disabled={!name}>Save</Button>`))
+    ).toEqual([]);
+    expect(
+      disabledReadsPending(
+        dialog(`<Button disabled={isPendingDelete}>Save</Button>`)
+      )
+    ).toEqual([]);
+  });
+
+  it("R7 follows a flag derived from pending", () => {
+    const src = `
+      const deleteDisabled = isPending || !confirmed;
+      const blocked = deleteDisabled || locked;
+      <Modal open onClose={c} title="T" pending={isPending}
+        actions={<Button disabled={blocked}>Delete</Button>} />`;
+    expect(disabledReadsPending(src)).toHaveLength(1);
+  });
+
+  it("R7 follows a dotted pending flag and a button outside the Modal", () => {
+    const src = `
+      const actions = <Button disabled={rename.isPending}>Save</Button>;
+      <Modal open onClose={c} title="T" pending={rename.isPending} actions={actions} />`;
+    expect(disabledReadsPending(src)).toHaveLength(1);
+  });
+});
+
+describe("the guard's own rules (fixtures, R6)", () => {
+  it("R6 sees the axe call, and not one named in a comment", () => {
+    expect(
+      runsAxe(`await expectNoAxeViolations(screen.getByRole("dialog"));`)
+    ).toBe(true);
+    expect(runsAxe(`// TODO: expectNoAxeViolations(dialog)`)).toBe(false);
+    expect(runsAxe(`render(<X />);`)).toBe(false);
+  });
+
+  it("R6 pairs a component with its test by name", () => {
+    const tests = [
+      "__tests__/RenamePortalDialog.test.tsx",
+      "__tests__/AdvancedFilterBuilder.component.test.tsx",
+      "__tests__/RenamePortal.test.tsx",
+    ];
+    expect(
+      pairedTests("components/RenamePortalDialog.component.tsx", tests)
+    ).toEqual(["__tests__/RenamePortalDialog.test.tsx"]);
+    expect(
+      pairedTests("components/AdvancedFilterBuilder.component.tsx", tests)
+    ).toEqual(["__tests__/AdvancedFilterBuilder.component.test.tsx"]);
+  });
+});
+
 describe("dialogs meet the Modal contract (#789)", () => {
   it("finds the dialogs (so the guard can't pass vacuously)", () => {
     expect(withModals.length).toBeGreaterThanOrEqual(45);
@@ -345,6 +558,34 @@ describe("dialogs meet the Modal contract (#789)", () => {
     "%s: resets every mutation whose error a dialog shows (R4)",
     (_path, source) => {
       expect(unresetDialogErrors(source)).toEqual([]);
+    }
+  );
+
+  it.each(withModals.map((f) => [f.path, f.source]))(
+    "%s: no button is natively disabled by the dialog's pending flag (R7)",
+    (path, source) => {
+      if (path in PENDING_DISABLED_EXEMPT) return;
+      expect(disabledReadsPending(source).map((l) => `line ${l}`)).toEqual([]);
+    }
+  );
+
+  const allTests = testFiles(webSrc).map((path) => relative(webSrc, path));
+
+  it("pairs enough dialogs with tests (so R6 can't pass vacuously)", () => {
+    expect(
+      withModals.filter((f) => pairedTests(f.path, allTests).length > 0).length
+    ).toBeGreaterThanOrEqual(55);
+  });
+
+  it.each(withModals.map((f) => [f.path]))(
+    "%s: has a test of its own that runs axe on the dialog (R6)",
+    (path) => {
+      if (path in AXE_EXEMPT) return;
+      const paired = pairedTests(path, allTests);
+      expect(paired).not.toEqual([]);
+      expect(
+        paired.some((t) => runsAxe(readFileSync(join(webSrc, t), "utf8")))
+      ).toBe(true);
     }
   );
 

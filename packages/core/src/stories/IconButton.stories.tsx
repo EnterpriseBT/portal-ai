@@ -47,6 +47,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     icon: IconName.Home,
+    "aria-label": "Home",
     color: "default",
     size: "medium",
     disabled: false,

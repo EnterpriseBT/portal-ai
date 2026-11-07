@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 
 // Mock the sdk modules to avoid real API calls in the dialog
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -97,6 +98,22 @@ describe("CreatePortalDialog", () => {
     expect(screen.getByText("New Portal")).toBeInTheDocument();
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    render(<MockedCreatePortalDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <MockedCreatePortalDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("should render station select field", () => {
     render(<MockedCreatePortalDialog {...defaultProps} />);
     expect(screen.getByLabelText(/Station/)).toBeInTheDocument();
@@ -104,8 +121,14 @@ describe("CreatePortalDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<MockedCreatePortalDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should display server error message and code", () => {

@@ -3,6 +3,7 @@ import Tooltip from "@mui/material/Tooltip";
 
 import { IconButton, type IconButtonProps } from "./IconButton.js";
 import type { ActionGate } from "./ActionGate.js";
+import { useGateReason } from "./gate-reason.js";
 
 export interface GatedIconButtonProps extends IconButtonProps {
   /** How to render for this caller (#688). Omitted = allow. */
@@ -10,46 +11,51 @@ export interface GatedIconButtonProps extends IconButtonProps {
 }
 
 /** An icon-only CTA rendered from an {@link ActionGate} (#688). Keep an
- *  `aria-label`: it's the button's name; the gate's reason is its tooltip. */
+ *  `aria-label`: it's the button's name; the gate's reason is its
+ *  description and tooltip (#793).
+ *
+ *  Every visible gate renders the same tree, varying only props, so a gate
+ *  change updates the focused button in place and focus stays (#793). */
 export const GatedIconButton = React.forwardRef<
   HTMLButtonElement,
   GatedIconButtonProps
->(({ gate, onClick, sx, ...props }, ref) => {
+>(({ gate, onClick, disabled, disableRipple, ...props }, ref) => {
+  const { describedBy, reasonNode } = useGateReason(
+    gate,
+    props["aria-describedby"]
+  );
   if (gate?.kind === "hide") return null;
-  if (gate?.kind === "disable") {
-    return (
-      <Tooltip title={gate.reason} describeChild>
+  const blocked = gate?.kind === "disable";
+  const upsell = gate?.kind === "upsell" ? gate : null;
+  const reason = blocked || upsell ? (gate as { reason: string }).reason : "";
+  return (
+    <>
+      {/* An empty title never opens, so an allowed button has no tooltip. */}
+      <Tooltip title={reason} describeChild>
         <IconButton
           ref={ref}
           {...props}
-          aria-disabled="true"
-          disableRipple
-          onClick={(event) => event.preventDefault()}
-          sx={[
-            { cursor: "not-allowed", color: "action.disabled" },
-            ...(Array.isArray(sx) ? sx : [sx]),
-          ]}
-        />
-      </Tooltip>
-    );
-  }
-  if (gate?.kind === "upsell") {
-    const { onUpgrade } = gate;
-    return (
-      <Tooltip title={gate.reason} describeChild>
-        <IconButton
-          ref={ref}
-          {...props}
-          sx={sx}
+          // The gate wins over a native `disabled`; the theme gives
+          // aria-disabled its look (a11yComponents, #793).
+          disabled={blocked ? undefined : disabled}
+          aria-disabled={blocked ? "true" : undefined}
+          aria-describedby={describedBy}
+          disableRipple={blocked || disableRipple}
           onClick={(event) => {
-            event.preventDefault();
-            onUpgrade();
+            if (blocked) {
+              event.preventDefault();
+            } else if (upsell) {
+              event.preventDefault();
+              upsell.onUpgrade();
+            } else {
+              onClick?.(event);
+            }
           }}
         />
       </Tooltip>
-    );
-  }
-  return <IconButton ref={ref} {...props} sx={sx} onClick={onClick} />;
+      {reasonNode}
+    </>
+  );
 });
 
 export default GatedIconButton;

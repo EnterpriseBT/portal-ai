@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter, waitFor } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  pressEnter,
+  waitFor,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { ClearEntityRecordsDialog } =
   await import("../components/ClearEntityRecordsDialog.component");
@@ -34,6 +40,22 @@ describe("ClearEntityRecordsDialog (#453)", () => {
     expect(
       screen.getByText("Customers", { selector: "strong" })
     ).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<ClearEntityRecordsDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <ClearEntityRecordsDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open is false", () => {
@@ -110,9 +132,14 @@ describe("ClearEntityRecordsDialog (#453)", () => {
 
   it("disables both buttons and relabels while pending", () => {
     render(<ClearEntityRecordsDialog {...defaultProps} isPending />);
-    expect(confirmButton()).toBeDisabled();
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
-    expect(screen.getByText(/Deleting/)).toBeInTheDocument();
+    expect(confirmButton()).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(
+      screen.getByRole("button", { name: /Deleting/ })
+    ).toBeInTheDocument();
   });
 
   it("renders FormAlert when a serverError is provided", () => {

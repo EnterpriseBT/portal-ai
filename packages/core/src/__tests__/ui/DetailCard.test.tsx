@@ -168,3 +168,21 @@ describe("DetailCard Component", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 });
+
+// #793: subtitles stopped being headings theme-wide, but a card's title is
+// one: screen-reader users move between cards by heading.
+describe("DetailCard title heading (#793)", () => {
+  it("renders its title as an h3 by default", () => {
+    render(<DetailCard title="File Upload" />);
+    expect(
+      screen.getByRole("heading", { level: 3, name: "File Upload" })
+    ).toBeInTheDocument();
+  });
+
+  it("takes another level where the page needs one", () => {
+    render(<DetailCard title="File Upload" headingLevel={2} />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "File Upload" })
+    ).toBeInTheDocument();
+  });
+});

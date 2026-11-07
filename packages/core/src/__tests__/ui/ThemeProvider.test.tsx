@@ -4,6 +4,10 @@ import { jest } from "@jest/globals";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
 import CircularProgress from "@mui/material/CircularProgress";
 import LinearProgress from "@mui/material/LinearProgress";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import MenuItem from "@mui/material/MenuItem";
 import {
   a11yComponents,
   FOCUS_RING_WIDTH,
@@ -553,8 +557,7 @@ describe("accessibility defaults (#797)", () => {
       "aria-label": "Loading",
     });
     expect(
-      a11yComponents(THEME_MAP.brand.palette.primary.main).components
-        ?.MuiButtonBase
+      a11yComponents(THEME_MAP.brand.palette).components?.MuiButtonBase
     ).toBeDefined();
   });
 });
@@ -569,5 +572,86 @@ describe("linear progress name (#797)", () => {
     expect(
       screen.getByRole("progressbar", { name: "Progress" })
     ).toBeInTheDocument();
+  });
+});
+
+describe("subtitles aren't headings (#793)", () => {
+  it.each(["brand", "brand.dark"] as const)(
+    "renders subtitle1/subtitle2 as paragraphs in %s, other variants unchanged",
+    (name) => {
+      render(
+        <ThemeProvider defaultTheme={name}>
+          <Typography variant="subtitle1">s1</Typography>
+          <Typography variant="subtitle2">s2</Typography>
+          <Typography variant="h2">h</Typography>
+          <Typography variant="body1">b</Typography>
+        </ThemeProvider>
+      );
+      expect(screen.getByText("s1").tagName).toBe("P");
+      expect(screen.getByText("s2").tagName).toBe("P");
+      expect(screen.getByText("h").tagName).toBe("H2");
+      expect(screen.getByText("b").tagName).toBe("P");
+      expect(screen.queryAllByRole("heading")).toHaveLength(1);
+    }
+  );
+});
+
+describe("the aria-disabled look comes from the theme (#793)", () => {
+  const theme = THEME_MAP.brand;
+  const disabledColor = theme.palette.action.disabled;
+
+  it.each(["brand", "brand.dark"] as const)(
+    "styles aria-disabled buttons, icon buttons and menu items in %s",
+    (name) => {
+      render(
+        <ThemeProvider defaultTheme={name}>
+          <Button variant="contained" aria-disabled="true">
+            contained
+          </Button>
+          <Button variant="outlined" aria-disabled="true">
+            outlined
+          </Button>
+          <IconButton aria-label="icon" aria-disabled="true">
+            x
+          </IconButton>
+          <MenuItem aria-disabled="true">item</MenuItem>
+        </ThemeProvider>
+      );
+      const color = THEME_MAP[name].palette.action.disabled;
+      for (const el of [
+        screen.getByRole("button", { name: "contained" }),
+        screen.getByRole("button", { name: "outlined" }),
+        screen.getByRole("button", { name: "icon" }),
+      ]) {
+        expect(el).toHaveStyle({ cursor: "not-allowed", color });
+      }
+      expect(screen.getByRole("button", { name: "contained" })).toHaveStyle({
+        backgroundColor: THEME_MAP[name].palette.action.disabledBackground,
+      });
+      expect(screen.getByRole("menuitem", { name: "item" })).toHaveStyle({
+        cursor: "not-allowed",
+        opacity: String(THEME_MAP[name].palette.action.disabledOpacity),
+      });
+    }
+  );
+
+  it("leaves an enabled button alone", () => {
+    render(
+      <ThemeProvider>
+        <Button variant="contained">ok</Button>
+      </ThemeProvider>
+    );
+    expect(screen.getByRole("button", { name: "ok" })).not.toHaveStyle({
+      color: disabledColor,
+    });
+  });
+});
+
+describe("the a11y layer merges with the JSON (#793)", () => {
+  it("keeps the JSON's MuiButton root alongside the aria-disabled rule", () => {
+    const root = THEME_MAP.brand.components?.MuiButton?.styleOverrides
+      ?.root as Record<string, unknown>;
+    expect(root).toMatchObject({ borderRadius: 8, textTransform: "none" });
+    expect(root['&[aria-disabled="true"]']).toBeDefined();
   });
 });

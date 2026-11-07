@@ -1,9 +1,10 @@
-import React, { useRef, useEffect, useCallback, useState } from "react";
+import React, { useRef, useEffect, useCallback, useId, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
+import FormHelperText from "@mui/material/FormHelperText";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiTooltip from "@mui/material/Tooltip";
 import Paper from "@mui/material/Paper";
@@ -31,7 +32,8 @@ export const DEFAULT_COLOR_SAMPLES: ColorSample[] = [
 export interface ColorPickerProps {
   /** Current hex color value (e.g. "#ff0000") */
   value?: string;
-  /** Called when the color changes */
+  /** Called when the color changes, and with every draft typed in the hex
+   *  field, valid or not, so a form validates what the field shows (#793). */
   onChange?: (color: string) => void;
   /** Predefined color samples to display for quick selection */
   samples?: ColorSample[];
@@ -41,6 +43,15 @@ export interface ColorPickerProps {
   label?: string;
   /** Whether the picker is disabled */
   disabled?: boolean;
+  /** A form's required state, on the hex field (#793). */
+  required?: boolean;
+  /** A form's error state, on the hex field (#793). */
+  error?: boolean;
+  /** A form's error or hint text, under the hex field and read as its
+   *  description (#793). */
+  helperText?: React.ReactNode;
+  /** The hex field's id. */
+  id?: string;
 }
 
 const HEX_REGEX = /^#[0-9a-fA-F]{6}$/;
@@ -173,7 +184,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   wheelSize = 200,
   label,
   disabled = false,
+  required,
+  error,
+  helperText,
+  id,
 }) => {
+  const labelId = useId();
+  const helperId = useId();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -184,12 +201,20 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     return l;
   });
   const isDragging = useRef(false);
+  // A red field says why (#793): the form's text when it has some, else the
+  // picker's own, so an invalid draft is never only "invalid".
+  const draftInvalid = inputValue.length > 1 && !isValidHex(inputValue);
+  const description =
+    helperText ||
+    (draftInvalid ? "Enter a 6-digit hex color, like #FF0000" : undefined);
 
   if (prevValue !== value) {
     setPrevValue(value);
     setInputValue(value);
-    const [, , l] = hexToHsl(value);
-    setLightness(l);
+    if (isValidHex(value)) {
+      const [, , l] = hexToHsl(value);
+      setLightness(l);
+    }
   }
 
   const redraw = useCallback(
@@ -291,8 +316,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       if (isValidHex(newValue)) {
         const [, , l] = hexToHsl(newValue);
         setLightness(l);
-        onChange?.(newValue);
       }
+      onChange?.(newValue);
     },
     [onChange]
   );
@@ -325,19 +350,27 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   );
 
   return (
-    <Stack spacing={1.5} sx={{ opacity: disabled ? 0.5 : 1 }}>
+    <Stack
+      spacing={1.5}
+      sx={{ opacity: disabled ? 0.5 : 1 }}
+      // #793: the field, wheel and samples are one labelled control.
+      role={label ? "group" : undefined}
+      aria-labelledby={label ? labelId : undefined}
+    >
       {label && (
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography id={labelId} variant="subtitle2" color="text.secondary">
           {label}
         </Typography>
       )}
 
       <Stack direction="row" spacing={1} alignItems="center">
         <TextField
+          id={id}
           size="small"
           value={inputValue}
           onChange={handleInputChange}
           disabled={disabled}
+          required={required}
           slotProps={{
             input: {
               startAdornment: (
@@ -360,10 +393,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
             },
             htmlInput: {
               "aria-label": "Hex color value",
+              "aria-describedby": description ? helperId : undefined,
               maxLength: 7,
             },
           }}
-          error={inputValue.length > 1 && !isValidHex(inputValue)}
+          error={error || draftInvalid}
           sx={{ width: 160 }}
         />
         <MuiIconButton
@@ -381,6 +415,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
           <ColorizeIcon fontSize="small" />
         </MuiIconButton>
       </Stack>
+      {/* Under the whole row, not inside the 160px field, so an error reads
+          on one line (#793). The hex field is described by it. */}
+      {description && (
+        <FormHelperText id={helperId} error={!!error || !helperText}>
+          {description}
+        </FormHelperText>
+      )}
 
       <Popper
         open={open}

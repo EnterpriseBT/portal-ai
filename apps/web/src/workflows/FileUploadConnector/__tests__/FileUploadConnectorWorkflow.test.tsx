@@ -1,6 +1,10 @@
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { FileUploadConnectorWorkflowUI } from "../FileUploadConnectorWorkflow.component";
@@ -63,6 +67,22 @@ describe("FileUploadConnectorWorkflowUI — modal shell", () => {
   test("renders the modal with its title when open", () => {
     render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
     expect(screen.getByText("Upload a spreadsheet")).toBeInTheDocument();
+  });
+
+  test("has no axe violations when open (#793)", async () => {
+    render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  test("has no axe violations with a server error (#793)", async () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps()}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   test("does not render modal content when closed", () => {
@@ -478,9 +498,12 @@ describe("FileUploadConnectorWorkflowUI — commit blocks dismissal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  test("the close button is disabled while committing", () => {
+  test("the close button is aria-disabled while committing", () => {
     render(<FileUploadConnectorWorkflowUI {...committing()} />);
-    expect(screen.getByLabelText("close")).toBeDisabled();
+    expect(screen.getByLabelText("close")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   test("Escape closes the wizard when nothing is committing", async () => {

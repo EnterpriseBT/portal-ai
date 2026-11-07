@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { EntityTag } from "@portalai/core/models";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteTagDialog } =
   await import("../components/DeleteTagDialog.component");
 
@@ -35,6 +36,27 @@ describe("DeleteTagDialog", () => {
   it("should render dialog title", () => {
     render(<DeleteTagDialog {...defaultProps} />);
     expect(screen.getByText("Delete Tag")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteTagDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<DeleteTagDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteTagDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should display the tag name in the confirmation message", () => {
@@ -72,8 +94,14 @@ describe("DeleteTagDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeleteTagDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should not render content when open is false", () => {

@@ -135,7 +135,9 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
         <Stack direction="row" alignItems="center" spacing={1}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="subtitle1" noWrap>
+              {/* A card title, so a heading (#793): the theme maps
+                  subtitles to <p>. */}
+              <Typography variant="subtitle1" component="h3" noWrap>
                 {entity.label}
               </Typography>
               <Typography variant="body2" color="text.secondary" noWrap>

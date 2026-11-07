@@ -116,6 +116,7 @@ export const Interactive: Story = {
   args: {
     open: false,
     onClose: () => {},
+    title: "Example",
   },
   render: InteractiveRender,
 };
@@ -227,6 +228,7 @@ export const InteractiveMaximizable: Story = {
   args: {
     open: false,
     onClose: () => {},
+    title: "Example",
   },
   render: InteractiveMaximizableRender,
 };
@@ -293,6 +295,7 @@ export const Form: Story = {
   args: {
     open: false,
     onClose: () => {},
+    title: "Example",
   },
   render: () => <FormRender />,
 };

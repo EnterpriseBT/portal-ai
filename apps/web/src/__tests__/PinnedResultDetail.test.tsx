@@ -646,7 +646,10 @@ describe("PinnedResultDetailView container — remove", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
       const field = await screen.findByRole("textbox", { name: /name/i });
       await user.type(field, "x{Enter}{Enter}");
-      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
       expect(mockRename).not.toHaveBeenCalled();
     } finally {
       renamePending = false;

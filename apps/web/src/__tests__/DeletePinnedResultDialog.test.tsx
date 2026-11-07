@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { DeletePinnedResultDialog } =
   await import("../components/DeletePinnedResultDialog.component");
 
@@ -25,6 +25,27 @@ describe("DeletePinnedResultDialog", () => {
     render(<DeletePinnedResultDialog {...defaultProps} />);
     expect(screen.getByText("Delete Pinned Result")).toBeInTheDocument();
     expect(screen.getByText("Q3 Accounts")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeletePinnedResultDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<DeletePinnedResultDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeletePinnedResultDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {
@@ -72,7 +93,7 @@ describe("DeletePinnedResultDialog", () => {
       />
     );
     const remove = screen.getByRole("button", { name: "Deleting..." });
-    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("aria-disabled", "true");
     remove.focus();
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();

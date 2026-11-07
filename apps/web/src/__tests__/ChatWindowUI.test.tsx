@@ -459,3 +459,15 @@ describe("ChatWindowUI", () => {
     });
   });
 });
+
+// #793: the composer doesn't grab focus on mount. On arrival, focus follows
+// the app's route announcer to the page heading (#797); one Tab reaches the
+// composer.
+describe("ChatWindowUI focus on mount (#793)", () => {
+  it("doesn't auto-focus the composer", async () => {
+    render(<ChatWindowUI {...createProps()} />);
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(box).not.toHaveFocus();
+  });
+});

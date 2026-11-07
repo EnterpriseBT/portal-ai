@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { FieldMappingImpactResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteFieldMappingDialog } =
   await import("../components/DeleteFieldMappingDialog.component");
 
@@ -82,6 +83,22 @@ describe("DeleteFieldMappingDialog", () => {
     expect(screen.getByText("Delete Field Mapping")).toBeInTheDocument();
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteFieldMappingDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("should not render when open is false", () => {
     render(<DeleteFieldMappingDialog {...defaultProps} open={false} />);
     expect(screen.queryByText("Delete Field Mapping")).not.toBeInTheDocument();
@@ -133,7 +150,10 @@ describe("DeleteFieldMappingDialog", () => {
 
   it("should show loading state when isPending is true", () => {
     render(<DeleteFieldMappingDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided", () => {

@@ -47,7 +47,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         >
           <button
             aria-label="Clear search"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-edgeEnd MuiIconButton-sizeSmall css-1h2r52k-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-edgeEnd MuiIconButton-sizeSmall css-eayb48-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -85,7 +85,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       class="MuiBadge-root css-63ezxx-MuiBadge-root"
     >
       <button
-        class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-tl3r12-MuiButtonBase-root-MuiButton-root"
+        class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-1kd15lk-MuiButtonBase-root-MuiButton-root"
         tabindex="0"
         type="button"
       >
@@ -113,7 +113,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </span>
     </span>
     <button
-      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-tl3r12-MuiButtonBase-root-MuiButton-root"
+      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-1kd15lk-MuiButtonBase-root-MuiButton-root"
       tabindex="0"
       type="button"
     >
@@ -146,6 +146,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         <div
           aria-expanded="false"
           aria-haspopup="listbox"
+          aria-label="Rows per page"
           class="MuiSelect-select MuiSelect-outlined MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall css-vzq58p-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input"
           role="combobox"
           tabindex="0"
@@ -198,7 +199,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </p>
       <button
         aria-label="First page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-pgdlw9-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -216,7 +217,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Previous page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-pgdlw9-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -234,7 +235,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Next page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-pgdlw9-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -252,7 +253,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Last page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-pgdlw9-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >

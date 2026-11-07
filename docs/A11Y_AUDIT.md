@@ -36,13 +36,13 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:54 | 898 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 23:59 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:55 | 324 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-05 23:59 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-05 23:55 | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-06 00:31 | 426 | 60 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-06 00:31 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 904 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-07 19:03 | 281 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 326 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-07 19:03 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 31 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-07 19:36 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-07 19:37 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -118,9 +118,9 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
-| [#793 Dialogs and forms](#owner-793) | 24 | 71 | 4.1.2 | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 9 | 45 | 4.1.2 | 2 |
-| [#795 RegionEditor spreadsheet canvas](#owner-795) | 9 | 38 | 4.1.2 | 1 |
+| [#793 Dialogs and forms](#owner-793) | 0 | 0 | — | 0 |
+| [#794 Tables, grids and lists](#owner-794) | 5 | 18 | — | 2 |
+| [#795 RegionEditor spreadsheet canvas](#owner-795) | 13 | 51 | 4.1.2 | 1 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
 | [#798 Marketing site](#owner-798) | 0 | 0 | — | 1 |
@@ -130,32 +130,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 ## #793 Dialogs and forms
 
-| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
-|---|---|---|---|---|---|---|---|---|
-| 2cd831c2 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
-| 78d3c106 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
-| 91247097 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: MaxDepthReached | 1 | — | jest-axe |
-| b88b933a | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 2: MaxDepthReached, Populated | 3 | — | jest-axe |
-| 495d49f5 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx .MuiBox-root > .MuiFormControl-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 4: BetweenOperators, EmptyAndArrayOperators, MaxDepthReached, Populated | 7 | — | jest-axe |
-| de9c47a9 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx` | 2: Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 2 | — | jest-axe |
-| bb99c709 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx div[data-corner-header]` | 3: Step1_Empty, Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 3 | — | jest-axe |
-| 7273f52e | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx` | 3: InvalidRegion_AttemptedInterpret, OneRegion_Valid, ServerError | 3 | — | jest-axe |
-| 864ce79f | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx div[data-corner-header]` | 5: Empty, InvalidRegion_AttemptedInterpret, MultipleRegions_MergedEntity, OneRegion_Valid, ServerError | 5 | — | jest-axe |
-| fd812fff | 4.1.2 | button-name | critical | `packages/core/src/stories/IconButton.stories.tsx button` | 1: Default | 1 | — | jest-axe |
-| 647903d9 | 4.1.2 | label | critical | `apps/web/src/stories/AdvancedFilterBuilder.component.stories.tsx #(generated)` | 2: BetweenOperators, MaxDepthReached | 3 | — | jest-axe |
-| f6b2d0a7 | best practice | aria-allowed-role | minor | `apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx form` | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
-| 6dc28c79 | best practice | aria-allowed-role | minor | `apps/web/src/stories/DeleteCuratedViewDialog.component.stories.tsx form` | 3: Default, Deleting, WithError | 3 | — | jest-axe |
-| 78e7ccaf | best practice | aria-allowed-role | minor | `apps/web/src/stories/DeleteTagDialog.component.stories.tsx form` | 3: Default, Deleting, DifferentTag | 3 | — | jest-axe |
-| 91a647f9 | best practice | aria-allowed-role | minor | `apps/web/src/stories/RenameOrganizationDialog.component.stories.tsx form` | 3: Default, PermissionDenied, Saving | 3 | — | jest-axe |
-| 1c5f8667 | best practice | aria-allowed-role | minor | `apps/web/src/stories/TagFormModal.component.stories.tsx form` | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
-| ca6a0a48 | best practice | heading-order | moderate | `.MuiStack-root > h6` | 1: settings | 1 | roles: admin, member, owner · states: error, loading, populated · themes: brand, brand.dark | axe-app |
-| e6d4efd6 | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewEditorDialog.component.stories.tsx h6` | 6: Create, Edit, Saving, SqlMode, SqlModeUpsell, WithValidationError | 6 | — | jest-axe |
-| e4cfa0d2 | best practice | heading-order | moderate | `apps/web/src/stories/TagFormModal.component.stories.tsx h6` | 5: CreateMode, EditMode, EditWithServerError, ServerError, Submitting | 5 | — | jest-axe |
-| 2483fa7e | best practice | heading-order | moderate | `apps/web/src/stories/ToolpackMetadataModal.component.stories.tsx h6` | 2: Default, Unentitled | 2 | — | jest-axe |
-| 3f08377b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx .MuiTypography-subtitle1` | 4: Step1_InvalidRegion, Step1_RegionsDrawn_Valid, Step2_AllGreen, Step2_BlockerPresent | 4 | — | jest-axe |
-| 595fdf3b | best practice | heading-order | moderate | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx h6` | 1: Step1_Empty | 1 | — | jest-axe |
-| e7dac676 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/ChatWindow.component.tsx` | 1: :293 | 1 | — | eslint |
-| af258267 | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/SsoLoginForm.component.tsx` | 1: :108 | 1 | — | eslint |
+No automated findings.
 
 <a id="owner-794"></a>
 
@@ -163,14 +138,10 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 
 | ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
 |---|---|---|---|---|---|---|---|---|
-| b40cacd6 | 4.1.2 | aria-input-field-name | serious | `.MuiSelect-select` | 13: column-definition-detail, column-definitions, connector-detail, entities, entity-detail, entity-groups, +7 more | 13 | roles: admin, member, owner · states: empty, error, loading, locked, populated · themes: brand, brand.dark | axe-app |
-| 6b84b4b2 | 4.1.2 | aria-input-field-name | serious | `#tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: connectors | 1 | roles: admin, owner · states: empty, error, loading, populated · themes: brand, brand.dark | axe-app |
-| 199e2593 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/Connector.view.stories.tsx #tabpanel-0 > .MuiBox-root > .MuiStack-root > .MuiBox-root > .MuiBox-root > .MuiBox-root > .MuiSelect-root.MuiInputBase-root > .MuiSelect-select.MuiSelect-outlined` | 1: Default | 1 | — | jest-axe |
-| d4cf6987 | 4.1.2 | aria-input-field-name | serious | `apps/web/src/stories/PaginationToolbar.component.stories.tsx .MuiSelect-select` | 11: AllFilterTypes, BooleanFilters, Default, Interactive, LastPage, MidPage, +5 more | 11 | — | jest-axe |
-| 5706fa98 | best practice | heading-order | moderate | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h6` | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 6328129f | best practice | heading-order | moderate | `.MuiTypography-h6` | 1: connectors | 1 | roles: admin, owner · states: empty · themes: brand, brand.dark | axe-app |
+| cce6c08c | best practice | heading-order | moderate | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h3` | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
 | e86a6bdc | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6` | 1: Empty | 1 | — | jest-axe |
-| 1a851f7c | best practice | heading-order | moderate | `h6` | 12: column-definition-detail, column-definitions, connector-detail, dashboard, entities, entity-groups, +6 more | 12 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
+| 8c7e8755 | best practice | heading-order | moderate | `h3` | 1: stations | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
+| 1a851f7c | best practice | heading-order | moderate | `h6` | 11: column-definition-detail, column-definitions, connectors, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
 | 53f149ff | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/PaginationToolbar.component.tsx` | 1: :747 | 1 | — | eslint |
 
 <a id="owner-795"></a>
@@ -185,6 +156,10 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | e0d4f664 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx` | 1: ModeB_DriftHalt | 1 | — | jest-axe |
 | 1741e9ce | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx div[data-corner-header]` | 3: Interactive, ModeA_Empty, ModeB_DriftHalt | 3 | — | jest-axe |
 | 1d220399 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx div[data-corner-header]` | 8: CrosstabSheet, DriftHighlighted, Empty, InteractiveDrawing, MessyPipelineSkipRules, MessyQuartersSkipRules, +2 more | 8 | — | jest-axe |
+| de9c47a9 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx` | 2: Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 2 | — | jest-axe |
+| bb99c709 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx div[data-corner-header]` | 3: Step1_Empty, Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 3 | — | jest-axe |
+| 7273f52e | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx` | 3: InvalidRegion_AttemptedInterpret, OneRegion_Valid, ServerError | 3 | — | jest-axe |
+| 864ce79f | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx div[data-corner-header]` | 5: Empty, InvalidRegion_AttemptedInterpret, MultipleRegions_MergedEntity, OneRegion_Valid, ServerError | 5 | — | jest-axe |
 | fd0eeb17 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/RegionDrawingStep.component.tsx` | 1: :387 | 1 | — | eslint |
 | 424ee260 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/ReviewStep.component.tsx` | 1: :509 | 1 | — | eslint |
 | 0182bd69 | best practice | aria-allowed-role | minor | `apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx form` | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |

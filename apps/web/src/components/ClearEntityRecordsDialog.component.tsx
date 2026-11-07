@@ -3,7 +3,13 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { z } from "zod";
 
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -102,24 +108,24 @@ export const ClearEntityRecordsDialog: React.FC<
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Deleting…")}
             data-testid="confirm-clear-entity-records"
           >
             {isPending ? "Deleting…" : "Delete all records"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

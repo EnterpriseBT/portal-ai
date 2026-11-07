@@ -21,6 +21,12 @@ export interface DetailCardProps {
   actions?: ActionSuiteItem[];
   /** When provided, the card becomes clickable and calls this handler. */
   onClick?: () => void;
+  /**
+   * The title's heading level (#793). A card's title is a heading, so
+   * screen-reader users can move between cards; 3 sits under a page's h1 and
+   * a section's h2. Pass 2 for cards directly under the page heading.
+   */
+  headingLevel?: 2 | 3 | 4 | 5 | 6;
   /** MUI Card variant. Defaults to "outlined". */
   variant?: "outlined" | "elevation";
   className?: string;
@@ -35,6 +41,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
       children,
       actions,
       onClick,
+      headingLevel = 3,
       variant = "outlined",
       className,
       ...rest
@@ -66,6 +73,8 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
         )}
         <MuiTypography
           variant="subtitle1"
+          // The theme maps subtitles to <p>; a card title is a heading.
+          component={`h${headingLevel}`}
           sx={{
             overflow: "hidden",
             textOverflow: "ellipsis",

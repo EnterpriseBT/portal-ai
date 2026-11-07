@@ -52,7 +52,7 @@ test("a new org walks the core loop", async ({ page }) => {
     await page.getByRole("tab", { name: "Catalog" }).click();
     await page
       .locator(
-        "xpath=//h6[normalize-space()='File Upload']/ancestor::*[.//button][1]//button"
+        "xpath=//h3[normalize-space()='File Upload']/ancestor::*[.//button][1]//button"
       )
       .first()
       .click();

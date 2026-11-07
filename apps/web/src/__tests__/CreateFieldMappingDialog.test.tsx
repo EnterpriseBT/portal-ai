@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { CreateFieldMappingDialog } =
   await import("../components/CreateFieldMappingDialog.component");
 
@@ -45,6 +51,34 @@ describe("CreateFieldMappingDialog", () => {
     expect(
       await screen.findByText("No entities you can edit")
     ).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    const onSearchConnectorEntities = jest
+      .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+      .mockResolvedValue([]);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        onSearchConnectorEntities={onSearchConnectorEntities}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    const onSearchConnectorEntities = jest
+      .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+      .mockResolvedValue([]);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        onSearchConnectorEntities={onSearchConnectorEntities}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should render title and form fields when open", () => {
@@ -147,8 +181,14 @@ describe("CreateFieldMappingDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<CreateFieldMappingDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided", () => {
