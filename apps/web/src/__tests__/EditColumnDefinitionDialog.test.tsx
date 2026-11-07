@@ -288,8 +288,14 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should show 'Saving...' and disable buttons when isPending", () => {
     render(<EditColumnDefinitionDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided", () => {

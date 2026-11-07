@@ -245,8 +245,11 @@ describe("CreateEntityRecordDialog — loading", () => {
   it("shows Creating... and disables buttons when isPending", () => {
     render(<CreateEntityRecordDialog {...defaultProps} isPending={true} />);
     expect(screen.getByText("Creating...")).toBeInTheDocument();
-    expect(screen.getByText("Creating...")).toBeDisabled();
-    expect(screen.getByText("Cancel")).toBeDisabled();
+    expect(screen.getByText("Creating...")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByText("Cancel")).toHaveAttribute("aria-disabled", "true");
   });
 });
 

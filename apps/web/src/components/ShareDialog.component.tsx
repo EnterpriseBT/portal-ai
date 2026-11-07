@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Chip from "@mui/material/Chip";
-import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -11,12 +10,13 @@ import Divider from "@mui/material/Divider";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  Button,
+  GatedButton,
+  GatedIconButton,
+  IconName,
   Modal,
+  pendingGate,
   Stack,
   Typography,
-  Icon,
-  IconName,
 } from "@portalai/core/ui";
 import type {
   GrantView,
@@ -131,22 +131,22 @@ export const ShareDialogUI: React.FC<ShareDialogUIProps> = ({
       onSubmit={handleShare}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Done
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleShare}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Sharing..." : "Share"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >
@@ -246,15 +246,14 @@ export const ShareDialogUI: React.FC<ShareDialogUIProps> = ({
                   <Chip size="small" label={g.access} />
                   <Tooltip title="Revoke">
                     <span>
-                      <IconButton
+                      <GatedIconButton
+                        icon={IconName.Delete}
                         size="small"
                         color="error"
-                        disabled={isPending}
+                        gate={pendingGate(isPending, "Wait for this to finish")}
                         onClick={() => onRevoke(g.id)}
                         aria-label={`Revoke share for ${g.principalLabel}`}
-                      >
-                        <Icon name={IconName.Delete} fontSize="small" />
-                      </IconButton>
+                      />
                     </span>
                   </Tooltip>
                 </Stack>

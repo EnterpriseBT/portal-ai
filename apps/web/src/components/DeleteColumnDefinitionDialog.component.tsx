@@ -8,7 +8,9 @@ import type { ColumnDefinitionImpactResponsePayload } from "@portalai/core/contr
 import {
   Button,
   CircularProgress,
+  GatedButton,
   Modal,
+  pendingGate,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -107,14 +109,14 @@ export const DeleteColumnDefinitionDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
+          </GatedButton>
           <Button
             type="button"
             variant="contained"

@@ -1,6 +1,12 @@
 import React from "react";
 
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -38,23 +44,23 @@ export const DeleteCuratedViewDialog: React.FC<
       onSubmit={onConfirm}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={onConfirm}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Deleting…")}
           >
             {isPending ? "Deleting..." : "Delete"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

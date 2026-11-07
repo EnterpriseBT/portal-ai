@@ -6,9 +6,10 @@ import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import {
-  Button,
+  GatedButton,
   Modal,
   MultiSearchableSelect,
+  pendingGate,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -271,22 +272,22 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Saving..." : "Save"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

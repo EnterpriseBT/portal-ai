@@ -69,7 +69,7 @@ describe("RemoveGroupMemberDialog", () => {
       />
     );
     const remove = screen.getByRole("button", { name: "Removing..." });
-    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("aria-disabled", "true");
     remove.focus();
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();

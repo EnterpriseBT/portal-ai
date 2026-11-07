@@ -110,9 +110,14 @@ describe("ClearEntityRecordsDialog (#453)", () => {
 
   it("disables both buttons and relabels while pending", () => {
     render(<ClearEntityRecordsDialog {...defaultProps} isPending />);
-    expect(confirmButton()).toBeDisabled();
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
-    expect(screen.getByText(/Deleting/)).toBeInTheDocument();
+    expect(confirmButton()).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(
+      screen.getByRole("button", { name: /Deleting/ })
+    ).toBeInTheDocument();
   });
 
   it("renders FormAlert when a serverError is provided", () => {

@@ -43,10 +43,13 @@ describe("DeleteAccessItemDialogUI (#691)", () => {
   it("shows the pending state and can't fire twice", () => {
     render(<DeleteAccessItemDialogUI {...props} isPending />);
     const del = screen.getByRole("button", { name: "Deleting..." });
-    expect(del).toBeDisabled();
+    expect(del).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(del);
     expect(props.onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("can't be dismissed (Escape) while the delete is in flight", () => {

@@ -190,8 +190,14 @@ describe("EditToolpackDialogUI", () => {
 
   it("disables actions while saving", () => {
     render(<EditToolpackDialogUI {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: /Saving/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Saving/ })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   // Phase 6: rotate signing secret button

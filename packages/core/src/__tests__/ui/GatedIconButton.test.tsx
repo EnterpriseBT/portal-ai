@@ -126,3 +126,42 @@ describe("GatedIconButton reason (#793)", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+describe("GatedIconButton with disabled (#793)", () => {
+  it("a disable gate ignores native disabled", () => {
+    render(
+      <GatedIconButton
+        icon={IconName.Delete}
+        aria-label="Delete"
+        disabled
+        gate={{ kind: "disable", reason: "Saving…" }}
+      />
+    );
+    const button = screen.getByRole("button", { name: "Delete" });
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("GatedIconButton keeps focus across gates (#793)", () => {
+  it("allow → disable keeps the same focused element", () => {
+    const { rerender } = render(
+      <GatedIconButton
+        icon={IconName.Delete}
+        aria-label="Delete"
+        gate={{ kind: "allow" }}
+      />
+    );
+    const button = screen.getByRole("button", { name: "Delete" });
+    button.focus();
+    rerender(
+      <GatedIconButton
+        icon={IconName.Delete}
+        aria-label="Delete"
+        gate={{ kind: "disable", reason: "Saving…" }}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Delete" })).toBe(button);
+    expect(button).toHaveFocus();
+  });
+});

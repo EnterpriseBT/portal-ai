@@ -8,11 +8,12 @@ import type {
   EntityTagUpdateRequestBody,
 } from "@portalai/core/contracts";
 import {
-  Button,
-  Modal,
-  Stack,
   ColorPicker,
   DEFAULT_COLOR_SAMPLES,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
 } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
@@ -161,22 +162,22 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Saving..." : isEdit ? "Update" : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

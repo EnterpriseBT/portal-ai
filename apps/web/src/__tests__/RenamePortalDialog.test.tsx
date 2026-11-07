@@ -92,8 +92,14 @@ describe("RenamePortalDialog", () => {
 
   it("shows the loading state while pending", () => {
     render(<RenamePortalDialog {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("blocks an empty name with a field error", async () => {

@@ -45,8 +45,14 @@ describe("PinResultDialog — rendering", () => {
 
   it("shows the pending state and disables the actions", () => {
     render(<PinResultDialog {...baseProps} isPending />);
-    expect(screen.getByRole("button", { name: /pinning/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /pinning/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("marks the name field required", () => {

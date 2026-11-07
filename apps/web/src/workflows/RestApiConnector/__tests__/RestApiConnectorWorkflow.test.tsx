@@ -119,7 +119,10 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
       "aria-disabled",
       "true"
     );
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     expect(onClose).not.toHaveBeenCalled();
   });
 

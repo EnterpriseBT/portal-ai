@@ -88,7 +88,10 @@ describe("CreateEntityGroupDialog", () => {
 
   it("shows the loading state while pending", () => {
     render(<CreateEntityGroupDialog {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("blocks an empty name with a field error", async () => {

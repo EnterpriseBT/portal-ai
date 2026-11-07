@@ -129,8 +129,14 @@ describe("RenameOrganizationDialogUI (#907)", () => {
         isPending
       />
     );
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -197,5 +203,23 @@ describe("RenameOrganizationDialogUI (#907)", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByText("Name is required")).not.toBeInTheDocument();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #793: pressing Save starts the request; focus stays on Save (now
+// "Saving..."), which reads as unavailable with its reason.
+describe("RenameOrganizationDialogUI — focus while saving (#793)", () => {
+  it("keeps focus on the pressed button when pending starts", async () => {
+    const { rerender } = render(
+      <RenameOrganizationDialogUI {...defaultProps} />
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    save.focus();
+    rerender(<RenameOrganizationDialogUI {...defaultProps} isPending />);
+    const saving = screen.getByRole("button", { name: "Saving..." });
+    expect(saving).toBe(save);
+    expect(saving).toHaveFocus();
+    expect(saving).toHaveAttribute("aria-disabled", "true");
+    expect(saving).toHaveAccessibleDescription("Saving…");
   });
 });

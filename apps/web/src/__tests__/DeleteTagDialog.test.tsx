@@ -72,8 +72,14 @@ describe("DeleteTagDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeleteTagDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should not render content when open is false", () => {

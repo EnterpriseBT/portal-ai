@@ -4,7 +4,14 @@ import { z } from "zod";
 import { descriptionField, nameField } from "@portalai/core/contracts";
 import type { CreateStationBody, Toolpack } from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
-import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Alert from "@mui/material/Alert";
@@ -182,22 +189,22 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Creating..." : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

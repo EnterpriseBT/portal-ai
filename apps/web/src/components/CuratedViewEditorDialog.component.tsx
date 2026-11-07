@@ -14,11 +14,12 @@ import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Typography from "@mui/material/Typography";
 import {
+  type ActionGate,
   Button,
   GatedButton,
   Modal,
+  pendingGate,
   Stack,
-  type ActionGate,
 } from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
@@ -147,22 +148,23 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
       onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={onSubmit}
-            disabled={isPending || !columnsReady}
+            gate={pendingGate(isPending)}
+            disabled={!columnsReady}
           >
             {isPending ? "Saving..." : "Save"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

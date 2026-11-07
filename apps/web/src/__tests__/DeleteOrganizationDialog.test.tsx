@@ -92,8 +92,14 @@ describe("DeleteOrganizationDialog", () => {
 
   it("should disable both buttons and show progress label when pending (case 22)", () => {
     render(<DeleteOrganizationDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided (case 23)", () => {

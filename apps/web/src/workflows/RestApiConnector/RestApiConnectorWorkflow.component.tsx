@@ -16,7 +16,15 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { Button, Modal, Stack, StepPanel, Stepper } from "@portalai/core/ui";
+import {
+  Button,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  StepPanel,
+  Stepper,
+} from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import type { ApiAuthConfig, ApiCredentials } from "@portalai/core/models";
 import type { DiscoverColumnsResult } from "@portalai/core/contracts";
@@ -176,23 +184,23 @@ export const RestApiConnectorWorkflowUI: React.FC<
       pending={isCommitting}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isCommitting}
+            gate={pendingGate(isCommitting, "Wait for this to finish")}
           >
             Cancel
-          </Button>
+          </GatedButton>
           {step > 0 ? (
-            <Button
+            <GatedButton
               type="button"
               variant="outlined"
               onClick={() => onStepChange(step - 1)}
-              disabled={isCommitting}
+              gate={pendingGate(isCommitting, "Wait for this to finish")}
             >
               Back
-            </Button>
+            </GatedButton>
           ) : null}
           {isLast ? (
             <Button

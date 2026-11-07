@@ -81,7 +81,10 @@ describe("SandboxConnectorWorkflowUI", () => {
     expect(
       screen.getByRole("button", { name: "Connecting..." })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("renders FormAlert when serverError is provided", () => {

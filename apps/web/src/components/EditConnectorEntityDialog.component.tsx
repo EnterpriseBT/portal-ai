@@ -5,7 +5,13 @@ import {
   type ConnectorEntityPatchRequestBody,
 } from "@portalai/core/contracts";
 import TextField from "@mui/material/TextField";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import {
+  Button,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -74,14 +80,14 @@ const EditForm: React.FC<{
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
+          </GatedButton>
           <Button
             type="button"
             variant="contained"

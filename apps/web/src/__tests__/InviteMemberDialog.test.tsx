@@ -66,8 +66,14 @@ describe("InviteMemberDialog", () => {
 
   it("shows loading state when isPending", () => {
     render(<InviteMemberDialog {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: "Inviting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Inviting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("renders FormAlert (role=alert) when serverError is provided", () => {

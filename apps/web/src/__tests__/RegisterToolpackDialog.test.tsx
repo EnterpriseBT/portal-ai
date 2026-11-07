@@ -359,8 +359,14 @@ describe("RegisterToolpackDialogUI", () => {
 
   it("disables actions when isPending", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: /Registering/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Registering/ })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("renders FormAlert when serverError is supplied", () => {

@@ -5,7 +5,7 @@ import {
   type UpdateToolpackBody,
   type Toolpack,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
@@ -215,39 +215,41 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="text"
             onClick={onRefresh}
-            disabled={isRefreshing || isPending || isRotatingSecret}
+            gate={pendingGate(isPending)}
+            disabled={isRefreshing || isRotatingSecret}
           >
             {isRefreshing ? "Refreshing..." : "Refresh schema"}
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="text"
             onClick={onRotateSecret}
-            disabled={isRotatingSecret || isPending || isRefreshing}
+            gate={pendingGate(isPending)}
+            disabled={isRotatingSecret || isRefreshing}
             data-testid="rotate-signing-secret-button"
           >
             {isRotatingSecret ? "Rotating..." : "Rotate signing secret"}
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Saving..." : "Save"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

@@ -131,7 +131,10 @@ describe("CuratedViewEditorUI (pure form)", () => {
 
   it("shows the loading state when pending", () => {
     render(<CuratedViewEditorUI {...baseProps} isPending />);
-    expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /saving/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("shows a field-level error + aria-invalid when touched", () => {

@@ -68,7 +68,7 @@ describe("DeleteCuratedViewDialog", () => {
       />
     );
     const remove = screen.getByRole("button", { name: "Deleting..." });
-    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("aria-disabled", "true");
     remove.focus();
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();

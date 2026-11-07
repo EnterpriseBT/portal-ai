@@ -104,8 +104,14 @@ describe("CreatePortalDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<MockedCreatePortalDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should display server error message and code", () => {

@@ -6,7 +6,9 @@ import type { FieldMappingUpdateRequestBody } from "@portalai/core/contracts";
 import {
   AsyncSearchableSelect,
   Button,
+  GatedButton,
   Modal,
+  pendingGate,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -255,22 +257,22 @@ const EditForm: React.FC<{
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Saving..." : "Save"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

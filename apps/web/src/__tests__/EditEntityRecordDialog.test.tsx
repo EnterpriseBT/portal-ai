@@ -184,8 +184,11 @@ describe("EditEntityRecordDialog — loading", () => {
   it("shows Saving... and disables buttons when isPending", () => {
     render(<EditEntityRecordDialog {...defaultProps} isPending={true} />);
     expect(screen.getByText("Saving...")).toBeInTheDocument();
-    expect(screen.getByText("Saving...")).toBeDisabled();
-    expect(screen.getByText("Cancel")).toBeDisabled();
+    expect(screen.getByText("Saving...")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByText("Cancel")).toHaveAttribute("aria-disabled", "true");
   });
 });
 

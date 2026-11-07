@@ -4,9 +4,11 @@ import type { EntityGroupMemberOverlapResponsePayload } from "@portalai/core/con
 import {
   AsyncSearchableSelect,
   Button,
+  GatedButton,
   Modal,
-  Stack,
+  pendingGate,
   type SelectOption,
+  Stack,
 } from "@portalai/core/ui";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -65,14 +67,14 @@ export const AddGroupMemberDialog: React.FC<AddGroupMemberDialogProps> = ({
       pending={isAdding}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isAdding}
+            gate={pendingGate(isAdding, "Wait for this to finish")}
           >
             Cancel
-          </Button>
+          </GatedButton>
           <Button
             type="button"
             variant="contained"

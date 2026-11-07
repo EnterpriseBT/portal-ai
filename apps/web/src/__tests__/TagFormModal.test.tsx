@@ -213,8 +213,14 @@ describe("TagFormModal", () => {
 
   it("should show 'Saving...' and disable buttons when pending", () => {
     render(<TagFormModal {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should display server error message and code", () => {

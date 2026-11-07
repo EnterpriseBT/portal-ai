@@ -163,3 +163,56 @@ describe("GatedButton reason (#793)", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+// #793: a disable gate wins over a caller's native `disabled`, so a dialog's
+// submit stays focusable while it saves even when its form is also invalid.
+describe("GatedButton with disabled (#793)", () => {
+  it("a disable gate ignores native disabled", () => {
+    render(
+      <GatedButton disabled gate={{ kind: "disable", reason: "Saving…" }}>
+        Save
+      </GatedButton>
+    );
+    const button = screen.getByRole("button", { name: "Save" });
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("allow keeps native disabled", () => {
+    render(
+      <GatedButton disabled gate={{ kind: "allow" }}>
+        Save
+      </GatedButton>
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+});
+
+// #793: the point of pendingGate: the focused button survives the switch
+// into its disabled state (same element, not a remount), so focus stays.
+describe("GatedButton keeps focus across gates (#793)", () => {
+  it.each([
+    [
+      "allow → disable",
+      { kind: "allow" },
+      { kind: "disable", reason: "Saving…" },
+    ],
+    [
+      "disable → allow",
+      { kind: "disable", reason: "Saving…" },
+      { kind: "allow" },
+    ],
+    [
+      "allow → upsell",
+      { kind: "allow" },
+      { kind: "upsell", reason: "Higher plan", onUpgrade: () => {} },
+    ],
+  ] as const)("%s keeps the same focused element", (_k, from, to) => {
+    const { rerender } = render(<GatedButton gate={from}>Save</GatedButton>);
+    const button = screen.getByRole("button", { name: "Save" });
+    button.focus();
+    rerender(<GatedButton gate={to}>Save</GatedButton>);
+    expect(screen.getByRole("button", { name: "Save" })).toBe(button);
+    expect(button).toHaveFocus();
+  });
+});

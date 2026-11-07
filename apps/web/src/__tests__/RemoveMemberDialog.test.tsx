@@ -60,7 +60,10 @@ describe("RemoveMemberDialog", () => {
     render(
       <RemoveMemberDialog {...defaultProps} onClose={onClose} isPending />
     );
-    expect(screen.getByRole("button", { name: "Removing..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Removing..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();
   });
