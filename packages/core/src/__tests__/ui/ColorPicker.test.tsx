@@ -105,13 +105,48 @@ describe("ColorPicker", () => {
       expect(handleChange).toHaveBeenCalledWith("#abcdef");
     });
 
-    it("should not call onChange with invalid hex input", () => {
+    // #793: the form sees what the field shows, so its validation can block
+    // a save; a draft that never reached it was saved as the last good color.
+    it("should report an invalid draft to onChange, so the form can reject it", () => {
       const handleChange = jest.fn();
       render(<ColorPicker value="#000000" onChange={handleChange} />);
       const input = screen.getByLabelText("Hex color value");
 
       fireEvent.change(input, { target: { value: "#gggggg" } });
-      expect(handleChange).not.toHaveBeenCalled();
+      expect(handleChange).toHaveBeenCalledWith("#gggggg");
+    });
+
+    it("keeps its draft and lightness when the form echoes an invalid value back", () => {
+      const { rerender } = render(<ColorPicker value="#ff0000" />);
+      rerender(<ColorPicker value="#ggg" />);
+      expect(screen.getByLabelText("Hex color value")).toHaveValue("#ggg");
+      rerender(<ColorPicker value="#00ff00" />);
+      expect(screen.getByLabelText("Hex color value")).toHaveValue("#00ff00");
+    });
+
+    it("explains an invalid draft in the field's description", () => {
+      render(<ColorPicker value="#000000" />);
+      const input = screen.getByLabelText("Hex color value");
+      expect(input).not.toHaveAccessibleDescription();
+
+      fireEvent.change(input, { target: { value: "#zz" } });
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input).toHaveAccessibleDescription(
+        "Enter a 6-digit hex color, like #FF0000"
+      );
+    });
+
+    it("lets a form's helperText replace its own explanation", () => {
+      render(
+        <ColorPicker
+          value="#zz"
+          error
+          helperText="Color must be a valid hex code"
+        />
+      );
+      expect(
+        screen.getByLabelText("Hex color value")
+      ).toHaveAccessibleDescription("Color must be a valid hex code");
     });
 
     it("should prepend # if missing from input", () => {

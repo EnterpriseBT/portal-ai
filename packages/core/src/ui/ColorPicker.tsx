@@ -32,7 +32,8 @@ export const DEFAULT_COLOR_SAMPLES: ColorSample[] = [
 export interface ColorPickerProps {
   /** Current hex color value (e.g. "#ff0000") */
   value?: string;
-  /** Called when the color changes */
+  /** Called when the color changes, and with every draft typed in the hex
+   *  field, valid or not, so a form validates what the field shows (#793). */
   onChange?: (color: string) => void;
   /** Predefined color samples to display for quick selection */
   samples?: ColorSample[];
@@ -200,12 +201,20 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     return l;
   });
   const isDragging = useRef(false);
+  // A red field says why (#793): the form's text when it has some, else the
+  // picker's own, so an invalid draft is never only "invalid".
+  const draftInvalid = inputValue.length > 1 && !isValidHex(inputValue);
+  const description =
+    helperText ||
+    (draftInvalid ? "Enter a 6-digit hex color, like #FF0000" : undefined);
 
   if (prevValue !== value) {
     setPrevValue(value);
     setInputValue(value);
-    const [, , l] = hexToHsl(value);
-    setLightness(l);
+    if (isValidHex(value)) {
+      const [, , l] = hexToHsl(value);
+      setLightness(l);
+    }
   }
 
   const redraw = useCallback(
@@ -307,8 +316,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       if (isValidHex(newValue)) {
         const [, , l] = hexToHsl(newValue);
         setLightness(l);
-        onChange?.(newValue);
       }
+      onChange?.(newValue);
     },
     [onChange]
   );
@@ -384,11 +393,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
             },
             htmlInput: {
               "aria-label": "Hex color value",
-              "aria-describedby": helperText ? helperId : undefined,
+              "aria-describedby": description ? helperId : undefined,
               maxLength: 7,
             },
           }}
-          error={error || (inputValue.length > 1 && !isValidHex(inputValue))}
+          error={error || draftInvalid}
           sx={{ width: 160 }}
         />
         <MuiIconButton
@@ -408,9 +417,9 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       </Stack>
       {/* Under the whole row, not inside the 160px field, so an error reads
           on one line (#793). The hex field is described by it. */}
-      {helperText && (
-        <FormHelperText id={helperId} error={!!error}>
-          {helperText}
+      {description && (
+        <FormHelperText id={helperId} error={!!error || !helperText}>
+          {description}
         </FormHelperText>
       )}
 

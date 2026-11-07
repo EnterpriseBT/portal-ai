@@ -4,6 +4,7 @@ import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
+import { useForkRef } from "@mui/material/utils";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
 
@@ -62,6 +63,8 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   const selectionId = useId();
   const removeHintId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ownInputRef = useRef<HTMLInputElement | null>(null);
+  const handleInputRef = useForkRef(ownInputRef, inputRef);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,9 +142,13 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
     }
   };
 
+  // Removing the chip unmounts the element that had focus, so focus moves to
+  // the field, where the user picks a replacement (#793). Left alone, it
+  // falls to the dialog's container and the user has to Tab back.
   const handleClear = () => {
     onChange(null);
     setSelectedOption(null);
+    ownInputRef.current?.focus();
   };
 
   return (
@@ -193,7 +200,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         renderInput={(params) => (
           <TextField
             {...params}
-            inputRef={inputRef}
+            inputRef={handleInputRef}
             label={label}
             placeholder={placeholder}
             helperText={helperText}

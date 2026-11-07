@@ -361,4 +361,24 @@ describe("TagFormModal — color error (#793)", () => {
     expect(hex).toHaveAccessibleDescription(/./);
     expect(screen.getByRole("group", { name: "Color" })).toContainElement(hex);
   });
+
+  // The adversarial walk typed "not-a-color" and Create saved the default
+  // color, because the draft never reached the form.
+  it("blocks Create on a typed hex that isn't valid, and says why", async () => {
+    const onSubmit = jest.fn();
+    render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Test" },
+    });
+    const hex = screen.getByRole("textbox", { name: /Hex color value/ });
+    fireEvent.change(hex, { target: { value: "#not-a-c" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(hex).toHaveAccessibleDescription(
+        "Color must be a valid hex code (e.g. #FF0000)"
+      )
+    );
+    expect(hex).toHaveAttribute("aria-invalid", "true");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
