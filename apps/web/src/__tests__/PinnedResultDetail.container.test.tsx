@@ -63,8 +63,10 @@ describe("PinnedResultDetailView (container) — page heading (#982)", () => {
   ])("keeps exactly one h1 while %s", (_state, query) => {
     resultQuery = query;
     render(<PinnedResultDetailView portalResultId="pr-1" />);
-    const h1s = screen.getAllByRole("heading", { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent("Pinned result");
+    // Exactly one h1, named the page and nothing else (not the error copy).
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Pinned result" })
+    ).toBeInTheDocument();
   });
 });

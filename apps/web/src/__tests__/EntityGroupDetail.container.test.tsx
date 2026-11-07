@@ -66,8 +66,10 @@ describe("EntityGroupDetailView (container) — page heading (#982)", () => {
   ])("keeps exactly one h1 while %s", (_state, query) => {
     groupQuery = query;
     render(<EntityGroupDetailView entityGroupId="grp-1" />);
-    const h1s = screen.getAllByRole("heading", { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent("Entity group");
+    // Exactly one h1, named the page and nothing else (not the error copy).
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Entity group" })
+    ).toBeInTheDocument();
   });
 });

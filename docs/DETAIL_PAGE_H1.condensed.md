@@ -19,7 +19,8 @@
 
 - **A. Pass `pageTitle` to the two `DataResult`s, and inline a hidden `h1` in CuratedViewDetail's two early returns.** It's smallest, but it copies `DataResult`'s markup into a view.
 - **B. Rewrite CuratedViewDetail onto `DataResult`.** `DataResult` shows a refetch error over cached data, as `freshData` does (#713), but it renders a `StatusMessage`. That would replace the "View not found" empty state's copy and icon, which is a UI change this bug doesn't need.
-- **C (chosen). Extract `HiddenPageHeading`** (`components/HiddenPageHeading.component.tsx`, pure UI: `{ children }` → a `visuallyHidden` `h1`). `DataResult`'s `withTitle` renders it, the two views pass `pageTitle`, and CuratedViewDetail renders it in both early returns. The hidden-`h1` markup then lives in one place, and the empty state keeps its look.
+- **C (chosen). Extract `HiddenPageHeading`** into core (`packages/core/src/ui/HiddenPageHeading.tsx`, pure UI: `{ children }` → a `visuallyHidden` `h1`), so its hiding recipe isn't an ad hoc `sx` in `apps/web`. `DataResult`'s `withTitle` renders it, the two views pass `pageTitle`, CuratedViewDetail renders it in both early returns, and `LoadingView` uses it for its own hidden `h1`. The hidden-`h1` markup then lives in one place, and the empty state keeps its look.
+- **Review fix: a paused query is loading.** React Query v5's `isLoading` is `isPending && isFetching`, so a query paused offline has no data yet isn't "loading". `DataResult` used to skip it and call `children` with `undefined` data: no `h1`, or a crash. It now waits on any entry that isn't successful and has no data.
 
 The titles follow the other detail views, naming the kind of page: **"Entity group"**, **"Pinned result"**, **"View"**. The tab reads "View · Portals AI" until the data loads and `PageHeader`'s visible `h1` replaces it.
 
@@ -28,12 +29,12 @@ The titles follow the other detail views, naming the kind of page: **"Entity gro
 ## Plan — 1 slice
 
 **Files**
-- New: `apps/web/src/components/HiddenPageHeading.component.tsx`
-- Edit: `apps/web/src/components/DataResult.component.tsx` (`withTitle` renders `HiddenPageHeading`)
+- New: `packages/core/src/ui/HiddenPageHeading.tsx` (exported from `@portalai/core/ui`) + `packages/core/src/__tests__/ui/HiddenPageHeading.test.tsx`
+- Edit: `apps/web/src/components/DataResult.component.tsx` (`withTitle` renders `HiddenPageHeading`; a paused query counts as loading), `apps/web/src/views/Loading.view.tsx`
 - Edit: `apps/web/src/views/EntityGroupDetail.view.tsx` (`pageTitle="Entity group"`), `apps/web/src/views/PinnedResultDetail.view.tsx` (`pageTitle="Pinned result"`), `apps/web/src/views/CuratedViewDetail.view.tsx` (`HiddenPageHeading` "View" in the not-found and loading returns)
 
 **Tests** (failing first; `cd apps/web && npm run test:unit -- --testPathPattern …`)
-- `__tests__/DataResult.test.tsx`: the existing `pageTitle` cases stay green (one hidden `h1` while loading and on error, none once loaded).
+- `__tests__/DataResult.test.tsx`: the existing `pageTitle` cases stay green (one hidden `h1` while loading and on error, none once loaded); a paused query renders the loading state with its `h1`; a successful query with `undefined` data still renders children.
 - `__tests__/EntityGroupDetailView.test.tsx` and `__tests__/PinnedResultDetail.test.tsx`: the container with its get query erroring and then loading has exactly one `h1`, named "Entity group" / "Pinned result".
 - `__tests__/CuratedViewDetail.container.test.tsx`: "View not found" has exactly one `h1` "View"; the loading state has one too.
 - Then `npm run lint && npm run type-check && npm run format:check` in `apps/web`.

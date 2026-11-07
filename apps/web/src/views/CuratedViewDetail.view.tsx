@@ -9,6 +9,7 @@ import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
   GatedButton,
+  HiddenPageHeading,
   Icon,
   IconName,
   MetadataList,
@@ -23,7 +24,6 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
-import { HiddenPageHeading } from "../components/HiddenPageHeading.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
 import { PaginationToolbar } from "../components/PaginationToolbar.component";
@@ -272,19 +272,18 @@ export const CuratedViewDetail: React.FC = () => {
   const view = freshData(viewResult)?.curatedView;
   // #982: the page keeps its one h1 (#797) until the view's header renders.
   if (!view) {
-    if (viewResult.isError) {
-      return (
-        <>
-          <HiddenPageHeading>View</HiddenPageHeading>
+    return (
+      <>
+        <HiddenPageHeading>View</HiddenPageHeading>
+        {viewResult.isError && (
           <PageEmptyState
             icon={<Icon name={IconName.Layers} />}
             title="View not found"
             description="This view does not exist or is not available to you."
           />
-        </>
-      );
-    }
-    return <HiddenPageHeading>View</HiddenPageHeading>;
+        )}
+      </>
+    );
   }
 
   const handleDelete = () => {

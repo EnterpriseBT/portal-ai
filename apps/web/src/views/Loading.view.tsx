@@ -1,4 +1,4 @@
-import { Box, CircularProgress, visuallyHidden } from "@portalai/core/ui";
+import { Box, CircularProgress, HiddenPageHeading } from "@portalai/core/ui";
 
 /** The root route's pending state. The hidden h1 gives the page a title for
  *  screen readers and the tab while the route loads (#797); the spinner's
@@ -6,9 +6,7 @@ import { Box, CircularProgress, visuallyHidden } from "@portalai/core/ui";
 export const LoadingView = () => {
   return (
     <Box data-testid="loading-view" display="flex" justifyContent="center">
-      <Box component="h1" sx={visuallyHidden}>
-        Loading
-      </Box>
+      <HiddenPageHeading>Loading</HiddenPageHeading>
       <CircularProgress />
     </Box>
   );

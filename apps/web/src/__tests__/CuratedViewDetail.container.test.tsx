@@ -121,9 +121,10 @@ describe("CuratedViewDetail (container)", () => {
     renderPage();
 
     expect(await screen.findByText("View not found")).toBeInTheDocument();
-    const h1s = screen.getAllByRole("heading", { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent("View");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "View" })
+    ).toBeInTheDocument();
   });
 
   it("keeps exactly one h1, View, while the view loads", () => {
@@ -132,9 +133,10 @@ describe("CuratedViewDetail (container)", () => {
 
     renderPage();
 
-    const h1s = screen.getAllByRole("heading", { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent("View");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "View" })
+    ).toBeInTheDocument();
   });
 
   it("doesn't refetch the view for a records error that isn't a 404", async () => {

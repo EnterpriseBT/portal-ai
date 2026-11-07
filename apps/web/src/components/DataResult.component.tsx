@@ -1,7 +1,5 @@
 import React from "react";
-import { StatusMessage } from "@portalai/core/ui";
-
-import { HiddenPageHeading } from "./HiddenPageHeading.component";
+import { HiddenPageHeading, StatusMessage } from "@portalai/core/ui";
 
 export interface QueryResultLike<TData = unknown> {
   data: TData | undefined;
@@ -89,8 +87,14 @@ export function DataResult<T extends ResultsMap>({
     );
   }
 
-  // Loading: find first loading entry
-  const loadingEntry = entries.find(([, query]) => query.isLoading);
+  // Loading: find first entry with no data yet. React Query v5's isLoading
+  // is isPending && isFetching, so a query paused offline has no data but
+  // isn't "loading"; it waits here (keeping the page's h1, #982) rather than
+  // handing children undefined data.
+  const loadingEntry = entries.find(
+    ([, query]) =>
+      query.isLoading || (!query.isSuccess && query.data === undefined)
+  );
   if (loadingEntry) {
     const [key] = loadingEntry;
     const opts = options?.[key];
