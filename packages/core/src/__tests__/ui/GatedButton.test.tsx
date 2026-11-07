@@ -3,8 +3,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 
+import { Button } from "../../ui/Button";
 import { GatedButton } from "../../ui/GatedButton";
 import type { ActionGate } from "../../ui/ActionGate";
+import { expectNoAxeViolations } from "../axe.util";
 
 /**
  * #688: a gated CTA renders the convention, decided elsewhere: hide /
@@ -81,5 +83,83 @@ describe("GatedButton", () => {
     await user.click(button);
     expect(onUpgrade).toHaveBeenCalledTimes(1);
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+// #793: the reason reaches assistive tech without hovering, as the button's
+// description; its name stays the button's own.
+/** The text of the elements an aria-describedby names (#793): the reason
+ *  must be a permanent description, not the tooltip's `title` fallback. */
+const describedByText = (el: HTMLElement) =>
+  (el.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+
+describe("GatedButton reason (#793)", () => {
+  it.each([
+    ["disable", { kind: "disable", reason: "A sync is running" }],
+    [
+      "upsell",
+      { kind: "upsell", reason: "On a higher plan", onUpgrade: () => {} },
+    ],
+  ] as const)("%s is described by its reason without hovering", (_k, gate) => {
+    render(<GatedButton gate={gate}>Edit</GatedButton>);
+    const button = screen.getByRole("button", { name: /^Edit$/ });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(describedByText(button)).toBe(gate.reason);
+  });
+
+  it("allow has no description", () => {
+    render(<GatedButton gate={{ kind: "allow" }}>Edit</GatedButton>);
+    expect(screen.getByRole("button", { name: "Edit" })).not.toHaveAttribute(
+      "aria-describedby"
+    );
+  });
+
+  it("keeps a caller's own description alongside the reason", () => {
+    render(
+      <>
+        <span id="hint">Edits the name</span>
+        <GatedButton
+          aria-describedby="hint"
+          gate={{ kind: "disable", reason: "A sync is running" }}
+        >
+          Edit
+        </GatedButton>
+      </>
+    );
+    expect(
+      screen.getByRole("button", { name: "Edit" })
+    ).toHaveAccessibleDescription("Edits the name A sync is running");
+  });
+
+  it("disable adds no styles of its own (the theme owns the look)", () => {
+    render(
+      <>
+        <GatedButton gate={{ kind: "disable", reason: "A sync is running" }}>
+          Gated
+        </GatedButton>
+        <Button aria-disabled="true" disableRipple>
+          Plain
+        </Button>
+      </>
+    );
+    expect(screen.getByRole("button", { name: "Gated" }).className).toBe(
+      screen.getByRole("button", { name: "Plain" }).className
+    );
+  });
+
+  it.each([
+    ["allow", { kind: "allow" }],
+    ["disable", { kind: "disable", reason: "A sync is running" }],
+    [
+      "upsell",
+      { kind: "upsell", reason: "On a higher plan", onUpgrade: () => {} },
+    ],
+  ] as const)("%s has no axe violations", async (_k, gate) => {
+    const { container } = render(<GatedButton gate={gate}>Edit</GatedButton>);
+    await expectNoAxeViolations(container);
   });
 });

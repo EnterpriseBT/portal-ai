@@ -429,10 +429,14 @@ describe("EntityDetailViewUI — New Record button", () => {
     );
     const create = await screen.findByRole("button", { name: "Create" });
     expect(create).toHaveAttribute("aria-disabled", "true");
+    // #793: the reason is its description, and its tooltip on hover.
+    expect(create).toHaveAccessibleDescription(
+      "Writes are disabled on this connector"
+    );
     await userEvent.hover(create);
-    expect(
-      await screen.findByText("Writes are disabled on this connector")
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Writes are disabled on this connector"
+    );
   });
 
   it("hides New Record without write on the entity (#829)", async () => {
