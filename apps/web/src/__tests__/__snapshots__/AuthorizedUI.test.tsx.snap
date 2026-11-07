@@ -51,7 +51,7 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
           <button
             aria-haspopup="menu"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-4gciu-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-1du0wbn-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -153,7 +153,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           <button
             aria-haspopup="menu"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-4gciu-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-1du0wbn-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >

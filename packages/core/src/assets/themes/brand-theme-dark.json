@@ -186,6 +186,14 @@
     }
   },
   "components": {
+    "MuiTypography": {
+      "defaultProps": {
+        "variantMapping": {
+          "subtitle1": "p",
+          "subtitle2": "p"
+        }
+      }
+    },
     "MuiCssBaseline": {
       "styleOverrides": {
         "body": {
