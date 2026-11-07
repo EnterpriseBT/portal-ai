@@ -64,7 +64,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai` with type `Bug`, lin
   - Cancel and the ✕ close button are also `aria-disabled`. Clicking them does nothing, and Escape doesn't close the dialog.
   - When the request completes, the dialog closes and the tag is listed.
 - [ ] With the throttle still on, open the new tag's **Delete**, Tab to **Delete**, and press Enter. Focus stays on **"Deleting..."**, whose description is **"Deleting…"**. Cancel's description is **"Wait for this to finish"**.
-- [ ] Settings → Organization → **Rename**. Clear the name: Save stays natively disabled, the validation condition. Type a name and Save with the throttle on: Save becomes `aria-disabled` with the reason "Saving…", and focus stays on it.
+- [ ] Settings → Organization → **Rename**. Clear the name and press Save: the field shows "Name is required" and nothing submits (this dialog validates on submit and never disables Save for validation). Type a name and Save with the throttle on: Save becomes `aria-disabled` with the reason "Saving…", and focus stays on it.
 - [ ] On an entity's detail page, open the **Delete** confirm (`DeleteConnectorEntityDialog`, whose derived flag R7 now follows). Press Delete with the throttle on. Focus stays on the button, and it reads as `aria-disabled`.
 - [ ] Turn the throttle off.
 
@@ -105,7 +105,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai` with type `Bug`, lin
 
 ## §7 — Focus on arrival (one-offs)
 
-- [ ] Open a portal (`/portals/<id>`) from the portals list. Focus lands on the page heading (#797's announcer), **not** in the chat composer. One Tab reaches the composer, which is named "Message".
+- [ ] Open a portal (`/portals/<id>`) from the portals list. Focus lands on the page heading (#797's announcer), **not** in the chat composer. Tabbing forward reaches the composer, named "Message", after the header controls (Rename, More actions, the station link, the toolpack chips).
 - [ ] Sign out. On `/login`, choose **Sign in with SSO**. Focus moves to the **Work email** field.
 
 ## §8 — Keyboard and screen-reader walk, one dialog per family — manual
