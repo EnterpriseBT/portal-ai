@@ -3,7 +3,6 @@ import React from "react";
 import type { EntityGroupMemberOverlapResponsePayload } from "@portalai/core/contracts";
 import {
   AsyncSearchableSelect,
-  Button,
   GatedButton,
   Modal,
   pendingGate,
@@ -75,16 +74,17 @@ export const AddGroupMemberDialog: React.FC<AddGroupMemberDialogProps> = ({
           >
             Cancel
           </GatedButton>
-          <Button
+          <GatedButton
             type="button"
             variant="contained"
             onClick={() => {
               if (!addDisabled) onAddMember();
             }}
+            gate={pendingGate(isAdding)}
             disabled={addDisabled}
           >
             Submit
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

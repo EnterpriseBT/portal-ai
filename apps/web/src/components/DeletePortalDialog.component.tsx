@@ -29,6 +29,7 @@ export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    describeContent
     pending={isPending}
     submitDisabled={isPending}
     open={open}

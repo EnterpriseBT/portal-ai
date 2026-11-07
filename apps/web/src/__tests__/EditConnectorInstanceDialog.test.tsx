@@ -66,7 +66,10 @@ describe("EditConnectorInstanceDialog", () => {
 
   it("should disable Save button when isPending is true", () => {
     render(<EditConnectorInstanceDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should call onConfirm with new name when Save is clicked", () => {

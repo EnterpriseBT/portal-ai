@@ -32,6 +32,7 @@ export const DeleteAccessItemDialogUI: React.FC<
   DeleteAccessItemDialogUIProps
 > = ({ open, onClose, onConfirm, kind, itemName, isPending, serverError }) => (
   <Modal
+    describeContent
     pending={isPending}
     submitDisabled={isPending}
     open={open}

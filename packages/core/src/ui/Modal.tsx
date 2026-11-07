@@ -2,7 +2,6 @@ import React, { useId, useState } from "react";
 import Dialog, { type DialogProps } from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import Box from "@mui/material/Box";
@@ -25,10 +24,12 @@ interface ModalBaseProps extends Omit<
   /** Never called while `pending`. */
   onClose: () => void;
   /**
-   * A short message the dialog is about: a confirm's sentence (#793).
-   * Rendered above `children` and read as the dialog's description.
+   * The dialog's content is its description (#793): a confirm whose body is
+   * only its message ("Delete <name>? This can't be undone."), so a screen
+   * reader reads the message with the title on open. Leave it off where the
+   * content holds fields or long lists.
    */
-  description?: React.ReactNode;
+  describeContent?: boolean;
   actions?: React.ReactNode;
   showCloseButton?: boolean;
   /**
@@ -96,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
   open,
   onClose,
   title,
-  description,
+  describeContent = false,
   actions,
   showCloseButton = true,
   maximizable = false,
@@ -110,7 +111,7 @@ export const Modal: React.FC<ModalProps> = ({
   "aria-describedby": ariaDescribedby,
   ...props
 }) => {
-  const descriptionId = useId();
+  const contentId = useId();
   const [maximized, setMaximized] = useState(maximizable && defaultMaximized);
   const showHeader = !!title || showCloseButton;
   const showMaximizeButton = maximizable && showHeader;
@@ -189,12 +190,7 @@ export const Modal: React.FC<ModalProps> = ({
           )}
         </DialogTitle>
       )}
-      <DialogContent>
-        {description && (
-          <DialogContentText id={descriptionId} sx={{ mb: children ? 2 : 0 }}>
-            {description}
-          </DialogContentText>
-        )}
+      <DialogContent id={describeContent ? contentId : undefined}>
         {children}
       </DialogContent>
       {actions && (
@@ -211,7 +207,7 @@ export const Modal: React.FC<ModalProps> = ({
       onClose={handleClose}
       fullScreen={maximizable && maximized}
       aria-describedby={
-        ariaDescribedby ?? (description ? descriptionId : undefined)
+        ariaDescribedby ?? (describeContent ? contentId : undefined)
       }
     >
       {isForm ? (

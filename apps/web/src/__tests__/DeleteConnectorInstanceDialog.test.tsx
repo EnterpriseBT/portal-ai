@@ -160,7 +160,10 @@ describe("DeleteConnectorInstanceDialog", () => {
     render(
       <DeleteConnectorInstanceDialog {...defaultProps} isPending={true} />
     );
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should disable Delete button when isLoadingImpact is true", () => {

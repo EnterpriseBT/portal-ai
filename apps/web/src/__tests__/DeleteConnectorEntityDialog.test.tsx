@@ -189,6 +189,9 @@ describe("DeleteConnectorEntityDialog", () => {
 
   it("should show 'Deleting...' when isPending is true", () => {
     render(<DeleteConnectorEntityDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 });

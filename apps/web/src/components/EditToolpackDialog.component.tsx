@@ -203,6 +203,13 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
       ? toolpack.authHeadersStatus.has
       : false;
 
+  // #793: Refresh and Rotate stay focusable while any of the dialog's
+  // requests runs, naming the one in flight, rather than natively disabled.
+  const busyGate = pendingGate(
+    isPending || isRefreshing || isRotatingSecret,
+    isRefreshing ? "Refreshing…" : isRotatingSecret ? "Rotating…" : "Saving…"
+  );
+
   return (
     <Modal
       pending={isPending}
@@ -219,8 +226,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
             type="button"
             variant="text"
             onClick={onRefresh}
-            gate={pendingGate(isPending)}
-            disabled={isRefreshing || isRotatingSecret}
+            gate={busyGate}
           >
             {isRefreshing ? "Refreshing..." : "Refresh schema"}
           </GatedButton>
@@ -228,8 +234,7 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
             type="button"
             variant="text"
             onClick={onRotateSecret}
-            gate={pendingGate(isPending)}
-            disabled={isRotatingSecret || isRefreshing}
+            gate={busyGate}
             data-testid="rotate-signing-secret-button"
           >
             {isRotatingSecret ? "Rotating..." : "Rotate signing secret"}

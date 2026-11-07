@@ -217,6 +217,26 @@ export function disabledReadsPending(source: string): number[] {
     true,
     ts.ScriptKind.TSX
   );
+  // A flag derived from pending (`const deleteDisabled = isPending || …`)
+  // reads it too: follow local consts, a few levels deep.
+  const consts = new Map<string, string>();
+  const collect = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      consts.set(node.name.text, node.initializer.getText());
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(file);
+  const readsDeep = (text: string, depth = 0): boolean =>
+    reads(text) ||
+    (depth < 3 &&
+      [...text.matchAll(/[A-Za-z_$][\w$]*/g)].some(
+        (m) => consts.has(m[0]) && readsDeep(consts.get(m[0])!, depth + 1)
+      ));
   const lines: number[] = [];
   const visit = (node: ts.Node) => {
     if (
@@ -227,7 +247,7 @@ export function disabledReadsPending(source: string): number[] {
         (a): a is ts.JsxAttribute =>
           ts.isJsxAttribute(a) && a.name.getText() === "disabled"
       );
-      if (disabled?.initializer && reads(disabled.initializer.getText())) {
+      if (disabled?.initializer && readsDeep(disabled.initializer.getText())) {
         lines.push(
           file.getLineAndCharacterOfPosition(node.getStart()).line + 1
         );
@@ -447,6 +467,15 @@ describe("the guard's own rules (fixtures, R7)", () => {
         dialog(`<Button disabled={isPendingDelete}>Save</Button>`)
       )
     ).toEqual([]);
+  });
+
+  it("R7 follows a flag derived from pending", () => {
+    const src = `
+      const deleteDisabled = isPending || !confirmed;
+      const blocked = deleteDisabled || locked;
+      <Modal open onClose={c} title="T" pending={isPending}
+        actions={<Button disabled={blocked}>Delete</Button>} />`;
+    expect(disabledReadsPending(src)).toHaveLength(1);
   });
 
   it("R7 follows a dotted pending flag and a button outside the Modal", () => {

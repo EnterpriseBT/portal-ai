@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
+import FormHelperText from "@mui/material/FormHelperText";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiTooltip from "@mui/material/Tooltip";
 import Paper from "@mui/material/Paper";
@@ -188,6 +189,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   id,
 }) => {
   const labelId = useId();
+  const helperId = useId();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -360,7 +362,6 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
           onChange={handleInputChange}
           disabled={disabled}
           required={required}
-          helperText={helperText}
           slotProps={{
             input: {
               startAdornment: (
@@ -383,6 +384,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
             },
             htmlInput: {
               "aria-label": "Hex color value",
+              "aria-describedby": helperText ? helperId : undefined,
               maxLength: 7,
             },
           }}
@@ -404,6 +406,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
           <ColorizeIcon fontSize="small" />
         </MuiIconButton>
       </Stack>
+      {/* Under the whole row, not inside the 160px field, so an error reads
+          on one line (#793). The hex field is described by it. */}
+      {helperText && (
+        <FormHelperText id={helperId} error={!!error}>
+          {helperText}
+        </FormHelperText>
+      )}
 
       <Popper
         open={open}

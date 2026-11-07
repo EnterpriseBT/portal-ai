@@ -17,7 +17,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  Button,
   GatedButton,
   Modal,
   pendingGate,
@@ -203,23 +202,25 @@ export const RestApiConnectorWorkflowUI: React.FC<
             </GatedButton>
           ) : null}
           {isLast ? (
-            <Button
+            <GatedButton
               type="button"
               variant="contained"
               onClick={handlePrimary}
+              gate={pendingGate(isCommitting, "Committing…")}
               disabled={primaryDisabled}
             >
               {isCommitting ? "Committing…" : "Commit"}
-            </Button>
+            </GatedButton>
           ) : (
-            <Button
+            <GatedButton
               type="button"
               variant="contained"
               onClick={handlePrimary}
+              gate={pendingGate(isCommitting, "Committing…")}
               disabled={primaryDisabled}
             >
               Next
-            </Button>
+            </GatedButton>
           )}
         </Stack>
       }

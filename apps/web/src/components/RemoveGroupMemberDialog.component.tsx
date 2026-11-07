@@ -25,6 +25,7 @@ export const RemoveGroupMemberDialog: React.FC<
   RemoveGroupMemberDialogProps
 > = ({ open, onClose, onConfirm, isPending, serverError }) => (
   <Modal
+    describeContent
     open={open}
     onClose={onClose}
     title="Remove Member"

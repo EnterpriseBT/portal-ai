@@ -875,11 +875,6 @@ describe("AsyncSearchableSelect accessibility (#793)", () => {
     ).toHaveAccessibleDescription("Selected: Banana Pick one");
   });
 
-  it("isn't required once something is selected", async () => {
-    await renderSelected({ required: true });
-    expect(screen.getByRole("combobox", { name: /Fruit/ })).not.toBeRequired();
-  });
-
   it("is required while nothing is selected", async () => {
     await act(async () => {
       render(
@@ -895,7 +890,7 @@ describe("AsyncSearchableSelect accessibility (#793)", () => {
     expect(screen.getByRole("combobox", { name: /Fruit/ })).toBeRequired();
   });
 
-  it("names the selection's remove control, which clears it", async () => {
+  it("removes the selection from its chip with Delete, which it describes", async () => {
     const onChange = jest.fn();
     await act(async () => {
       render(
@@ -908,15 +903,26 @@ describe("AsyncSearchableSelect accessibility (#793)", () => {
         />
       );
     });
-    const remove = await screen.findByRole("button", {
-      name: "Remove Banana",
-    });
-    remove.focus();
+    const chip = await screen.findByRole("button", { name: "Banana" });
+    expect(chip).toHaveAccessibleDescription(
+      "Press Backspace or Delete to remove"
+    );
     await act(async () => {
-      fireEvent.keyDown(remove, { key: "Enter" });
-      fireEvent.keyUp(remove, { key: "Enter" });
+      fireEvent.click(chip);
+    });
+    // A click on the chip itself doesn't clear it.
+    expect(onChange).not.toHaveBeenCalled();
+    chip.focus();
+    await act(async () => {
+      fireEvent.keyDown(chip, { key: "Delete" });
+      fireEvent.keyUp(chip, { key: "Delete" });
     });
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("stays required with a selection (the asterisk doesn't flicker)", async () => {
+    await renderSelected({ required: true });
+    expect(screen.getByRole("combobox", { name: /Fruit/ })).toBeRequired();
   });
 
   it("announces loading in the open list", async () => {

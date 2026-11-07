@@ -87,7 +87,10 @@ describe("EditEntityGroupDialog", () => {
 
   it("shows the loading state while pending", () => {
     render(<EditEntityGroupDialog {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("shows the field error and aria-invalid after clearing the name", async () => {

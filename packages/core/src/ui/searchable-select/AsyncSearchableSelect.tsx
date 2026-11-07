@@ -60,6 +60,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const selectionId = useId();
+  const removeHintId = useId();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -146,13 +147,12 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   return (
     <Stack spacing={0.5} sx={{ width: fullWidth ? "100%" : undefined }}>
       {/* Selected value display. The input stays empty for searching, so
-          the selection is the combobox's description (#793), and the chip,
-          a button, removes it. */}
+          the selection is the combobox's description (#793). The chip
+          removes it with Backspace or Delete, which its description says. */}
       {selectedOption && (
         <Chip
           label={selectedOption?.label ?? value}
-          aria-label={`Remove ${selectedOption?.label ?? value}`}
-          onClick={disabled ? undefined : handleClear}
+          aria-describedby={disabled ? undefined : removeHintId}
           onDelete={disabled ? undefined : handleClear}
           size={size}
           color="primary"
@@ -163,6 +163,11 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       {selectedOption && (
         <span id={selectionId} hidden>
           {`Selected: ${selectedOption.label}`}
+        </span>
+      )}
+      {selectedOption && !disabled && (
+        <span id={removeHintId} hidden>
+          Press Backspace or Delete to remove
         </span>
       )}
 
@@ -193,8 +198,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
             placeholder={placeholder}
             helperText={helperText}
             error={error}
-            // Satisfied by the chip: the input itself stays empty (#793).
-            required={required && !selectedOption}
+            required={required}
             slotProps={{
               htmlInput: {
                 ...params.inputProps,

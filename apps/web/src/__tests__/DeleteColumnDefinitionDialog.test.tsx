@@ -86,7 +86,10 @@ describe("DeleteColumnDefinitionDialog", () => {
 
   it("should show loading state when isPending is true", () => {
     render(<DeleteColumnDefinitionDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should render FormAlert when serverError is provided", () => {

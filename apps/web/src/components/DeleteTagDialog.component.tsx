@@ -30,6 +30,7 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    describeContent
     pending={isPending}
     submitDisabled={isPending}
     open={open}

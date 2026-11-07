@@ -35,6 +35,7 @@ export const RemoveMemberDialog: React.FC<RemoveMemberDialogProps> = ({
   serverError,
 }) => (
   <Modal
+    describeContent
     pending={isPending}
     submitDisabled={isPending}
     open={open}

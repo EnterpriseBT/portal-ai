@@ -689,15 +689,10 @@ describe("Modal accessibility (#793)", () => {
     expect(unnamed).toBeTruthy();
   });
 
-  it("is described by its description", () => {
+  it("is described by its content with describeContent", () => {
     render(
-      <Modal
-        open
-        onClose={jest.fn()}
-        title="Delete tag"
-        description="This removes the tag from every record."
-      >
-        <p>Extra</p>
+      <Modal open onClose={jest.fn()} title="Delete tag" describeContent>
+        <p>This removes the tag from every record.</p>
       </Modal>
     );
     expect(screen.getByRole("dialog")).toHaveAccessibleDescription(
@@ -705,7 +700,7 @@ describe("Modal accessibility (#793)", () => {
     );
   });
 
-  it("has no description without one", () => {
+  it("has no description without describeContent", () => {
     render(
       <Modal open onClose={jest.fn()} title="Plain">
         <p>Body</p>
@@ -780,15 +775,17 @@ describe("Modal accessibility (#793)", () => {
     await expectNoAxeViolations(screen.getByRole("dialog"));
   });
 
-  it("has no axe violations as a plain dialog with a description", async () => {
+  it("has no axe violations as a plain dialog described by its content", async () => {
     render(
       <Modal
         open
         onClose={jest.fn()}
         title="Delete"
-        description="This can't be undone."
+        describeContent
         actions={<button type="button">Delete</button>}
-      />
+      >
+        <p>This can&apos;t be undone.</p>
+      </Modal>
     );
     await expectNoAxeViolations(screen.getByRole("dialog"));
   });

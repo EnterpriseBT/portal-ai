@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Chip from "@mui/material/Chip";
-import Tooltip from "@mui/material/Tooltip";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Divider from "@mui/material/Divider";
@@ -244,18 +243,14 @@ export const ShareDialogUI: React.FC<ShareDialogUIProps> = ({
                 <Typography variant="body2">{g.principalLabel}</Typography>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <Chip size="small" label={g.access} />
-                  <Tooltip title="Revoke">
-                    <span>
-                      <GatedIconButton
-                        icon={IconName.Delete}
-                        size="small"
-                        color="error"
-                        gate={pendingGate(isPending, "Wait for this to finish")}
-                        onClick={() => onRevoke(g.id)}
-                        aria-label={`Revoke share for ${g.principalLabel}`}
-                      />
-                    </span>
-                  </Tooltip>
+                  <GatedIconButton
+                    icon={IconName.Delete}
+                    size="small"
+                    color="error"
+                    gate={pendingGate(isPending, "Wait for this to finish")}
+                    onClick={() => onRevoke(g.id)}
+                    aria-label={`Revoke share for ${g.principalLabel}`}
+                  />
                 </Stack>
               </Stack>
             ))

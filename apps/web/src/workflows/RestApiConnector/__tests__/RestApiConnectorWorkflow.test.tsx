@@ -156,7 +156,10 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
         {...makeProps({ step: 3, onCommit, isCommitting: true })}
       />
     );
-    expect(screen.getByRole("button", { name: "Committing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Committing…" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Enter}");
     expect(onCommit).not.toHaveBeenCalled();
   });

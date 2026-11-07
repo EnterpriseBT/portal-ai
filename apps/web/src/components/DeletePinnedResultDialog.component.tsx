@@ -31,6 +31,7 @@ export const DeletePinnedResultDialog: React.FC<
   serverError,
 }) => (
   <Modal
+    describeContent
     open={open}
     onClose={onClose}
     title="Delete Pinned Result"

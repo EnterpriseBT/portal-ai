@@ -6,7 +6,6 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import type { ColumnDefinitionImpactResponsePayload } from "@portalai/core/contracts";
 import {
-  Button,
   CircularProgress,
   GatedButton,
   Modal,
@@ -117,17 +116,18 @@ export const DeleteColumnDefinitionDialog: React.FC<
           >
             Cancel
           </GatedButton>
-          <Button
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={() => {
               if (!deleteDisabled) onConfirm();
             }}
+            gate={pendingGate(isPending, "Deleting…")}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

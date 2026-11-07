@@ -32,6 +32,11 @@ describe("DeletePinnedResultDialog", () => {
     await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
+  it("is described by its message (#793)", async () => {
+    render(<DeletePinnedResultDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
   it("has no axe violations with a server error (#793)", async () => {
     render(
       <DeletePinnedResultDialog

@@ -34,6 +34,7 @@ export const DeleteCuratedViewDialog: React.FC<
 
   return (
     <Modal
+      describeContent
       pending={isPending}
       submitDisabled={!!isPending}
       open
