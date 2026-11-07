@@ -52,3 +52,28 @@ The titles follow the other detail views, naming the kind of page: **"Entity gro
 
 - **Fixture coverage for the axe walk:** seeding a group, a pinned result and a curated view into `e2e-fixture`, so the 9 skipped runs execute and #799 can gate this. It belongs with #799 (the gates need every route audited) or the audit's "Skipped runs" list.
 - `PageEmptyState`'s `h6` title (a heading-order row on empty states) is #794's.
+
+## Adversarial
+
+Probes for how the hidden `h1` and `DataResult`'s paused-query change break. Walk against your dev stack as the e2e owner (`/smoke-walk docs/DETAIL_PAGE_H1.condensed.md` walks the agent-walkable ones). Create "Adv 982 G" first; delete it after.
+
+**§1 — State & lifecycle**
+- [ ] Open `/entity-groups`, go offline (DevTools "Offline"), then click through to "Adv 982 G" (a client-side navigation, so the query starts paused) — the page shows "Loading..." with exactly one `h1` "Entity group". It is not blank and doesn't crash (no error boundary, no console `TypeError`). Back online, the group loads and its visible header is the only `h1`.
+- [ ] With "Adv 982 G" open, delete it from a second tab, then refocus the first tab (no reload) — the refetch on focus gives "Entity group not found" with one `h1` "Entity group". The cached group name is in neither the page nor the tab title.
+- [ ] Delay the group's GET (Slow 3G), open the group, then click to `/stations` before it loads — the final page's `h1` and tab title are "Stations". No hidden "Entity group" `h1` is left behind.
+
+**§2 — Auth & tenant boundary**
+- [ ] Open `/entity-groups/<id>`, `/views/<id>` and `/portal-results/<id>` with ids from **another org** (look them up with psql) — each renders exactly the not-found state the zero-id smoke steps show, one generic `h1`. The other org's object name appears nowhere: not in the page, the tab title or the console.
+
+**§3 — Malformed input**
+- [ ] `/entity-groups/not-a-uuid`, `/portal-results/%3Cscript%3Ealert(1)%3C%2Fscript%3E`, `/views/%00` — each renders an error or not-found state with exactly one `h1`. No script runs, nothing crashes, and the tab title doesn't echo the id.
+
+**§4 — Misuse sequences**
+- [ ] Go from the not-found group page to `/stations`, then to a station detail, and press Back twice and Forward twice — every page lands with exactly one `h1`, focus on it, and a tab title that matches it.
+
+N/A: **boundary & limit inputs** (no new input or pagination), **concurrency** (read-only change with no new mutation; the deletion race is §1's probe 2).
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §4 Back/Forward through `/stations` | `h1` and title correct, but focus lands on the toolbar's "Search..." input, not the `h1`: `PaginationToolbar`'s search has `autoFocus` (#649), taking focus from the route announcer on every paginated page | low | out of #982's scope (pre-existing, not on these pages); file under epic #791 |
