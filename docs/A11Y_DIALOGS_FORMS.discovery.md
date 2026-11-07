@@ -152,13 +152,44 @@ MUI's trap and restore already meet APG, with two gaps:
 
 **Lean: as listed.**
 
+### Decision 10 — Where styling lives
+
+**Every styling change in this ticket lives in the theme where the theme can express it, never in an ad hoc `sx` in the app.** The theme has two homes for it:
+- **The theme JSONs** (`packages/core/src/assets/themes/brand-theme.json`, `brand-theme-dark.json`): `defaultProps` and `styleOverrides` with literal values, kept identical in shape across both files.
+- **`a11yComponents()`** (`packages/core/src/ui/ThemeProvider.tsx:47`): the layer from #797 that every theme gets whatever its JSON says. Rules that need palette values (`theme.palette.action.*`) or must hold in both themes regardless of a JSON edit go here.
+
+The disabled-with-reason look is the case in hand. Today it's ad hoc `sx` in three core components:
+- `gatedDisabledSx` (`GatedButton.tsx:18-37`), per variant;
+- `GatedIconButton.tsx:28-31`;
+- the `ActionsMenu.tsx:88-89` items (`opacity: 0.38`).
+
+Decision 4 would add a fourth (Modal's pending controls).
+
+**A.** One theme rule for `[aria-disabled="true"]` in `a11yComponents()`, on `MuiButton` (per variant), `MuiIconButton` and `MuiMenuItem`: the disabled colors, no hover change and `cursor: not-allowed`. Every `aria-disabled` control then looks disabled without anyone styling it. The components drop their `sx`, and `gatedDisabledSx` is removed.
+
+**B.** Keep the per-component `sx` and add Modal's.
+
+| | A | B |
+|---|---|---|
+| One definition of "looks disabled" | yes | four copies |
+| A new `aria-disabled` control | styled for free | must copy the `sx` |
+| Light/dark parity | guaranteed by the shared layer | per copy |
+
+**Lean: A.** The same rule applies to the rest of the ticket:
+- **D3's subtitle mapping:** `MuiTypography.defaultProps.variantMapping` in the theme JSONs.
+- **D1's inner form:** its layout (`display: flex; flex-direction: column; min-height: 0`) is a structural class inside core's `Modal`, because no MUI component owns that element. It's not an app override.
+- **Hidden text:** D6's chip description and D7's reasons use core's existing `visuallyHidden` (`packages/core/src/ui/visually-hidden.ts:6`), never a hand-written clip rule.
+- **New visible labels:** AdvancedFilterBuilder's take the theme's `TextField`/`InputLabel` defaults rather than sizing their own.
+
+Where the theme genuinely can't express something, the `sx` stays in the core component with a comment saying why, and never in `apps/web`.
+
 ## Tradeoff comparison
 
-| | D1 inner form | D2 required name + description | D3 subtitles as `p` | D4 menu trigger + `aria-disabled` | D5 custom fields | D6 described chip | D7 hidden reason | D8 axe + R6 |
-|---|---|---|---|---|---|---|---|---|
-| Spread to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Package | core | core + web | core | core + web | core + web | core | core | web |
-| New pattern | no | no | no | no | no | no | no | yes (R6) |
+| | D1 inner form | D2 required name + description | D3 subtitles as `p` | D4 menu trigger + `aria-disabled` | D5 custom fields | D6 described chip | D7 hidden reason | D8 axe + R6 | D10 theme-owned styling |
+|---|---|---|---|---|---|---|---|---|---|
+| Spread to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Package | core | core + web | core (theme) | core + web | core + web | core | core | web | core (theme) |
+| New pattern | no | no | no | no | no | no | no | yes (R6) | no (extends #797's layer) |
 
 ## Recommendation
 
@@ -170,7 +201,8 @@ MUI's trap and restore already meet APG, with two gaps:
 6. `AsyncSearchableSelect` describes its combobox with the selection chip, labels the chip's delete as "Remove <label>", and announces loading via `loadingText`.
 7. `GatedButton`, `GatedIconButton` and `ActionsMenu` items describe themselves by a permanent visually hidden reason; the tooltip is visual only.
 8. Every dialog test calls `expectNoAxeViolations` on the open dialog, enforced by guard rule R6.
-9. The one-offs in Decision 9 are fixed. Done means a re-run of `npm run a11y:report` leaves the #793 section empty, and a keyboard + VoiceOver/NVDA walk of create, edit and delete in each dialog family is recorded in the smoke doc.
+9. Styling changes go in the theme: literal values in both theme JSONs, and palette-derived accessibility rules in `a11yComponents()`. The `aria-disabled` look becomes one theme rule for `MuiButton`, `MuiIconButton` and `MuiMenuItem`, replacing `gatedDisabledSx` and the per-component `sx`. Hidden text uses core's `visuallyHidden`. No accessibility styling is added as an `sx` in `apps/web`.
+10. The one-offs in Decision 9 are fixed. Done means a re-run of `npm run a11y:report` leaves the #793 section empty, and a keyboard + VoiceOver/NVDA walk of create, edit and delete in each dialog family is recorded in the smoke doc.
 
 ## Open questions
 
@@ -198,9 +230,9 @@ MUI's trap and restore already meet APG, with two gaps:
 ## Next step
 
 `docs/A11Y_DIALOGS_FORMS.spec.md` pins each contract: `ModalProps` (name union, `description`), the form element's markup, the theme mapping, the `ActionsMenu` timing, the gated-control description, the async-select ARIA, and guard R6. `docs/A11Y_DIALOGS_FORMS.plan.md` then slices about six TDD commits:
-1. `Modal` form + naming + pending focus (core);
-2. theme subtitle mapping (core);
-3. gate reasons and `ActionsMenu` focus (core);
+1. theme: subtitle mapping in both JSONs, and the `aria-disabled` rule in `a11yComponents()` (core);
+2. `Modal` form + naming + pending focus (core);
+3. gate reasons and `ActionsMenu` focus, dropping their `sx` for the theme rule (core);
 4. selects and custom fields (core + web);
 5. axe in every dialog test + R6 (web);
 6. the one-offs, a re-run of `a11y:report`, and the walk.
