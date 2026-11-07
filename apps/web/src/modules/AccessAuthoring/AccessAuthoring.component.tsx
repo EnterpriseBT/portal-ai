@@ -12,7 +12,6 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { isSessionGenerated } from "@portalai/core/models";
 import { Box, Stack, Button, Typography } from "@portalai/core/ui";
@@ -20,7 +19,6 @@ import type { PolicyView, RoleView, GroupView } from "@portalai/core/contracts";
 
 import { sdk } from "../../api/sdk";
 import { queryKeys } from "../../api/keys";
-import { useToast } from "../../utils/toast.context";
 import { toServerError } from "../../utils/api.util";
 import { SessionGeneratedChipUI } from "../../components/SessionGeneratedChip.component";
 import { PolicyEditorDialog } from "./PolicyEditorDialog.component";
@@ -193,8 +191,6 @@ export const AccessAuthoring: React.FC = () => {
   const removePolicy = sdk.policies.remove();
   const removeRole = sdk.roles.remove();
   const removeGroup = sdk.groups.remove();
-  const toast = useToast();
-  const queryClient = useQueryClient();
 
   const policies = policiesQuery.data?.policies ?? [];
   const roles = rolesQuery.data?.roles ?? [];
@@ -300,13 +296,11 @@ export const AccessAuthoring: React.FC = () => {
     removeMutationFor(target.kind).mutate(
       { id: target.id },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: key });
-          toast.success(
-            `${target.kind[0].toUpperCase()}${target.kind.slice(1)} deleted`
-          );
-          setDeleteTarget(null);
+        invalidate: [key],
+        toast: {
+          success: `${target.kind[0].toUpperCase()}${target.kind.slice(1)} deleted`,
         },
+        onSuccess: () => setDeleteTarget(null),
         onSettled: () => {
           deleteInFlight.current = false;
         },

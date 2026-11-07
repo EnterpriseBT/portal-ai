@@ -42,9 +42,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
-import { useToast } from "../utils/toast.context";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
-import { serverErrorMessage } from "../utils/permission-denied.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -84,7 +82,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const toast = useToast();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
   const orgResult = sdk.organizations.current();
@@ -130,22 +127,17 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleDeleteStation = useCallback(() => {
     deleteStationMutation.mutate(undefined, {
-      onSuccess: () => {
-        setDeleteStationOpen(false);
-        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        navigate({ to: "/stations" });
-      },
+      invalidate: [queryKeys.stations.root, queryKeys.portals.root],
       // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
       // job lock) must surface as a toast rather than fail silently (#621).
-      onError: (error) => {
+      toast: { error: "Could not delete this station." },
+      onSuccess: () => {
         setDeleteStationOpen(false);
-        toast.error(
-          serverErrorMessage(error, "Could not delete this station.")
-        );
+        navigate({ to: "/stations" });
       },
+      onError: () => setDeleteStationOpen(false),
     });
-  }, [deleteStationMutation, queryClient, navigate, toast]);
+  }, [deleteStationMutation, navigate]);
 
   const handleLaunchPortal = useCallback(() => {
     createPortalMutation.mutate(

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 
 import { CircularProgress, Divider, Alert, TextField } from "@mui/material";
-import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Box,
@@ -27,7 +26,6 @@ import { useActionGate } from "../utils/use-action-gate.util";
 import { useCustomRbacEntitled } from "../utils/use-custom-rbac-entitled.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
-import { serverErrorMessage } from "../utils/permission-denied.util";
 import { MemberListUI, type GroupOption } from "./MemberList.component";
 import { RemoveMemberDialog } from "./RemoveMemberDialog.component";
 import { InviteMemberDialog } from "./InviteMemberDialog.component";
@@ -209,7 +207,6 @@ export const MembersTab: React.FC = () => {
   const invitationResend = sdk.invitations.resend();
   const invitationRevoke = sdk.invitations.revoke();
   const toast = useToast();
-  const queryClient = useQueryClient();
 
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -248,25 +245,13 @@ export const MembersTab: React.FC = () => {
       members.find((m) => m.email && m.email === callerEmail)?.userId) ||
     "";
 
-  const invalidateMembers = () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.members.root });
-  const invalidateInvitations = () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.invitations.root });
-
   const handleSetRoles = (userId: string, roleSlugs: string[]) => {
     setRoles.mutate(
       { userId, roleSlugs },
       {
-        onSuccess: () => {
-          invalidateMembers();
-          // A caller changing their own roles changes their capabilities.
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.organizations.root,
-          });
-          toast.success("Roles updated");
-        },
-        onError: (error) =>
-          toast.error(serverErrorMessage(error, "Failed to set roles")),
+        // A caller changing their own roles changes their capabilities.
+        invalidate: [queryKeys.members.root, queryKeys.organizations.root],
+        toast: { success: "Roles updated", error: "Failed to set roles" },
       }
     );
   };
@@ -275,15 +260,10 @@ export const MembersTab: React.FC = () => {
     setGroups.mutate(
       { userId, groupIds },
       {
-        onSuccess: () => {
-          invalidateMembers();
-          // A member's group set changes their effective access; refresh the
-          // groups list too so memberCount stays accurate.
-          queryClient.invalidateQueries({ queryKey: queryKeys.groups.root });
-          toast.success("Groups updated");
-        },
-        onError: (error) =>
-          toast.error(serverErrorMessage(error, "Failed to set groups")),
+        // A member's group set changes their effective access; refresh the
+        // groups list too so memberCount stays accurate.
+        invalidate: [queryKeys.members.root, queryKeys.groups.root],
+        toast: { success: "Groups updated", error: "Failed to set groups" },
       }
     );
   };
@@ -293,13 +273,10 @@ export const MembersTab: React.FC = () => {
     remove.mutate(
       { userId: removeTarget.userId },
       {
-        onSuccess: () => {
-          invalidateMembers();
-          // A freed seat can change pending-invite affordances.
-          invalidateInvitations();
-          toast.success("Member removed");
-          setRemoveTarget(null);
-        },
+        // A freed seat can change pending-invite affordances.
+        invalidate: [queryKeys.members.root, queryKeys.invitations.root],
+        toast: { success: "Member removed" },
+        onSuccess: () => setRemoveTarget(null),
         // Stay open on error so the server message (e.g. last-owner) shows in
         // the dialog's FormAlert.
       }
@@ -308,12 +285,13 @@ export const MembersTab: React.FC = () => {
 
   const handleInvite = (req: InviteCreateRequest) => {
     inviteCreate.mutate(req, {
+      // #970: run by the hook, so they land even if the user navigates away
+      // while the invite is pending.
+      invalidate: [queryKeys.invitations.root, queryKeys.members.root],
+      toast: { success: "Invitation created" },
       onSuccess: (invitation) => {
-        invalidateInvitations();
-        invalidateMembers();
         setLastInviteUrl(invitation.inviteUrl ?? null);
         setInviteOpen(false);
-        toast.success("Invitation created");
       },
       // Stay open on error so the server message (cap reached, already a member)
       // shows in the dialog's FormAlert.
@@ -324,13 +302,12 @@ export const MembersTab: React.FC = () => {
     invitationResend.mutate(
       { id: invitation.id },
       {
-        onSuccess: (updated) => {
-          invalidateInvitations();
-          setLastInviteUrl(updated.inviteUrl ?? null);
-          toast.success("New invite link generated");
+        invalidate: [queryKeys.invitations.root],
+        toast: {
+          success: "New invite link generated",
+          error: "Failed to resend",
         },
-        onError: (error) =>
-          toast.error(serverErrorMessage(error, "Failed to resend")),
+        onSuccess: (updated) => setLastInviteUrl(updated.inviteUrl ?? null),
       }
     );
   };
@@ -339,13 +316,8 @@ export const MembersTab: React.FC = () => {
     invitationRevoke.mutate(
       { id: invitation.id },
       {
-        onSuccess: () => {
-          invalidateInvitations();
-          invalidateMembers();
-          toast.success("Invitation revoked");
-        },
-        onError: (error) =>
-          toast.error(serverErrorMessage(error, "Failed to revoke")),
+        invalidate: [queryKeys.invitations.root, queryKeys.members.root],
+        toast: { success: "Invitation revoked", error: "Failed to revoke" },
       }
     );
   };

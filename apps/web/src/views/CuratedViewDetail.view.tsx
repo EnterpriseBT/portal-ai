@@ -284,13 +284,9 @@ export const CuratedViewDetail: React.FC = () => {
 
   const handleDelete = () => {
     removeView(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.curatedViews.root,
-        });
-        toast.success(`Deleted "${view.label}"`);
-        navigate({ to: "/views" });
-      },
+      invalidate: [queryKeys.curatedViews.root],
+      toast: { success: `Deleted "${view.label}"` },
+      onSuccess: () => navigate({ to: "/views" }),
     });
   };
 
