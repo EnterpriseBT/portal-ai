@@ -6,7 +6,6 @@ import {
   ClickAwayListener,
   IconName,
   Modal,
-  Typography,
 } from "@portalai/core/ui";
 import type { NavPageId } from "@portalai/core/models";
 import { NAV_PAGE_IDS } from "@portalai/core/models";
@@ -299,13 +298,11 @@ export const SidebarNav = () => {
           <Modal
             open={versionOpen}
             onClose={() => setVersionOpen(false)}
-            aria-label="App version"
+            title="App version"
             maxWidth="xs"
-            showCloseButton={false}
           >
-            <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>
-              App version
-            </Typography>
+            {/* #983: the title names the dialog, and Modal's close button
+                gives keyboard and switch users a control to land on. */}
             <Box
               component="code"
               sx={(theme) => ({
