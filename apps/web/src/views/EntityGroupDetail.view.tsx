@@ -36,13 +36,11 @@ import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.compo
 import { RemoveGroupMemberDialog } from "../components/RemoveGroupMemberDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { decideActionGate } from "../utils/action-gate.util";
-import { useToast } from "../utils/toast.context";
 import {
   useAuthFetch,
   toServerError,
   type ServerError,
 } from "../utils/api.util";
-import { serverErrorMessage } from "../utils/permission-denied.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
@@ -375,7 +373,6 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
   const { mutate: updateMember } = sdk.entityGroups.updateMember(entityGroupId);
   const removeMemberMutation = sdk.entityGroups.removeMember(entityGroupId);
-  const toast = useToast();
 
   // Delete impact - the dialog state is inside the UI, but we track it here for the query
   const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] =
@@ -496,14 +493,11 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
         { memberId, isPrimary },
         {
           onSuccess: invalidate,
-          onError: (error) =>
-            toast.error(
-              serverErrorMessage(error, "Couldn't update the member")
-            ),
+          toast: { error: "Couldn't update the member" },
         }
       );
     },
-    [updateMember, invalidate, toast]
+    [updateMember, invalidate]
   );
   const handlePromoteMember = useCallback(
     (memberId: string) => handleSetPrimary(memberId, true),

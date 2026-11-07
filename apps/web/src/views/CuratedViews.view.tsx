@@ -31,7 +31,6 @@ import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
-import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
@@ -218,7 +217,6 @@ export const CuratedViews: React.FC = () => {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const toast = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);
   const [shareTarget, setShareTarget] = useState<CuratedViewRow | null>(null);
@@ -233,13 +231,9 @@ export const CuratedViews: React.FC = () => {
     if (!deleteTarget) return;
     const label = deleteTarget.label;
     deleteView(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.curatedViews.root,
-        });
-        toast.success(`Deleted "${label}"`);
-        setDeleteTarget(null);
-      },
+      invalidate: [queryKeys.curatedViews.root],
+      toast: { success: `Deleted "${label}"` },
+      onSuccess: () => setDeleteTarget(null),
     });
   };
 

@@ -32,9 +32,14 @@ describe("toast migrations (#293)", () => {
     expect(source).not.toContain("<Snackbar");
   });
 
-  it.each(MIGRATED)("%s raises through useToast instead", (file) => {
-    expect(read(file)).toContain("useToast");
-  });
+  // #970: a mutation's outcome toast goes through its `toast` option, which
+  // `useAuthMutation` raises through the same provider.
+  it.each(MIGRATED)(
+    "%s raises through useToast or a mutation's toast option instead",
+    (file) => {
+      expect(read(file)).toMatch(/\buseToast\b|\btoast:\s*\{/);
+    }
+  );
 });
 
 describe("toast holdouts (#293)", () => {

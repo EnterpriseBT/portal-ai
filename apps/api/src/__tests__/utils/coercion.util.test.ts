@@ -99,6 +99,83 @@ describe("coerceNumber", () => {
     expect(coerceNumber("  42  ")).toEqual({ value: 42 });
   });
 
+  // #968: parseFloat kept the leading number and dropped the rest.
+  it.each(["10 HP", "25 + 1/s", "10%", "5kg", "1.2.3", "12abc", "-", "."])(
+    "rejects %p, which isn't wholly a number",
+    (input) => {
+      expect(coerceNumber(input)).toEqual({
+        value: null,
+        error: "Expected a number",
+      });
+    }
+  );
+
+  it.each([
+    ["-7", -7],
+    ["+3.5", 3.5],
+    [".5", 0.5],
+    ["5.", 5],
+    ["1e3", 1000],
+    ["2.5E-2", 0.025],
+    ["$ 1 234", 1234],
+  ])("accepts %p as %p", (input, expected) => {
+    expect(coerceNumber(input)).toEqual({ value: expected });
+  });
+
+  it.each(["1e400", "-1e400"])(
+    "rejects %p, which overflows to infinity",
+    (input) => {
+      expect(coerceNumber(input)).toEqual({
+        value: null,
+        error: "Expected a number",
+      });
+    }
+  );
+
+  it("rejects a non-finite number value", () => {
+    expect(coerceNumber(Infinity)).toEqual({
+      value: null,
+      error: "Expected a number",
+    });
+  });
+
+  // #968 adversarial walk: the catalog's Decimal and Integer columns carry
+  // display patterns with a grouping comma. Any comma used to switch to the
+  // European rule, so "12.5" was stored as 125 and ".5" as 5.
+  it.each([
+    ["12.5", "#,##0.00", 12.5],
+    [".5", "#,##0.00", 0.5],
+    ["$1,234.56", "#,##0.00", 1234.56],
+    ["1,234.56", "$#,##0.00", 1234.56],
+    ["1,234.567", "#,##0.000", 1234.567],
+    ["1,234", "#,##0", 1234],
+    ["¥1,234", "¥#,##0", 1234],
+  ])(
+    "reads %p under the US display pattern %p as %p",
+    (input, format, expected) => {
+      expect(coerceNumber(input, format)).toEqual({ value: expected });
+    }
+  );
+
+  it.each([
+    ["1.234,56", "eu", 1234.56],
+    ["1.234,56", ",", 1234.56],
+    ["1.234,56", "#.##0,00", 1234.56],
+    ["12,5", "0,00", 12.5],
+  ])(
+    "reads %p under the European format %p as %p",
+    (input, format, expected) => {
+      expect(coerceNumber(input, format)).toEqual({ value: expected });
+    }
+  );
+
+  it("rejects trailing text in EU format too", () => {
+    expect(coerceNumber("1.234,56 EUR", "eu")).toEqual({
+      value: null,
+      error: "Expected a number",
+    });
+  });
+
   it("rounds to 2 decimal places with currency format", () => {
     expect(coerceNumber("$19.999", "currency")).toEqual({ value: 20 });
     expect(coerceNumber("$1,234.567", "currency")).toEqual({ value: 1234.57 });
@@ -253,13 +330,84 @@ describe("coerceDate", () => {
   it("returns date error gracefully for a completely malformed format string", () => {
     // Should not throw even if date-fns cannot interpret the format at all
     expect(() => coerceDate("2021-09-05", "!!!invalid!!!")).not.toThrow();
-    const result = coerceDate("2021-09-05", "!!!invalid!!!");
+    const result = coerceDate("05/09/2021", "!!!invalid!!!");
     expect(result.value).toBeNull();
     expect(result.error).toBe("Expected a valid date");
+    // An ISO value is unambiguous, so it parses whatever the format (#968).
+    expect(coerceDate("2021-09-05", "!!!invalid!!!").error).toBeUndefined();
   });
 });
 
 // ── coerceDatetime ──────────────────────────────────────────────────
+
+// #968 adversarial walk: native parsing rolled an impossible day over
+// ("2026-02-30" → 2026-03-02) and stored it as valid.
+describe("impossible ISO dates (#968)", () => {
+  it.each([
+    "2026-02-30",
+    "2026-02-29",
+    "2026-04-31",
+    "2026-00-10",
+    "2026-01-32",
+  ])("rejects %p rather than rolling it over", (input) => {
+    expect(coerceDate(input).error).toBe("Expected a valid date");
+    expect(coerceDatetime(input).error).toBe("Expected a valid datetime");
+    expect(coerceDate(input, "MM/dd/yyyy").error).toBe("Expected a valid date");
+  });
+
+  it.each([
+    "2026-01-02T24:00:00Z",
+    "2026-01-02T12:60:00Z",
+    "2026-01-02T12:00:61Z",
+  ])("rejects the impossible time %p", (input) => {
+    expect(coerceDatetime(input).error).toBe("Expected a valid datetime");
+  });
+
+  it("still accepts a leap day and the last day of a month", () => {
+    expect(coerceDate("2024-02-29")).toEqual({ value: "2024-02-29" });
+    expect(coerceDate("2026-04-30")).toEqual({ value: "2026-04-30" });
+    expect(coerceDatetime("2026-12-31T23:59:59Z")).toEqual({
+      value: "2026-12-31T23:59:59.000Z",
+    });
+  });
+});
+
+// #968: a format describes how a text date is written. A typed spreadsheet
+// date arrives as ISO 8601 (or a Date), which is unambiguous, so it parses
+// even when it doesn't match the binding's format.
+describe("date coercion with a format, given ISO input (#968)", () => {
+  it("parses an ISO date the format doesn't match", () => {
+    expect(coerceDate("2026-01-02", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+    expect(coerceDate("2026-01-02T00:00:00.000Z", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+  });
+
+  it("parses an ISO datetime the format doesn't match, keeping milliseconds", () => {
+    expect(
+      coerceDatetime("2026-01-02T03:04:05.678Z", "MM/dd/yyyy HH:mm")
+    ).toEqual({ value: "2026-01-02T03:04:05.678Z" });
+  });
+
+  it("parses a Date object whatever the format", () => {
+    expect(
+      coerceDatetime(new Date("2026-01-02T03:04:05.678Z"), "MM/dd/yyyy")
+    ).toEqual({ value: "2026-01-02T03:04:05.678Z" });
+  });
+
+  it("still applies the format to text it matches", () => {
+    expect(coerceDate("01/02/2026", "MM/dd/yyyy")).toEqual({
+      value: "2026-01-02",
+    });
+  });
+
+  it("still rejects text that is neither the format nor ISO", () => {
+    expect(coerceDate("Academy", "MM/dd/yyyy").error).toBeDefined();
+    expect(coerceDate("02/01/2026x", "MM/dd/yyyy").error).toBeDefined();
+  });
+});
 
 describe("coerceDatetime", () => {
   it("returns null for null", () => {
@@ -300,9 +448,11 @@ describe("coerceDatetime", () => {
 
   it("returns datetime error gracefully for a completely malformed format string", () => {
     expect(() => coerceDatetime("2021-09-05", "!!!invalid!!!")).not.toThrow();
-    const result = coerceDatetime("2021-09-05", "!!!invalid!!!");
+    const result = coerceDatetime("05/09/2021", "!!!invalid!!!");
     expect(result.value).toBeNull();
     expect(result.error).toBe("Expected a valid datetime");
+    // An ISO value is unambiguous, so it parses whatever the format (#968).
+    expect(coerceDatetime("2021-09-05", "!!!invalid!!!").error).toBeUndefined();
   });
 });
 

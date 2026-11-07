@@ -41,7 +41,6 @@ import {
   UNENTITLED_PACK_BADGE,
 } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
-import { useToast } from "../utils/toast.context";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useActionGate } from "../utils/use-action-gate.util";
 import { serverErrorMessage } from "../utils/permission-denied.util";
@@ -395,7 +394,6 @@ export const Toolpacks: React.FC = () => {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editing, setEditing] = useState<Toolpack | null>(null);
   const [deleting, setDeleting] = useState<Toolpack | null>(null);
-  const toast = useToast();
 
   const listResult = sdk.toolpacks.list();
   // #214: entitlement affordances derive from the tier policy the usage
@@ -462,14 +460,11 @@ export const Toolpacks: React.FC = () => {
               refreshMutation.mutate(
                 { id: t.id },
                 {
-                  onSuccess: () => {
-                    invalidate();
-                    toast.success(`Refreshed "${t.name}".`);
-                  },
-                  onError: (err) => {
-                    toast.error(
-                      `Failed to refresh "${t.name}": ${serverErrorMessage(err)}`
-                    );
+                  onSuccess: invalidate,
+                  toast: {
+                    success: `Refreshed "${t.name}".`,
+                    error: (err) =>
+                      `Failed to refresh "${t.name}": ${serverErrorMessage(err)}`,
                   },
                 }
               );
@@ -524,14 +519,11 @@ export const Toolpacks: React.FC = () => {
           refreshMutation.mutate(
             { id: target.id },
             {
-              onSuccess: () => {
-                invalidate();
-                toast.success(`Refreshed "${target.name}".`);
-              },
-              onError: (err) => {
-                toast.error(
-                  `Failed to refresh "${target.name}": ${serverErrorMessage(err)}`
-                );
+              onSuccess: invalidate,
+              toast: {
+                success: `Refreshed "${target.name}".`,
+                error: (err) =>
+                  `Failed to refresh "${target.name}": ${serverErrorMessage(err)}`,
               },
             }
           );

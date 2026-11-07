@@ -9,7 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import postgres from "postgres";
 
 import type { LayoutPlan, WorkbookData } from "@portalai/core/contracts";
@@ -164,7 +164,8 @@ async function seedColumnDefinition(
   db: Db,
   organizationId: string,
   key: string,
-  label: string = key
+  label: string = key,
+  type: "string" | "number" | "datetime" | "enum" = "string"
 ): Promise<string> {
   const id = generateId();
   await db.insert(schema.columnDefinitions).values({
@@ -172,7 +173,7 @@ async function seedColumnDefinition(
     organizationId,
     key,
     label,
-    type: "string",
+    type,
     description: null,
     validationPattern: null,
     validationMessage: null,
@@ -370,6 +371,78 @@ function sparseToDenseRows(
     }
   }
   return dense;
+}
+
+/**
+ * #968: three rows from the prod upload, plus one clean row. `energy_cost`
+ * is bound to a number column and `researched_at` to a datetime one, so the
+ * first three rows each carry a cell that doesn't coerce.
+ */
+const TYPED_ROWS: [string, string, string][] = [
+  ["Stim Packs", "10 HP", "Academy"],
+  ["Lockdown", "100", "Covert Ops"],
+  ["Personnel Cloaking", "25 + 1/s", "Covert Ops"],
+  ["Yamato Cannon", "150", "2026-01-02T03:04:05Z"],
+];
+
+function makeTypedWorkbook(): WorkbookData {
+  const header = ["name", "energy_cost", "researched_at"];
+  const rows = [header, ...TYPED_ROWS];
+  return {
+    sheets: [
+      {
+        name: "Sheet1",
+        dimensions: { rows: rows.length, cols: 3 },
+        cells: rows.flatMap((row, r) =>
+          row.map((value, c) => ({ row: r + 1, col: c + 1, value }))
+        ),
+      },
+    ],
+  };
+}
+
+function makeTypedPlan(ids: {
+  name: string;
+  energyCost: string;
+  researchedAt: string;
+}): LayoutPlan {
+  const base = makePlan(ids.name, ids.energyCost);
+  const region = base.regions[0]!;
+  const binding = (name: string, columnDefinitionId: string) => ({
+    sourceLocator: {
+      kind: "byHeaderName" as const,
+      axis: "row" as const,
+      name,
+    },
+    columnDefinitionId,
+    confidence: 0.9,
+  });
+  return {
+    ...base,
+    workbookFingerprint: {
+      sheetNames: ["Sheet1"],
+      dimensions: { Sheet1: { rows: TYPED_ROWS.length + 1, cols: 3 } },
+      anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "name" }],
+    },
+    regions: [
+      {
+        ...region,
+        targetEntityDefinitionId: "upgrades",
+        bounds: {
+          startRow: 1,
+          startCol: 1,
+          endRow: TYPED_ROWS.length + 1,
+          endCol: 3,
+        },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+        columnBindings: [
+          binding("name", ids.name),
+          binding("energy_cost", ids.energyCost),
+          binding("researched_at", ids.researchedAt),
+        ],
+      },
+    ],
+  };
 }
 
 describe("Layout Plans Draft Router", () => {
@@ -746,6 +819,212 @@ describe("Layout Plans Draft Router", () => {
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
+    it("#968: a cell that doesn't parse as its column type is stored null and its record invalid, rather than failing the commit", async () => {
+      const ids = {
+        name: await seedColumnDefinition(db as Db, organizationId, "name"),
+        energyCost: await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "energy_cost",
+          "Energy cost",
+          "number"
+        ),
+        researchedAt: await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "researched_at",
+          "Researched at",
+          "datetime"
+        ),
+      };
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeTypedWorkbook(),
+        userId
+      );
+
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "Upgrades",
+        plan: makeTypedPlan(ids),
+        uploadSessionId,
+      });
+
+      expect(result.recordCounts).toMatchObject({ created: 4, invalid: 3 });
+      const [entity] = await (db as Db)
+        .select()
+        .from(connectorEntities)
+        .where(
+          eq(connectorEntities.connectorInstanceId, result.connectorInstanceId)
+        );
+      const records = await (db as Db)
+        .select()
+        .from(schema.entityRecords)
+        .where(eq(schema.entityRecords.connectorEntityId, entity!.id));
+      const bySource = new Map(
+        records.map((r) => [
+          (r.data as Record<string, unknown>)[ids.name] ?? r.sourceId,
+          r,
+        ])
+      );
+      const errorsOf = (name: string) =>
+        (bySource.get(name)?.validationErrors ?? [])
+          .map((e) => `${e.field}: ${e.error}`)
+          .sort();
+      expect(records).toHaveLength(4);
+      expect(bySource.get("Stim Packs")?.isValid).toBe(false);
+      expect(errorsOf("Stim Packs")).toEqual([
+        "energy_cost: Expected a number",
+        expect.stringMatching(/^researched_at: /),
+      ]);
+      expect(errorsOf("Lockdown")).toEqual([
+        expect.stringMatching(/^researched_at: /),
+      ]);
+      expect(errorsOf("Personnel Cloaking")).toHaveLength(2);
+      expect(bySource.get("Yamato Cannon")?.isValid).toBe(true);
+      expect(bySource.get("Yamato Cannon")?.validationErrors).toBeNull();
+
+      // The typed columns hold the coerced values, and null where coercion failed.
+      const wide = (await (db as Db).execute(
+        sql.raw(
+          `SELECT c_name, c_energy_cost, c_researched_at FROM "er__${entity!.id}" ORDER BY c_name`
+        )
+      )) as unknown as Array<Record<string, unknown>>;
+      expect(
+        wide.map((r) => [
+          r.c_name,
+          r.c_energy_cost === null ? null : Number(r.c_energy_cost),
+          r.c_researched_at === null ? null : "set",
+        ])
+      ).toEqual([
+        ["Lockdown", 100, null],
+        ["Personnel Cloaking", null, null],
+        ["Stim Packs", null, null],
+        ["Yamato Cannon", 150, "set"],
+      ]);
+    });
+
+    // #973: a recommit that changes a field's rules re-checks the rows whose
+    // content didn't change, rather than keeping their old validity.
+    describe("#973: a recommit that changes field rules", () => {
+      async function commitThenEdit(
+        edit: (binding: Record<string, unknown>) => void
+      ) {
+        const ids = {
+          name: await seedColumnDefinition(db as Db, organizationId, "name"),
+          // An enum column with no values allowed yet: the first commit
+          // checks nothing, and the plan edit adds the values.
+          energyCost: await seedColumnDefinition(
+            db as Db,
+            organizationId,
+            "energy_cost",
+            "Energy cost",
+            "enum"
+          ),
+          researchedAt: await seedColumnDefinition(
+            db as Db,
+            organizationId,
+            "researched_at"
+          ),
+        };
+        const uploadSessionId = await seedUploadSession(
+          db as Db,
+          organizationId,
+          makeTypedWorkbook(),
+          userId
+        );
+        const first = await runDraftCommitInline({
+          connectorDefinitionId,
+          name: "Upgrades",
+          plan: makeTypedPlan(ids),
+          uploadSessionId,
+        });
+        expect(first.recordCounts).toMatchObject({ created: 4, invalid: 0 });
+
+        const [planRow] = await (db as Db)
+          .select()
+          .from(schema.connectorInstanceLayoutPlans)
+          .where(
+            eq(
+              schema.connectorInstanceLayoutPlans.connectorInstanceId,
+              first.connectorInstanceId
+            )
+          );
+        const plan = structuredClone(planRow!.plan) as LayoutPlan;
+        const binding = plan.regions[0]!.columnBindings.find(
+          (b) =>
+            b.sourceLocator.kind === "byHeaderName" &&
+            b.sourceLocator.name === "energy_cost"
+        ) as unknown as Record<string, unknown>;
+        edit(binding);
+        await (db as Db)
+          .update(schema.connectorInstanceLayoutPlans)
+          .set({ plan })
+          .where(eq(schema.connectorInstanceLayoutPlans.id, planRow!.id));
+
+        const { LayoutPlanCommitService } =
+          await import("../../../services/layout-plan-commit.service.js");
+        const recommit = () =>
+          LayoutPlanCommitService.commit(
+            first.connectorInstanceId,
+            planRow!.id,
+            organizationId,
+            userId,
+            { workbook: makeTypedWorkbook() }
+          );
+        return { recommit, instanceId: first.connectorInstanceId };
+      }
+
+      async function invalidNames(connectorInstanceId: string) {
+        const [entity] = await (db as Db)
+          .select()
+          .from(connectorEntities)
+          .where(
+            eq(connectorEntities.connectorInstanceId, connectorInstanceId)
+          );
+        const records = await (db as Db)
+          .select()
+          .from(schema.entityRecords)
+          .where(eq(schema.entityRecords.connectorEntityId, entity!.id));
+        return records
+          .filter((r) => !r.isValid)
+          .map((r) => ({
+            name: (r.data as Record<string, unknown>).name,
+            errors: (r.validationErrors ?? []).map(
+              (e) => `${e.field}: ${e.error}`
+            ),
+          }))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      }
+
+      it("re-checks unchanged rows against a new enum, and the next recommit skips them again", async () => {
+        const { recommit, instanceId } = await commitThenEdit((b) => {
+          b.enumValues = ["100", "150"];
+        });
+
+        const second = await recommit();
+        expect(second.recordCounts).toMatchObject({
+          unchanged: 0,
+          updated: 4,
+          invalid: 2,
+        });
+        expect((await invalidNames(instanceId)).map((r) => r.name)).toEqual([
+          "Personnel Cloaking",
+          "Stim Packs",
+        ]);
+
+        const third = await recommit();
+        expect(third.recordCounts).toMatchObject({
+          unchanged: 4,
+          updated: 0,
+          invalid: 0,
+        });
+        // The skip keeps the flags the second commit wrote.
+        expect(await invalidNames(instanceId)).toHaveLength(2);
+      });
+    });
+
     // #805: the session writer strips U+0000 on ingest and records how many
     // strings it changed; the commit that stores the data reports it.
     async function commitWithSessionCount(count?: number) {
@@ -821,6 +1100,145 @@ describe("Layout Plans Draft Router", () => {
         metaSpy.mockRestore();
         commitSpy.mockRestore();
       }
+    });
+
+    // #968: a commit that fails on its final attempt. Each target commits
+    // in its own transaction, so when a later one fails, an earlier one's
+    // entity holds a foreign key on the new instance.
+    async function commitFailingOnReconcile(opts: {
+      targets: 1 | 2;
+      failOnCall: number;
+    }) {
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
+      const real = wideTableReconcilerService.reconcileEntity.bind(
+        wideTableReconcilerService
+      );
+      let calls = 0;
+      const spy = jest
+        .spyOn(wideTableReconcilerService, "reconcileEntity")
+        .mockImplementation(async (...args) => {
+          calls++;
+          if (calls === opts.failOnCall) throw new Error("reconcile failed");
+          return real(...args);
+        });
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const single = makeWorkbook();
+      const workbook: WorkbookData =
+        opts.targets === 1
+          ? single
+          : {
+              sheets: [
+                ...single.sheets,
+                { ...single.sheets[0]!, name: "Sheet2" },
+              ],
+            };
+      const base = makePlan(emailId, nameId);
+      const plan: LayoutPlan =
+        opts.targets === 1
+          ? base
+          : {
+              ...base,
+              workbookFingerprint: {
+                ...base.workbookFingerprint,
+                sheetNames: ["Sheet1", "Sheet2"],
+                dimensions: {
+                  Sheet1: { rows: 3, cols: 2 },
+                  Sheet2: { rows: 3, cols: 2 },
+                },
+              },
+              regions: [
+                base.regions[0]!,
+                {
+                  ...base.regions[0]!,
+                  id: "r2",
+                  sheet: "Sheet2",
+                  targetEntityDefinitionId: "contacts-2",
+                  headerStrategyByAxis: {
+                    row: {
+                      kind: "row",
+                      locator: { kind: "row", sheet: "Sheet2", row: 1 },
+                      confidence: 0.95,
+                    },
+                  },
+                  identityStrategy: {
+                    kind: "column",
+                    sourceLocator: { kind: "column", sheet: "Sheet2", col: 1 },
+                    confidence: 0.9,
+                  },
+                },
+              ],
+              confidence: { overall: 0.9, perRegion: { r1: 0.9, r2: 0.9 } },
+            };
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        workbook,
+        userId
+      );
+      try {
+        await expect(
+          runDraftCommitInline({
+            connectorDefinitionId,
+            name: "Failing upload",
+            plan,
+            uploadSessionId,
+          })
+        ).rejects.toThrow("reconcile failed");
+      } finally {
+        spy.mockRestore();
+      }
+      const instances = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Failing upload"));
+      const plans = instances[0]
+        ? await (db as Db)
+            .select()
+            .from(connectorInstanceLayoutPlans)
+            .where(
+              eq(
+                connectorInstanceLayoutPlans.connectorInstanceId,
+                instances[0].id
+              )
+            )
+        : [];
+      return { instances, plans };
+    }
+
+    it("#968: a failed commit that wrote an earlier target marks its new instance `error`, rather than leaving it `pending`", async () => {
+      const { instances, plans } = await commitFailingOnReconcile({
+        targets: 2,
+        failOnCall: 2,
+      });
+
+      expect(instances).toHaveLength(1);
+      expect(instances[0]!.status).toBe("error");
+      expect(instances[0]!.lastErrorMessage).toBeTruthy();
+      // The plan stays with it, so the instance can still be opened.
+      expect(plans).toHaveLength(1);
+    });
+
+    it("#968: a failed commit that wrote nothing still deletes its new instance and plan", async () => {
+      const { instances } = await commitFailingOnReconcile({
+        targets: 1,
+        failOnCall: 1,
+      });
+
+      expect(instances).toHaveLength(0);
+      const orphanPlans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans);
+      expect(orphanPlans).toHaveLength(0);
     });
 
     it("omits the NUL-stripped count when the session stripped nothing", async () => {

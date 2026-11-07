@@ -380,7 +380,12 @@ export class LayoutPlanDraftService {
    *   - `isExistingInstance: false` — the route created the
    *     `connector_instances` row inline as part of this commit (the
    *     fresh-create file-upload path). The user never saw it as a
-   *     usable connector. Hard-delete both rows so no orphan survives.
+   *     usable connector. Hard-delete both rows, in one transaction, so
+   *     no orphan survives. Each target commits in its own transaction,
+   *     so when a later target failed, an earlier one's entity holds a
+   *     foreign key on the instance and the delete can't run (#968).
+   *     Then keep both rows and mark the instance failed, as below: the
+   *     user sees the failed connector and deletes it themselves.
    *
    *   - `isExistingInstance: true` — the row pre-existed (the OAuth
    *     callback's pending google-sheets / microsoft-excel instance,
@@ -393,9 +398,8 @@ export class LayoutPlanDraftService {
    *     plan and try again" instead of stranding the instance in
    *     `pending` forever.
    *
-   * Defensive: every write is `.catch(() => undefined)` so a partial
-   * cleanup doesn't mask the underlying failure when the processor
-   * re-throws.
+   * Defensive: no cleanup write throws, so a partial cleanup doesn't
+   * mask the underlying failure when the processor re-throws.
    */
   static async rollbackFailedDraftCommit(
     metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>,
@@ -413,10 +417,8 @@ export class LayoutPlanDraftService {
       },
       "rolling back draft commit (final failure)"
     );
-    if (isExistingInstance) {
-      // Keep the plan; flip the instance to `error` so the user can
-      // recover via the edit-layout-plan flow.
-      await DbService.repository.connectorInstances
+    const markFailed = () =>
+      DbService.repository.connectorInstances
         .update(connectorInstanceId, {
           status: "error",
           lastErrorMessage: reason,
@@ -431,16 +433,34 @@ export class LayoutPlanDraftService {
             "Failed to flip pending → error after commit rollback (non-fatal)"
           );
         });
+    if (isExistingInstance) {
+      // Keep the plan; flip the instance to `error` so the user can
+      // recover via the edit-layout-plan flow.
+      await markFailed();
       return;
     }
-    // Fresh-create path — hard-delete both rows; the user never saw
-    // this connector as usable.
-    await DbService.repository.connectorInstanceLayoutPlans
-      .hardDelete(planId)
-      .catch(() => undefined);
-    await DbService.repository.connectorInstances
-      .hardDelete(connectorInstanceId)
-      .catch(() => undefined);
+    // Fresh-create path — hard-delete both rows together; the user never
+    // saw this connector as usable.
+    const deleted = await DbService.transaction(async (tx) => {
+      await DbService.repository.connectorInstanceLayoutPlans.hardDelete(
+        planId,
+        tx
+      );
+      await DbService.repository.connectorInstances.hardDelete(
+        connectorInstanceId,
+        tx
+      );
+    }).then(
+      () => true,
+      (err: unknown) => {
+        logger.warn(
+          { connectorInstanceId, planId, err },
+          "Could not delete the failed commit's instance; marking it failed instead"
+        );
+        return false;
+      }
+    );
+    if (!deleted) await markFailed();
   }
 
   /**
