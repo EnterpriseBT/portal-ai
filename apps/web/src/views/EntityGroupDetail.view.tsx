@@ -558,6 +558,7 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
 
   return (
     <DataResult
+      pageTitle="Entity group"
       results={{ group: groupResult }}
       data-testid="entity-group-detail"
     >

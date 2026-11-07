@@ -1,5 +1,7 @@
 import React from "react";
-import { Box, StatusMessage, visuallyHidden } from "@portalai/core/ui";
+import { StatusMessage } from "@portalai/core/ui";
+
+import { HiddenPageHeading } from "./HiddenPageHeading.component";
 
 export interface QueryResultLike<TData = unknown> {
   data: TData | undefined;
@@ -50,11 +52,7 @@ export function DataResult<T extends ResultsMap>({
   const entries = Object.entries(results) as [string, QueryResultLike][];
   const withTitle = (status: React.ReactNode) => (
     <>
-      {pageTitle && (
-        <Box component="h1" sx={visuallyHidden}>
-          {pageTitle}
-        </Box>
-      )}
+      {pageTitle && <HiddenPageHeading>{pageTitle}</HiddenPageHeading>}
       {status}
     </>
   );

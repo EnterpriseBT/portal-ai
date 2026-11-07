@@ -112,6 +112,31 @@ describe("CuratedViewDetail (container)", () => {
     expect(screen.queryAllByText("NE Accounts")).toHaveLength(0);
   });
 
+  // #982: the page keeps its one h1 before the view arrives and once it's
+  // gone, so a screen reader lands on it and the tab is titled from it.
+  it("keeps exactly one h1, View, on View not found", async () => {
+    fetchView.mockRejectedValue(notFound());
+    fetchRecords.mockRejectedValue(notFound());
+
+    renderPage();
+
+    expect(await screen.findByText("View not found")).toBeInTheDocument();
+    const h1s = screen.getAllByRole("heading", { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent("View");
+  });
+
+  it("keeps exactly one h1, View, while the view loads", () => {
+    fetchView.mockReturnValue(new Promise(() => {}));
+    fetchRecords.mockReturnValue(new Promise(() => {}));
+
+    renderPage();
+
+    const h1s = screen.getAllByRole("heading", { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent("View");
+  });
+
   it("doesn't refetch the view for a records error that isn't a 404", async () => {
     fetchView.mockResolvedValue({ curatedView: view });
     fetchRecords.mockRejectedValue(
