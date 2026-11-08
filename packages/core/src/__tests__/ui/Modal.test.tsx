@@ -95,6 +95,24 @@ describe("Modal Component", () => {
       );
       expect(screen.queryByLabelText("close")).not.toBeInTheDocument();
     });
+
+    // #983: the title names the dialog (aria-labelledby). With the header's
+    // buttons inside it, a browser named the dialog "Title maximize close";
+    // jsdom's name computation didn't, so this checks the structure.
+    it("keeps the header's buttons out of the element that names the dialog", () => {
+      render(
+        <Modal {...defaultProps} title="Title" maximizable>
+          <p>Content</p>
+        </Modal>
+      );
+      const dialog = screen.getByRole("dialog");
+      const labelId = dialog.getAttribute("aria-labelledby");
+      const label = labelId ? document.getElementById(labelId) : null;
+      expect(label).toHaveTextContent(/^Title$/);
+      expect(label?.querySelector("button")).toBeNull();
+      expect(screen.getByLabelText("close")).toBeInTheDocument();
+      expect(screen.getByLabelText("maximize")).toBeInTheDocument();
+    });
   });
 
   describe("Backdrop", () => {

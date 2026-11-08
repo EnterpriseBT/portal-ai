@@ -160,35 +160,38 @@ export const Modal: React.FC<ModalProps> = ({
           }}
         >
           {title}
-          {(showCloseButton || showMaximizeButton) && (
-            <Box
-              data-dialog-controls=""
-              sx={{ position: "absolute", right: 8, top: 8, display: "flex" }}
-            >
-              {showMaximizeButton && (
-                <IconButton
-                  aria-label={maximized ? "restore" : "maximize"}
-                  onClick={() => setMaximized((prev) => !prev)}
-                  size="small"
-                >
-                  {maximized ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
-                </IconButton>
-              )}
-              {showCloseButton && (
-                // #793: aria-disabled, not disabled, while pending, so a
-                // focused close button keeps focus when the request starts.
-                <IconButton
-                  aria-label="close"
-                  aria-disabled={pending || undefined}
-                  onClick={pending ? undefined : onClose}
-                  size="small"
-                >
-                  <CloseIcon />
-                </IconButton>
-              )}
-            </Box>
-          )}
         </DialogTitle>
+      )}
+      {/* #983: the controls sit beside the title, not in it. The title names
+          the dialog (aria-labelledby), so buttons inside it joined the name
+          ("Title close"). Positioned against the paper as before. */}
+      {showHeader && (showCloseButton || showMaximizeButton) && (
+        <Box
+          data-dialog-controls=""
+          sx={{ position: "absolute", right: 8, top: 8, display: "flex" }}
+        >
+          {showMaximizeButton && (
+            <IconButton
+              aria-label={maximized ? "restore" : "maximize"}
+              onClick={() => setMaximized((prev) => !prev)}
+              size="small"
+            >
+              {maximized ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
+            </IconButton>
+          )}
+          {showCloseButton && (
+            // #793: aria-disabled, not disabled, while pending, so a
+            // focused close button keeps focus when the request starts.
+            <IconButton
+              aria-label="close"
+              aria-disabled={pending || undefined}
+              onClick={pending ? undefined : onClose}
+              size="small"
+            >
+              <CloseIcon />
+            </IconButton>
+          )}
+        </Box>
       )}
       <DialogContent id={describeContent ? contentId : undefined}>
         {children}

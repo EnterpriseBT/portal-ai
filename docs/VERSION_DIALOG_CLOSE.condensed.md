@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#983](https://github.com/EnterpriseBT/portal-ai/issues/983) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc). Child of epic #791; branches from and merges into `epic/a11y-conformance`.
 
-**Why.** The dialog the sidebar's version caption opens has no focusable element. Focus sits on MUI's container, Tab cycles the container, the focus-trap sentinel and `body`, and only Escape or a backdrop click closes it. Neither is discoverable from inside the dialog. The APG dialog pattern expects at least one control, normally a visible Close. Only `apps/web` is touched.
+**Why.** The dialog the sidebar's version caption opens has no focusable element. Focus sits on MUI's container, Tab cycles the container, the focus-trap sentinel and `body`, and only Escape or a backdrop click closes it. Neither is discoverable from inside the dialog. The APG dialog pattern expects at least one control, normally a visible Close. `apps/web`, plus one fix to core's `Modal` that the smoke walk found (below).
 
 ## Current shape
 
@@ -18,6 +18,8 @@
 - **A. Add an `actions` "Close" button.** This adds a footer to a two-line dialog, and the header still has no title.
 - **B (chosen). Pass `title="App version"` and drop `showCloseButton={false}`.** The header shows the title and `Modal`'s standard close button, like every other dialog. The visible title names the dialog, so `aria-label` goes, and so does the body's duplicate "App version" line. The body is just the version code block.
 
+**Smoke fix: the header's buttons leave the title.** The walk found Chromium naming the dialog "App version close": `Modal` rendered its close and maximize buttons inside `DialogTitle`, the `h2` its `aria-labelledby` points at, so every titled `Modal` with a close button got "<title> close" as its name. The buttons now render beside the title, still positioned against the paper, so the layout and Tab order don't change. jsdom's name computation missed it, so `Modal.test.tsx` checks that the labelling element holds no button.
+
 Initial focus doesn't change: MUI focuses the dialog container, and the first Tab reaches Close. That is the APG pattern's allowance for a dialog whose only control is the close.
 
 **Tests follow the shipped dialog.** The fake `VersionFooter` tests are replaced with tests that open the real `<SidebarNav />`, as the axe test already does. The caption's own rendering stays covered by `SidebarVersionCaption.test.tsx`.
@@ -27,6 +29,7 @@ Initial focus doesn't change: MUI focuses the dialog container, and the first Ta
 **Files**
 - Edit: `apps/web/src/components/SidebarNav.component.tsx` (`title`, default close button, no `aria-label`, no body label). Code review: the code block reads the theme's `code` font through a typed `CodeTypography` interface (the `sandbox-theme.util.ts` pattern), not `as any` behind an `eslint-disable` that gave no reason
 - Edit: `apps/web/src/__tests__/SidebarNav.test.tsx` (drop `VersionFooter` and its raw-`Dialog` import; new tests below)
+- Edit (smoke fix): `packages/core/src/ui/Modal.tsx` (header controls beside `DialogTitle`, not in it) + `packages/core/src/__tests__/ui/Modal.test.tsx`
 
 **Tests** (failing first; `cd apps/web && npm run test:unit -- --testPathPattern SidebarNav`)
 - Opening the caption shows a dialog named "App version", with a heading "App version" and the version code.
