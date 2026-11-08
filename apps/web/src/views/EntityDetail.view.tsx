@@ -506,6 +506,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             // #821: search matches text columns only (the trigram-indexed
             // ones), as on views; other values are reached through filters.
             searchPlaceholder="Search text columns"
+            searchLabel="Search text columns"
           />
 
           <Box sx={{ mt: 2 }}>

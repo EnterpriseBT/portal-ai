@@ -11,7 +11,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       class="MuiFormControl-root MuiTextField-root css-1yla13q-MuiFormControl-root-MuiTextField-root"
     >
       <div
-        class="MuiInputBase-root MuiOutlinedInput-root MuiInputBase-colorPrimary Mui-focused MuiInputBase-formControl MuiInputBase-sizeSmall MuiInputBase-adornedStart MuiInputBase-adornedEnd css-1gxe4q8-MuiInputBase-root-MuiOutlinedInput-root"
+        class="MuiInputBase-root MuiOutlinedInput-root MuiInputBase-colorPrimary MuiInputBase-formControl MuiInputBase-sizeSmall MuiInputBase-adornedStart MuiInputBase-adornedEnd css-1gxe4q8-MuiInputBase-root-MuiOutlinedInput-root"
       >
         <div
           class="MuiInputAdornment-root MuiInputAdornment-positionStart MuiInputAdornment-outlined MuiInputAdornment-sizeSmall css-1nowbqt-MuiInputAdornment-root"
@@ -36,8 +36,9 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         </div>
         <input
           aria-invalid="false"
+          aria-label="Search"
           class="MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall MuiInputBase-inputAdornedStart MuiInputBase-inputAdornedEnd css-195mg07-MuiInputBase-input-MuiOutlinedInput-input"
-          id="_r_ao_"
+          id="_r_bd_"
           placeholder="Search..."
           type="text"
           value="test"

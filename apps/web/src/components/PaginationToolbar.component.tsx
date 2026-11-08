@@ -677,6 +677,8 @@ export interface PaginationToolbarProps {
   columnDefinitions?: ResolvedColumn[];
   /** The search box's placeholder (#649). Default "Search...". */
   searchPlaceholder?: string;
+  /** The search box's accessible name (#988). Default "Search". */
+  searchLabel?: string;
 }
 
 export const PaginationToolbar = React.forwardRef<
@@ -688,6 +690,7 @@ export const PaginationToolbar = React.forwardRef<
       search,
       onSearchChange,
       searchPlaceholder = "Search...",
+      searchLabel = "Search",
       filterConfigs,
       filters,
       onFilterValueChange,
@@ -742,14 +745,15 @@ export const PaginationToolbar = React.forwardRef<
             flexWrap: "wrap",
           }}
         >
-          {/* Search */}
+          {/* Search. No autoFocus (#988): on arrival focus goes to the page
+              heading, which the route announcer focuses (#797). */}
           <TextField
-            autoFocus
             size="small"
             placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             slotProps={{
+              htmlInput: { "aria-label": searchLabel },
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
