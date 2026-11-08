@@ -9,36 +9,38 @@
 | Piece | Location | Note |
 |---|---|---|
 | The search field | `apps/web/src/components/PaginationToolbar.component.tsx:746` | `TextField` with `autoFocus` (:747, from `bf945a5c`, which added it to dialog fields and caught this one too) and `placeholder={searchPlaceholder}` (:749). No `aria-label` or label |
-| `searchPlaceholder` | `PaginationToolbar.component.tsx:678`, default "Search..." (:690) | Only `EntityDetail.view.tsx:508` overrides it, with "Search text columns" (#821) |
+| `searchPlaceholder` | `PaginationToolbar.component.tsx:678`, default "Search..." (:690) | Two surfaces override it with "Search text columns": `EntityDetail.view.tsx:508` (#821) and curated views, through `utils/curated-view-table.util.ts:149` (#649) |
 | Named neighbours | `PaginationToolbar.component.tsx:765`, `:1082` | "Clear search" and "Rows per page" (#793) already have names |
 | Precedent | `apps/web/src/components/ChatWindow.component.tsx:292` | #793 removed the chat composer's `autoFocus` for the same reason |
-| Consumers | 17 views, `AuditLogActivity`, `UsageLedgerDialog`, and a story | Every one inherits the fix. `UsageLedgerDialog` renders the toolbar inside a dialog. Without `autoFocus`, focus there starts on the dialog, and the first Tab reaches the field |
+| Consumers | 17 views, `AuditLogActivity`, `UsageLedgerDialog`, and a story | Every one inherits the fix. `UsageLedgerDialog` renders the toolbar inside a dialog, where the Form & Dialog Pattern wants its first field focused on open |
 | Audit rows | `docs/A11Y_AUDIT.md:145` (`53f149ff`, jsx-a11y `no-autofocus`, generated) and `:231` (KB-02, hand-written, owner #794) | Hand-written rows close with a "**Closed:**" Observed cell (:32). Generated rows only change through `npm run a11y:report` |
 | Tests | `apps/web/src/__tests__/PaginationToolbar.test.tsx:419` | Find the field by placeholder; nothing checks focus or the field's name |
 
-## Decision — drop `autoFocus`, and name the field from a prop
+## Decision — drop `autoFocus`, and name the field from its placeholder
 
 - **The focus.** Remove `autoFocus` and add the #793-style comment. Nothing replaces it: search-first would need a shortcut, which nobody has asked for.
 - **The name.** Options:
-  - **A. `aria-label` from the placeholder.** "Search..." reads its ellipsis aloud, and a placeholder is a hint, not a label.
-  - **B (chosen). A `searchLabel` prop, default "Search", passed as the input's `aria-label`.** `EntityDetail` passes "Search text columns" alongside its placeholder, so its name keeps the #821 scoping.
+  - **A (chosen). The placeholder without its trailing ellipsis, as the input's `aria-label`.** "Search..." names it "Search", and "Search text columns" names it the same, so the #821/#649 scoping reaches the name on both surfaces with nothing to keep in sync.
+  - **B. A separate `searchLabel` prop.** The first draft. Code review found the curated view missed it: two props a caller has to keep in step drift.
   - **C. A visible label.** It changes the toolbar's layout on 19 surfaces, which this bug doesn't need.
+- **The ledger dialog keeps its focus.** The toolbar takes a `searchInputRef`, and `UsageLedgerDialog` focuses it through `useDialogAutoFocus(open)`, as other dialogs focus their first field. A page passes nothing, so nothing on a page takes focus.
 - **No lint gate here.** Making jsx-a11y `no-autofocus` an error is #799's job: it turns the report-only tools into gates. Today the rule finds only this field (`53f149ff`), so this fix clears it.
 
 ## Plan — 1 slice
 
 **Files**
-- Edit: `apps/web/src/components/PaginationToolbar.component.tsx` (no `autoFocus`; `searchLabel` prop, default "Search", on `slotProps.htmlInput["aria-label"]`)
-- Edit: `apps/web/src/views/EntityDetail.view.tsx` (`searchLabel="Search text columns"`)
-- Edit: `docs/A11Y_AUDIT.md` KB-02 → "**Closed:** …". The generated `53f149ff` row clears on the next `a11y:report` run, never by hand
+- Edit: `apps/web/src/components/PaginationToolbar.component.tsx` (no `autoFocus`; `aria-label` from the placeholder; `searchInputRef` prop)
+- Edit: `apps/web/src/components/UsageLedgerDialog.component.tsx` (`useDialogAutoFocus(open)` on the search)
+- Edit: `docs/A11Y_AUDIT.md` KB-02 → "**Closed:** …", and KB-01's note that the search still took focus. The generated `53f149ff` row clears on the next `a11y:report` run, never by hand
 
 **Tests** (failing first; `cd apps/web && npm run test:unit -- --testPathPattern PaginationToolbar`)
 - `__tests__/PaginationToolbar.test.tsx`:
   - rendering the toolbar leaves focus where it was (`document.body`);
   - the field is `getByRole("textbox", { name: "Search" })`;
-  - a `searchLabel` names it ("Search text columns");
+  - a custom placeholder names it ("Search text columns");
   - the snapshot updates for the new `aria-label`.
-- `__tests__/EntityDetailView.test.tsx`: the records search is named "Search text columns".
+- `__tests__/EntityDetailView.test.tsx` and `__tests__/curated-view-table.util.test.tsx`: the records and curated-view searches are named "Search text columns".
+- `__tests__/UsageLedgerDialog.component.test.tsx`: opening the dialog focuses its search.
 - Then `npm run lint && npm run type-check && npm run format:check` in `apps/web`.
 
 ## Smoke (manual, against your dev stack)
@@ -46,8 +48,8 @@
 1. Signed in, click "Stations" in the sidebar. Once the page settles, focus is on the `h1` "Stations", not the search field, and the tab title is "Stations · Portals AI".
 2. Open a station, then press Back and Forward. On each page focus lands on its `h1`.
 3. Press Tab from the `h1` until the search field is reached. Its accessible name (screen reader or accessibility tree) is "Search". Type a station name, and the list filters as before. "Clear search" empties it.
-4. Open an entity's detail page. The records search is named "Search text columns".
-5. Open Settings → "Subscription & Billing" → "Itemized usage". Focus starts on the dialog, the first Tab reaches the dialog's first control, and the search works.
+4. Open an entity's detail page, then a curated view. Each records search is named "Search text columns".
+5. Open Settings → "Subscription & Billing" → "Itemized usage". Focus starts in its search field, named "Search", and the search works.
 
 ## Out of scope
 

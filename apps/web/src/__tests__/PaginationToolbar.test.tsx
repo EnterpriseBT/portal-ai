@@ -430,10 +430,10 @@ describe("PaginationToolbar", () => {
       ).toBeInTheDocument();
     });
 
-    it("names the search field from searchLabel (#988)", () => {
+    it("names the search field from a custom placeholder (#988)", () => {
       render(
         <PaginationToolbar
-          {...makeProps({ searchLabel: "Search text columns" })}
+          {...makeProps({ searchPlaceholder: "Search text columns" })}
         />
       );
       expect(
