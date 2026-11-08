@@ -6,7 +6,6 @@ import {
   ClickAwayListener,
   IconName,
   Modal,
-  Typography,
 } from "@portalai/core/ui";
 import type { NavPageId } from "@portalai/core/models";
 import { NAV_PAGE_IDS } from "@portalai/core/models";
@@ -241,6 +240,12 @@ export const SidebarNavUI = ({
   return drawer;
 };
 
+/** The brand themes register a `typography.code` variant that MUI's types
+ *  don't declare (as `sandbox-theme.util.ts` does for `monospace`). */
+interface CodeTypography {
+  code?: { fontFamily?: string };
+}
+
 export const SidebarNav = () => {
   const { isMobile, isCollapsed, isMobileExpanded, isMobileCollapsed, toggle } =
     useLayout();
@@ -299,20 +304,18 @@ export const SidebarNav = () => {
           <Modal
             open={versionOpen}
             onClose={() => setVersionOpen(false)}
-            aria-label="App version"
+            title="App version"
             maxWidth="xs"
-            showCloseButton={false}
           >
-            <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>
-              App version
-            </Typography>
+            {/* #983: the title names the dialog, and Modal's close button
+                gives keyboard and switch users a control to land on. */}
             <Box
               component="code"
               sx={(theme) => ({
                 display: "block",
                 wordBreak: "break-all",
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                fontFamily: (theme.typography as any).code?.fontFamily,
+                fontFamily: (theme.typography as unknown as CodeTypography).code
+                  ?.fontFamily,
                 fontSize: "0.75rem",
                 backgroundColor: theme.palette.action.hover,
                 borderRadius: 1,
