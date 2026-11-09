@@ -182,6 +182,39 @@ describe("CuratedViewEditorUI (pure form)", () => {
   });
 });
 
+// #986: MUI keyed options by label, so two entities (or columns) with the
+// same label shared a React key and one could be dropped or duplicated.
+describe("CuratedViewEditorUI options with the same label (#986)", () => {
+  it("lists both and picks the one chosen", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const onEntityChange = jest.fn();
+    render(
+      <CuratedViewEditorUI
+        {...baseProps}
+        showEntitySelect
+        selectedEntityId=""
+        onEntityChange={onEntityChange}
+        entityOptions={[
+          { id: "ent-a", label: "Sheet1" },
+          { id: "ent-b", label: "Sheet1" },
+        ]}
+      />
+    );
+    await userEvent.click(screen.getByRole("combobox", { name: /entity/i }));
+    const options = await screen.findAllByRole("option", { name: "Sheet1" });
+    expect(options).toHaveLength(2);
+    const duplicateKeyErrors = consoleError.mock.calls.filter((args) =>
+      args.some((a) => String(a).includes("same key"))
+    );
+    consoleError.mockRestore();
+    expect(duplicateKeyErrors).toHaveLength(0);
+    await userEvent.click(options[1]);
+    expect(onEntityChange).toHaveBeenCalledWith("ent-b");
+  });
+});
+
 describe("CuratedViewEditorDialog (container gating)", () => {
   it("renders nothing when closed", () => {
     const { container } = render(

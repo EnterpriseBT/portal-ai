@@ -6,6 +6,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 
 export interface MultiSearchableSelectProps extends SelectBaseProps {
   options: SelectOption[];
@@ -41,8 +42,7 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
-      // Key by value, not MUI's default label: equal labels shared a key (#986).
-      getOptionKey={(option) => String(option.value)}
+      getOptionKey={selectOptionKey}
       getOptionDisabled={(option) => option.disabled === true}
       disabled={disabled}
       size={size}

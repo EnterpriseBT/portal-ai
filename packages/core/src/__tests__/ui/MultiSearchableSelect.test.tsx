@@ -753,6 +753,7 @@ describe("options with the same label (#986)", () => {
     { value: "segment", label: "Enum" },
   ];
   let consoleError: jest.SpiedFunction<typeof console.error>;
+  const realObserver = globalThis.IntersectionObserver;
 
   beforeEach(() => {
     consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -765,6 +766,7 @@ describe("options with the same label (#986)", () => {
 
   afterEach(() => {
     consoleError.mockRestore();
+    globalThis.IntersectionObserver = realObserver;
   });
 
   const duplicateKeyErrors = () =>

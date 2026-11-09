@@ -173,6 +173,8 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
           <Autocomplete
             options={entityOptions}
             getOptionLabel={(o) => o.label}
+            // By id: two entities can share a label (#986).
+            getOptionKey={(o) => o.id}
             value={entityOptions.find((o) => o.id === selectedEntityId) ?? null}
             onChange={(_e, next) => onEntityChange(next?.id ?? "")}
             renderInput={(params) => (
@@ -230,6 +232,7 @@ export const CuratedViewEditorUI: React.FC<CuratedViewEditorUIProps> = ({
           multiple
           options={fieldMappingOptions}
           getOptionLabel={(o) => o.label}
+          getOptionKey={(o) => o.id}
           value={selectedOptions}
           onChange={(_e, next) =>
             onSelectedFieldMappingIdsChange(next.map((o) => o.id))

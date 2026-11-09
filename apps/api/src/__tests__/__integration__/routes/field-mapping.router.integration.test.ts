@@ -449,6 +449,45 @@ describe("Field Mapping Router", () => {
       expect(res.body.payload.fieldMappings[0].sourceField).toBe("mapped_a");
     });
 
+    // #986: the web picker labels an option "<column> (<key>)", so the search
+    // matches the key as well as the source field.
+    it("searches the source field and the key", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([
+        createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+          sourceField: "Col B",
+          normalizedKey: "region",
+        }),
+        createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+          sourceField: "segment",
+          normalizedKey: "segment",
+        }),
+      ] as never);
+
+      const search = async (q: string) => {
+        const res = await request(app)
+          .get(
+            `/api/field-mappings?connectorEntityId=${connectorEntityId}&search=${encodeURIComponent(q)}`
+          )
+          .set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(200);
+        return res.body.payload.fieldMappings.map(
+          (fm: { sourceField: string }) => fm.sourceField
+        );
+      };
+
+      expect(await search("REGION")).toEqual(["Col B"]);
+      expect(await search("col b")).toEqual(["Col B"]);
+      expect(await search("segm")).toEqual(["segment"]);
+    });
+
     it("should scope results to the requested connector entity", async () => {
       const {
         connectorEntityId,

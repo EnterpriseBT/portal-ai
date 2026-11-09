@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
@@ -108,7 +108,7 @@ const SORTABLE_COLUMNS: Record<FieldMappingListRequestQuery["sortBy"], Column> =
  *         name: search
  *         schema:
  *           type: string
- *         description: Case-insensitive search on source field
+ *         description: Case-insensitive search on the source field and the normalized key
  *       - in: query
  *         name: sortBy
  *         schema:
@@ -197,7 +197,13 @@ fieldMappingRouter.get(
       );
 
       if (search) {
-        filters.push(ilike(fieldMappings.sourceField, `%${search}%`));
+        // The key too (#986): the web picker labels a mapping "<column> (<key>)".
+        filters.push(
+          or(
+            ilike(fieldMappings.sourceField, `%${search}%`),
+            ilike(fieldMappings.normalizedKey, `%${search}%`)
+          )!
+        );
       }
 
       if (columnDefinitionId) {

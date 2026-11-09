@@ -8,6 +8,7 @@ import type {
   FetchPageParams,
   FetchPageResult,
 } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 import {
   InfiniteListboxComponent,
   SentinelRefContext,
@@ -171,8 +172,7 @@ export const MultiInfiniteScrollSelect: React.FC<
             }}
             isOptionEqualToValue={(option, val) => option.value === val.value}
             getOptionLabel={(option) => option.label}
-            // Key by value, not MUI's default label: equal labels shared a key (#986).
-            getOptionKey={(option) => String(option.value)}
+            getOptionKey={selectOptionKey}
             filterOptions={(x) => x}
             disabled={disabled}
             size={size}
