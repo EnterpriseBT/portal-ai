@@ -49,7 +49,7 @@
 2. Open a station, then press Back and Forward. On each page focus lands on its `h1`.
 3. Press Tab from the `h1` until the search field is reached. Its accessible name (screen reader or accessibility tree) is "Search". Type a station name, and the list filters as before. "Clear search" empties it.
 4. Open an entity's detail page, then a curated view. Each records search is named "Search text columns".
-5. Open Settings → "Subscription & Billing" → "Itemized usage". Focus starts in its search field, named "Search", and the search works.
+5. Open Settings → Organization, and under "Subscription & Usage" press "Itemized usage". Focus starts in its search field, named "Search", and the search works.
 
 ## Out of scope
 
