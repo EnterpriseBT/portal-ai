@@ -37,6 +37,8 @@ import MuiLink from "@mui/material/Link";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 
+import { GatedIconButton } from "./GatedIconButton.js";
+import { IconName } from "./Icon.js";
 import { visuallyHidden } from "./visually-hidden.js";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -190,12 +192,19 @@ interface SortableColumnItemProps {
   item: ColumnConfig;
   label: string;
   onToggle: (key: string) => void;
+  /** Whether the item is first / last, so its Up / Down can say why it's unavailable. */
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (key: string, offset: -1 | 1) => void;
 }
 
 const SortableColumnItem: React.FC<SortableColumnItemProps> = ({
   item,
   label,
   onToggle,
+  isFirst,
+  isLast,
+  onMove,
 }) => {
   const {
     attributes,
@@ -252,6 +261,26 @@ const SortableColumnItem: React.FC<SortableColumnItemProps> = ({
           label={label}
           sx={{ flex: 1, mr: 0 }}
         />
+        {/* KB-07 (WCAG 2.5.7): a single-pointer and keyboard alternative to
+            dragging. */}
+        <GatedIconButton
+          size="small"
+          aria-label={`Move ${label} up`}
+          gate={
+            isFirst ? { kind: "disable", reason: "Already first" } : undefined
+          }
+          icon={IconName.ArrowUpward}
+          onClick={() => onMove(item.key, -1)}
+        />
+        <GatedIconButton
+          size="small"
+          aria-label={`Move ${label} down`}
+          gate={
+            isLast ? { kind: "disable", reason: "Already last" } : undefined
+          }
+          icon={IconName.ArrowDownward}
+          onClick={() => onMove(item.key, 1)}
+        />
       </Box>
     </ListItem>
   );
@@ -291,6 +320,13 @@ const ColumnConfigMenu: React.FC<ColumnConfigMenuProps> = ({
     );
   };
 
+  const handleMove = (key: string, offset: -1 | 1) => {
+    const from = config.findIndex((c) => c.key === key);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= config.length) return;
+    onChange(arrayMove(config, from, to));
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -326,12 +362,15 @@ const ColumnConfigMenu: React.FC<ColumnConfigMenuProps> = ({
             strategy={verticalListSortingStrategy}
           >
             <List dense sx={{ minWidth: 200 }}>
-              {config.map((item) => (
+              {config.map((item, i) => (
                 <SortableColumnItem
                   key={item.key}
                   item={item}
                   label={columnLabelMap.get(item.key) ?? item.key}
                   onToggle={handleToggle}
+                  isFirst={i === 0}
+                  isLast={i === config.length - 1}
+                  onMove={handleMove}
                 />
               ))}
             </List>

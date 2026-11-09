@@ -692,6 +692,69 @@ describe("DataTable accessibility (#794)", () => {
     ).toBeInTheDocument();
   });
 
+  // KB-07 (WCAG 2.5.7): reordering columns needs no drag.
+  describe("column reorder without dragging", () => {
+    const config: ColumnConfig[] = [
+      { key: "name", visible: true },
+      { key: "email", visible: true },
+      { key: "age", visible: true },
+    ];
+    const openMenu = async (onChange = jest.fn()) => {
+      render(
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          columnConfig={config}
+          onColumnConfigChange={onChange}
+        />
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: /configure columns/i })
+      );
+      return onChange;
+    };
+
+    it("moves a column up and down with buttons", async () => {
+      const onChange = await openMenu();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Move Email up" })
+      );
+      expect(onChange).toHaveBeenLastCalledWith([
+        { key: "email", visible: true },
+        { key: "name", visible: true },
+        { key: "age", visible: true },
+      ]);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Move Email down" })
+      );
+      expect(onChange).toHaveBeenLastCalledWith([
+        { key: "name", visible: true },
+        { key: "age", visible: true },
+        { key: "email", visible: true },
+      ]);
+    });
+
+    it("can't move the first column up or the last down, and says why", async () => {
+      const onChange = await openMenu();
+      const firstUp = screen.getByRole("button", { name: "Move Name up" });
+      const lastDown = screen.getByRole("button", { name: "Move Age down" });
+      expect(firstUp).toHaveAttribute("aria-disabled", "true");
+      expect(firstUp).toHaveAccessibleDescription("Already first");
+      expect(lastDown).toHaveAttribute("aria-disabled", "true");
+      expect(lastDown).toHaveAccessibleDescription("Already last");
+      await userEvent.click(firstUp);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("keeps the drag handle for pointer users", async () => {
+      await openMenu();
+      expect(
+        screen.getByLabelText("Drag to reorder Email")
+      ).toBeInTheDocument();
+    });
+  });
+
   it("has no axe violations with sort and row links", async () => {
     const { container } = render(
       <DataTable
