@@ -1,3 +1,4 @@
+import React from "react";
 /**
  * #649: the container's wiring when a view goes away under the open page.
  * The records query 404s while the view's own query is still cached; the
@@ -60,6 +61,9 @@ const useRecordsQuery = (id: string, params: unknown) =>
 jest.unstable_mockModule("@tanstack/react-router", () => ({
   useParams: () => ({ viewId: "cv-1" }),
   useNavigate: () => jest.fn(),
+  // #794: the records table's row links render through RouterLink.
+  Link: ({ to, children }: { to: string; children?: React.ReactNode }) =>
+    React.createElement("a", { href: to }, children),
 }));
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {

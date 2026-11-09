@@ -26,6 +26,7 @@ import {
 } from "@portalai/core/ui";
 import type { ColumnConfig, DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -35,6 +36,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { RouterLink } from "../components/RouterLink.component";
 import { toServerError } from "../utils/api.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { fieldMappingRowGates } from "../utils/entity-actions.util";
@@ -552,8 +554,6 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   onEdit,
   onDelete,
 }) => {
-  const navigate = useNavigate();
-
   const { value: storedConfig, setValue: persistConfig } = useStorage<
     ColumnConfig[]
   >({
@@ -567,33 +567,35 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       {
         key: "connectorEntity",
         label: "Connector Entity",
+        // #794: the mapping's entity opens through a link.
         render: (_value, row) => {
           const fm = fieldMappings.find((f) => f.id === row.id) ?? null;
           if (fm?.connectorEntity) {
-            return fm.connectorEntity.label;
+            return (
+              <Link
+                component={RouterLink}
+                href={`/entities/${fm.connectorEntity.id}`}
+              >
+                {fm.connectorEntity.label}
+              </Link>
+            );
           }
           return row.connectorEntityId as string;
-        },
-        onCellClick: (_value, _col, row) => {
-          const fm = fieldMappings.find((f) => f.id === row.id);
-          if (fm?.connectorEntity) {
-            navigate({
-              to: "/entities/$entityId",
-              params: { entityId: fm.connectorEntity.id },
-            });
-          }
         },
       },
       { key: "normalizedKey", label: "Normalized Key" },
       {
         key: "isPrimaryKey",
         label: "Primary Key",
-        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+        // #794: the check says "Yes" to a screen reader too.
+        render: (value) =>
+          value ? <CheckIcon fontSize="small" titleAccess="Yes" /> : null,
       },
       {
         key: "required",
         label: "Required",
-        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+        render: (value) =>
+          value ? <CheckIcon fontSize="small" titleAccess="Yes" /> : null,
       },
       { key: "defaultValue", label: "Default Value" },
       { key: "format", label: "Format" },
@@ -603,7 +605,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
         render: (value) => (Array.isArray(value) ? value.join(", ") : null),
       },
     ],
-    [fieldMappings, navigate]
+    [fieldMappings]
   );
 
   const actionsColumn: DataTableColumn | null = useMemo(
@@ -615,6 +617,10 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             render: (_value: unknown, row: Record<string, unknown>) => {
               const fm = fieldMappings.find((f) => f.id === row.id);
               if (!fm) return null;
+              // #794: each action names the mapping it acts on.
+              const mappingName = fm.connectorEntity
+                ? `${fm.sourceField} in ${fm.connectorEntity.label}`
+                : fm.sourceField;
               const gates = fieldMappingRowGates({
                 capabilities: fm.capabilities,
                 isWriteEnabled:
@@ -632,7 +638,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                         e.stopPropagation();
                         onEdit(fm);
                       }}
-                      aria-label="Edit field mapping"
+                      aria-label={`Edit mapping ${mappingName}`}
                       icon={IconName.Edit}
                     />
                   )}
@@ -645,7 +651,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                         e.stopPropagation();
                         onDelete(fm);
                       }}
-                      aria-label="Delete field mapping"
+                      aria-label={`Delete mapping ${mappingName}`}
                       icon={IconName.Delete}
                     />
                   )}
@@ -681,6 +687,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
 
   return (
     <DataTable
+      label="Field mappings"
       columns={allColumns}
       rows={fieldMappings}
       emptyMessage="No field mappings found"

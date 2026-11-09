@@ -36,13 +36,13 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 904 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-07 19:03 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 326 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-07 19:03 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-07 18:58 | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-07 19:36 | 426 | 60 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-07 19:37 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:08 | 911 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-09 19:13 | 281 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:09 | 335 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-09 19:13 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:09 | 31 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-09 19:47 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-09 19:47 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -119,7 +119,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 0 | 0 | — | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 5 | 18 | — | 2 |
+| [#794 Tables, grids and lists](#owner-794) | 0 | 0 | — | 1 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 13 | 51 | 4.1.2 | 1 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
@@ -136,13 +136,7 @@ No automated findings.
 
 ## #794 Tables, grids and lists
 
-| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
-|---|---|---|---|---|---|---|---|---|
-| cce6c08c | best practice | heading-order | moderate | `.MuiPaper-outlined.MuiPaper-rounded.MuiCard-root > .MuiStack-root > .MuiCardActionArea-root > .MuiCardContent-root > .MuiStack-root > .MuiStack-root > h3` | 4: column-definitions, connectors, entities, jobs | 4 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| e86a6bdc | best practice | heading-order | moderate | `apps/web/src/stories/CuratedViewDetail.view.stories.tsx h6` | 1: Empty | 1 | — | jest-axe |
-| 8c7e8755 | best practice | heading-order | moderate | `h3` | 1: stations | 1 | roles: admin, member, owner · states: populated · themes: brand, brand.dark | axe-app |
-| 1a851f7c | best practice | heading-order | moderate | `h6` | 11: column-definition-detail, column-definitions, connectors, entities, entity-groups, jobs, +5 more | 11 | roles: admin, member, owner · states: empty, locked, populated · themes: brand, brand.dark | axe-app |
-| 53f149ff | best practice | jsx-a11y/no-autofocus | — | `apps/web/src/components/PaginationToolbar.component.tsx` | 1: :747 | 1 | — | eslint |
+No automated findings.
 
 <a id="owner-795"></a>
 
@@ -233,7 +227,7 @@ The flows:
 | KB-04 | All app pages | header | 2.4.7 | **Closed:** the theme draws a 2px `primary.main` focus ring on every control (#797, 074eb99f). Re-walked 2026-11-05 in both themes. | keyboard | #797 |
 | KB-05 | All app pages | sidebar | 2.4.7 | **Closed:** sidebar entries get the same 2px focus ring (#797, 074eb99f). Re-walked 2026-11-05 in both themes. | keyboard | #797 |
 | KB-06 | All app pages | sidebar | 2.5.8 | **Closed:** the 16 px toggle answers clicks over 24 px (#797, 25f32b83). Re-walked 2026-11-05: clicks 3 px outside on either side hit it. | keyboard | #797 |
-| KB-07 | CSV import → records | records table | 2.5.7 | Column reorder is a drag. dnd-kit's keyboard sensor exists, but there's no single-pointer alternative (verify). | inspection | #794 |
+| KB-07 | CSV import → records | records table | 2.5.7 | **Closed:** the column-config list gives each column "Move {label} up" and "Move {label} down" buttons, so reordering needs neither a drag nor dnd-kit's keyboard mode; the ends say why they're unavailable (#794, a6979bf3). Was: column reorder was a drag, with dnd-kit's keyboard sensor but no single-pointer alternative. | inspection | #794 |
 | KB-08 | CSV import → records | layout plan | 2.5.7 | Drawing a region in the RegionEditor takes a pointer drag. Typed bounds exist only for a region already drawn (verify). | inspection | #795 |
 | KB-09 | Station → portal → pin | chart result | 1.1.1, 4.1.2 | D3 charts render inside a sandboxed iframe that axe can't enter. There's no text alternative contract for a chart's content. | inspection | #796 |
 | KB-10 | Marketing site | header and footer nav | 2.5.8 | Nav links are 19 px tall. Check whether the spacing exception holds (verify). | keyboard | #798 |

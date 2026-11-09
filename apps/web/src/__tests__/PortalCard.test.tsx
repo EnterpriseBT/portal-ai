@@ -9,15 +9,16 @@ const props = {
   created: Date.now() - 3600000,
   lastOpened: null,
   canDelete: true,
-  onClick: jest.fn(),
   onDelete: jest.fn(),
 };
 
 describe("PortalCardUI", () => {
-  it("renders the name and opens on click", () => {
+  // #794: the card opens its portal through its title's link.
+  it("links its name to the portal", () => {
     render(<PortalCardUI {...props} />);
-    fireEvent.click(screen.getByText("Sales Analysis"));
-    expect(props.onClick).toHaveBeenCalledWith("portal-1");
+    expect(
+      screen.getByRole("link", { name: "Sales Analysis" })
+    ).toHaveAttribute("href", "/portals/portal-1");
   });
 
   it("#690: shows Delete when the caller may delete the portal", () => {

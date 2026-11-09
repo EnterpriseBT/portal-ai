@@ -22,7 +22,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen } = await import("./test-utils");
 const {
   ColumnDefinitionDataList,
   ColumnDefinitionDataItem,
@@ -160,18 +160,25 @@ describe("ColumnDefinitionCardUI", () => {
     expect(screen.queryByText("yyyy-MM-dd")).not.toBeInTheDocument();
   });
 
-  it("should call onClick with column definition when clicked", () => {
+  // #794: a card that navigates links its title; without href it's text.
+  it("links its title to href", () => {
     const cd = makeColumnDefinition();
-    const onClick = jest.fn();
-    render(<ColumnDefinitionCardUI columnDefinition={cd} onClick={onClick} />);
-    fireEvent.click(screen.getByText("First Name"));
-    expect(onClick).toHaveBeenCalledWith(cd);
+    render(
+      <ColumnDefinitionCardUI
+        columnDefinition={cd}
+        href={`/column-definitions/${cd.id}`}
+      />
+    );
+    expect(screen.getByRole("link", { name: "First Name" })).toHaveAttribute(
+      "href",
+      `/column-definitions/${cd.id}`
+    );
   });
 
-  it("should not throw when clicked without onClick handler", () => {
+  it("is not a link without href", () => {
     const cd = makeColumnDefinition();
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
-    expect(() => fireEvent.click(screen.getByText("First Name"))).not.toThrow();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("renders a Custom chip and a Delete action for non-system rows", () => {

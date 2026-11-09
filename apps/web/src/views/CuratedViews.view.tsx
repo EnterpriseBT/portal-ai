@@ -5,6 +5,7 @@ import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
 import { isSessionGenerated } from "@portalai/core/models";
 import {
   Box,
+  CardList,
   DetailCard,
   GatedButton,
   Icon,
@@ -22,6 +23,7 @@ import ShareIcon from "@mui/icons-material/Share";
 import { useNavigate } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { RouterLink } from "../components/RouterLink.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import {
   usePagination,
@@ -51,7 +53,6 @@ export interface CuratedViewsUIProps {
   hasActiveFilters: boolean;
   /** The rendered pagination toolbar (search / sort / page controls). */
   paginationToolbar: React.ReactNode;
-  onOpen: (view: CuratedViewRow) => void;
   onCreate: () => void;
   onShare: (view: CuratedViewRow) => void;
   onDelete: (view: CuratedViewRow) => void;
@@ -64,7 +65,6 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
   createGate,
   hasActiveFilters,
   paginationToolbar,
-  onOpen,
   onCreate,
   onShare,
   onDelete,
@@ -103,7 +103,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
     );
   } else {
     body = (
-      <Stack spacing={1}>
+      <CardList aria-label="Views">
         {views.map((view) => {
           // #688: what this caller may do to this view.
           const actions: ActionSuiteItem[] = [
@@ -122,10 +122,13 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
             },
           ];
           return (
+            // #794: the card opens its view through its title's link.
             <DetailCard
               key={view.id}
               title={view.label}
-              onClick={() => onOpen(view)}
+              href={`/views/${view.id}`}
+              linkComponent={RouterLink}
+              headingLevel={2}
               actions={actions}
             >
               <MetadataList
@@ -160,7 +163,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
             </DetailCard>
           );
         })}
-      </Stack>
+      </CardList>
     );
   }
 
@@ -215,7 +218,6 @@ export const CuratedViews: React.FC = () => {
     Object.values(pagination.filters).some((v) => v.length > 0)
   );
 
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);
@@ -246,7 +248,6 @@ export const CuratedViews: React.FC = () => {
         createGate={createGate}
         hasActiveFilters={hasActiveFilters}
         paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
-        onOpen={(view) => navigate({ to: `/views/${view.id}` })}
         onCreate={() => setCreateOpen(true)}
         onShare={(view) => setShareTarget(view)}
         onDelete={(view) => setDeleteTarget(view)}

@@ -2,6 +2,7 @@ import React from "react";
 
 import type { PortalListResponsePayload } from "@portalai/core/contracts";
 import {
+  CardList,
   DetailCard,
   Icon,
   IconName,
@@ -13,6 +14,7 @@ import { DateFactory } from "@portalai/core/utils";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 import DataResult from "./DataResult.component";
+import { RouterLink } from "./RouterLink.component";
 import { sdk } from "../api/sdk";
 import { decideActionGate } from "../utils/action-gate.util";
 
@@ -21,13 +23,11 @@ import { decideActionGate } from "../utils/action-gate.util";
 export interface RecentPortalsListUIProps {
   /** List rows, each with the caller's `capabilities` (#688). */
   portals: PortalListResponsePayload["portals"];
-  onPortalClick: (portalId: string) => void;
   onDeletePortal: (portalId: string, portalName: string) => void;
 }
 
 export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
   portals,
-  onPortalClick,
   onDeletePortal,
 }) => {
   if (portals.length === 0) {
@@ -44,7 +44,7 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
   }
 
   return (
-    <Stack spacing={1}>
+    <CardList aria-label="Recent portals">
       {portals.map((portal) => {
         const actions: ActionSuiteItem[] = [
           {
@@ -61,7 +61,9 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
           <DetailCard
             key={portal.id}
             title={portal.name}
-            onClick={() => onPortalClick(portal.id)}
+            // #794: the card opens its portal through its title's link.
+            href={`/portals/${portal.id}`}
+            linkComponent={RouterLink}
             actions={actions}
             data-testid={`portal-row-${portal.id}`}
           >
@@ -84,7 +86,7 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
           </DetailCard>
         );
       })}
-    </Stack>
+    </CardList>
   );
 };
 
@@ -108,13 +110,12 @@ const RecentPortalData: React.FC<PortalDataProps> = ({ children }) => {
 // ── Connected ───────────────────────────────────────────────────────
 
 export interface RecentPortalsListConnectedProps {
-  onPortalClick: (portalId: string) => void;
   onDeletePortal: (portalId: string, portalName: string) => void;
 }
 
 export const RecentPortalsListConnected: React.FC<
   RecentPortalsListConnectedProps
-> = ({ onPortalClick, onDeletePortal }) => (
+> = ({ onDeletePortal }) => (
   <RecentPortalData>
     {(result) => (
       <DataResult results={{ portals: result }}>
@@ -123,7 +124,6 @@ export const RecentPortalsListConnected: React.FC<
           return (
             <RecentPortalsListUI
               portals={payload.portals}
-              onPortalClick={onPortalClick}
               onDeletePortal={onDeletePortal}
             />
           );

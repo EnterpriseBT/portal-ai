@@ -1,4 +1,5 @@
 import React from "react";
+import { useIsFetching } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -8,6 +9,8 @@ import Chip from "@mui/material/Chip";
 import Badge from "@mui/material/Badge";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Switch from "@mui/material/Switch";
 import Divider from "@mui/material/Divider";
 import SearchIcon from "@mui/icons-material/Search";
@@ -33,6 +36,7 @@ import {
   MultiSearchableSelect,
   MultiAsyncSearchableSelect,
   MultiInfiniteScrollSelect,
+  StatusMessage,
 } from "@portalai/core/ui";
 import type {
   FetchPageParams,
@@ -53,6 +57,7 @@ import {
   removeConditionByIndex,
   getOperatorLabel,
 } from "../utils/advanced-filter-builder.util";
+import { useResultsAnnouncer } from "../utils/results-announcer.util";
 const AdvancedFilterBuilderLazy = React.lazy(() =>
   import("./AdvancedFilterBuilder.component").then((m) => ({
     default: m.AdvancedFilterBuilder,
@@ -680,6 +685,13 @@ export interface PaginationToolbarProps {
   /** A ref to the search input, for a dialog that focuses it on open
    *  (`useDialogAutoFocus`). The toolbar never focuses itself (#988). */
   searchInputRef?: React.Ref<HTMLInputElement>;
+  /**
+   * The list's request is in flight (#794). After a user change, a load that
+   * outlasts half a second is announced as "Loading results…". Defaults to
+   * whether any query is fetching, since most lists' queries live in a
+   * render-prop list below the toolbar.
+   */
+  loading?: boolean;
 }
 
 /** The search field's accessible name (#988): its placeholder, read as a
@@ -694,37 +706,70 @@ export const PaginationToolbar = React.forwardRef<
   (
     {
       search,
-      onSearchChange,
+      onSearchChange: onSearchChangeProp,
       searchPlaceholder = "Search...",
       searchInputRef,
       filterConfigs,
       filters,
-      onFilterValueChange,
-      onFilterChange,
+      onFilterValueChange: onFilterValueChangeProp,
+      onFilterChange: onFilterChangeProp,
       activeFilterCount,
       sortFields,
       sortBy,
-      onSortByChange,
+      onSortByChange: onSortByChangeProp,
       sortOrder,
-      onSortOrderChange,
+      onSortOrderChange: onSortOrderChangeProp,
       limit,
       limitOptions,
-      onLimitChange,
+      onLimitChange: onLimitChangeProp,
       total,
       currentPage,
       totalPages,
-      onFirst,
-      onPrev,
-      onNext,
-      onLast,
+      onFirst: onFirstProp,
+      onPrev: onPrevProp,
+      onNext: onNextProp,
+      onLast: onLastProp,
       advancedFilters,
-      onAdvancedFiltersChange,
-      onAdvancedFiltersClear,
+      onAdvancedFiltersChange: onAdvancedFiltersChangeProp,
+      onAdvancedFiltersClear: onAdvancedFiltersClearProp,
       advancedFilterConditionCount = 0,
       columnDefinitions,
+      loading: loadingProp,
     },
     ref
   ) => {
+    // #794: a change made through the toolbar is announced once its
+    // results settle ("12 results, page 1 of 2"); arrival says nothing.
+    const fetching = useIsFetching() > 0;
+    const { announcement, markChange } = useResultsAnnouncer({
+      loading: loadingProp ?? fetching,
+      total,
+      currentPage,
+      totalPages,
+    });
+    const changed =
+      <A extends unknown[]>(fn: ((...args: A) => void) | undefined) =>
+      (...args: A) => {
+        markChange();
+        fn?.(...args);
+      };
+    const onSearchChange = changed(onSearchChangeProp);
+    const onFilterValueChange = changed(onFilterValueChangeProp);
+    const onFilterChange = changed(onFilterChangeProp);
+    const onSortByChange = changed(onSortByChangeProp);
+    const onSortOrderChange = changed(onSortOrderChangeProp);
+    const onLimitChange = changed(onLimitChangeProp);
+    const onFirst = changed(onFirstProp);
+    const onPrev = changed(onPrevProp);
+    const onNext = changed(onNextProp);
+    const onLast = changed(onLastProp);
+    const onAdvancedFiltersChange = onAdvancedFiltersChangeProp
+      ? changed(onAdvancedFiltersChangeProp)
+      : undefined;
+    const onAdvancedFiltersClear = onAdvancedFiltersClearProp
+      ? changed(onAdvancedFiltersClearProp)
+      : undefined;
+
     const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement | null>(
       null
     );
@@ -733,6 +778,14 @@ export const PaginationToolbar = React.forwardRef<
     );
     const [advFilterAnchor, setAdvFilterAnchor] =
       React.useState<HTMLElement | null>(null);
+
+    // #794: each popover is a named dialog its button controls.
+    const idBase = React.useId();
+    const filtersId = `${idBase}-filters`;
+    const sortId = `${idBase}-sort`;
+    const advFiltersId = `${idBase}-advanced-filters`;
+    const sortByLabelId = `${idBase}-sort-by`;
+    const filterLabelId = (field: string) => `${idBase}-filter-${field}`;
 
     const filterOpen = Boolean(filterAnchor);
     const sortOpen = Boolean(sortAnchor);
@@ -743,6 +796,7 @@ export const PaginationToolbar = React.forwardRef<
 
     return (
       <Box ref={ref} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <StatusMessage visuallyHidden message={announcement} />
         <Box
           sx={{
             display: "flex",
@@ -798,6 +852,16 @@ export const PaginationToolbar = React.forwardRef<
                   size="small"
                   startIcon={<FilterListIcon />}
                   onClick={(e) => setFilterAnchor(e.currentTarget)}
+                  aria-haspopup="dialog"
+                  aria-expanded={filterOpen}
+                  aria-controls={filterOpen ? filtersId : undefined}
+                  // The badge's count is part of the name (it starts with the
+                  // visible label, WCAG 2.5.3).
+                  aria-label={
+                    activeFilterCount > 0
+                      ? `Filter, ${activeFilterCount} active`
+                      : undefined
+                  }
                 >
                   Filter
                 </Button>
@@ -809,17 +873,29 @@ export const PaginationToolbar = React.forwardRef<
                 onClose={() => setFilterAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{
+                  paper: {
+                    id: filtersId,
+                    role: "dialog",
+                    "aria-label": "Filters",
+                  } as React.HTMLAttributes<HTMLDivElement>,
+                }}
               >
                 <Box sx={{ p: 2, minWidth: 220 }}>
                   {filterConfigs.map((config, idx) => (
                     <Box key={config.field}>
                       {idx > 0 && <Divider sx={{ my: 1 }} />}
-                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ mb: 0.5 }}
+                        id={filterLabelId(config.field)}
+                      >
                         {config.label}
                       </Typography>
 
                       {config.type === "select" && (
                         <RadioGroup
+                          aria-labelledby={filterLabelId(config.field)}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -841,6 +917,10 @@ export const PaginationToolbar = React.forwardRef<
                           control={
                             <Switch
                               size="small"
+                              // Named by the filter, not its Yes/No state.
+                              slotProps={{
+                                input: { "aria-label": config.label },
+                              }}
                               checked={
                                 (filters[config.field] ?? [])[0] === "true"
                               }
@@ -866,6 +946,7 @@ export const PaginationToolbar = React.forwardRef<
                           type="number"
                           fullWidth
                           placeholder={config.placeholder ?? "Enter a number"}
+                          aria-label={config.label}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -884,6 +965,7 @@ export const PaginationToolbar = React.forwardRef<
                           size="small"
                           fullWidth
                           placeholder={config.placeholder ?? "Enter a value"}
+                          aria-label={config.label}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -971,6 +1053,9 @@ export const PaginationToolbar = React.forwardRef<
                 size="small"
                 startIcon={<SortIcon />}
                 onClick={(e) => setSortAnchor(e.currentTarget)}
+                aria-haspopup="dialog"
+                aria-expanded={sortOpen}
+                aria-controls={sortOpen ? sortId : undefined}
               >
                 Sort
               </Button>
@@ -981,12 +1066,24 @@ export const PaginationToolbar = React.forwardRef<
                 onClose={() => setSortAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{
+                  paper: {
+                    id: sortId,
+                    role: "dialog",
+                    "aria-label": "Sort",
+                  } as React.HTMLAttributes<HTMLDivElement>,
+                }}
               >
                 <Box sx={{ p: 2, minWidth: 200 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ mb: 0.5 }}
+                    id={sortByLabelId}
+                  >
                     Sort by
                   </Typography>
                   <RadioGroup
+                    aria-labelledby={sortByLabelId}
                     value={sortBy}
                     onChange={(e) => onSortByChange(e.target.value)}
                   >
@@ -1005,24 +1102,27 @@ export const PaginationToolbar = React.forwardRef<
                   <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
                     Direction
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 1 }}>
-                    <Chip
-                      icon={<ArrowUpwardIcon />}
-                      label="Asc"
-                      size="small"
-                      variant={sortOrder === "asc" ? "filled" : "outlined"}
-                      color={sortOrder === "asc" ? "primary" : "default"}
-                      onClick={() => onSortOrderChange("asc")}
-                    />
-                    <Chip
-                      icon={<ArrowDownwardIcon />}
-                      label="Desc"
-                      size="small"
-                      variant={sortOrder === "desc" ? "filled" : "outlined"}
-                      color={sortOrder === "desc" ? "primary" : "default"}
-                      onClick={() => onSortOrderChange("desc")}
-                    />
-                  </Box>
+                  {/* #794: the direction's state is pressed, not only a
+                      colour. */}
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    color="primary"
+                    value={sortOrder}
+                    onChange={(_e, value: "asc" | "desc" | null) => {
+                      if (value) onSortOrderChange(value);
+                    }}
+                    aria-label="Sort direction"
+                  >
+                    <ToggleButton value="asc" aria-label="Ascending">
+                      <ArrowUpwardIcon fontSize="small" />
+                      Asc
+                    </ToggleButton>
+                    <ToggleButton value="desc" aria-label="Descending">
+                      <ArrowDownwardIcon fontSize="small" />
+                      Desc
+                    </ToggleButton>
+                  </ToggleButtonGroup>
                 </Box>
               </Popover>
             </>
@@ -1040,6 +1140,14 @@ export const PaginationToolbar = React.forwardRef<
                   size="small"
                   startIcon={<TuneIcon />}
                   onClick={(e) => setAdvFilterAnchor(e.currentTarget)}
+                  aria-haspopup="dialog"
+                  aria-expanded={advFilterOpen}
+                  aria-controls={advFilterOpen ? advFiltersId : undefined}
+                  aria-label={
+                    advancedFilterConditionCount > 0
+                      ? `Advanced Filters, ${advancedFilterConditionCount} conditions`
+                      : undefined
+                  }
                 >
                   Advanced Filters
                 </Button>
@@ -1052,7 +1160,12 @@ export const PaginationToolbar = React.forwardRef<
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
                 slotProps={{
-                  paper: { sx: { maxHeight: "70vh", overflow: "auto" } },
+                  paper: {
+                    id: advFiltersId,
+                    role: "dialog",
+                    "aria-label": "Advanced filters",
+                    sx: { maxHeight: "70vh", overflow: "auto" },
+                  } as React.HTMLAttributes<HTMLDivElement>,
                 }}
               >
                 {advancedFilters && onAdvancedFiltersChange && (

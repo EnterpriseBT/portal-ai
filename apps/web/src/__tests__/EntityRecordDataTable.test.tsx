@@ -267,20 +267,42 @@ describe("EntityRecordDataTableUI", () => {
     );
   });
 
-  it("calls onRowClick when a row is clicked", async () => {
-    const onRowClick = jest.fn();
+  // #794: a named table whose rows link to rowHref.
+  it("is named Records and links each row to rowHref", () => {
     render(
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
-        onRowClick={onRowClick}
+        rowHref={(row) => `/records/${String(row.first_name)}`}
       />
     );
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.click(screen.getByText("Jane"));
-    expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+    const table = screen.getByRole("table", { name: "Records" });
+    expect(table).toBeInTheDocument();
+    expect(screen.getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      `/records/${String(rows[0].first_name)}`
+    );
+  });
+
+  // Code review: a record link is named even when its cell isn't text.
+  it("names each record link by its first value, or its row number", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ first_name: "Jane" }, { first_name: "" }]}
+        columns={columns}
+        source="cache"
+        rowHref={(row) => `/records/${String(row.first_name) || "x"}`}
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: "Open record Jane" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open record 2" })
+    ).toBeInTheDocument();
   });
 
   it("renders column type as caption in each header", () => {
@@ -372,7 +394,11 @@ describe("EntityRecordDataTableUI", () => {
         source="cache"
       />
     );
-    expect(screen.getByText("Valid")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Valid" })
+    ).toBeInTheDocument();
+    // #794: each row's state is text to a screen reader, not only a colour.
+    expect(screen.getAllByTitle("Valid").length).toBeGreaterThan(0);
     unmount();
 
     render(
@@ -383,7 +409,9 @@ describe("EntityRecordDataTableUI", () => {
         showValidity={false}
       />
     );
-    expect(screen.queryByText("Valid")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Valid" })
+    ).not.toBeInTheDocument();
   });
 
   it("#678: renders no Cached/Live chip when source is omitted", () => {

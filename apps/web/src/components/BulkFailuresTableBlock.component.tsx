@@ -18,6 +18,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { VisuallyHidden } from "@portalai/core/ui";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -58,6 +59,7 @@ export const BulkFailuresTableBlockUI: React.FC<
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(10);
   const [expanded, setExpanded] = useState<RowExpand>({});
+  const baseId = React.useId();
 
   const slice = content.failures.slice(
     page * perPage,
@@ -103,10 +105,13 @@ export const BulkFailuresTableBlockUI: React.FC<
       </Stack>
 
       <TableContainer>
-        <Table size="small">
+        <Table size="small" aria-label="Failed records">
           <TableHead>
             <TableRow>
-              <TableCell />
+              {/* #794: the toggle column's header has a name. */}
+              <TableCell>
+                <VisuallyHidden>Details</VisuallyHidden>
+              </TableCell>
               <TableCell>sourceKey</TableCell>
               <TableCell>code</TableCell>
               <TableCell>message</TableCell>
@@ -122,7 +127,12 @@ export const BulkFailuresTableBlockUI: React.FC<
                     <TableCell sx={{ width: 32 }}>
                       <IconButton
                         size="small"
-                        aria-label={isOpen ? "Collapse row" : "Expand row"}
+                        // #794: a stable name; the state is aria-expanded.
+                        aria-label={`Details for ${f.sourceKey}`}
+                        aria-expanded={isOpen}
+                        aria-controls={
+                          isOpen ? `${baseId}-details-${idx}` : undefined
+                        }
                         onClick={() =>
                           setExpanded((prev) => ({
                             ...prev,
@@ -156,7 +166,7 @@ export const BulkFailuresTableBlockUI: React.FC<
                       sx={{ p: 0, borderBottom: isOpen ? undefined : "none" }}
                     >
                       <Collapse in={isOpen} unmountOnExit>
-                        <Box sx={{ p: 1.5 }}>
+                        <Box sx={{ p: 1.5 }} id={`${baseId}-details-${idx}`}>
                           {f.error.recommendation && (
                             <Typography variant="body2" sx={{ mb: 1 }}>
                               <strong>Recommendation:</strong>{" "}

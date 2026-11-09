@@ -31,6 +31,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { AddGroupMemberDialog } from "../components/AddGroupMemberDialog.component";
 import DataResult from "../components/DataResult.component";
+import { RouterLink } from "../components/RouterLink.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { RemoveGroupMemberDialog } from "../components/RemoveGroupMemberDialog.component";
@@ -186,7 +187,12 @@ export const EntityGroupDetailViewUI: React.FC<
               if (row.isPrimary) onDemoteMember(row.id as string);
               else onPromoteMember(row.id as string);
             }}
-            aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
+            // #794: names the member it acts on.
+            aria-label={
+              row.isPrimary
+                ? `Remove ${String(row.connectorEntityLabel)} as primary`
+                : `Set ${String(row.connectorEntityLabel)} as primary`
+            }
           >
             {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
           </IconButton>
@@ -208,7 +214,7 @@ export const EntityGroupDetailViewUI: React.FC<
                   onRemoveMemberDialogOpen?.();
                   setRemoveDialogMemberId(row.id as string);
                 }}
-                aria-label="Remove member"
+                aria-label={`Remove ${String(row.connectorEntityLabel)}`}
               >
                 <DeleteIcon fontSize="small" />
               </IconButton>
@@ -283,17 +289,15 @@ export const EntityGroupDetailViewUI: React.FC<
           }
         >
           <DataTable
+            label="Members"
             columns={membersColumns}
             rows={group.members.map(
               (m) => ({ ...m }) as Record<string, unknown>
             )}
             emptyMessage="No members yet"
-            onRowClick={(row) =>
-              navigate({
-                to: "/entities/$entityId",
-                params: { entityId: row.connectorEntityId as string },
-              })
-            }
+            // #794: a member opens its entity through a link.
+            rowHref={(row) => `/entities/${String(row.connectorEntityId)}`}
+            linkComponent={RouterLink}
           />
         </PageSection>
       </Stack>

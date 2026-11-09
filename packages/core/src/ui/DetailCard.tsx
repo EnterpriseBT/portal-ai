@@ -1,13 +1,15 @@
 import React from "react";
 import MuiCard from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import CardActionArea from "@mui/material/CardActionArea";
+import ButtonBase from "@mui/material/ButtonBase";
+import MuiLink from "@mui/material/Link";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import MuiTypography from "@mui/material/Typography";
 
 import { visibleActionItems } from "./ActionsMenu.js";
 import { ActionsSuite } from "./ActionsSuite.js";
+import { followClick, isControlClick } from "./click-target.js";
 import type { ActionSuiteItem } from "./ActionsSuite.js";
 
 export interface DetailCardProps {
@@ -19,8 +21,15 @@ export interface DetailCardProps {
   children?: React.ReactNode;
   /** Action buttons rendered at the trailing edge of the title row. */
   actions?: ActionSuiteItem[];
-  /** When provided, the card becomes clickable and calls this handler. */
+  /**
+   * The card runs an action (opens a dialog): its title becomes a button.
+   * For navigation pass `href` instead, so it's a link (#794).
+   */
   onClick?: () => void;
+  /** The card navigates: its title becomes a link to this href (#794). */
+  href?: string;
+  /** Element the title link renders as (the app passes its router link). Default `"a"`. */
+  linkComponent?: React.ElementType;
   /**
    * The title's heading level (#793). A card's title is a heading, so
    * screen-reader users can move between cards; 3 sits under a page's h1 and
@@ -41,6 +50,8 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
       children,
       actions,
       onClick,
+      href,
+      linkComponent,
       headingLevel = 3,
       variant = "outlined",
       className,
@@ -50,6 +61,60 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
   ) => {
     // #688: hidden actions don't count.
     const hasActions = visibleActionItems(actions).length > 0;
+    const titleId = React.useId();
+    const titleRef = React.useRef<HTMLElement>(null);
+    const clickable = Boolean(href || onClick);
+    const both = Boolean(href && onClick);
+    // Said once, not per render: with both, the link wins and onClick never
+    // runs.
+    React.useEffect(() => {
+      if (both && process.env.NODE_ENV !== "production") {
+        console.error(
+          "DetailCard: pass href or onClick, not both; onClick is ignored."
+        );
+      }
+    }, [both]);
+
+    // #794: the title is the card's one control, named by the title alone.
+    // A click elsewhere on the card (outside its actions) activates it, so
+    // the whole card stays a pointer target while hover content in the body
+    // (tooltips) still works.
+    // A Ctrl/Cmd or middle click opens a link card in a new tab.
+    const followTitle = (e: React.MouseEvent<HTMLElement>) => {
+      if (isControlClick(e.target, e.currentTarget)) return;
+      followClick(titleRef.current, e);
+    };
+
+    const titleControl = href ? (
+      <MuiLink
+        ref={titleRef as React.Ref<HTMLAnchorElement>}
+        component={linkComponent ?? "a"}
+        href={href}
+        color="inherit"
+        underline="hover"
+        data-card-title=""
+      >
+        {title}
+      </MuiLink>
+    ) : onClick ? (
+      <ButtonBase
+        ref={titleRef as React.Ref<HTMLButtonElement>}
+        onClick={onClick}
+        data-card-title=""
+        // sx in core, with a reason: a title-styled button, not a box. Inline,
+        // so the heading's ellipsis still truncates a long title.
+        sx={{
+          font: "inherit",
+          textAlign: "left",
+          verticalAlign: "baseline",
+          display: "inline",
+        }}
+      >
+        {title}
+      </ButtonBase>
+    ) : (
+      title
+    );
 
     const titleRow = (
       <Stack
@@ -75,6 +140,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
           variant="subtitle1"
           // The theme maps subtitles to <p>; a card title is a heading.
           component={`h${headingLevel}`}
+          id={titleId}
           sx={{
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -82,49 +148,31 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
             fontWeight: 600,
           }}
         >
-          {title}
+          {titleControl}
         </MuiTypography>
       </Stack>
     );
 
     const body = children ? <Box>{children}</Box> : null;
 
-    if (onClick) {
-      return (
-        <MuiCard ref={ref} variant={variant} className={className} {...rest}>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            alignItems={{ xs: "flex-start", sm: "center" }}
-            justifyContent="space-between"
-          >
-            <CardActionArea onClick={onClick} sx={{ flex: 1, minWidth: 0 }}>
-              <CardContent>
-                <Stack spacing={1.5}>
-                  {titleRow}
-                  {body}
-                </Stack>
-              </CardContent>
-            </CardActionArea>
-
-            {hasActions && (
-              <Box
-                sx={{
-                  flexShrink: 0,
-                  px: 2,
-                  pt: { xs: 0.5, sm: 1 },
-                  pb: { xs: 1.5, sm: 1 },
-                }}
-              >
-                <ActionsSuite items={actions ?? []} />
-              </Box>
-            )}
-          </Stack>
-        </MuiCard>
-      );
-    }
-
     return (
-      <MuiCard ref={ref} variant={variant} className={className} {...rest}>
+      <MuiCard
+        ref={ref}
+        variant={variant}
+        className={className}
+        onClick={clickable ? followTitle : undefined}
+        onAuxClick={href ? followTitle : undefined}
+        // sx in core, with a reason: a clickable card shows it's one target.
+        sx={
+          clickable
+            ? {
+                cursor: "pointer",
+                "&:hover": { backgroundColor: "action.hover" },
+              }
+            : undefined
+        }
+        {...rest}
+      >
         <CardContent>
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -139,7 +187,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
 
             {hasActions && (
               <Box sx={{ flexShrink: 0 }}>
-                <ActionsSuite items={actions ?? []} />
+                <ActionsSuite items={actions ?? []} describedBy={titleId} />
               </Box>
             )}
           </Stack>

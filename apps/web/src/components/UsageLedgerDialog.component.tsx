@@ -101,6 +101,7 @@ export const UsageLedgerDialogUI: React.FC<UsageLedgerDialogUIProps> = ({
           </Box>
         ) : (
           <DataTable
+            label="Usage ledger"
             columns={LEDGER_COLUMNS}
             rows={entries as unknown as Record<string, unknown>[]}
             sortColumn={sortBy}

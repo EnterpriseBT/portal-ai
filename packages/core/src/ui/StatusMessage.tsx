@@ -4,6 +4,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import { Icon, IconName } from "./Icon.js";
+import { visuallyHidden } from "./visually-hidden.js";
 
 export type StatusMessageVariant = "error" | "warning" | "info" | "success";
 
@@ -14,6 +15,12 @@ export interface StatusMessageProps {
   loading?: boolean;
   tooltip?: string;
   className?: string;
+  /**
+   * Screen-reader only (#794): just the live element and its text. Mount it
+   * for the owner's lifetime and change `message`; a region that arrives
+   * already holding its text may not be read.
+   */
+  visuallyHidden?: boolean;
   [key: `data-${string}`]: string;
 }
 
@@ -43,11 +50,27 @@ export const StatusMessage = React.forwardRef<
       loading = false,
       tooltip,
       className,
+      visuallyHidden: hidden = false,
       ...rest
     },
     ref
   ) => {
     const displayMessage = message || error?.message;
+    const role = variant === "error" && !loading ? "alert" : "status";
+
+    if (hidden) {
+      return (
+        <div
+          ref={ref}
+          className={className}
+          role={role}
+          style={visuallyHidden}
+          {...rest}
+        >
+          {displayMessage}
+        </div>
+      );
+    }
     const color = variantColorMap[variant];
 
     const content = (
@@ -60,7 +83,7 @@ export const StatusMessage = React.forwardRef<
         className={className}
         // An error interrupts; anything else (loading included) waits its
         // turn (WCAG 4.1.3, #797).
-        role={variant === "error" && !loading ? "alert" : "status"}
+        role={role}
         {...rest}
       >
         {loading ? (

@@ -140,6 +140,7 @@ export const AuditLogActivityUI: React.FC<AuditLogActivityUIProps> = ({
       </Box>
     ) : (
       <DataTable
+        label="Audit log"
         columns={AUDIT_COLUMNS}
         rows={entries as unknown as Record<string, unknown>[]}
         sortColumn={sortBy}

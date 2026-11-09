@@ -27,12 +27,17 @@ export interface ActionsSuiteProps {
   items: ActionSuiteItem[];
   /** MUI button size applied to all buttons. Defaults to "small". */
   size?: MuiButtonProps["size"];
+  /**
+   * Id(s) every button is described by (#794): a card passes its title, so
+   * "Delete" reads with the card it deletes. A gate's reason is added to it.
+   */
+  describedBy?: string;
   className?: string;
   [key: `data-${string}`]: string;
 }
 
 export const ActionsSuite = React.forwardRef<HTMLDivElement, ActionsSuiteProps>(
-  ({ items, size = "small", className, ...rest }, ref) => {
+  ({ items, size = "small", className, describedBy, ...rest }, ref) => {
     const visible = visibleActionItems(items);
     if (visible.length === 0) return null;
 
@@ -56,6 +61,7 @@ export const ActionsSuite = React.forwardRef<HTMLDivElement, ActionsSuiteProps>(
             gate={item.gate}
             startIcon={item.icon}
             onClick={item.onClick}
+            aria-describedby={describedBy}
           >
             {item.label}
           </GatedButton>

@@ -45,7 +45,6 @@ export interface DefaultStationCardUIProps {
   station: (Station & { enabledToolpacks?: string[] }) | null;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
-  onViewStation?: (stationId: string) => void;
   /**
    * Built-in pack slugs the org's tier includes (#284). Chips for packs
    * outside the set render inert with the reason named. Defaults to every
@@ -58,7 +57,6 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   station,
   onLaunchPortal,
   onChangeDefault,
-  onViewStation,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   if (!station) {
@@ -81,7 +79,6 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
     <DetailCard
       title={station.name}
       data-testid="default-station-card"
-      onClick={onViewStation ? () => onViewStation(station.id) : undefined}
       actions={[
         {
           label: "Open Portal",
@@ -154,12 +151,11 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
 export interface DefaultStationCardConnectedProps {
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
-  onViewStation?: (stationId: string) => void;
 }
 
 export const DefaultStationCardConnected: React.FC<
   DefaultStationCardConnectedProps
-> = ({ onLaunchPortal, onChangeDefault, onViewStation }) => {
+> = ({ onLaunchPortal, onChangeDefault }) => {
   // #284: entitlements for the attached-pack chips below.
   const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
   return (
@@ -192,7 +188,6 @@ export const DefaultStationCardConnected: React.FC<
                           station={payload.station}
                           onLaunchPortal={onLaunchPortal}
                           onChangeDefault={onChangeDefault}
-                          onViewStation={onViewStation}
                           entitledBuiltinSlugs={entitledBuiltinSlugs}
                         />
                       );

@@ -137,8 +137,6 @@ export interface EntityDetailViewUIProps {
   lastSyncAt?: number | null;
   /** Field mappings of type reference-array that have a back-reference configured. */
   bidirectionalFieldMappings?: BidirectionalFieldMappingRef[];
-  /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
-  onRecordClick?: (recordId: string) => void;
   /** Tags currently assigned to this entity. */
   tags?: AssignedEntityTag[];
   /** Called when a tag is selected for assignment. */
@@ -206,7 +204,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   recordCount,
   lastSyncAt,
   bidirectionalFieldMappings,
-  onRecordClick,
   tags,
   onAssignTag,
   onUnassignTag,
@@ -545,18 +542,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                             rowRecordId.set(row, r.id);
                             return row;
                           });
-                        const handleRowClick = (
-                          row: Record<string, unknown>
-                        ) => {
+                        // #794: a record opens through its row's link.
+                        // A row without a record id gets no link, not a
+                        // link to a broken route.
+                        const recordHref = (row: Record<string, unknown>) => {
                           const recordId = rowRecordId.get(row);
-                          if (!recordId) return;
-                          if (onRecordClick) {
-                            onRecordClick(recordId);
-                          } else {
-                            void navigate({
-                              to: `/entities/${entity.id}/records/${recordId}`,
-                            });
-                          }
+                          return recordId
+                            ? `/entities/${entity.id}/records/${recordId}`
+                            : "";
                         };
                         return (
                           <SyncColumns
@@ -571,7 +564,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                               sortColumn={pagination.sortBy}
                               sortDirection={pagination.sortOrder}
                               onSort={handleSort}
-                              onRowClick={handleRowClick}
+                              rowHref={recordHref}
                             />
                           </SyncColumns>
                         );

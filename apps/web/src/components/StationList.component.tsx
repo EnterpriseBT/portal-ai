@@ -7,6 +7,7 @@ import type {
 } from "@portalai/core/contracts";
 import type { OrganizationGetResponse } from "@portalai/core/contracts";
 import {
+  CardList,
   DetailCard,
   Icon,
   IconName,
@@ -16,6 +17,7 @@ import {
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { EmptyResults } from "./EmptyResults.component";
+import { RouterLink } from "./RouterLink.component";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import StarIcon from "@mui/icons-material/Star";
@@ -72,7 +74,6 @@ export interface StationCardUIProps {
    *  (`station.default.set`, owner/admin). */
   canSetDefault: boolean;
   onSetDefault: (station: Station) => void;
-  onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
   /**
    * Built-in pack slugs the org's tier includes (#284). Chips for packs
@@ -88,7 +89,6 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   isDefault,
   canSetDefault,
   onSetDefault,
-  onOpen,
   onDelete,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
@@ -116,7 +116,10 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   return (
     <DetailCard
       title={station.name}
-      onClick={() => onOpen(station)}
+      // #794: the card opens its station through its title's link.
+      href={`/stations/${station.id}`}
+      linkComponent={RouterLink}
+      headingLevel={2}
       actions={actions}
       data-testid="station-card"
     >
@@ -171,7 +174,6 @@ export interface StationListUIProps {
   /** #690: see {@link StationCardUIProps.canSetDefault}. */
   canSetDefault: boolean;
   onSetDefault: (station: Station) => void;
-  onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
   /** When true, shows a "no results" message instead of the full empty state. */
   hasActiveFilters?: boolean;
@@ -189,7 +191,6 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   defaultStationId,
   canSetDefault,
   onSetDefault,
-  onOpen,
   onDelete,
   hasActiveFilters,
   entitledBuiltinSlugs,
@@ -207,7 +208,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   }
 
   return (
-    <Stack spacing={1}>
+    <CardList aria-label="Stations">
       {stations.map((station) => (
         <StationCardUI
           key={station.id}
@@ -215,12 +216,11 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           isDefault={station.id === defaultStationId}
           canSetDefault={canSetDefault}
           onSetDefault={onSetDefault}
-          onOpen={onOpen}
           onDelete={onDelete}
           entitledBuiltinSlugs={entitledBuiltinSlugs}
         />
       ))}
-    </Stack>
+    </CardList>
   );
 };
 
@@ -230,7 +230,6 @@ export interface StationListConnectedProps {
   query: StationListRequestQuery;
   setTotal: (t: number) => void;
   onSetDefault: (station: Station) => void;
-  onOpen: (station: Station) => void;
   hasActiveFilters?: boolean;
   onDelete: (station: Station) => void;
 }
@@ -239,7 +238,6 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   query,
   setTotal,
   onSetDefault,
-  onOpen,
   onDelete,
   hasActiveFilters,
 }) => {
@@ -265,7 +263,6 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                         org.capabilities?.["station.default.set"] ?? false
                       }
                       onSetDefault={onSetDefault}
-                      onOpen={onOpen}
                       onDelete={onDelete}
                       hasActiveFilters={hasActiveFilters}
                       entitledBuiltinSlugs={entitledBuiltinSlugs}

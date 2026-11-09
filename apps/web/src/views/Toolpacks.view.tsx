@@ -14,6 +14,7 @@ import {
   type DataTableColumn,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
@@ -153,10 +154,20 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         key: "name",
         label: "Name",
         sortable: true,
-        onCellClick: (_v, _c, row) => {
-          const tp = toolpacks.find((t) => t.id === row.id);
-          if (tp) onSelect(tp);
-        },
+        // #794: opening a pack's details is an action, so the name is a
+        // button a keyboard reaches; the row click stays for pointers.
+        render: (value, row) => (
+          <Link
+            component="button"
+            type="button"
+            onClick={() => {
+              const tp = toolpacks.find((t) => t.id === row.id);
+              if (tp) onSelect(tp);
+            }}
+          >
+            {String(value)}
+          </Link>
+        ),
       },
       {
         key: "kind",
@@ -218,6 +229,8 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       render: (_value, row) => {
         const tp = toolpacks.find((t) => t.id === row.id);
         if (!tp || tp.kind !== "custom") return null;
+        // #794: each action names its pack, so a list of "Edit" buttons
+        // says which is which.
         // #691: a pack's actions follow its own capabilities (a custom pack
         // is its creator's; owner/admin write any). Refresh and Edit rewrite
         // the pack, so both need write.
@@ -229,7 +242,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
             {onRefresh && canWrite && (
               <IconButton
                 size="small"
-                aria-label="Refresh toolpack schema"
+                aria-label={`Refresh ${tp.name} schema`}
                 disabled={refreshingId === tp.id}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -249,7 +262,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
             {onEdit && canWrite && (
               <IconButton
                 size="small"
-                aria-label="Edit toolpack"
+                aria-label={`Edit ${tp.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(tp);
@@ -262,7 +275,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
               <IconButton
                 size="small"
                 color="error"
-                aria-label="Delete toolpack"
+                aria-label={`Delete ${tp.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(tp);
@@ -358,6 +371,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         <PaginationToolbar {...pagination.toolbarProps} />
 
         <DataTable
+          label="Toolpacks"
           columns={columns}
           rows={pagedRows as unknown as Record<string, unknown>[]}
           sortColumn={pagination.sortBy}
