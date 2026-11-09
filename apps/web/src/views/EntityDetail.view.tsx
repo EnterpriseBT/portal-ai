@@ -543,8 +543,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                             return row;
                           });
                         // #794: a record opens through its row's link.
-                        const recordHref = (row: Record<string, unknown>) =>
-                          `/entities/${entity.id}/records/${rowRecordId.get(row) ?? ""}`;
+                        // A row without a record id gets no link, not a
+                        // link to a broken route.
+                        const recordHref = (row: Record<string, unknown>) => {
+                          const recordId = rowRecordId.get(row);
+                          return recordId
+                            ? `/entities/${entity.id}/records/${recordId}`
+                            : "";
+                        };
                         return (
                           <SyncColumns
                             columns={records.columns}

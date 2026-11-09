@@ -40,6 +40,7 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import { GatedIconButton } from "./GatedIconButton.js";
 import { IconName } from "./Icon.js";
 import { useGridNavigation } from "./use-grid-navigation.js";
+import { followClick, isControlClick } from "./click-target.js";
 import { visuallyHidden } from "./visually-hidden.js";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -108,11 +109,17 @@ export interface DataTableBaseProps {
   /**
    * Where the row leads (#794). The primary cell renders as a link to it, and
    * a click elsewhere on the row follows that link, so opening a row is
-   * navigation a keyboard can reach. Takes precedence over `onRowClick`.
+   * navigation a keyboard can reach. Takes precedence over `onRowClick`. An
+   * empty string renders no link for that row.
    */
   rowHref?: (row: Record<string, unknown>) => string;
   /** Key of the column whose cell carries the row link. Default: the first visible column. */
   primaryColumn?: string;
+  /**
+   * The row link's name, when the primary cell's content can't name it (an
+   * empty value, a JSON block). Include the visible text, if any (WCAG 2.5.3).
+   */
+  rowLinkLabel?: (row: Record<string, unknown>) => string;
   /** Element the row link renders as (the app passes its router link). Default `"a"`. */
   linkComponent?: React.ElementType;
   /**
@@ -390,10 +397,6 @@ const ColumnConfigMenu: React.FC<ColumnConfigMenuProps> = ({
 
 // ── DataTable ───────────────────────────────────────────────────────
 
-/** Elements whose own click a row click must not override (#794). */
-const INTERACTIVE =
-  "a, button, input, select, textarea, [role=button], [role=checkbox], [role=combobox], [tabindex]:not([tabindex='-1'])";
-
 const renderCell = (
   col: DataTableColumn,
   row: Record<string, unknown>
@@ -420,6 +423,7 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
       onColumnConfigChange,
       onRowClick,
       rowHref,
+      rowLinkLabel,
       primaryColumn,
       linkComponent,
       label,
@@ -459,12 +463,13 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
 
     // A click on the row outside any control follows the row's link, so the
     // router handles it; a control in the row keeps its own click (#794).
+    // A Ctrl/Cmd or middle click opens it in a new tab, as on the link.
     const followRowLink = (e: React.MouseEvent<HTMLTableRowElement>) => {
-      const target = e.target as HTMLElement;
-      if (target.closest(INTERACTIVE)) return;
-      e.currentTarget
-        .querySelector<HTMLAnchorElement>("a[data-row-link]")
-        ?.click();
+      if (isControlClick(e.target, e.currentTarget)) return;
+      followClick(
+        e.currentTarget.querySelector<HTMLAnchorElement>("a[data-row-link]"),
+        e
+      );
     };
 
     if (visibleColumns.length === 0 && rows.length === 0) {
@@ -577,14 +582,13 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                         : onRowClick
                           ? (e) => {
                               // A control in the row keeps its own click.
-                              if (
-                                (e.target as HTMLElement).closest(INTERACTIVE)
-                              )
+                              if (isControlClick(e.target, e.currentTarget))
                                 return;
                               onRowClick(row, idx);
                             }
                           : undefined
                     }
+                    onAuxClick={rowHref ? followRowLink : undefined}
                     sx={
                       rowHref || onRowClick
                         ? {
@@ -617,11 +621,12 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                             : undefined
                         }
                       >
-                        {col.key === linkColumn && rowHref ? (
+                        {col.key === linkColumn && rowHref?.(row) ? (
                           <MuiLink
                             component={linkComponent ?? "a"}
                             href={rowHref(row)}
                             data-row-link=""
+                            aria-label={rowLinkLabel?.(row)}
                           >
                             {renderCell(col, row)}
                           </MuiLink>

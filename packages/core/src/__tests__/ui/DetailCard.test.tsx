@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { DetailCard } from "../../ui/DetailCard";
@@ -137,6 +137,34 @@ describe("DetailCard Component", () => {
       expect(handleClick).toHaveBeenCalledTimes(1);
       await userEvent.click(screen.getByRole("button", { name: "Alpha" }));
       expect(handleClick).toHaveBeenCalledTimes(2);
+    });
+
+    it("opens a link card in a new tab on Ctrl/Cmd-click of its body", () => {
+      const open = jest.spyOn(window, "open").mockImplementation(() => null);
+      render(
+        <DetailCard title="Alpha" href="/alpha">
+          <p>Body text</p>
+        </DetailCard>
+      );
+      fireEvent.click(screen.getByText("Body text"), { metaKey: true });
+      expect(open).toHaveBeenCalledWith(
+        expect.stringContaining("/alpha"),
+        "_blank",
+        "noopener"
+      );
+      open.mockRestore();
+    });
+
+    it("says once, not per render, that href and onClick don't mix", () => {
+      const error = jest.spyOn(console, "error").mockImplementation(() => {});
+      const { rerender } = render(
+        <DetailCard title="Alpha" href="/alpha" onClick={() => {}} />
+      );
+      rerender(<DetailCard title="Alpha!" href="/alpha" onClick={() => {}} />);
+      expect(
+        error.mock.calls.filter((c) => String(c[0]).includes("href or onClick"))
+      ).toHaveLength(1);
+      error.mockRestore();
     });
 
     it("should call action onClick without triggering card onClick", async () => {

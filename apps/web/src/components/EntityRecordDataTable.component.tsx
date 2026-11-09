@@ -199,6 +199,21 @@ export const EntityRecordDataTableUI: React.FC<
     defaultVisibleCount: isSmallScreen ? 5 : 8,
   });
 
+  // The first visible cell can be empty, "—" or a JSON block, so the link
+  // names the record: its first value when that's text, else its row number
+  // (code review, #794). The visible text stays in the name (WCAG 2.5.3).
+  const firstVisibleKey = columnConfig.find((c) => c.visible)?.key;
+  const recordLinkLabel = (row: Record<string, unknown>) => {
+    const value = firstVisibleKey ? row[firstVisibleKey] : undefined;
+    const text =
+      typeof value === "string" || typeof value === "number"
+        ? String(value).trim()
+        : "";
+    return text
+      ? `Open record ${text}`
+      : `Open record ${rows.indexOf(row) + 1}`;
+  };
+
   return (
     <Stack spacing={1}>
       <DataTable
@@ -222,6 +237,7 @@ export const EntityRecordDataTableUI: React.FC<
         columnConfig={columnConfig}
         onColumnConfigChange={setColumnConfig}
         rowHref={rowHref}
+        rowLinkLabel={recordLinkLabel}
         linkComponent={RouterLink}
       />
     </Stack>

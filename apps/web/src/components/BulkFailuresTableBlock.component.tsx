@@ -18,7 +18,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { visuallyHidden } from "@portalai/core/ui";
+import { VisuallyHidden } from "@portalai/core/ui";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -110,9 +110,7 @@ export const BulkFailuresTableBlockUI: React.FC<
             <TableRow>
               {/* #794: the toggle column's header has a name. */}
               <TableCell>
-                <Box component="span" sx={visuallyHidden}>
-                  Details
-                </Box>
+                <VisuallyHidden>Details</VisuallyHidden>
               </TableCell>
               <TableCell>sourceKey</TableCell>
               <TableCell>code</TableCell>

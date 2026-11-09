@@ -95,10 +95,17 @@ export function useGridNavigation({
     ) ?? null;
 
   const moveTo = (r: number, c: number) => {
-    const next = { row: clamp(r, rowCount - 1), col: clamp(c, colCount - 1) };
-    setActive(next);
+    const nextRow = clamp(r, rowCount - 1);
+    // A row can have fewer cells than columns (an empty state's one colSpan
+    // cell), so land on the nearest cell that exists rather than lose the
+    // grid's tab stop.
+    let nextCol = clamp(c, colCount - 1);
+    while (nextCol > 0 && !cellAt(nextRow, nextCol)) nextCol -= 1;
+    const cell = cellAt(nextRow, nextCol);
+    if (!cell) return;
+    setActive({ row: nextRow, col: nextCol });
     setInteracting(false);
-    cellAt(next.row, next.col)?.focus();
+    cell.focus();
   };
 
   const coordsOf = (cell: Element) => {

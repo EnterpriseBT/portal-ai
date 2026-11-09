@@ -204,4 +204,44 @@ describe("useGridNavigation", () => {
     expect(stops).toHaveLength(1);
     expect(stops[0]).toBe(at(1, 1));
   });
+
+  // Code review: an empty state's single colSpan cell must not strand focus.
+  it("keeps a tab stop in an empty grid whose body is one cell", async () => {
+    const Empty: React.FC = () => {
+      const { gridProps, cellProps } = useGridNavigation({
+        rowCount: 2,
+        colCount: 3,
+      });
+      return (
+        <table role="grid" aria-label="Empty" {...gridProps}>
+          <thead>
+            <tr role="row">
+              {["A", "B", "C"].map((h, c) => (
+                <th key={h} role="columnheader" {...cellProps(0, c)}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr role="row">
+              <td role="gridcell" colSpan={3} {...cellProps(1, 0)}>
+                Nothing yet
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      );
+    };
+    const user = userEvent.setup();
+    render(<Empty />);
+    act(() => header("C").focus());
+    await user.keyboard("{ArrowDown}");
+    expect(cell("Nothing yet")).toHaveFocus();
+    await user.keyboard("{End}{ArrowRight}");
+    expect(cell("Nothing yet")).toHaveFocus();
+    expect(
+      document.querySelectorAll('[data-grid-cell][tabindex="0"]')
+    ).toHaveLength(1);
+  });
 });

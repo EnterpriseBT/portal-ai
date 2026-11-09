@@ -9,6 +9,7 @@ import MuiTypography from "@mui/material/Typography";
 
 import { visibleActionItems } from "./ActionsMenu.js";
 import { ActionsSuite } from "./ActionsSuite.js";
+import { followClick, isControlClick } from "./click-target.js";
 import type { ActionSuiteItem } from "./ActionsSuite.js";
 
 export interface DetailCardProps {
@@ -41,10 +42,6 @@ export interface DetailCardProps {
   [key: `data-${string}`]: string;
 }
 
-/** Elements whose own click a card click must not override (#794). */
-const CARD_INTERACTIVE =
-  "a, button, input, select, textarea, [role=button], [role=checkbox], [tabindex]:not([tabindex='-1'])";
-
 export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
   (
     {
@@ -67,19 +64,25 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
     const titleId = React.useId();
     const titleRef = React.useRef<HTMLElement>(null);
     const clickable = Boolean(href || onClick);
-    if (href && onClick && process.env.NODE_ENV !== "production") {
-      console.error("DetailCard: pass href or onClick, not both.");
-    }
+    const both = Boolean(href && onClick);
+    // Said once, not per render: with both, the link wins and onClick never
+    // runs.
+    React.useEffect(() => {
+      if (both && process.env.NODE_ENV !== "production") {
+        console.error(
+          "DetailCard: pass href or onClick, not both; onClick is ignored."
+        );
+      }
+    }, [both]);
 
     // #794: the title is the card's one control, named by the title alone.
     // A click elsewhere on the card (outside its actions) activates it, so
     // the whole card stays a pointer target while hover content in the body
     // (tooltips) still works.
+    // A Ctrl/Cmd or middle click opens a link card in a new tab.
     const followTitle = (e: React.MouseEvent<HTMLElement>) => {
-      const target = e.target as HTMLElement;
-      if (titleRef.current?.contains(target)) return;
-      if (target.closest(CARD_INTERACTIVE)) return;
-      titleRef.current?.click();
+      if (isControlClick(e.target, e.currentTarget)) return;
+      followClick(titleRef.current, e);
     };
 
     const titleControl = href ? (
@@ -98,8 +101,14 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
         ref={titleRef as React.Ref<HTMLButtonElement>}
         onClick={onClick}
         data-card-title=""
-        // sx in core, with a reason: a title-styled button, not a box.
-        sx={{ font: "inherit", textAlign: "left", verticalAlign: "baseline" }}
+        // sx in core, with a reason: a title-styled button, not a box. Inline,
+        // so the heading's ellipsis still truncates a long title.
+        sx={{
+          font: "inherit",
+          textAlign: "left",
+          verticalAlign: "baseline",
+          display: "inline",
+        }}
       >
         {title}
       </ButtonBase>
@@ -152,6 +161,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
         variant={variant}
         className={className}
         onClick={clickable ? followTitle : undefined}
+        onAuxClick={href ? followTitle : undefined}
         // sx in core, with a reason: a clickable card shows it's one target.
         sx={
           clickable

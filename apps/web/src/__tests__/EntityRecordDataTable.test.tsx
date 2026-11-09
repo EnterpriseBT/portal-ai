@@ -286,6 +286,25 @@ describe("EntityRecordDataTableUI", () => {
     );
   });
 
+  // Code review: a record link is named even when its cell isn't text.
+  it("names each record link by its first value, or its row number", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ first_name: "Jane" }, { first_name: "" }]}
+        columns={columns}
+        source="cache"
+        rowHref={(row) => `/records/${String(row.first_name) || "x"}`}
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: "Open record Jane" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open record 2" })
+    ).toBeInTheDocument();
+  });
+
   it("renders column type as caption in each header", () => {
     render(
       <EntityRecordDataTableUI

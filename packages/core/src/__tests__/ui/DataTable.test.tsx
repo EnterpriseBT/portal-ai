@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import {
@@ -674,6 +674,95 @@ describe("DataTable accessibility (#794)", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Alice" }));
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  // Code review: a forwarded row click keeps the user's intent.
+  describe("row link click forwarding", () => {
+    let open: jest.SpiedFunction<typeof window.open>;
+    beforeEach(() => {
+      open = jest.spyOn(window, "open").mockImplementation(() => null);
+    });
+    afterEach(() => open.mockRestore());
+
+    const renderLinked = (
+      extra: Partial<React.ComponentProps<typeof DataTable>> = {}
+    ) =>
+      render(
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          rowHref={(row) => `/people/${row.name}`}
+          {...(extra as object)}
+        />
+      );
+
+    it("opens the row in a new tab on Ctrl/Cmd-click or middle click", () => {
+      renderLinked();
+      fireEvent.click(screen.getByText("alice@ex.com"), { ctrlKey: true });
+      expect(open).toHaveBeenLastCalledWith(
+        expect.stringContaining("/people/Alice"),
+        "_blank",
+        "noopener"
+      );
+      fireEvent(
+        screen.getByText("bob@ex.com"),
+        new MouseEvent("auxclick", { bubbles: true, button: 1 })
+      );
+      expect(open).toHaveBeenLastCalledWith(
+        expect.stringContaining("/people/Bob"),
+        "_blank",
+        "noopener"
+      );
+    });
+
+    it("renders no link for a row whose href is empty", () => {
+      render(
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          rowHref={(row) => (row.name === "Bob" ? "" : `/people/${row.name}`)}
+        />
+      );
+      expect(screen.getAllByRole("link")).toHaveLength(1);
+    });
+
+    it("names the link with rowLinkLabel", () => {
+      render(
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          rowHref={(row) => `/people/${row.name}`}
+          rowLinkLabel={(row) => `Open ${String(row.name)}`}
+        />
+      );
+      expect(
+        screen.getByRole("link", { name: "Open Alice" })
+      ).toBeInTheDocument();
+    });
+
+    it("follows the link from a grid's active cell, which isn't a control", async () => {
+      const onLinkClick = jest.fn((e: Event) => e.preventDefault());
+      render(
+        <DataTable
+          label="People"
+          variant="grid"
+          columns={columns}
+          rows={rows}
+          rowHref={(row) => `/people/${row.name}`}
+        />
+      );
+      screen
+        .getByRole("link", { name: "Alice" })
+        .addEventListener("click", onLinkClick);
+      const emailCell = screen.getByRole("gridcell", { name: "alice@ex.com" });
+      act(() => emailCell.focus());
+      expect(emailCell).toHaveAttribute("tabindex", "0");
+      await userEvent.click(screen.getByText("alice@ex.com"));
+      expect(onLinkClick).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("names a header with no visible label through headerLabel", () => {
