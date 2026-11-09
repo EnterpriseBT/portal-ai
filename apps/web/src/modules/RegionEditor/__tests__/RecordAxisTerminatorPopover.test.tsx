@@ -1,12 +1,13 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { Terminator } from "@portalai/core/contracts";
 
 import {
   RecordAxisTerminatorPopoverUI,
   type RecordAxisTerminatorPopoverUIProps,
 } from "../RecordAxisTerminatorPopover.component";
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 function setup(overrides: Partial<RecordAxisTerminatorPopoverUIProps> = {}) {
   const anchor = document.createElement("button");
@@ -82,5 +83,23 @@ describe("RecordAxisTerminatorPopoverUI", () => {
   it("renders the records axis label in the header", () => {
     setup({ recordsAxis: "column" });
     expect(screen.getByText(/extent · column axis/i)).toBeInTheDocument();
+  });
+});
+
+describe("RecordAxisTerminatorPopoverUI — focus and roles (#795)", () => {
+  it("focuses its first field when it opens", async () => {
+    setup();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: /grow until terminator/i })
+      ).toHaveFocus()
+    );
+  });
+
+  it("is a named dialog with no axe violations", async () => {
+    setup({ terminator: { kind: "untilBlank", consecutiveBlanks: 2 } });
+    await expectNoAxeViolations(
+      screen.getByRole("dialog", { name: "Region extent" })
+    );
   });
 });

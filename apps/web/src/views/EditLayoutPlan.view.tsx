@@ -27,9 +27,12 @@ import { FormAlert } from "../components/FormAlert.component";
 import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
+import { patchBinding } from "../workflows/_shared/spreadsheet/use-spreadsheet-workflow.util";
+import { useBindingEditorResolvers } from "../workflows/_shared/spreadsheet/use-binding-editor-resolvers.util";
 import { serverErrorMessage } from "../utils/permission-denied.util";
 import type {
   CellBounds,
+  ColumnBindingDraft,
   EntityOption,
   LoadSliceFn,
   RegionDraft,
@@ -137,7 +140,21 @@ export interface EditLayoutPlanViewUIProps {
   onRegionDelete: (regionId: string) => void;
   onRegionResize: (regionId: string, nextBounds: CellBounds) => void;
   onJumpToRegion: (regionId: string) => void;
-  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  /**
+   * The review step's binding editor (#795): a chip opens it, and a save
+   * patches the region's binding in the page's draft.
+   */
+  bindingEditor?: Pick<
+    React.ComponentProps<typeof RegionEditorUI>,
+    | "onUpdateBinding"
+    | "onToggleBindingExcluded"
+    | "columnDefinitionSearch"
+    | "resolveReferenceOptions"
+    | "resolveReferenceFieldOptions"
+    | "resolveColumnDefinitionType"
+    | "resolveColumnDefinitionDescription"
+    | "resolveColumnLabel"
+  >;
   onCommit: () => void;
   /**
    * Wired to the ReviewStep's "Back to regions" button — steps from
@@ -203,7 +220,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onRegionDelete,
   onRegionResize,
   onJumpToRegion,
-  onEditBinding,
+  bindingEditor,
   onCommit,
   onBack,
   onLeaveView,
@@ -358,7 +375,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onInterpret={onInterpret}
           isInterpreting={isInterpreting}
           onJumpToRegion={onJumpToRegion}
-          onEditBinding={onEditBinding}
+          {...bindingEditor}
           onCommit={onCommit}
           onBack={onBack}
           isCommitting={isCommitting}
@@ -465,6 +482,39 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   // Local editor state — initialized from the edit-context plan and the
   // preview workbook on first render after the query resolves.
   const [regions, setRegions] = useState<RegionDraft[]>([]);
+
+  // The review step's binding editor (#795): the same resolvers the
+  // spreadsheet workflows use, and saves that patch the page's draft.
+  const {
+    columnDefinitionSearch,
+    resolveReferenceOptions,
+    resolveReferenceFieldOptions,
+    resolveColumnDefinitionType,
+    resolveColumnDefinitionDescription,
+    resolveColumnLabel,
+  } = useBindingEditorResolvers(regions);
+  const onUpdateBinding = useCallback(
+    (
+      regionId: string,
+      sourceLocator: string,
+      patch: Partial<ColumnBindingDraft>
+    ) =>
+      setRegions(
+        (prev) =>
+          patchBinding(
+            { regions: prev, plan: null },
+            regionId,
+            sourceLocator,
+            patch
+          ).regions
+      ),
+    []
+  );
+  const onToggleBindingExcluded = useCallback(
+    (regionId: string, sourceLocator: string, excluded: boolean) =>
+      onUpdateBinding(regionId, sourceLocator, { excluded }),
+    [onUpdateBinding]
+  );
   const [activeSheetId, setActiveSheetId] = useState<string>("");
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [step, setStep] = useState<0 | 1>(0);
@@ -867,7 +917,16 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
         setSelectedRegionId(id);
         setStep(0);
       }}
-      onEditBinding={() => undefined}
+      bindingEditor={{
+        onUpdateBinding,
+        onToggleBindingExcluded,
+        columnDefinitionSearch,
+        resolveReferenceOptions,
+        resolveReferenceFieldOptions,
+        resolveColumnDefinitionType,
+        resolveColumnDefinitionDescription,
+        resolveColumnLabel,
+      }}
       onCommit={handleCommit}
       onBack={handleBack}
       onLeaveView={handleLeaveView}

@@ -38,7 +38,11 @@ export interface ReviewStepUIProps {
   regions: RegionDraft[];
   overallConfidence?: number;
   onJumpToRegion: (regionId: string) => void;
-  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  /**
+   * A chip's click when the binding editor isn't wired (no
+   * `onUpdateBinding` / `onToggleBindingExcluded` / `columnDefinitionSearch`).
+   */
+  onEditBinding?: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
   onBack: () => void;
   isCommitting?: boolean;
@@ -286,7 +290,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     anchorEl: HTMLElement
   ) => {
     if (!popoverEnabled) {
-      onEditBinding(region.id, sourceLocator);
+      onEditBinding?.(region.id, sourceLocator);
       return;
     }
     const synthetic = parseSyntheticLocator(sourceLocator);

@@ -7,7 +7,7 @@ import type {
 } from "@portalai/core/contracts";
 import type { ServerError } from "../utils/api.util";
 
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, within } from "./test-utils";
 import { EditLayoutPlanViewUI } from "../views/EditLayoutPlan.view";
 import type { RegionDraft } from "../modules/RegionEditor";
 import { planRegionsToDrafts } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
@@ -112,7 +112,6 @@ const baseProps = {
   onRegionDelete: jest.fn(),
   onRegionResize: jest.fn(),
   onJumpToRegion: jest.fn(),
-  onEditBinding: jest.fn(),
   onCommit: jest.fn(),
   onBack: jest.fn(),
   onLeaveView: jest.fn(),
@@ -285,5 +284,66 @@ describe("EditLayoutPlanViewUI", () => {
     expect(
       screen.getByText(/Blocker warnings — fix them first/i)
     ).toBeInTheDocument();
+  });
+});
+
+describe("EditLayoutPlanViewUI — the review step's binding editor (#795)", () => {
+  it("a chip opens the binding editor, and Omit excludes the binding", async () => {
+    const editContext = makeEditableContext();
+    const [draft] = makeEditableDraftsFromContext(editContext);
+    const regions: RegionDraft[] = [
+      {
+        ...draft,
+        columnBindings: [
+          {
+            sourceLocator: "header:name",
+            columnDefinitionId: "cd_name",
+            columnDefinitionLabel: "Name",
+            confidence: 0.9,
+          },
+        ],
+      },
+    ];
+    const onUpdateBinding = jest.fn();
+    const onToggleBindingExcluded = jest.fn();
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        step={1}
+        bindingEditor={{
+          onUpdateBinding,
+          onToggleBindingExcluded,
+          columnDefinitionSearch: {
+            onSearch: jest.fn(async () => []),
+            onSearchPending: false,
+            onSearchError: null,
+            getById: jest.fn(async () => null),
+            getByIdPending: false,
+            getByIdError: null,
+            labelMap: {},
+          },
+        }}
+      />
+    );
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Edit binding: header:name (bound to Name)",
+      })
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit column binding",
+    });
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", {
+        name: /omit this column from the entity/i,
+      })
+    );
+    expect(onToggleBindingExcluded).toHaveBeenCalledWith(
+      draft.id,
+      "header:name",
+      true
+    );
   });
 });

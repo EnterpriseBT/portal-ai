@@ -3,6 +3,7 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { RegionReviewCardUI } from "../RegionReviewCard.component";
 import type { RegionDraft } from "../utils/region-editor.types";
 
@@ -61,7 +62,7 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
     setup();
     // Non-excluded chip is labelled with its locator; excluded chip says "Excluded".
     const excludedChip = screen.getByRole("button", {
-      name: /excluded.*col:3/i,
+      name: /col:3 \(excluded\)/i,
     });
     expect(excludedChip).toBeInTheDocument();
   });
@@ -77,7 +78,7 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
 
   test("clicking an excluded chip still fires onEditBinding (re-enable affordance)", () => {
     const { onEditBinding } = setup();
-    const chip = screen.getByRole("button", { name: /excluded.*col:3/i });
+    const chip = screen.getByRole("button", { name: /col:3 \(excluded\)/i });
     fireEvent.click(chip);
     expect(onEditBinding).toHaveBeenCalledWith("col:3", chip);
   });
@@ -191,7 +192,7 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
       columnBindings: [],
     });
     const chip = screen.getByRole("button", {
-      name: /edit intersection cell value "revenue"/i,
+      name: /edit intersection cell value: revenue/i,
     });
     fireEvent.click(chip);
     expect(onEditBinding).toHaveBeenCalledWith("intersection:rp1__cp1", chip);
@@ -278,7 +279,7 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
       />
     );
     const pivotChip = screen.getByRole("button", {
-      name: /edit pivot axis "timestamp"/i,
+      name: /edit pivot axis: timestamp/i,
     });
     fireEvent.click(pivotChip);
     expect(onEditBinding).toHaveBeenCalledWith("pivot:pivot-1", pivotChip);
@@ -298,7 +299,7 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
       />
     );
     const cellChip = screen.getByRole("button", {
-      name: /edit cell value "amount"/i,
+      name: /edit cell value: amount/i,
     });
     fireEvent.click(cellChip);
     expect(onEditBinding).toHaveBeenCalledWith("cellValueField", cellChip);
@@ -332,7 +333,7 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: /excluded.*pivot axis "timestamp"/i,
+        name: /pivot axis: timestamp \(excluded\)/i,
       })
     ).toBeInTheDocument();
     expect(screen.getByTestId("chip-icon-excluded")).toBeInTheDocument();
@@ -359,7 +360,7 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: /excluded.*cell value "amount"/i,
+        name: /cell value: amount \(excluded\)/i,
       })
     ).toBeInTheDocument();
   });
@@ -418,7 +419,7 @@ describe("RegionReviewCardUI — invalid chip styling", () => {
       }
     );
     const invalidChip = screen.getByRole("button", {
-      name: /invalid.*header:email/i,
+      name: /header:email \(invalid/i,
     });
     expect(invalidChip).toBeInTheDocument();
     // Surfaces an invalid status icon next to the chip content so the user
@@ -436,7 +437,7 @@ describe("RegionReviewCardUI — invalid chip styling", () => {
     // The excluded chip is still labelled "Excluded" (takes precedence in
     // aria-label — excluded bindings don't carry validation errors).
     expect(
-      screen.getByRole("button", { name: /excluded.*col:3/i })
+      screen.getByRole("button", { name: /col:3 \(excluded\)/i })
     ).toBeInTheDocument();
   });
 
@@ -780,11 +781,11 @@ describe("RegionReviewCardUI — chip sort", () => {
       columnBindings: [],
     });
     const labels = ariaLabelOrder();
-    const yearIdx = labels.findIndex((l) => /pivot axis "year"/i.test(l));
+    const yearIdx = labels.findIndex((l) => /pivot axis: year/i.test(l));
     const revenueIdx = labels.findIndex((l) =>
-      /intersection cell value "revenue"/i.test(l)
+      /intersection cell value: revenue/i.test(l)
     );
-    const companyIdx = labels.findIndex((l) => /pivot axis "company"/i.test(l));
+    const companyIdx = labels.findIndex((l) => /pivot axis: company/i.test(l));
     // year and revenue are unbound (priority 1); company is bound (priority 2).
     expect(yearIdx).toBeLessThan(companyIdx);
     expect(revenueIdx).toBeLessThan(companyIdx);
@@ -1127,7 +1128,7 @@ describe("RegionReviewCardUI — chip tooltip", () => {
       }
     );
     const chip = screen.getByRole("button", {
-      name: /invalid.*header:email/i,
+      name: /header:email \(invalid/i,
     });
     fireEvent.mouseOver(chip);
     await waitFor(() =>
@@ -1151,7 +1152,7 @@ describe("RegionReviewCardUI — chip tooltip", () => {
       ],
     });
     const chip = screen.getByRole("button", {
-      name: /excluded.*header:skipped/i,
+      name: /header:skipped \(excluded\)/i,
     });
     fireEvent.mouseOver(chip);
     await waitFor(() =>
@@ -1266,5 +1267,64 @@ describe("RegionReviewCardUI — chip confidence", () => {
     // Pivot + cellValueField chips render but carry no confidence badge —
     // only column-binding chips do.
     expect(screen.queryByTestId("chip-confidence")).not.toBeInTheDocument();
+  });
+});
+
+describe("RegionReviewCardUI — chip names say their state (#795)", () => {
+  test("each chip names its source and state: bound, excluded, unbound, invalid", () => {
+    setup(
+      {
+        columnBindings: [
+          {
+            sourceLocator: "header:Email",
+            columnDefinitionId: "coldef_email",
+            columnDefinitionLabel: "Email address",
+            confidence: 0.9,
+          },
+          {
+            sourceLocator: "header:Notes",
+            columnDefinitionId: "coldef_notes",
+            columnDefinitionLabel: "Notes",
+            confidence: 0.9,
+            excluded: true,
+          },
+          {
+            sourceLocator: "header:Phone",
+            columnDefinitionId: null,
+            confidence: 0.3,
+          },
+          {
+            sourceLocator: "header:Code",
+            columnDefinitionId: "coldef_code",
+            columnDefinitionLabel: "Code",
+            confidence: 0.9,
+          },
+        ],
+      },
+      { "header:Code": { normalizedKey: "Key already used" } }
+    );
+    for (const name of [
+      "Edit binding: header:Email (bound to Email address)",
+      "Edit binding: header:Notes (excluded)",
+      "Edit binding: header:Phone (unbound)",
+      "Edit binding: header:Code (invalid: Key already used)",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+
+  test("the chips sit in a group named for their region", () => {
+    setup({ proposedLabel: "Contacts" });
+    const group = screen.getByRole("group", {
+      name: "Column bindings for Contacts",
+    });
+    expect(group).toContainElement(
+      screen.getByRole("button", { name: /^Edit binding: header:Email/ })
+    );
+  });
+
+  test("has no axe violations", async () => {
+    const { container } = setup();
+    await expectNoAxeViolations(container);
   });
 });

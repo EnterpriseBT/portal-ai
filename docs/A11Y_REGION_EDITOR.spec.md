@@ -256,7 +256,7 @@ Repeats are re-announced with #794's clear-then-write gap. `REANNOUNCE_GAP_MS` a
 
 | Component | Change |
 |---|---|
-| `RegionReviewCard` | A chip's `aria-label` becomes `Edit binding: <source> (<state>)`, where `<state>` ∈ {`bound to <column label>`, `unbound`, `excluded`, `invalid: <reason>`}. Display-only chips keep `role="status"`. Each chip list is wrapped in `role="group"` with `aria-label="Column bindings for <region label>"`. |
+| `RegionReviewCard` | A chip's `aria-label` becomes `<kind>: <source> (<state>)`, the kind being Edit binding, Edit pivot axis, Edit intersection cell value or Edit cell value, e.g. `Edit binding: header:Email (bound to Email)`, where `<state>` ∈ {`bound to <column label>`, `unbound`, `excluded`, `invalid: <reason>`}. Display-only chips keep `role="status"`. Each chip list is wrapped in `role="group"` with `aria-label="Column bindings for <region label>"`. |
 | `ReviewStep` (:509) | Covered by the same lint-config allowance as the drawing step's form. |
 | `BindingEditorPopoverUI` (:226–251) | The paper's slot props become `role: "dialog"` plus `aria-label` (no `component: "form"`). The content's first child is `<form onSubmit=…>`, holding the existing fields and keeping `handleOwnSubmit` / `FormDefaultButton`. The status icon `span` becomes `role="img"` with its existing `aria-label`. |
 | `RecordAxisTerminatorPopoverUI` | Focuses its first field on open via `useDialogAutoFocus(open)`. |
@@ -275,7 +275,9 @@ The types are the same as `ReviewStepUIProps`'.
 - `columnDefinitionSearch={sdk.columnDefinitions.search()}`;
 - the resolver props the file-upload workflow builds, reusing its helpers.
 
-`onEditBinding={() => undefined}` is removed.
+`onEditBinding={() => undefined}` is removed: `onEditBinding` becomes optional on `ReviewStepUIProps` and `RegionEditorUIProps` (it's only the fallback when the editor's props are absent). The view UI takes the editor's props as one `bindingEditor` prop.
+
+Implementation note: the resolvers were inline, and identical, in all three spreadsheet workflows. They move to `workflows/_shared/spreadsheet/use-binding-editor-resolvers.util.ts` (`useBindingEditorResolvers(regions)`), which the workflows and EditLayoutPlan all use. `patchBinding` gets `{ regions, plan: null }` there, since the page keeps no separate plan; its commit saves the drafts through `draftsToRegions`.
 
 ### Upload
 
