@@ -57,12 +57,15 @@ export interface ConnectorDefinitionCardUIProps {
   /** The caller may create connector instances (#689). Omitted = no. */
   canConnect?: boolean;
   onConnect?: (connectorDefinition: ConnectorDefinition) => void;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const ConnectorDefinitionCardUI = ({
   connectorDefinition: cd,
   canConnect = false,
   onConnect,
+  headingLevel,
 }: ConnectorDefinitionCardUIProps) => {
   const capabilities = (["sync", "read", "write", "push"] as const).filter(
     (c) => cd.capabilityFlags[c]
@@ -85,6 +88,7 @@ export const ConnectorDefinitionCardUI = ({
   return (
     <DetailCard
       title={cd.display}
+      headingLevel={headingLevel}
       icon={
         <Avatar
           src={cd.iconUrl ?? undefined}

@@ -219,10 +219,7 @@ export interface DetailCardProps {
   - The heading `h{headingLevel}` wraps the control: a `MuiLink component={linkComponent} href` when `href` is set; a text-styled `ButtonBase` when `onClick` is set; plain text otherwise.
   - Setting both `href` and `onClick` is a dev-time error.
   - `CardActionArea` is removed.
-- **Stretched target:**
-  - The Card is `position: relative`, and the control's `::after` covers the card (`inset: 0`).
-  - The actions sit above it (`position: relative; z-index: 1`), so they stay separately clickable.
-  - The focus ring is drawn on the card through `:has(:focus-visible)` in `a11yComponents()` (palette-derived ring), because the stretched title's own outline would hug only its text.
+- **Whole-card click target** (implementation note, slice 5: replaces the planned stretched `::after`, which would have covered hover content in the body, such as tool-pack chip tooltips): a click anywhere on the card outside a control (`a, button, input, …`) calls `.click()` on the title's link or button, so the router handles it. Only the title is focusable. Focus shows the theme's standard ring on the title itself, so no card-level ring is added.
 - **Body:** the body is no longer inside the control, so `MetadataList` text reads as text.
 - **Actions:** DetailCard generates the title's `id` and passes it to `ActionsSuite`, which gives each `GatedButton` `aria-describedby` pointing at that id.
 

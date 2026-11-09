@@ -8,6 +8,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
+  CardList,
   Button,
   Icon,
   IconName,
@@ -345,7 +346,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                   }
 
                                   return (
-                                    <Stack spacing={1}>
+                                    <CardList aria-label="Portals">
                                       {portals.portals.map((portal) => (
                                         <PortalCardUI
                                           key={portal.id}
@@ -354,9 +355,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           created={portal.created}
                                           lastOpened={portal.lastOpened}
                                           canDelete={portal.capabilities.delete}
-                                          onClick={(id) =>
-                                            navigate({ to: `/portals/${id}` })
-                                          }
                                           onDelete={(id) => {
                                             // A previous portal's failed delete
                                             // mustn't show in this one's dialog.
@@ -368,7 +366,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           }}
                                         />
                                       ))}
-                                    </Stack>
+                                    </CardList>
                                   );
                                 }}
                               </DataResult>

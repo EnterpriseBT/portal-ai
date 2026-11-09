@@ -1,4 +1,5 @@
 import {
+  CardList,
   Icon,
   IconName,
   PageEmptyState,
@@ -88,12 +89,13 @@ export const JobsView = () => {
                       />
                     )
                   ) : (
-                    <Stack spacing={1}>
+                    <CardList aria-label="Jobs">
                       {jobs.jobs.map((job) => (
                         <JobDataStream key={job.id} job={job}>
                           {(stream) => (
                             <JobCard
                               job={job}
+                              headingLevel={2}
                               status={stream.status ?? undefined}
                               progress={
                                 stream.status !== null
@@ -109,7 +111,7 @@ export const JobsView = () => {
                           )}
                         </JobDataStream>
                       ))}
-                    </Stack>
+                    </CardList>
                   )
                 }
               </DataResult>

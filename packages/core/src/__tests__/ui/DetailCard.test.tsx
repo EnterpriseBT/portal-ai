@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { DetailCard } from "../../ui/DetailCard";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("DetailCard Component", () => {
   describe("Rendering", () => {
@@ -79,29 +80,63 @@ describe("DetailCard Component", () => {
     });
   });
 
+  // #794: the title is the card's one control, named by the title alone.
   describe("Clickable Card", () => {
-    it("should render a CardActionArea when onClick is provided", () => {
-      const { container } = render(
-        <DetailCard title="Alpha" onClick={() => {}} />
+    it("makes the title a button named by the title, inside its heading", () => {
+      render(
+        <DetailCard title="Alpha" onClick={() => {}}>
+          <p>Body text</p>
+        </DetailCard>
+      );
+      const button = screen.getByRole("button", { name: "Alpha" });
+      expect(
+        screen.getByRole("heading", { level: 3, name: "Alpha" })
+      ).toContainElement(button);
+    });
+
+    it("makes the title a link with href, through linkComponent", () => {
+      const Link = React.forwardRef<HTMLAnchorElement, { href: string }>(
+        (props, ref) => <a ref={ref} data-custom="" {...props} />
+      );
+      Link.displayName = "Link";
+      render(
+        <DetailCard title="Alpha" href="/alpha" linkComponent={Link}>
+          <p>Body text</p>
+        </DetailCard>
+      );
+      const link = screen.getByRole("link", { name: "Alpha" });
+      expect(link).toHaveAttribute("href", "/alpha");
+      expect(link).toHaveAttribute("data-custom");
+    });
+
+    it("leaves the title as plain text without href or onClick", () => {
+      render(<DetailCard title="Alpha" />);
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("keeps the body out of the control's name", () => {
+      render(
+        <DetailCard title="Alpha" onClick={() => {}}>
+          <p>Body text</p>
+        </DetailCard>
       );
       expect(
-        container.querySelector(".MuiCardActionArea-root")
-      ).toBeInTheDocument();
+        screen.getByRole("button", { name: "Alpha" })
+      ).not.toHaveTextContent("Body text");
     });
 
-    it("should not render a CardActionArea when onClick is not provided", () => {
-      const { container } = render(<DetailCard title="Alpha" />);
-      expect(
-        container.querySelector(".MuiCardActionArea-root")
-      ).not.toBeInTheDocument();
-    });
-
-    it("should call onClick when the card is clicked", async () => {
+    it("activates the title when the card's body is clicked", async () => {
       const handleClick = jest.fn();
-      render(<DetailCard title="Alpha" onClick={handleClick} />);
-
-      await userEvent.click(screen.getByText("Alpha"));
+      render(
+        <DetailCard title="Alpha" onClick={handleClick}>
+          <p>Body text</p>
+        </DetailCard>
+      );
+      await userEvent.click(screen.getByText("Body text"));
       expect(handleClick).toHaveBeenCalledTimes(1);
+      await userEvent.click(screen.getByRole("button", { name: "Alpha" }));
+      expect(handleClick).toHaveBeenCalledTimes(2);
     });
 
     it("should call action onClick without triggering card onClick", async () => {
@@ -120,6 +155,52 @@ describe("DetailCard Component", () => {
 
       expect(handleEdit).toHaveBeenCalledTimes(1);
       expect(handleCardClick).not.toHaveBeenCalled();
+    });
+
+    it("describes its actions by its title, beside a gate's reason", () => {
+      render(
+        <DetailCard
+          title="Alpha"
+          onClick={() => {}}
+          actions={[
+            { label: "Edit", onClick: jest.fn() },
+            {
+              label: "Delete",
+              onClick: jest.fn(),
+              gate: { kind: "disable", reason: "Deleting…" },
+            },
+          ]}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: "Edit" })
+      ).toHaveAccessibleDescription("Alpha");
+      expect(
+        screen.getByRole("button", { name: "Delete" })
+      ).toHaveAccessibleDescription("Alpha Deleting…");
+    });
+
+    it("has no axe violations as a link or a button", async () => {
+      const { container, rerender } = render(
+        <DetailCard
+          title="Alpha"
+          href="/alpha"
+          actions={[{ label: "Edit", onClick: jest.fn() }]}
+        >
+          <p>Body text</p>
+        </DetailCard>
+      );
+      await expectNoAxeViolations(container);
+      rerender(
+        <DetailCard
+          title="Alpha"
+          onClick={() => {}}
+          actions={[{ label: "Edit", onClick: jest.fn() }]}
+        >
+          <p>Body text</p>
+        </DetailCard>
+      );
+      await expectNoAxeViolations(container);
     });
   });
 

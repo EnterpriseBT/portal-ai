@@ -9,6 +9,7 @@ import type { ColumnDefinition } from "@portalai/core/models";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
 import {
   Box,
+  CardList,
   GatedButton,
   Icon,
   IconName,
@@ -144,20 +145,17 @@ export const ColumnDefinitionListViewUI: React.FC<
                     }
 
                     return (
-                      <Stack spacing={1}>
+                      <CardList aria-label="Column definitions">
                         {list.columnDefinitions.map((cd) => (
                           <ColumnDefinitionCardUI
                             key={cd.id}
                             columnDefinition={cd}
-                            onClick={() =>
-                              navigate({
-                                to: `/column-definitions/${cd.id}`,
-                              })
-                            }
+                            href={`/column-definitions/${cd.id}`}
+                            headingLevel={2}
                             onDelete={onDelete}
                           />
                         ))}
-                      </Stack>
+                      </CardList>
                     );
                   }}
                 </DataResult>

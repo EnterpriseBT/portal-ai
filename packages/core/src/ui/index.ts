@@ -29,6 +29,7 @@ export * from "./ActionsSuite.js";
 export * from "./PageHeader.js";
 export * from "./PageSection.js";
 export * from "./DetailCard.js";
+export * from "./CardList.js";
 export * from "./PageGrid.js";
 export * from "./PageEmptyState.js";
 export * from "./MetadataList.js";

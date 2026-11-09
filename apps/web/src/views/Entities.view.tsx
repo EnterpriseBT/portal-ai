@@ -8,6 +8,7 @@ import type { EntityTag } from "@portalai/core/models";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
 import {
   Box,
+  CardList,
   DetailCard,
   GatedButton,
   Icon,
@@ -30,6 +31,7 @@ import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntity
 import { EmptyResults } from "../components/EmptyResults.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { RouterLink } from "../components/RouterLink.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -48,15 +50,10 @@ type EntityWithTags =
 
 interface EntityCardProps {
   entity: EntityWithTags;
-  onClick: () => void;
   onDelete: () => void;
 }
 
-const EntityCard: React.FC<EntityCardProps> = ({
-  entity,
-  onClick,
-  onDelete,
-}) => {
+const EntityCard: React.FC<EntityCardProps> = ({ entity, onDelete }) => {
   // #689: the entity delete route checks delete on the entity (and the job
   // lock, which the list can't see); not the connector's write flag.
   const actions: ActionSuiteItem[] = entity.capabilities.delete
@@ -71,7 +68,14 @@ const EntityCard: React.FC<EntityCardProps> = ({
     : [];
 
   return (
-    <DetailCard title={entity.label} onClick={onClick} actions={actions}>
+    // #794: the card opens its entity through its title's link.
+    <DetailCard
+      title={entity.label}
+      href={`/entities/${entity.id}`}
+      linkComponent={RouterLink}
+      headingLevel={2}
+      actions={actions}
+    >
       <MetadataList
         items={[
           { label: "Connector", value: entity.connectorInstance.name },
@@ -222,20 +226,15 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                     }
 
                     return (
-                      <Stack spacing={1}>
+                      <CardList aria-label="Entities">
                         {list.connectorEntities.map((entity) => (
                           <EntityCard
                             key={entity.id}
                             entity={entity}
-                            onClick={() =>
-                              navigate({
-                                to: `/entities/${entity.id}`,
-                              })
-                            }
                             onDelete={() => onDeleteEntity(entity)}
                           />
                         ))}
-                      </Stack>
+                      </CardList>
                     );
                   }}
                 </DataResult>

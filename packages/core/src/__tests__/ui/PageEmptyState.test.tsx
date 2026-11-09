@@ -122,4 +122,12 @@ describe("PageEmptyState Component", () => {
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
   });
+
+  // #794: an empty page's title sits directly under the page's h1.
+  it("renders its title as an h2", () => {
+    render(<PageEmptyState title="No stations yet" />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "No stations yet" })
+    ).toBeInTheDocument();
+  });
 });

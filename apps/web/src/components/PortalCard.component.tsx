@@ -6,6 +6,7 @@ import type { ActionSuiteItem } from "@portalai/core/ui";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 import { decideActionGate } from "../utils/action-gate.util";
+import { RouterLink } from "./RouterLink.component";
 
 interface PortalCardUIProps {
   id: string;
@@ -14,7 +15,6 @@ interface PortalCardUIProps {
   lastOpened: number | null;
   /** #690: the portal's `capabilities.delete`. */
   canDelete: boolean;
-  onClick: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -24,7 +24,6 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
   created,
   lastOpened,
   canDelete,
-  onClick,
   onDelete,
 }) => {
   const actions: ActionSuiteItem[] = [
@@ -40,7 +39,9 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
   return (
     <DetailCard
       title={name}
-      onClick={() => onClick(id)}
+      // #794: the card opens its portal through its title's link.
+      href={`/portals/${id}`}
+      linkComponent={RouterLink}
       actions={actions}
       data-testid={`portal-card-${id}`}
     >

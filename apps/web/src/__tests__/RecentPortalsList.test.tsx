@@ -34,7 +34,6 @@ const portal2 = makePortal({
 
 const defaultProps = {
   portals: [portal1, portal2],
-  onPortalClick: jest.fn(),
   onDeletePortal: jest.fn(),
 };
 
@@ -55,13 +54,15 @@ describe("RecentPortalsListUI", () => {
     expect(screen.getByText("1d ago")).toBeInTheDocument();
   });
 
-  it("should call onPortalClick with portal id when row is clicked", () => {
-    const onPortalClick = jest.fn();
-    render(
-      <RecentPortalsListUI {...defaultProps} onPortalClick={onPortalClick} />
-    );
-    fireEvent.click(screen.getByText("Sales Analysis"));
-    expect(onPortalClick).toHaveBeenCalledWith("portal-1");
+  // #794: a named list whose cards open their portal through a link.
+  it("lists the portals and links each to its portal", () => {
+    render(<RecentPortalsListUI {...defaultProps} />);
+    expect(
+      screen.getByRole("list", { name: "Recent portals" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Sales Analysis" })
+    ).toHaveAttribute("href", "/portals/portal-1");
   });
 
   it("should show empty state when no portals", () => {
@@ -82,11 +83,7 @@ describe("RecentPortalsListUI", () => {
       lastOpened: Date.now() - 3600000, // 1 hour ago
     });
     render(
-      <RecentPortalsListUI
-        portals={[portal]}
-        onPortalClick={jest.fn()}
-        onDeletePortal={jest.fn()}
-      />
+      <RecentPortalsListUI portals={[portal]} onDeletePortal={jest.fn()} />
     );
     // Should show lastOpened (1h) not created (1d)
     expect(screen.getByText("1h ago")).toBeInTheDocument();
@@ -100,11 +97,7 @@ describe("RecentPortalsListUI", () => {
       lastOpened: null,
     });
     render(
-      <RecentPortalsListUI
-        portals={[portal]}
-        onPortalClick={jest.fn()}
-        onDeletePortal={jest.fn()}
-      />
+      <RecentPortalsListUI portals={[portal]} onDeletePortal={jest.fn()} />
     );
     expect(screen.getByText("1d ago")).toBeInTheDocument();
   });
@@ -124,11 +117,7 @@ describe("RecentPortalsListUI", () => {
   it("should render station name when stationName is provided", () => {
     const portal = makePortal({ stationName: "Research Station" });
     render(
-      <RecentPortalsListUI
-        portals={[portal]}
-        onPortalClick={jest.fn()}
-        onDeletePortal={jest.fn()}
-      />
+      <RecentPortalsListUI portals={[portal]} onDeletePortal={jest.fn()} />
     );
     expect(screen.getByText("Research Station")).toBeInTheDocument();
   });
@@ -136,11 +125,7 @@ describe("RecentPortalsListUI", () => {
   it("should not render station name when stationName is absent", () => {
     const portal = makePortal();
     render(
-      <RecentPortalsListUI
-        portals={[portal]}
-        onPortalClick={jest.fn()}
-        onDeletePortal={jest.fn()}
-      />
+      <RecentPortalsListUI portals={[portal]} onDeletePortal={jest.fn()} />
     );
     expect(screen.queryByText("Research Station")).not.toBeInTheDocument();
   });
@@ -154,19 +139,13 @@ describe("RecentPortalsListUI", () => {
     expect(onDeletePortal).toHaveBeenCalledWith("portal-1", "Sales Analysis");
   });
 
-  it("should not trigger onPortalClick when delete button is clicked", () => {
-    const onPortalClick = jest.fn();
+  it("deletes from the Delete button", () => {
     const onDeletePortal = jest.fn();
     render(
-      <RecentPortalsListUI
-        {...defaultProps}
-        onPortalClick={onPortalClick}
-        onDeletePortal={onDeletePortal}
-      />
+      <RecentPortalsListUI {...defaultProps} onDeletePortal={onDeletePortal} />
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
-    expect(onDeletePortal).toHaveBeenCalled();
-    expect(onPortalClick).not.toHaveBeenCalled();
+    expect(onDeletePortal).toHaveBeenCalledWith("portal-1", "Sales Analysis");
   });
 
   it("should render a delete button for each portal", () => {

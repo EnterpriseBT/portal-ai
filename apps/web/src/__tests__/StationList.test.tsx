@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import type { StationListResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, within } = await import("./test-utils");
 const { StationListUI, StationCardUI } =
   await import("../components/StationList.component");
 
@@ -37,7 +37,6 @@ const defaultCardProps = {
   isDefault: false,
   canSetDefault: true,
   onSetDefault: jest.fn(),
-  onOpen: jest.fn(),
   onDelete: jest.fn(),
 };
 
@@ -157,11 +156,18 @@ describe("StationCardUI", () => {
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
-  it("should navigate when card is clicked", () => {
-    const onOpen = jest.fn();
-    render(<StationCardUI {...defaultCardProps} onOpen={onOpen} />);
-    fireEvent.click(screen.getByText("Sales Analytics"));
-    expect(onOpen).toHaveBeenCalledWith(station1);
+  // #794: the card opens its station through its title's link, an h2 named
+  // by the title alone, and its actions are described by that title.
+  it("links its title to the station, as an h2", () => {
+    render(<StationCardUI {...defaultCardProps} />);
+    const link = screen.getByRole("link", { name: "Sales Analytics" });
+    expect(link).toHaveAttribute("href", `/stations/${station1.id}`);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Sales Analytics" })
+    ).toContainElement(link);
+    expect(
+      screen.getByRole("button", { name: "Delete" })
+    ).toHaveAccessibleDescription("Sales Analytics");
   });
 });
 
@@ -170,11 +176,17 @@ const defaultListProps = {
   defaultStationId: null as string | null,
   canSetDefault: true,
   onSetDefault: jest.fn(),
-  onOpen: jest.fn(),
   onDelete: jest.fn(),
 };
 
 describe("StationListUI", () => {
+  // #794: a card list is a named list of items.
+  it("renders the stations as a named list", () => {
+    render(<StationListUI {...defaultListProps} />);
+    const list = screen.getByRole("list", { name: "Stations" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+  });
+
   it("should render multiple station cards", () => {
     render(<StationListUI {...defaultListProps} />);
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();

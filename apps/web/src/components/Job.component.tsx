@@ -22,7 +22,7 @@ import { runningJobLabel } from "../utils/running-job-label.util";
 import type { JobStreamState } from "../api/jobs.api";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
-import { useRouter } from "@tanstack/react-router";
+import { RouterLink } from "./RouterLink.component";
 
 const dates = new DateFactory("UTC");
 
@@ -70,6 +70,8 @@ export interface JobCardProps {
   progress?: number;
   /** Live structured progress from a stream; falls back to the row's (#458). */
   progressDetail?: JobProgressDetail | null;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const JobCard = ({
@@ -77,9 +79,8 @@ export const JobCard = ({
   status,
   progress,
   progressDetail,
+  headingLevel,
 }: JobCardProps) => {
-  const router = useRouter();
-
   const displayStatus = status ?? job.status;
   const displayProgress = progress ?? job.progress;
   const displayDetail = progressDetail ?? job.progressDetail;
@@ -88,7 +89,10 @@ export const JobCard = ({
   return (
     <DetailCard
       title={runningJobLabel(job)}
-      onClick={() => router.navigate({ to: `/jobs/${job.id}` })}
+      // #794: the card opens its job through its title's link.
+      href={`/jobs/${job.id}`}
+      linkComponent={RouterLink}
+      headingLevel={headingLevel}
     >
       <Stack
         direction={{ xs: "column", sm: "row" }}
