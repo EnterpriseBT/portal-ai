@@ -1,5 +1,10 @@
 import React from "react";
 
+import { REANNOUNCE_GAP_MS } from "./live-region.util";
+
+/** Re-exported for #794's callers; it lives with the shared announcer. */
+export { REANNOUNCE_GAP_MS };
+
 /**
  * How long a list waits after the user's last change before it speaks
  * (#794). Longer than the toolbar's 300 ms search debounce, so the new
@@ -15,12 +20,6 @@ export const MIN_QUIET_MS = 100;
 
 /** A load shorter than this says nothing until its result (#794). */
 export const LOADING_DELAY_MS = 500;
-
-/**
- * The gap between clearing the live region and writing the new text. Without
- * one, the same text twice in a row isn't a change a screen reader notices.
- */
-export const REANNOUNCE_GAP_MS = 100;
 
 /** What a screen reader hears for a result count (#794). */
 export const announcementFor = (total: number): string =>

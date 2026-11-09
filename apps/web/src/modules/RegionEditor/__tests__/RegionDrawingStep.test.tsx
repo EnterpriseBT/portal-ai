@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Modal } from "@portalai/core/ui";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { RegionDrawingStepUI } from "../RegionDrawingStep.component";
 import type { RegionDraft, Workbook } from "../utils/region-editor.types";
 
@@ -496,5 +497,91 @@ describe("RegionDrawingStepUI — keyboard (#789)", () => {
       .closest("form") as HTMLFormElement;
     form.requestSubmit();
     expect(onInterpret).not.toHaveBeenCalled();
+  });
+});
+
+describe("RegionDrawingStepUI — region context and announcements (#795)", () => {
+  test("a region's cells are described by its entity, bounds and record direction", () => {
+    render(<RegionDrawingStepUI {...baseProps({ selectedRegionId: null })} />);
+    expect(screen.getByTestId("cell-1-1")).toHaveAccessibleDescription(
+      "Region Contact, A1:C3, records by row"
+    );
+  });
+
+  test("a region with errors says it needs attention, in its description and on its tab", () => {
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          errors: { r1: { targetEntityDefinitionId: "Pick an entity" } },
+        })}
+      />
+    );
+    expect(screen.getByTestId("cell-0-0")).toHaveAccessibleDescription(
+      "Region Contact, A1:C3, records by row, needs attention: Pick an entity"
+    );
+    expect(screen.getByTestId("region-overlay-r1")).toHaveTextContent(
+      "Needs attention"
+    );
+  });
+
+  test("a drifted region says so", () => {
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          regions: [
+            baseRegion({
+              drift: { flagged: true } as RegionDraft["drift"],
+            }),
+          ],
+        })}
+      />
+    );
+    expect(screen.getByTestId("cell-0-0")).toHaveAccessibleDescription(
+      /, drift detected$/
+    );
+  });
+
+  test("a created region is announced", async () => {
+    const props = baseProps({ regions: [], selectedRegionId: null });
+    const { rerender } = render(<RegionDrawingStepUI {...props} />);
+    rerender(
+      <RegionDrawingStepUI
+        {...props}
+        regions={[baseRegion()]}
+        selectedRegionId="r1"
+      />
+    );
+    expect(
+      await screen.findByText("Region created: Contact, A1:C3")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Region created: Contact, A1:C3")).toHaveAttribute(
+      "role",
+      "status"
+    );
+  });
+
+  test("Enter on an empty cell says how to add a region", async () => {
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({ regions: [], selectedRegionId: null })}
+      />
+    );
+    const cell = screen.getByTestId("cell-3-2");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(
+      await screen.findByText(/Select cells with Shift and the arrow keys/)
+    ).toBeInTheDocument();
+  });
+
+  test("has no axe violations with a region that has errors", async () => {
+    const { container } = render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          errors: { r1: { targetEntityDefinitionId: "Pick an entity" } },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -16,6 +16,7 @@ import {
   FormDefaultButton,
   handleOwnSubmit,
   preventToggleEnterSubmit,
+  StatusMessage,
 } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
@@ -31,6 +32,8 @@ import { adjustSegmentsForBoundsChange } from "./utils/adjust-segments-for-bound
 import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import { resizeSegment } from "./utils/segment-ops.util";
+import { orientationFromDraft } from "./utils/region-orientation.util";
+import { useRegionAnnouncements } from "./utils/use-region-announcements.util";
 import type {
   CellBounds,
   EntityLegendEntry,
@@ -177,21 +180,26 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     });
   }, [regions, entityOrder, entityOptions]);
 
+  const entityLabelFor = useCallback(
+    (region: RegionDraft): string =>
+      region.targetEntityLabel ??
+      (region.targetEntityDefinitionId
+        ? (entityOptions.find(
+            (o) => o.value === region.targetEntityDefinitionId
+          )?.label ?? region.targetEntityDefinitionId)
+        : "Unbound"),
+    [entityOptions]
+  );
+
   const regionDisplayLabel = useCallback(
     (region: RegionDraft): string => {
       const sheet = workbook.sheets.find((s) => s.id === region.sheetId);
       const sheetName = sheet?.name ?? region.sheetId;
-      const entityLabel =
-        region.targetEntityLabel ??
-        (region.targetEntityDefinitionId
-          ? (entityOptions.find(
-              (o) => o.value === region.targetEntityDefinitionId
-            )?.label ?? region.targetEntityDefinitionId)
-          : "Unbound");
+      const entityLabel = entityLabelFor(region);
       const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
       return `${labelPart} · ${sheetName} · ${entityLabel}`;
     },
-    [workbook.sheets, entityOptions]
+    [workbook.sheets, entityLabelFor]
   );
 
   const regionSelectOptions: SelectOption[] = useMemo(
@@ -224,6 +232,20 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         .filter((id) => effectiveErrors[id] !== undefined),
     [regions, effectiveErrors]
   );
+
+  // What a screen reader hears about each region (#795): on its cells, as
+  // their description, and as regions change.
+  const describeRegion = useCallback(
+    (region: RegionDraft) =>
+      `${entityLabelFor(region)}, ${formatBounds(region.bounds)}`,
+    [entityLabelFor]
+  );
+  const { announcement, announceSelection, announceHint } =
+    useRegionAnnouncements({
+      regions,
+      selectedRegionId,
+      describe: describeRegion,
+    });
 
   const handleJumpToRegion = (nextId: string) => {
     if (!nextId) {
@@ -360,6 +382,28 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       ? effectiveErrors[selectedRegion.id]
       : errors?.[selectedRegion.id]
     : undefined;
+
+  // The errors a region shows, the same ones its panel shows: computed ones
+  // after an Interpret attempt, the caller's before.
+  const shownErrors = (id: string): RegionErrors | undefined =>
+    showErrors ? effectiveErrors[id] : errors?.[id];
+  const RECORDS_BY = {
+    "rows-as-records": "row",
+    "columns-as-records": "column",
+    "cells-as-records": "cell",
+  } as const;
+  const regionDescriptions: Record<string, string> = {};
+  const shownInvalidIds: string[] = [];
+  for (const region of regions) {
+    let text = `Region ${entityLabelFor(region)}, ${formatBounds(region.bounds)}, records by ${RECORDS_BY[orientationFromDraft(region)]}`;
+    const firstError = Object.values(shownErrors(region.id) ?? {})[0];
+    if (firstError) {
+      text += `, needs attention: ${firstError}`;
+      shownInvalidIds.push(region.id);
+    }
+    if (region.drift?.flagged) text += ", drift detected";
+    regionDescriptions[region.id] = text;
+  }
 
   if (!activeSheet) {
     return (
@@ -565,6 +609,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             onRegionDraft={(bounds) =>
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
+            regionDescriptions={regionDescriptions}
+            invalidRegionIds={shownInvalidIds}
+            onSelectionChange={announceSelection}
+            onKeyboardHint={announceHint}
             onRegionResize={handleBoundsChange}
             onSegmentResize={(
               regionId,
@@ -650,6 +698,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           />
         </Box>
       </Stack>
+
+      {/* Region changes, the keyboard selection and its hint (#795). */}
+      <StatusMessage visuallyHidden message={announcement} />
 
       {showErrors && invalidRegionIds.length > 0 && (
         <Box

@@ -215,7 +215,7 @@ export interface SheetKeyboard {
 
 **Behaviour:**
 - The root and all its children are `aria-hidden="true"`, and the `aria-label`s at :183, :205 and :251 are removed. Resize handles stay pointer-only; keyboard resize is the bounds fields.
-- The label tab adds a "Selected" text chip when `selected`, and "Needs attention" when `invalid`. The theme styles them; no ad hoc `sx` in web, so the variant goes in `a11yComponents` or the theme JSONs.
+- The label tab adds a "Selected" text badge when `selected`, and "Needs attention" when `invalid`. Implementation note: they use the tab's existing badge style (the extent and DRIFT badges), an inline style in the region's entity colour, which exists only at runtime, so the theme can't carry it. The canvas takes `invalidRegionIds?: readonly string[]` and passes `invalid` to each overlay.
 
 ### `useRegionAnnouncements` (new: `modules/RegionEditor/utils/use-region-announcements.util.ts`)
 
@@ -235,14 +235,14 @@ It diffs `regions` and `selectedRegionId` between renders and says:
 
 | Change | Announcement |
 |---|---|
-| A region was added | "Region created: <describe>" |
+| A region was added | "Region created: <describe>" (several at once: "<n> regions created") |
 | A region was removed | "Region deleted" |
 | A region's bounds changed | "Bounds <A1:D20>" |
 | `selectedRegionId` changed | "<describe> selected" (nothing on deselect) |
 | `announceSelection` called | "<A1> to <D9> selected", or "<B3> selected" for one cell |
 | `announceHint` called (first time only) | "Select cells with Shift and the arrow keys, then press Enter to add a region" |
 
-Repeats are re-announced with #794's clear-then-write gap (`REANNOUNCE_GAP_MS`, which moves to a shared location).
+Repeats are re-announced with #794's clear-then-write gap. `REANNOUNCE_GAP_MS` and a `useLiveAnnouncement()` hook (`say` clears, then writes after the gap) live in `apps/web/src/utils/live-region.util.ts`; `results-announcer.util.ts` re-exports the constant.
 
 ### `RegionDrawingStepUI` (`RegionDrawingStep.component.tsx`)
 

@@ -1477,4 +1477,67 @@ describe("SheetCanvasUI", () => {
       expect(onRegionDraft).not.toHaveBeenCalled();
     });
   });
+
+  describe("region context for assistive tech (#795)", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 2, startCol: 1, endCol: 2 },
+      targetEntityDefinitionId: "ent_a",
+      targetEntityLabel: "Customers",
+    };
+
+    test("a cell in a region is described by the region; others aren't", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          regionDescriptions={{ r1: "Region Customers, B2:C3, records by row" }}
+        />
+      );
+      expect(screen.getByTestId("cell-1-1")).toHaveAccessibleDescription(
+        "Region Customers, B2:C3, records by row"
+      );
+      expect(screen.getByTestId("cell-0-0")).not.toHaveAttribute(
+        "aria-describedby"
+      );
+    });
+
+    test("without descriptions, a region is described by its label and bounds", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+      expect(screen.getByTestId("cell-2-2")).toHaveAccessibleDescription(
+        "Region Customers, B2:C3"
+      );
+    });
+
+    test("the region tab says Selected and Needs attention in text", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          invalidRegionIds={["r1"]}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+      const overlay = screen.getByTestId("region-overlay-r1");
+      expect(overlay).toHaveTextContent("Selected");
+      expect(overlay).toHaveTextContent("Needs attention");
+    });
+  });
 });

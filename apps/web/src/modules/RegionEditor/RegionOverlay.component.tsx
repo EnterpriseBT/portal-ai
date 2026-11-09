@@ -87,11 +87,22 @@ function anchorOffset(
   return { left: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
 }
 
+const tabBadgeStyle = (color: string): React.CSSProperties => ({
+  backgroundColor: "#fff",
+  color,
+  borderRadius: 4,
+  padding: "0 4px",
+  fontSize: 10,
+  fontWeight: 700,
+});
+
 export interface RegionOverlayUIProps {
   region: RegionDraft;
   bounds: CellBounds;
   entityOrder: string[];
   selected: boolean;
+  /** The region has validation errors (#795): its tab says so in text. */
+  invalid?: boolean;
   resizable: boolean;
   movable?: boolean;
   cellWidth: number;
@@ -112,6 +123,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   bounds,
   entityOrder,
   selected,
+  invalid = false,
   resizable,
   movable = false,
   cellWidth,
@@ -245,6 +257,11 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               DRIFT
             </span>
           )}
+          {/* State in words, not only in colour and weight (#795, 1.4.1).
+              Same badge as the others: it takes the entity's colour, which
+              only exists at runtime. */}
+          {selected && <span style={tabBadgeStyle(color)}>Selected</span>}
+          {invalid && <span style={tabBadgeStyle(color)}>Needs attention</span>}
         </Box>
 
         {selected &&

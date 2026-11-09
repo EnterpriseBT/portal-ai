@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import {
 import {
   colIndexToLetter,
   coordInBounds,
+  formatBounds,
   normalizeBounds,
 } from "./utils/a1-notation.util";
 import {
@@ -111,6 +113,13 @@ export interface SheetCanvasUIProps {
   onSelectionChange?: (bounds: CellBounds | null) => void;
   /** Enter on the sheet with nothing to create or open (#795). */
   onKeyboardHint?: () => void;
+  /**
+   * One description per region, read with each of its cells (#795).
+   * Default: "Region <label>, <A1:D20>".
+   */
+  regionDescriptions?: Record<string, string>;
+  /** Regions with validation errors; their tabs say "Needs attention". */
+  invalidRegionIds?: readonly string[];
 }
 
 const DEFAULT_CELL_WIDTH = 96;
@@ -208,6 +217,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   loadSlice,
   onSelectionChange,
   onKeyboardHint,
+  regionDescriptions,
+  invalidRegionIds,
 }) => {
   const cellWidth = cellSize?.width ?? DEFAULT_CELL_WIDTH;
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
@@ -1188,6 +1199,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   );
 
   const { cellProps } = keyboard;
+  // Each region's description renders once, hidden; its cells point at it.
+  const descIdPrefix = useId();
+  const descId = useCallback(
+    (regionId: string) => `${descIdPrefix}-region-${regionId}`,
+    [descIdPrefix]
+  );
+  const describedBy = useCallback(
+    (coord: CellCoord) => {
+      const ids = visibleRegions
+        .filter((r) => coordInBounds(coord, r.bounds))
+        .map((r) => descId(r.id));
+      return ids.length ? ids.join(" ") : undefined;
+    },
+    [visibleRegions, descId]
+  );
   const renderRow = useCallback(
     (rowIndex: number, top: number, size: number): React.ReactElement => {
       const inlineRow = sheet.cells[rowIndex];
@@ -1215,6 +1241,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             key={col}
             data-testid={`cell-${rowIndex}-${col}`}
             {...cellProps({ row: rowIndex, col })}
+            aria-describedby={describedBy({ row: rowIndex, col })}
             style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
             aria-busy={rowIsUnloaded || undefined}
           >
@@ -1266,6 +1293,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       sliceCache,
       loadSlice,
       cellProps,
+      describedBy,
     ]
   );
 
@@ -1334,6 +1362,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               .getVirtualItems()
               .map((v) => renderRow(v.index, v.start, v.size))}
           </div>
+          {visibleRegions.map((r) => (
+            <span key={r.id} id={descId(r.id)} hidden>
+              {regionDescriptions?.[r.id] ??
+                `Region ${r.proposedLabel ?? r.targetEntityLabel ?? "unbound"}, ${formatBounds(r.bounds)}`}
+            </span>
+          ))}
 
           {(() => {
             const selectedRegion = visibleRegions.find(
@@ -1907,6 +1941,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               <RegionOverlayUI
                 key={region.id}
                 region={region}
+                invalid={invalidRegionIds?.includes(region.id)}
                 bounds={previewBounds}
                 entityOrder={entityOrder}
                 selected={region.id === selectedRegionId}
