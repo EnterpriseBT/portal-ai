@@ -537,14 +537,16 @@
           "fontSize": "1.125rem",
           "fontWeight": 600,
           "color": "#1a1630",
-          "padding": "24px 24px 12px"
+          "padding": "24px 24px 12px",
+          "overflowWrap": "anywhere"
         }
       }
     },
     "MuiDialogContent": {
       "styleOverrides": {
         "root": {
-          "padding": "12px 24px"
+          "padding": "12px 24px",
+          "overflowWrap": "anywhere"
         }
       }
     },
