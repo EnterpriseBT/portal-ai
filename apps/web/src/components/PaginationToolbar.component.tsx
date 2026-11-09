@@ -9,6 +9,8 @@ import Chip from "@mui/material/Chip";
 import Badge from "@mui/material/Badge";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Switch from "@mui/material/Switch";
 import Divider from "@mui/material/Divider";
 import SearchIcon from "@mui/icons-material/Search";
@@ -777,6 +779,14 @@ export const PaginationToolbar = React.forwardRef<
     const [advFilterAnchor, setAdvFilterAnchor] =
       React.useState<HTMLElement | null>(null);
 
+    // #794: each popover is a named dialog its button controls.
+    const idBase = React.useId();
+    const filtersId = `${idBase}-filters`;
+    const sortId = `${idBase}-sort`;
+    const advFiltersId = `${idBase}-advanced-filters`;
+    const sortByLabelId = `${idBase}-sort-by`;
+    const filterLabelId = (field: string) => `${idBase}-filter-${field}`;
+
     const filterOpen = Boolean(filterAnchor);
     const sortOpen = Boolean(sortAnchor);
     const advFilterOpen = Boolean(advFilterAnchor);
@@ -842,6 +852,16 @@ export const PaginationToolbar = React.forwardRef<
                   size="small"
                   startIcon={<FilterListIcon />}
                   onClick={(e) => setFilterAnchor(e.currentTarget)}
+                  aria-haspopup="dialog"
+                  aria-expanded={filterOpen}
+                  aria-controls={filterOpen ? filtersId : undefined}
+                  // The badge's count is part of the name (it starts with the
+                  // visible label, WCAG 2.5.3).
+                  aria-label={
+                    activeFilterCount > 0
+                      ? `Filter, ${activeFilterCount} active`
+                      : undefined
+                  }
                 >
                   Filter
                 </Button>
@@ -853,17 +873,29 @@ export const PaginationToolbar = React.forwardRef<
                 onClose={() => setFilterAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{
+                  paper: {
+                    id: filtersId,
+                    role: "dialog",
+                    "aria-label": "Filters",
+                  } as React.HTMLAttributes<HTMLDivElement>,
+                }}
               >
                 <Box sx={{ p: 2, minWidth: 220 }}>
                   {filterConfigs.map((config, idx) => (
                     <Box key={config.field}>
                       {idx > 0 && <Divider sx={{ my: 1 }} />}
-                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ mb: 0.5 }}
+                        id={filterLabelId(config.field)}
+                      >
                         {config.label}
                       </Typography>
 
                       {config.type === "select" && (
                         <RadioGroup
+                          aria-labelledby={filterLabelId(config.field)}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -885,6 +917,10 @@ export const PaginationToolbar = React.forwardRef<
                           control={
                             <Switch
                               size="small"
+                              // Named by the filter, not its Yes/No state.
+                              slotProps={{
+                                input: { "aria-label": config.label },
+                              }}
                               checked={
                                 (filters[config.field] ?? [])[0] === "true"
                               }
@@ -910,6 +946,7 @@ export const PaginationToolbar = React.forwardRef<
                           type="number"
                           fullWidth
                           placeholder={config.placeholder ?? "Enter a number"}
+                          aria-label={config.label}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -928,6 +965,7 @@ export const PaginationToolbar = React.forwardRef<
                           size="small"
                           fullWidth
                           placeholder={config.placeholder ?? "Enter a value"}
+                          aria-label={config.label}
                           value={(filters[config.field] ?? [])[0] ?? ""}
                           onChange={(e) =>
                             onFilterValueChange(config.field, e.target.value)
@@ -1015,6 +1053,9 @@ export const PaginationToolbar = React.forwardRef<
                 size="small"
                 startIcon={<SortIcon />}
                 onClick={(e) => setSortAnchor(e.currentTarget)}
+                aria-haspopup="dialog"
+                aria-expanded={sortOpen}
+                aria-controls={sortOpen ? sortId : undefined}
               >
                 Sort
               </Button>
@@ -1025,12 +1066,24 @@ export const PaginationToolbar = React.forwardRef<
                 onClose={() => setSortAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{
+                  paper: {
+                    id: sortId,
+                    role: "dialog",
+                    "aria-label": "Sort",
+                  } as React.HTMLAttributes<HTMLDivElement>,
+                }}
               >
                 <Box sx={{ p: 2, minWidth: 200 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ mb: 0.5 }}
+                    id={sortByLabelId}
+                  >
                     Sort by
                   </Typography>
                   <RadioGroup
+                    aria-labelledby={sortByLabelId}
                     value={sortBy}
                     onChange={(e) => onSortByChange(e.target.value)}
                   >
@@ -1049,24 +1102,27 @@ export const PaginationToolbar = React.forwardRef<
                   <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
                     Direction
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 1 }}>
-                    <Chip
-                      icon={<ArrowUpwardIcon />}
-                      label="Asc"
-                      size="small"
-                      variant={sortOrder === "asc" ? "filled" : "outlined"}
-                      color={sortOrder === "asc" ? "primary" : "default"}
-                      onClick={() => onSortOrderChange("asc")}
-                    />
-                    <Chip
-                      icon={<ArrowDownwardIcon />}
-                      label="Desc"
-                      size="small"
-                      variant={sortOrder === "desc" ? "filled" : "outlined"}
-                      color={sortOrder === "desc" ? "primary" : "default"}
-                      onClick={() => onSortOrderChange("desc")}
-                    />
-                  </Box>
+                  {/* #794: the direction's state is pressed, not only a
+                      colour. */}
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    color="primary"
+                    value={sortOrder}
+                    onChange={(_e, value: "asc" | "desc" | null) => {
+                      if (value) onSortOrderChange(value);
+                    }}
+                    aria-label="Sort direction"
+                  >
+                    <ToggleButton value="asc" aria-label="Ascending">
+                      <ArrowUpwardIcon fontSize="small" />
+                      Asc
+                    </ToggleButton>
+                    <ToggleButton value="desc" aria-label="Descending">
+                      <ArrowDownwardIcon fontSize="small" />
+                      Desc
+                    </ToggleButton>
+                  </ToggleButtonGroup>
                 </Box>
               </Popover>
             </>
@@ -1084,6 +1140,14 @@ export const PaginationToolbar = React.forwardRef<
                   size="small"
                   startIcon={<TuneIcon />}
                   onClick={(e) => setAdvFilterAnchor(e.currentTarget)}
+                  aria-haspopup="dialog"
+                  aria-expanded={advFilterOpen}
+                  aria-controls={advFilterOpen ? advFiltersId : undefined}
+                  aria-label={
+                    advancedFilterConditionCount > 0
+                      ? `Advanced Filters, ${advancedFilterConditionCount} conditions`
+                      : undefined
+                  }
                 >
                   Advanced Filters
                 </Button>
@@ -1096,7 +1160,12 @@ export const PaginationToolbar = React.forwardRef<
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
                 slotProps={{
-                  paper: { sx: { maxHeight: "70vh", overflow: "auto" } },
+                  paper: {
+                    id: advFiltersId,
+                    role: "dialog",
+                    "aria-label": "Advanced filters",
+                    sx: { maxHeight: "70vh", overflow: "auto" },
+                  } as React.HTMLAttributes<HTMLDivElement>,
                 }}
               >
                 {advancedFilters && onAdvancedFiltersChange && (

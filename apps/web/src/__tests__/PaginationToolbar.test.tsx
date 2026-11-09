@@ -1,5 +1,12 @@
 import { jest } from "@jest/globals";
-import { render, screen, renderHook, act, within } from "./test-utils";
+import {
+  render,
+  screen,
+  renderHook,
+  act,
+  within,
+  expectNoAxeViolations,
+} from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import {
   PaginationToolbar,
@@ -888,6 +895,84 @@ describe("PaginationToolbar", () => {
       await user.click(screen.getByText("Sort"));
       await user.click(screen.getByText("Desc"));
       expect(onSortOrderChange).toHaveBeenCalledWith("desc");
+    });
+  });
+
+  // #794: every toolbar control's role, state and name are complete.
+  describe("control states and names", () => {
+    it("exposes each popover button's state and the dialog it controls", async () => {
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({ sortFields, filterConfigs: [selectFilter] })}
+        />
+      );
+      const filter = screen.getByRole("button", { name: "Filter" });
+      expect(filter).toHaveAttribute("aria-haspopup", "dialog");
+      expect(filter).toHaveAttribute("aria-expanded", "false");
+      await user.click(filter);
+      expect(filter).toHaveAttribute("aria-expanded", "true");
+      const dialog = screen.getByRole("dialog", { name: "Filters" });
+      expect(filter).toHaveAttribute("aria-controls", dialog.id);
+      await user.keyboard("{Escape}");
+
+      const sort = screen.getByRole("button", { name: "Sort" });
+      expect(sort).toHaveAttribute("aria-haspopup", "dialog");
+      await user.click(sort);
+      expect(sort).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("dialog", { name: "Sort" }).id).toBe(
+        sort.getAttribute("aria-controls")
+      );
+    });
+
+    it("puts the active filter count in the Filter button's name", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [selectFilter],
+            activeFilterCount: 2,
+          })}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: "Filter, 2 active" })
+      ).toBeInTheDocument();
+    });
+
+    it("names the sort-by group and exposes the direction as pressed buttons", async () => {
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar {...makeProps({ sortFields, sortOrder: "desc" })} />
+      );
+      await user.click(screen.getByRole("button", { name: "Sort" }));
+      expect(
+        screen.getByRole("radiogroup", { name: "Sort by" })
+      ).toBeInTheDocument();
+      const direction = screen.getByRole("group", { name: "Sort direction" });
+      expect(
+        within(direction).getByRole("button", { name: "Descending" })
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(
+        within(direction).getByRole("button", { name: "Ascending" })
+      ).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("names each filter's option group by its label", async () => {
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar {...makeProps({ filterConfigs: [selectFilter] })} />
+      );
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      expect(
+        screen.getByRole("radiogroup", { name: "Category" })
+      ).toBeInTheDocument();
+    });
+
+    it("has no axe violations with the sort popover open", async () => {
+      const user = userEvent.setup();
+      render(<PaginationToolbar {...makeProps({ sortFields })} />);
+      await user.click(screen.getByRole("button", { name: "Sort" }));
+      await expectNoAxeViolations(screen.getByRole("dialog", { name: "Sort" }));
     });
   });
 

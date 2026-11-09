@@ -42,7 +42,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
           aria-invalid="false"
           aria-label="Search"
           class="MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall MuiInputBase-inputAdornedStart MuiInputBase-inputAdornedEnd css-195mg07-MuiInputBase-input-MuiOutlinedInput-input"
-          id="_r_c2_"
+          id="_r_f6_"
           placeholder="Search..."
           type="text"
           value="test"
@@ -90,6 +90,9 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       class="MuiBadge-root css-63ezxx-MuiBadge-root"
     >
       <button
+        aria-expanded="false"
+        aria-haspopup="dialog"
+        aria-label="Filter, 2 active"
         class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-1kd15lk-MuiButtonBase-root-MuiButton-root"
         tabindex="0"
         type="button"
@@ -118,6 +121,8 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </span>
     </span>
     <button
+      aria-expanded="false"
+      aria-haspopup="dialog"
       class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeSmall MuiButton-outlinedSizeSmall MuiButton-colorPrimary MuiButton-disableElevation css-1kd15lk-MuiButtonBase-root-MuiButton-root"
       tabindex="0"
       type="button"
