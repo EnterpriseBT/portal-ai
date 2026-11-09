@@ -131,7 +131,7 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
   };
 
   return (
-    <Stack spacing={0.75} aria-label={`${axis} segment strip`}>
+    <Stack spacing={0.75} role="group" aria-label={`${axis} segment strip`}>
       <Typography
         variant="caption"
         sx={{
@@ -195,7 +195,11 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
                 onClick={(e) =>
                   onEditSegment(axis, i, e.currentTarget as HTMLElement)
                 }
-                aria-label={`Edit ${axis} segment ${i + 1} (${seg.kind})`}
+                // The chip's name carries what its label shows (#795): the
+                // inner count and range spans can't name themselves.
+                aria-label={`Edit ${axis} segment ${i + 1} (${seg.kind}): ${primary}, ${seg.positionCount} ${
+                  seg.positionCount === 1 ? "position" : "positions"
+                }${range ? `, spans ${range}` : ""}${isDynamic ? ", grows" : ""}`}
                 onDelete={handleDelete}
                 deleteIcon={
                   <CancelIcon
@@ -251,9 +255,6 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
                         fontVariantNumeric: "tabular-nums",
                         opacity: 0.85,
                       }}
-                      aria-label={`${seg.positionCount} ${
-                        seg.positionCount === 1 ? "position" : "positions"
-                      }`}
                     >
                       ×{seg.positionCount}
                     </Box>
@@ -272,7 +273,6 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
                             : alpha(theme.palette.text.primary, 0.06),
                           color: tone.filled ? colors.fg : "text.secondary",
                         }}
-                        aria-label={`spans ${range}`}
                       >
                         {range}
                       </Box>

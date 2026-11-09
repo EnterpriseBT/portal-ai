@@ -159,7 +159,13 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
 
   return (
     <>
+      {/* Decorative to assistive tech (#795): the region's name, bounds,
+          state and errors reach a screen reader through the cells'
+          descriptions and the configuration panel, and every pointer action
+          here has a keyboard path there. */}
       <Box
+        data-testid={`region-overlay-${region.id}`}
+        aria-hidden
         onPointerDown={onBodyPointerDown(region.id, bounds)}
         sx={{
           position: "absolute",
@@ -180,7 +186,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           // every touch immediately and JS owns the move/select decision.
           touchAction: "none",
         }}
-        aria-label={`Region ${region.proposedLabel ?? formatBounds(bounds)}`}
       >
         <Box
           sx={{
@@ -202,7 +207,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           }}
         >
           <span
-            aria-label={orientationArrowLabel(orientation)}
             title={orientationArrowLabel(orientation)}
             style={{ fontWeight: 700 }}
           >
@@ -248,7 +252,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           HANDLE_DEFS.map((h) => (
             <Box
               key={h.kind}
-              aria-label={`Resize region ${h.kind}`}
+              data-testid={`region-resize-${h.kind}`}
               onPointerDown={onResizeStart(region.id, h.kind, bounds)}
               sx={{
                 position: "absolute",

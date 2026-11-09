@@ -56,7 +56,7 @@ Each slice:
   - the paper is `role: "dialog"` plus `aria-label`, with no `component: "form"`;
   - an inner `<form>` keeps `handleOwnSubmit` and `FormDefaultButton`;
   - the status icon is `role="img"`.
-- Edit: `RegionDrawingStep.component.tsx:387` and `ReviewStep.component.tsx:509`: the reasoned `eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions`.
+- Edit: `eslint.a11y.config.js`: `no-noninteractive-element-interactions` allows `onKeyDown` on a `<form>`, with its reason, covering `RegionDrawingStep.component.tsx:387` and `ReviewStep.component.tsx:509` (a per-line disable would fail the main `lint`).
 - Edit the tests: `SheetCanvas.test.tsx`, `RegionOverlay.test.tsx`, `BindingEditorPopover.test.tsx`.
 
 **Steps**

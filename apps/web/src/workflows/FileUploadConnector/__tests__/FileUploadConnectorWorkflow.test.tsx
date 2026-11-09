@@ -406,7 +406,9 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
     });
     await user.click(chip);
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).not.toBeNull();
   });
 
@@ -468,7 +470,9 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
     );
     expect(onEditBinding).toHaveBeenCalledWith("region-a", "header:Email");
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).toBeNull();
   });
 });

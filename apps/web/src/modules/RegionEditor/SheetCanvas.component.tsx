@@ -378,6 +378,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   // Always-current tick callback — the ref is only invoked inside
   // `requestAnimationFrame` handlers, so writing it in a layout-less effect
   // (which runs after commit) is safe and avoids a ref-during-render lint error.
+  // The corner button's keyboard activation reads the latest props through a
+  // ref, so the memoized header row needn't rebuild for every parent render.
+  const selectWholeSheetRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    selectWholeSheetRef.current = () => {
+      if (readOnly) return;
+      onRegionDraft({
+        startRow: 0,
+        endRow: sheet.rowCount - 1,
+        startCol: 0,
+        endCol: sheet.colCount - 1,
+      });
+    };
+  }, [readOnly, onRegionDraft, sheet.rowCount, sheet.colCount]);
+
   const runAutoScrollTickRef = useRef<() => void>(() => {});
   useEffect(() => {
     runAutoScrollTickRef.current = () => {
@@ -1063,12 +1078,32 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             // whole-sheet selection immediately on touch.
             touchAction: "none",
           }}
-          aria-label="Select entire sheet"
-        />
+        >
+          {/* The pointer gesture drafts the sheet from the container's
+              handler (data-corner-header); this click covers the keyboard,
+              whose activation is a click with no pointer behind it. */}
+          <button
+            type="button"
+            aria-label="Select entire sheet"
+            disabled={readOnly}
+            onClick={(event) => {
+              if (event.detail !== 0) return;
+              selectWholeSheetRef.current();
+            }}
+            style={{
+              width: "100%",
+              height: "100%",
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              cursor: "inherit",
+            }}
+          />
+        </div>
         {cells}
       </div>
     );
-  }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor]);
+  }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor, readOnly]);
 
   const placeholderCellStyle: React.CSSProperties = useMemo(
     () => ({ ...cellStyle, color: "rgba(0,0,0,0.25)" }),
@@ -1352,7 +1387,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   key={`seg-${o.axis}-${o.segmentIndex}`}
                   data-testid={`segment-overlay-${o.axis}-${o.segmentIndex}`}
                   title={titleParts.join(" — ")}
-                  aria-label={titleParts.join(" — ")}
+                  aria-hidden
                   sx={{
                     position: "absolute",
                     left: sLeft,
@@ -1532,7 +1567,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       : undefined
                   }
                   title={titleParts.join(" — ")}
-                  aria-label={titleParts.join(" — ")}
+                  // An editable intersection is a button named by its
+                  // summary; a read-only one is decoration (#795).
+                  aria-label={isEditable ? titleParts.join(" — ") : undefined}
+                  aria-hidden={isEditable ? undefined : true}
                   sx={{
                     position: "absolute",
                     left: iLeft,
@@ -1679,7 +1717,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   <Box
                     key={`divider-${axis}-${i}`}
                     data-testid={`segment-divider-${axis}-${i}`}
-                    aria-label={`Resize ${axis} segments ${i + 1} and ${i + 2}`}
+                    aria-hidden
                     onPointerDown={handleSegmentDividerPointerDown({
                       regionId: previewRegion.id,
                       axis,

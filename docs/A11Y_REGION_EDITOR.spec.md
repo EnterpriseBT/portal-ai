@@ -22,7 +22,7 @@ This spec pins the grid roles, key map, typed-range parser, region descriptions,
 6. **Text cues.** A region's label tab shows "Selected" and "Needs attention" as text, not only a shadow or colour.
 7. **Audit rows.**
    - The corner is a `button`.
-   - The two step forms keep `preventToggleEnterSubmit` with a reasoned `eslint-disable`, since it's event delegation for #789.
+   - The two step forms keep `preventToggleEnterSubmit`, since it's event delegation for #789. The a11y lint config allows `onKeyDown` on a `<form>` with the reason (implementation note: a per-line `eslint-disable` would fail the main `lint`, which doesn't load jsx-a11y).
    - The binding popover's paper is a `dialog` wrapping a `form`, and its status icon gets `role="img"`.
 8. **EditLayoutPlan's binding chips work.** `RegionEditorUI` forwards the popover props, and the page supplies them with the shared `patchBinding` over its own region state plus `sdk.columnDefinitions.search()` (discovery Q5 resolved: no follow-up needed).
 9. **Upload by keyboard.** The upload step's dropzone and core `FileUploader` are native buttons that open the file dialog; drag-and-drop stays.
@@ -249,14 +249,14 @@ Repeats are re-announced with #794's clear-then-write gap (`REANNOUNCE_GAP_MS`, 
 - **Descriptions.** It computes `regionDescriptions`: `"Region <entity label or 'unbound'>, <A1:D20>, records by <row|column>"`, plus `", needs attention: <first error>"` when the region has errors and `", drift detected"` when drifted. It also passes `invalid` per region to the overlays.
 - **Canvas wiring.** It passes `onSelectionChange={announceSelection}` and `onKeyboardHint={announceHint}` to the canvas.
 - **The Escape listener** (:296–343) is a document listener in capture phase, so it runs *before* the canvas. It skips an Escape whose target is inside `[role="grid"][data-has-selection]`. The canvas sets `data-has-selection` on its grid element while a keyboard or pointer selection exists, so the canvas's "clear selection" wins, and a second Escape deselects the region.
-- **The step form** (:387) keeps `onKeyDown={preventToggleEnterSubmit}`, under `// eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- #789: Enter-submit delegation from the step's fields; the form is never the target`.
+- **The step form** (:387) keeps `onKeyDown={preventToggleEnterSubmit}`. `eslint.a11y.config.js` gives `jsx-a11y/no-noninteractive-element-interactions` the option `form: ["onKeyDown"]`, with the reason (#789's Enter-submit delegation; the form is never the key's target). A per-line disable would fail the main `lint`, which doesn't load the plugin.
 
 ### Review step
 
 | Component | Change |
 |---|---|
 | `RegionReviewCard` | A chip's `aria-label` becomes `Edit binding: <source> (<state>)`, where `<state>` ∈ {`bound to <column label>`, `unbound`, `excluded`, `invalid: <reason>`}. Display-only chips keep `role="status"`. Each chip list is wrapped in `role="group"` with `aria-label="Column bindings for <region label>"`. |
-| `ReviewStep` (:509) | The same reasoned `eslint-disable` as the drawing step's form. |
+| `ReviewStep` (:509) | Covered by the same lint-config allowance as the drawing step's form. |
 | `BindingEditorPopoverUI` (:226–251) | The paper's slot props become `role: "dialog"` plus `aria-label` (no `component: "form"`). The content's first child is `<form onSubmit=…>`, holding the existing fields and keeping `handleOwnSubmit` / `FormDefaultButton`. The status icon `span` becomes `role="img"` with its existing `aria-label`. |
 | `RecordAxisTerminatorPopoverUI` | Focuses its first field on open via `useDialogAutoFocus(open)`. |
 
