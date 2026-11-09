@@ -233,6 +233,7 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
 
   return (
     <DataTable
+      label="Members"
       columns={visibleColumns}
       rows={members as unknown as Record<string, unknown>[]}
       emptyMessage="No members yet."

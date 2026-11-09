@@ -6,7 +6,8 @@ import {
   DataTable,
   useColumnConfig,
   type DataTableColumn,
-  type DataTableProps,
+  type DataTableBaseProps,
+  type DataTableName,
 } from "../ui/DataTable";
 
 // ── Sample data ─────────────────────────────────────────────────────
@@ -105,6 +106,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
+    label: "People",
     columns,
     rows,
   },
@@ -112,6 +114,7 @@ export const Default: Story = {
 
 export const WithSorting: Story = {
   args: {
+    label: "People",
     columns,
     rows,
     sortColumn: "name",
@@ -122,6 +125,7 @@ export const WithSorting: Story = {
 
 export const Empty: Story = {
   args: {
+    label: "People",
     columns: [],
     rows: [],
     emptyMessage: "No records found",
@@ -130,6 +134,7 @@ export const Empty: Story = {
 
 export const EmptyWithColumns: Story = {
   args: {
+    label: "People",
     columns,
     rows: [],
     emptyMessage: "No records found",
@@ -138,6 +143,7 @@ export const EmptyWithColumns: Story = {
 
 export const CustomEmptyMessage: Story = {
   args: {
+    label: "People",
     columns,
     rows: [],
     emptyMessage: "Import data to get started",
@@ -147,9 +153,10 @@ export const CustomEmptyMessage: Story = {
 // ── Interactive story with column config ────────────────────────────
 
 function DataTableWithConfig(
-  props: Omit<DataTableProps, "columnConfig" | "onColumnConfigChange"> & {
-    header?: React.ReactNode;
-  }
+  props: Omit<DataTableBaseProps, "columnConfig" | "onColumnConfigChange"> &
+    DataTableName & {
+      header?: React.ReactNode;
+    }
 ) {
   const [columnConfig, setColumnConfig] = useColumnConfig(props.columns);
 
@@ -183,16 +190,22 @@ function DataTableWithConfig(
 
 export const WithColumnConfig: Story = {
   args: {
+    label: "People",
     columns,
     rows,
   },
   render: (args) => (
-    <DataTableWithConfig columns={args.columns} rows={args.rows} />
+    <DataTableWithConfig
+      label="People"
+      columns={args.columns}
+      rows={args.rows}
+    />
   ),
 };
 
 export const WithCustomHeader: Story = {
   args: {
+    label: "People",
     columns,
     rows,
     header: (
@@ -208,11 +221,13 @@ export const WithCustomHeader: Story = {
 
 export const WithCustomHeaderAndConfig: Story = {
   args: {
+    label: "People",
     columns,
     rows,
   },
   render: (args) => (
     <DataTableWithConfig
+      label="People"
       columns={args.columns}
       rows={args.rows}
       header={<Typography variant="h6">Users</Typography>}
@@ -222,6 +237,7 @@ export const WithCustomHeaderAndConfig: Story = {
 
 export const FewColumns: Story = {
   args: {
+    label: "People",
     columns: columns.slice(0, 2),
     rows: rows.map(({ name, email }) => ({ name, email })),
   },
@@ -229,6 +245,7 @@ export const FewColumns: Story = {
 
 export const ClickableRows: Story = {
   args: {
+    label: "People",
     columns,
     rows,
     onRowClick: (row: Record<string, unknown>, index: number) =>
@@ -238,6 +255,7 @@ export const ClickableRows: Story = {
 
 export const CellClick: Story = {
   args: {
+    label: "People",
     columns: columns.map((col) =>
       col.key === "name" || col.key === "email"
         ? {

@@ -179,6 +179,19 @@ describe("EntityGroupDetailViewUI", () => {
     expect(screen.getByText("contact_email")).toBeInTheDocument();
   });
 
+  // #794: a member row opens its entity through a link.
+  it("names the members table and links each member to its entity", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} />);
+    screen.getByRole("table", { name: "Members" });
+    expect(screen.getByRole("link", { name: "CRM Customers" })).toHaveAttribute(
+      "href",
+      "/entities/ent-1"
+    );
+    expect(
+      screen.getByRole("link", { name: "Billing Contacts" })
+    ).toHaveAttribute("href", "/entities/ent-2");
+  });
+
   it("shows filled star for primary member and outline star for non-primary", () => {
     render(<EntityGroupDetailViewUI {...defaultProps} />);
     expect(screen.getByLabelText("Remove as primary")).toBeInTheDocument();

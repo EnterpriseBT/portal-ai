@@ -31,6 +31,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { AddGroupMemberDialog } from "../components/AddGroupMemberDialog.component";
 import DataResult from "../components/DataResult.component";
+import { RouterLink } from "../components/RouterLink.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { RemoveGroupMemberDialog } from "../components/RemoveGroupMemberDialog.component";
@@ -283,17 +284,15 @@ export const EntityGroupDetailViewUI: React.FC<
           }
         >
           <DataTable
+            label="Members"
             columns={membersColumns}
             rows={group.members.map(
               (m) => ({ ...m }) as Record<string, unknown>
             )}
             emptyMessage="No members yet"
-            onRowClick={(row) =>
-              navigate({
-                to: "/entities/$entityId",
-                params: { entityId: row.connectorEntityId as string },
-              })
-            }
+            // #794: a member opens its entity through a link.
+            rowHref={(row) => `/entities/${String(row.connectorEntityId)}`}
+            linkComponent={RouterLink}
           />
         </PageSection>
       </Stack>

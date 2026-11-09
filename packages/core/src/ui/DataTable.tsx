@@ -33,8 +33,11 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import Typography from "@mui/material/Typography";
+import MuiLink from "@mui/material/Link";
 import SettingsIcon from "@mui/icons-material/Settings";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+
+import { visuallyHidden } from "./visually-hidden.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -43,6 +46,11 @@ export interface DataTableColumn {
   key: string;
   /** Display label for the column header. */
   label: string;
+  /**
+   * Accessible name for a header with no visible label (an actions column,
+   * #794). Rendered visually hidden.
+   */
+  headerLabel?: string;
   /** Optional caption rendered below the label in the header (e.g. the column data type). */
   caption?: string;
   /** Whether this column supports sorting. Default: `false`. */
@@ -62,7 +70,18 @@ export interface DataTableColumn {
   ) => void;
 }
 
-export interface DataTableProps {
+/**
+ * A table's accessible name (#794): exactly one of a `label`, rendered as a
+ * visually hidden caption, or `aria-labelledby` pointing at a visible heading.
+ * The type requires one, as `ModalProps` does for a dialog (#793).
+ */
+export type DataTableName =
+  | { label: string; "aria-labelledby"?: never }
+  | { "aria-labelledby": string; label?: never };
+
+export type DataTableProps = DataTableBaseProps & DataTableName;
+
+export interface DataTableBaseProps {
   /** Column definitions. */
   columns: DataTableColumn[];
   /** Row data — each entry is a key→value map matching column keys. */
@@ -83,6 +102,16 @@ export interface DataTableProps {
   onColumnConfigChange?: (config: ColumnConfig[]) => void;
   /** Called when a row is clicked. Does not fire if the clicked cell's column defines `onCellClick`. */
   onRowClick?: (row: Record<string, unknown>, index: number) => void;
+  /**
+   * Where the row leads (#794). The primary cell renders as a link to it, and
+   * a click elsewhere on the row follows that link, so opening a row is
+   * navigation a keyboard can reach. Takes precedence over `onRowClick`.
+   */
+  rowHref?: (row: Record<string, unknown>) => string;
+  /** Key of the column whose cell carries the row link. Default: the first visible column. */
+  primaryColumn?: string;
+  /** Element the row link renders as (the app passes its router link). Default `"a"`. */
+  linkComponent?: React.ElementType;
 }
 
 export interface ColumnConfig {
@@ -315,6 +344,22 @@ const ColumnConfigMenu: React.FC<ColumnConfigMenuProps> = ({
 
 // ── DataTable ───────────────────────────────────────────────────────
 
+/** Elements whose own click a row click must not override (#794). */
+const INTERACTIVE =
+  "a, button, input, select, textarea, [role=button], [role=checkbox], [role=combobox], [tabindex]:not([tabindex='-1'])";
+
+const renderCell = (
+  col: DataTableColumn,
+  row: Record<string, unknown>
+): React.ReactNode =>
+  col.render
+    ? col.render(row[col.key], row)
+    : col.format
+      ? col.format(row[col.key])
+      : row[col.key] == null
+        ? "—"
+        : String(row[col.key]);
+
 export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
   (
     {
@@ -328,6 +373,11 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
       columnConfig,
       onColumnConfigChange,
       onRowClick,
+      rowHref,
+      primaryColumn,
+      linkComponent,
+      label,
+      "aria-labelledby": ariaLabelledBy,
     },
     ref
   ) => {
@@ -340,6 +390,20 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
         .filter((c) => c.visible && columnMap.has(c.key))
         .map((c) => columnMap.get(c.key)!);
     }, [columns, columnConfig]);
+
+    const linkColumn = rowHref
+      ? (primaryColumn ?? visibleColumns[0]?.key)
+      : undefined;
+
+    // A click on the row outside any control follows the row's link, so the
+    // router handles it; a control in the row keeps its own click (#794).
+    const followRowLink = (e: React.MouseEvent<HTMLTableRowElement>) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(INTERACTIVE)) return;
+      e.currentTarget
+        .querySelector<HTMLAnchorElement>("a[data-row-link]")
+        ?.click();
+    };
 
     if (visibleColumns.length === 0 && rows.length === 0) {
       return (
@@ -376,12 +440,24 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
           </Box>
         )}
         <TableContainer>
-          <Table size="small">
+          <Table size="small" aria-labelledby={ariaLabelledBy}>
+            {label && <caption style={visuallyHidden}>{label}</caption>}
             <TableHead>
               <TableRow sx={{ backgroundColor: "action.hover" }}>
                 {visibleColumns.map((col) => (
-                  <TableCell key={col.key} sx={{ fontWeight: 600 }}>
-                    {onSort && col.sortable ? (
+                  <TableCell
+                    key={col.key}
+                    sx={{ fontWeight: 600 }}
+                    // MUI renders this as aria-sort on the header (#794).
+                    sortDirection={
+                      onSort && col.sortable && sortColumn === col.key
+                        ? (sortDirection ?? "asc")
+                        : false
+                    }
+                  >
+                    {!col.label && col.headerLabel ? (
+                      <span style={visuallyHidden}>{col.headerLabel}</span>
+                    ) : onSort && col.sortable ? (
                       <TableSortLabel
                         active={sortColumn === col.key}
                         direction={
@@ -427,10 +503,21 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                   <TableRow
                     key={idx}
                     onClick={
-                      onRowClick ? () => onRowClick(row, idx) : undefined
+                      rowHref
+                        ? followRowLink
+                        : onRowClick
+                          ? (e) => {
+                              // A control in the row keeps its own click.
+                              if (
+                                (e.target as HTMLElement).closest(INTERACTIVE)
+                              )
+                                return;
+                              onRowClick(row, idx);
+                            }
+                          : undefined
                     }
                     sx={
-                      onRowClick
+                      rowHref || onRowClick
                         ? {
                             cursor: "pointer",
                             "&:hover": { backgroundColor: "action.hover" },
@@ -460,13 +547,17 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                             : undefined
                         }
                       >
-                        {col.render
-                          ? col.render(row[col.key], row)
-                          : col.format
-                            ? col.format(row[col.key])
-                            : row[col.key] == null
-                              ? "—"
-                              : String(row[col.key])}
+                        {col.key === linkColumn && rowHref ? (
+                          <MuiLink
+                            component={linkComponent ?? "a"}
+                            href={rowHref(row)}
+                            data-row-link=""
+                          >
+                            {renderCell(col, row)}
+                          </MuiLink>
+                        ) : (
+                          renderCell(col, row)
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>

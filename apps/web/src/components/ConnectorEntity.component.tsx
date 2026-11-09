@@ -99,6 +99,7 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
 
   return (
     <DataTable
+      label="Field mappings"
       columns={fieldMappingColumns}
       rows={rows}
       emptyMessage="No field mappings"

@@ -558,6 +558,17 @@ describe("ColumnDefinitionDetailView", () => {
       expect(screen.getByText("Revalidation is running")).toBeInTheDocument();
     });
 
+    // #794: the mapping's entity opens through a link, in a named table.
+    it("names the field mappings table and links each mapping's entity", () => {
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      screen.getByRole("table", { name: "Field mappings" });
+      expect(screen.getByRole("link", { name: "Contacts" })).toHaveAttribute(
+        "href",
+        "/entities/ce-1"
+      );
+    });
+
     it("shows field mapping edit/delete buttons when write is enabled", () => {
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);

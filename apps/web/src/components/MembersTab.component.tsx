@@ -98,85 +98,92 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
   error = null,
   mutating = false,
   invitesMutating = false,
-}) => (
-  <Stack spacing={2}>
-    <Stack
-      direction="row"
-      justifyContent="space-between"
-      alignItems="center"
-      spacing={2}
-    >
-      <Typography variant="body2" color="text.secondary">
-        {seatUsageLabel(seatUsage)}
-      </Typography>
-      <GatedButton
-        variant="contained"
-        onClick={onInviteClick}
-        gate={inviteGate}
+}) => {
+  // The visible heading names the invitations table (#794).
+  const pendingHeadingId = React.useId();
+  return (
+    <Stack spacing={2}>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        spacing={2}
       >
-        Invite member
-      </GatedButton>
-    </Stack>
+        <Typography variant="body2" color="text.secondary">
+          {seatUsageLabel(seatUsage)}
+        </Typography>
+        <GatedButton
+          variant="contained"
+          onClick={onInviteClick}
+          gate={inviteGate}
+        >
+          Invite member
+        </GatedButton>
+      </Stack>
 
-    {lastInviteUrl && (
-      <Alert severity="success" onClose={onDismissLink}>
-        <Stack spacing={1}>
-          <Typography variant="body2">
-            Invitation link — copy and share it now. This link is shown only
-            once.
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <TextField
-              value={lastInviteUrl}
-              size="small"
-              fullWidth
-              slotProps={{
-                htmlInput: { readOnly: true, "aria-label": "Invite link" },
-              }}
-            />
-            <Button
-              variant="outlined"
-              onClick={() => onCopyLink(lastInviteUrl)}
-            >
-              Copy
-            </Button>
+      {lastInviteUrl && (
+        <Alert severity="success" onClose={onDismissLink}>
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              Invitation link — copy and share it now. This link is shown only
+              once.
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <TextField
+                value={lastInviteUrl}
+                size="small"
+                fullWidth
+                slotProps={{
+                  htmlInput: { readOnly: true, "aria-label": "Invite link" },
+                }}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => onCopyLink(lastInviteUrl)}
+              >
+                Copy
+              </Button>
+            </Stack>
           </Stack>
-        </Stack>
-      </Alert>
-    )}
+        </Alert>
+      )}
 
-    {error ? (
-      <StatusMessage variant="error" error={error} />
-    ) : isLoading ? (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-        <CircularProgress aria-label="Loading members" />
-      </Box>
-    ) : (
-      <MemberListUI
-        members={members}
-        canManageRoles={canManageRoles}
-        canRemove={canRemove}
-        callerUserId={callerUserId}
-        assignableRoles={assignableRoles}
-        onSetRoles={onSetRoles}
-        groups={groups}
-        canManageGroups={canManageGroups}
-        onSetGroups={onSetGroups}
-        onRemove={onRemoveClick}
-        isPending={mutating}
+      {error ? (
+        <StatusMessage variant="error" error={error} />
+      ) : isLoading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+          <CircularProgress aria-label="Loading members" />
+        </Box>
+      ) : (
+        <MemberListUI
+          members={members}
+          canManageRoles={canManageRoles}
+          canRemove={canRemove}
+          callerUserId={callerUserId}
+          assignableRoles={assignableRoles}
+          onSetRoles={onSetRoles}
+          groups={groups}
+          canManageGroups={canManageGroups}
+          onSetGroups={onSetGroups}
+          onRemove={onRemoveClick}
+          isPending={mutating}
+        />
+      )}
+
+      <Divider />
+      <Typography variant="subtitle2" id={pendingHeadingId}>
+        Pending invitations
+      </Typography>
+      <PendingInvitationListUI
+        invitations={invitations}
+        onResend={onResend}
+        onRevoke={onRevoke}
+        isPending={invitesMutating}
+        aria-labelledby={pendingHeadingId}
       />
-    )}
-
-    <Divider />
-    <Typography variant="subtitle2">Pending invitations</Typography>
-    <PendingInvitationListUI
-      invitations={invitations}
-      onResend={onResend}
-      onRevoke={onRevoke}
-      isPending={invitesMutating}
-    />
-  </Stack>
-);
+    </Stack>
+  );
+};
 
 // ── Container ──────────────────────────────────────────────────────────
 

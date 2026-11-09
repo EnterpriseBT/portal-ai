@@ -14,6 +14,7 @@ import {
   type DataTableColumn,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
@@ -153,10 +154,20 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         key: "name",
         label: "Name",
         sortable: true,
-        onCellClick: (_v, _c, row) => {
-          const tp = toolpacks.find((t) => t.id === row.id);
-          if (tp) onSelect(tp);
-        },
+        // #794: opening a pack's details is an action, so the name is a
+        // button a keyboard reaches; the row click stays for pointers.
+        render: (value, row) => (
+          <Link
+            component="button"
+            type="button"
+            onClick={() => {
+              const tp = toolpacks.find((t) => t.id === row.id);
+              if (tp) onSelect(tp);
+            }}
+          >
+            {String(value)}
+          </Link>
+        ),
       },
       {
         key: "kind",
@@ -358,6 +369,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         <PaginationToolbar {...pagination.toolbarProps} />
 
         <DataTable
+          label="Toolpacks"
           columns={columns}
           rows={pagedRows as unknown as Record<string, unknown>[]}
           sortColumn={pagination.sortBy}

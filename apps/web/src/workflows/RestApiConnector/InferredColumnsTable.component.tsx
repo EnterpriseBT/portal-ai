@@ -238,6 +238,7 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
   return (
     <Stack spacing={1} sx={{ minWidth: 0 }}>
       <DataTable
+        label="Inferred columns"
         columns={columns}
         rows={tableRows}
         emptyMessage="No columns yet. Click Add column below to add one."

@@ -267,20 +267,23 @@ describe("EntityRecordDataTableUI", () => {
     );
   });
 
-  it("calls onRowClick when a row is clicked", async () => {
-    const onRowClick = jest.fn();
+  // #794: a named table whose rows link to rowHref.
+  it("is named Records and links each row to rowHref", () => {
     render(
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
-        onRowClick={onRowClick}
+        rowHref={(row) => `/records/${String(row.first_name)}`}
       />
     );
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.click(screen.getByText("Jane"));
-    expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+    const table = screen.getByRole("table", { name: "Records" });
+    expect(table).toBeInTheDocument();
+    expect(screen.getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      `/records/${String(rows[0].first_name)}`
+    );
   });
 
   it("renders column type as caption in each header", () => {

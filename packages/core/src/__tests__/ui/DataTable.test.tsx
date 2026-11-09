@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import {
   DataTable,
@@ -7,6 +8,7 @@ import {
   type DataTableColumn,
   type ColumnConfig,
 } from "../../ui/DataTable";
+import { expectNoAxeViolations } from "../axe.util";
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -59,20 +61,20 @@ function ConfigHarness({
 describe("DataTable", () => {
   describe("rendering", () => {
     it("renders column headers", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       expect(screen.getByText("Name")).toBeInTheDocument();
       expect(screen.getByText("Email")).toBeInTheDocument();
       expect(screen.getByText("Age")).toBeInTheDocument();
     });
 
     it("renders row data", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       expect(screen.getByText("Alice")).toBeInTheDocument();
       expect(screen.getByText("bob@ex.com")).toBeInTheDocument();
     });
 
     it("uses column format function when provided", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       expect(screen.getByText("30 yrs")).toBeInTheDocument();
       expect(screen.getByText("25 yrs")).toBeInTheDocument();
     });
@@ -89,6 +91,7 @@ describe("DataTable", () => {
       ];
       render(
         <DataTable
+          label="People"
           columns={cols}
           rows={[{ status: true }, { status: false }]}
         />
@@ -108,7 +111,7 @@ describe("DataTable", () => {
           render: () => <span data-testid="rendered">rendered</span>,
         },
       ];
-      render(<DataTable columns={cols} rows={[{ val: "x" }]} />);
+      render(<DataTable label="People" columns={cols} rows={[{ val: "x" }]} />);
       expect(screen.getByTestId("rendered")).toHaveTextContent("rendered");
       expect(screen.queryByText("formatted")).not.toBeInTheDocument();
     });
@@ -121,30 +124,48 @@ describe("DataTable", () => {
           render: (value, row) => <span>{`${value} (${row.age})`}</span>,
         },
       ];
-      render(<DataTable columns={cols} rows={[{ name: "Alice", age: 30 }]} />);
+      render(
+        <DataTable
+          label="People"
+          columns={cols}
+          rows={[{ name: "Alice", age: 30 }]}
+        />
+      );
       expect(screen.getByText("Alice (30)")).toBeInTheDocument();
     });
 
     it("renders null values as dash when no format", () => {
       render(
-        <DataTable columns={[{ key: "x", label: "X" }]} rows={[{ x: null }]} />
+        <DataTable
+          label="People"
+          columns={[{ key: "x", label: "X" }]}
+          rows={[{ x: null }]}
+        />
       );
       expect(screen.getByText("—")).toBeInTheDocument();
     });
 
     it("renders empty message when no rows and no columns", () => {
-      render(<DataTable columns={[]} rows={[]} />);
+      render(<DataTable label="People" columns={[]} rows={[]} />);
       expect(screen.getByText("No data")).toBeInTheDocument();
     });
 
     it("renders custom empty message", () => {
-      render(<DataTable columns={[]} rows={[]} emptyMessage="Nothing here" />);
+      render(
+        <DataTable
+          label="People"
+          columns={[]}
+          rows={[]}
+          emptyMessage="Nothing here"
+        />
+      );
       expect(screen.getByText("Nothing here")).toBeInTheDocument();
     });
 
     it("renders empty message inside table when columns exist but rows are empty", () => {
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={[]}
           emptyMessage="No records found"
@@ -162,7 +183,14 @@ describe("DataTable", () => {
   describe("sorting", () => {
     it("calls onSort with column key when header clicked", () => {
       const onSort = jest.fn();
-      render(<DataTable columns={columns} rows={rows} onSort={onSort} />);
+      render(
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          onSort={onSort}
+        />
+      );
       fireEvent.click(screen.getByText("Name"));
       expect(onSort).toHaveBeenCalledWith("name");
     });
@@ -170,6 +198,7 @@ describe("DataTable", () => {
     it("shows active sort indicator on the sorted column", () => {
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           onSort={jest.fn()}
@@ -183,7 +212,7 @@ describe("DataTable", () => {
     });
 
     it("does not render sort labels when onSort is not provided", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       // No aria-sort on any header
       const headers = screen.getAllByRole("columnheader");
       headers.forEach((h) => {
@@ -197,7 +226,9 @@ describe("DataTable", () => {
         { key: "notes", label: "Notes", sortable: false },
       ];
       const onSort = jest.fn();
-      render(<DataTable columns={mixed} rows={[]} onSort={onSort} />);
+      render(
+        <DataTable label="People" columns={mixed} rows={[]} onSort={onSort} />
+      );
       // Sortable column gets a button
       fireEvent.click(screen.getByText("Name"));
       expect(onSort).toHaveBeenCalledWith("name");
@@ -217,6 +248,7 @@ describe("DataTable", () => {
       ];
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           columnConfig={config}
@@ -238,6 +270,7 @@ describe("DataTable", () => {
       ];
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           columnConfig={config}
@@ -252,6 +285,7 @@ describe("DataTable", () => {
     it("shows configure columns button when config is provided", () => {
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           columnConfig={[
@@ -266,7 +300,7 @@ describe("DataTable", () => {
     });
 
     it("does not show configure button when config is not provided", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       expect(
         screen.queryByLabelText("Configure columns")
       ).not.toBeInTheDocument();
@@ -277,7 +311,12 @@ describe("DataTable", () => {
     it("onRowClick fires with correct row and index on row click", () => {
       const onRowClick = jest.fn();
       render(
-        <DataTable columns={columns} rows={rows} onRowClick={onRowClick} />
+        <DataTable
+          label="People"
+          columns={columns}
+          rows={rows}
+          onRowClick={onRowClick}
+        />
       );
       fireEvent.click(screen.getByText("Alice"));
       expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
@@ -292,7 +331,7 @@ describe("DataTable", () => {
         { key: "email", label: "Email", sortable: true },
         { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
       ];
-      render(<DataTable columns={cols} rows={rows} />);
+      render(<DataTable label="People" columns={cols} rows={rows} />);
       fireEvent.click(screen.getByText("Alice"));
       expect(onCellClick).toHaveBeenCalledWith("Alice", cols[0], rows[0]);
     });
@@ -305,7 +344,14 @@ describe("DataTable", () => {
         { key: "email", label: "Email", sortable: true },
         { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
       ];
-      render(<DataTable columns={cols} rows={rows} onRowClick={onRowClick} />);
+      render(
+        <DataTable
+          label="People"
+          columns={cols}
+          rows={rows}
+          onRowClick={onRowClick}
+        />
+      );
       fireEvent.click(screen.getByText("Alice"));
       expect(onCellClick).toHaveBeenCalledTimes(1);
       expect(onRowClick).not.toHaveBeenCalled();
@@ -319,7 +365,14 @@ describe("DataTable", () => {
         { key: "email", label: "Email", sortable: true },
         { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
       ];
-      render(<DataTable columns={cols} rows={rows} onRowClick={onRowClick} />);
+      render(
+        <DataTable
+          label="People"
+          columns={cols}
+          rows={rows}
+          onRowClick={onRowClick}
+        />
+      );
       fireEvent.click(screen.getByText("alice@ex.com"));
       expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
       expect(onCellClick).not.toHaveBeenCalled();
@@ -332,13 +385,13 @@ describe("DataTable", () => {
         { key: "name", label: "Name", caption: "string" },
         { key: "age", label: "Age", caption: "number" },
       ];
-      render(<DataTable columns={cols} rows={[]} />);
+      render(<DataTable label="People" columns={cols} rows={[]} />);
       expect(screen.getByText("string")).toBeInTheDocument();
       expect(screen.getByText("number")).toBeInTheDocument();
     });
 
     it("does not render caption element when caption is not set", () => {
-      render(<DataTable columns={columns} rows={rows} />);
+      render(<DataTable label="People" columns={columns} rows={rows} />);
       // None of the fixture columns have captions — no extra text nodes should appear
       const headers = screen.getAllByRole("columnheader");
       headers.forEach((h) => {
@@ -351,7 +404,13 @@ describe("DataTable", () => {
       const cols: DataTableColumn[] = [
         { key: "created", label: "Created At", caption: "datetime" },
       ];
-      render(<DataTable columns={cols} rows={[{ created: "2024-01-01" }]} />);
+      render(
+        <DataTable
+          label="People"
+          columns={cols}
+          rows={[{ created: "2024-01-01" }]}
+        />
+      );
       expect(screen.getByText("Created At")).toBeInTheDocument();
       expect(screen.getByText("datetime")).toBeInTheDocument();
       // They are separate DOM nodes
@@ -365,7 +424,9 @@ describe("DataTable", () => {
         { key: "name", label: "Name", sortable: true, caption: "string" },
       ];
       const onSort = jest.fn();
-      render(<DataTable columns={cols} rows={[]} onSort={onSort} />);
+      render(
+        <DataTable label="People" columns={cols} rows={[]} onSort={onSort} />
+      );
       expect(screen.getByText("Name")).toBeInTheDocument();
       expect(screen.getByText("string")).toBeInTheDocument();
     });
@@ -375,6 +436,7 @@ describe("DataTable", () => {
     it("renders custom header content", () => {
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           header={<span data-testid="custom-header">My Header</span>}
@@ -387,6 +449,7 @@ describe("DataTable", () => {
     it("renders header alongside column config menu", () => {
       render(
         <DataTable
+          label="People"
           columns={columns}
           rows={rows}
           header={<span>Header Text</span>}
@@ -403,7 +466,9 @@ describe("DataTable", () => {
     });
 
     it("does not render header bar when header is not provided and no config", () => {
-      const { container } = render(<DataTable columns={columns} rows={rows} />);
+      const { container } = render(
+        <DataTable label="People" columns={columns} rows={rows} />
+      );
       // The table should be the first child — no header bar above it
       const firstChild = container.firstElementChild?.firstElementChild;
       expect(firstChild?.tagName).toBe("DIV"); // TableContainer wraps a div
@@ -460,5 +525,185 @@ describe("useColumnConfig", () => {
     const config = JSON.parse(screen.getByTestId("config").textContent!);
     const email = config.find((c: ColumnConfig) => c.key === "email");
     expect(email.visible).toBe(false);
+  });
+});
+
+// ── Accessibility (#794) ────────────────────────────────────────────
+
+describe("DataTable accessibility (#794)", () => {
+  const Link = React.forwardRef<HTMLAnchorElement, { href: string }>(
+    ({ href, ...rest }, ref) => (
+      <a ref={ref} href={href} data-link="custom" {...rest} />
+    )
+  );
+  Link.displayName = "Link";
+
+  it("is named by its label, as a caption", () => {
+    render(<DataTable label="People" columns={columns} rows={rows} />);
+    expect(screen.getByRole("table", { name: "People" })).toBeInTheDocument();
+  });
+
+  it("is named by aria-labelledby", () => {
+    render(
+      <>
+        <h2 id="people-heading">Staff</h2>
+        <DataTable
+          aria-labelledby="people-heading"
+          columns={columns}
+          rows={rows}
+        />
+      </>
+    );
+    expect(screen.getByRole("table", { name: "Staff" })).toBeInTheDocument();
+  });
+
+  it("reports aria-sort on the sorted header only", () => {
+    render(
+      <DataTable
+        label="People"
+        columns={columns}
+        rows={rows}
+        onSort={jest.fn()}
+        sortColumn="email"
+        sortDirection="desc"
+      />
+    );
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers[1]).toHaveAttribute("aria-sort", "descending");
+    expect(headers[0]).not.toHaveAttribute("aria-sort");
+    expect(headers[2]).not.toHaveAttribute("aria-sort");
+  });
+
+  it("renders the row's primary cell as a link to rowHref", () => {
+    render(
+      <DataTable
+        label="People"
+        columns={columns}
+        rows={rows}
+        rowHref={(row) => `/people/${row.name}`}
+        linkComponent={Link}
+      />
+    );
+    const link = screen.getByRole("link", { name: "Alice" });
+    expect(link).toHaveAttribute("href", "/people/Alice");
+    expect(link).toHaveAttribute("data-link", "custom");
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+  });
+
+  it("puts the link in primaryColumn's cell", () => {
+    render(
+      <DataTable
+        label="People"
+        columns={columns}
+        rows={rows}
+        rowHref={(row) => `/people/${row.name}`}
+        primaryColumn="email"
+      />
+    );
+    expect(screen.getByRole("link", { name: "alice@ex.com" })).toHaveAttribute(
+      "href",
+      "/people/Alice"
+    );
+  });
+
+  it("follows the row link when another cell is clicked", async () => {
+    const onLinkClick = jest.fn((e: Event) => e.preventDefault());
+    render(
+      <DataTable
+        label="People"
+        columns={columns}
+        rows={rows}
+        rowHref={(row) => `/people/${row.name}`}
+      />
+    );
+    screen
+      .getByRole("link", { name: "Alice" })
+      .addEventListener("click", onLinkClick);
+    await userEvent.click(screen.getByText("alice@ex.com"));
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't follow the row link when a control in the row is clicked", async () => {
+    const onLinkClick = jest.fn((e: Event) => e.preventDefault());
+    const onAction = jest.fn();
+    const cols: DataTableColumn[] = [
+      ...columns,
+      {
+        key: "actions",
+        label: "",
+        headerLabel: "Actions",
+        render: () => (
+          <button type="button" onClick={onAction}>
+            Act
+          </button>
+        ),
+      },
+    ];
+    render(
+      <DataTable
+        label="People"
+        columns={cols}
+        rows={rows}
+        rowHref={(row) => `/people/${row.name}`}
+      />
+    );
+    screen
+      .getByRole("link", { name: "Alice" })
+      .addEventListener("click", onLinkClick);
+    await userEvent.click(screen.getAllByRole("button", { name: "Act" })[0]);
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onLinkClick).not.toHaveBeenCalled();
+  });
+
+  it("doesn't call onRowClick for a click on a control in the row", async () => {
+    const onRowClick = jest.fn();
+    const cols: DataTableColumn[] = [
+      {
+        key: "name",
+        label: "Name",
+        render: (v) => <button type="button">{String(v)}</button>,
+      },
+    ];
+    render(
+      <DataTable
+        label="People"
+        columns={cols}
+        rows={rows}
+        onRowClick={onRowClick}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Alice" }));
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("names a header with no visible label through headerLabel", () => {
+    render(
+      <DataTable
+        label="People"
+        columns={[
+          ...columns,
+          { key: "actions", label: "", headerLabel: "Actions" },
+        ]}
+        rows={rows}
+      />
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "Actions" })
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations with sort and row links", async () => {
+    const { container } = render(
+      <DataTable
+        label="People"
+        columns={columns}
+        rows={rows}
+        onSort={jest.fn()}
+        sortColumn="name"
+        sortDirection="asc"
+        rowHref={(row) => `/people/${row.name}`}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

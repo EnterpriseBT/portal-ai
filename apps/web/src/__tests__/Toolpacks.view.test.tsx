@@ -114,6 +114,18 @@ describe("ToolpacksUI", () => {
     expect(arg.slug).toBe("statistics");
   });
 
+  // #794: opening a pack's details is an action, so its name is a button a
+  // keyboard reaches, in a named table.
+  it("names the table and opens a toolpack from its name button", () => {
+    const onSelect = jest.fn();
+    renderUI({ onSelect });
+    screen.getByRole("table", { name: "Toolpacks" });
+    fireEvent.click(screen.getByRole("button", { name: "Statistics" }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const arg = (onSelect as jest.Mock).mock.calls[0][0] as Toolpack;
+    expect(arg.slug).toBe("statistics");
+  });
+
   // Case 53
   it("renders the metadata modal heading when a toolpack is selected", () => {
     renderUI({ selected: PACKS[0] });
