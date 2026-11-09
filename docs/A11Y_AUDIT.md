@@ -227,8 +227,8 @@ The flows:
 
 | ID | Flow | Step | WCAG | Observed | AT | Owner |
 |---|---|---|---|---|---|---|
-| KB-01 | All app pages | first Tab | 2.4.1 | **Closed:** every layout starts with a "Skip to main content" link into `main#main-content` (#797, 25f32b83). Re-walked 2026-11-05, owner and member, both themes. On list pages the auto-focused search (KB-02) still takes focus first. | keyboard | #797 |
-| KB-02 | Station → portal → pin; CSV import → records; Curated view | page load | 2.4.3 | List pages auto-focus the Search field on load (`PaginationToolbar`; also jsx-a11y `no-autofocus`). The first Tab lands in the list, and the header and navigation come only after the page content. | keyboard | #794 |
+| KB-01 | All app pages | first Tab | 2.4.1 | **Closed:** every layout starts with a "Skip to main content" link into `main#main-content` (#797, 25f32b83). Re-walked 2026-11-05, owner and member, both themes. List pages no longer auto-focus their search (KB-02, #988). | keyboard | #797 |
+| KB-02 | Station → portal → pin; CSV import → records; Curated view | page load | 2.4.3 | **Closed:** `PaginationToolbar`'s search no longer has `autoFocus`, so a list page opens on its `h1`, as the route announcer sets it (#797), and the field is named "Search" (#988). Was: list pages auto-focused the Search field on load (also jsx-a11y `no-autofocus`), so the first Tab landed in the list, and the header and navigation came only after the page content. | keyboard | #988 |
 | KB-03 | All app pages | sidebar | 4.1.2, 2.4.4 | **Closed:** sidebar entries are named links, collapsed ones by `aria-label` and a tooltip, with `aria-current` on the current page (#797, 25f32b83). Re-walked 2026-11-05: 13 links for owner, 7 for member, none unnamed. | keyboard | #797 |
 | KB-04 | All app pages | header | 2.4.7 | **Closed:** the theme draws a 2px `primary.main` focus ring on every control (#797, 074eb99f). Re-walked 2026-11-05 in both themes. | keyboard | #797 |
 | KB-05 | All app pages | sidebar | 2.4.7 | **Closed:** sidebar entries get the same 2px focus ring (#797, 074eb99f). Re-walked 2026-11-05 in both themes. | keyboard | #797 |

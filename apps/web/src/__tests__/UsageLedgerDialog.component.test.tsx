@@ -12,7 +12,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, expectNoAxeViolations } = await import("./test-utils");
+const { render, screen, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { UsageLedgerDialog, UsageLedgerDialogUI } =
   await import("../components/UsageLedgerDialog.component");
@@ -126,6 +127,14 @@ describe("UsageLedgerDialogUI (#179 slice 3)", () => {
       />
     );
     await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  // #988: the toolbar no longer focuses itself, so the dialog focuses its
+  // first field, the search, on open.
+  it("focuses the search field when it opens", async () => {
+    render(<UsageLedgerDialogUI {...uiProps} />);
+    const search = screen.getByRole("textbox", { name: "Search" });
+    await waitFor(() => expect(search).toHaveFocus());
   });
 
   it("does not render when closed", () => {

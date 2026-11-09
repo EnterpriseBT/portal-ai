@@ -677,7 +677,15 @@ export interface PaginationToolbarProps {
   columnDefinitions?: ResolvedColumn[];
   /** The search box's placeholder (#649). Default "Search...". */
   searchPlaceholder?: string;
+  /** A ref to the search input, for a dialog that focuses it on open
+   *  (`useDialogAutoFocus`). The toolbar never focuses itself (#988). */
+  searchInputRef?: React.Ref<HTMLInputElement>;
 }
+
+/** The search field's accessible name (#988): its placeholder, read as a
+ *  label, without the trailing ellipsis a screen reader would speak. */
+const searchName = (placeholder: string) =>
+  placeholder.replace(/(\.\.\.|…)\s*$/, "").trim() || "Search";
 
 export const PaginationToolbar = React.forwardRef<
   HTMLDivElement,
@@ -688,6 +696,7 @@ export const PaginationToolbar = React.forwardRef<
       search,
       onSearchChange,
       searchPlaceholder = "Search...",
+      searchInputRef,
       filterConfigs,
       filters,
       onFilterValueChange,
@@ -742,14 +751,18 @@ export const PaginationToolbar = React.forwardRef<
             flexWrap: "wrap",
           }}
         >
-          {/* Search */}
+          {/* Search. No autoFocus (#988): on arrival focus goes to the page
+              heading, which the route announcer focuses (#797). */}
           <TextField
-            autoFocus
             size="small"
+            inputRef={searchInputRef}
             placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             slotProps={{
+              // The name is the placeholder without its ellipsis, so a
+              // scoped placeholder ("Search text columns") scopes it too.
+              htmlInput: { "aria-label": searchName(searchPlaceholder) },
               input: {
                 startAdornment: (
                   <InputAdornment position="start">

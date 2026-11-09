@@ -19,6 +19,7 @@ import {
   usePagination,
   type PaginationToolbarProps,
 } from "./PaginationToolbar.component";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Columns ────────────────────────────────────────────────────────────
 
@@ -71,41 +72,47 @@ export const UsageLedgerDialogUI: React.FC<UsageLedgerDialogUIProps> = ({
   sortOrder,
   onSort,
   isLoading = false,
-}) => (
-  <Modal
-    open={open}
-    onClose={onClose}
-    title="Itemized usage"
-    maxWidth="md"
-    fullWidth
-    actions={
-      <Button type="button" variant="outlined" onClick={onClose}>
-        Close
-      </Button>
-    }
-  >
-    {/* pt clears the filter-count badge: it protrudes above the toolbar's
+}) => {
+  // The dialog's first field gets focus (Form & Dialog Pattern). The toolbar
+  // no longer focuses itself, since on a page that took focus from the h1
+  // (#988).
+  const searchRef = useDialogAutoFocus(open);
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Itemized usage"
+      maxWidth="md"
+      fullWidth
+      actions={
+        <Button type="button" variant="outlined" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      {/* pt clears the filter-count badge: it protrudes above the toolbar's
         buttons, and DialogContent's zeroed top padding (title present)
         would otherwise clip it at the scroll boundary. */}
-    <Stack spacing={2} sx={{ pt: 1.5 }}>
-      <PaginationToolbar {...toolbarProps} />
-      {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress aria-label="Loading usage ledger" />
-        </Box>
-      ) : (
-        <DataTable
-          columns={LEDGER_COLUMNS}
-          rows={entries as unknown as Record<string, unknown>[]}
-          sortColumn={sortBy}
-          sortDirection={sortOrder}
-          onSort={onSort}
-          emptyMessage="No charged tool calls match the current filters."
-        />
-      )}
-    </Stack>
-  </Modal>
-);
+      <Stack spacing={2} sx={{ pt: 1.5 }}>
+        <PaginationToolbar {...toolbarProps} searchInputRef={searchRef} />
+        {isLoading ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+            <CircularProgress aria-label="Loading usage ledger" />
+          </Box>
+        ) : (
+          <DataTable
+            columns={LEDGER_COLUMNS}
+            rows={entries as unknown as Record<string, unknown>[]}
+            sortColumn={sortBy}
+            sortDirection={sortOrder}
+            onSort={onSort}
+            emptyMessage="No charged tool calls match the current filters."
+          />
+        )}
+      </Stack>
+    </Modal>
+  );
+};
 
 // ── Container ──────────────────────────────────────────────────────────
 

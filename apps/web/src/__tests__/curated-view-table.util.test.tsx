@@ -200,5 +200,9 @@ describe("useCuratedViewTablePagination — keyset (#649)", () => {
     expect(
       screen.getByPlaceholderText("Search text columns")
     ).toBeInTheDocument();
+    // #988: and its accessible name says so too.
+    expect(
+      screen.getByRole("textbox", { name: "Search text columns" })
+    ).toBeInTheDocument();
   });
 });

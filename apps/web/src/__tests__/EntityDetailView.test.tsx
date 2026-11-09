@@ -154,6 +154,15 @@ describe("EntityDetailViewUI", () => {
     ).toBeInTheDocument();
   });
 
+  // #988: the records search matches text columns only (#821), and its
+  // name says so.
+  it('names the records search "Search text columns"', () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(
+      screen.getByRole("textbox", { name: "Search text columns" })
+    ).toBeInTheDocument();
+  });
+
   it("renders entity key chip", () => {
     render(<EntityDetailViewUI entity={stubEntity} />);
     expect(screen.getByText("contacts")).toBeInTheDocument();

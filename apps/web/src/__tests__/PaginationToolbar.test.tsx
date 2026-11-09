@@ -416,6 +416,31 @@ describe("usePagination", () => {
 
 describe("PaginationToolbar", () => {
   describe("search", () => {
+    // #988: autoFocus here took focus from the page h1 the route announcer
+    // had just focused (#797), on every list page.
+    it("doesn't take focus when it renders", () => {
+      render(<PaginationToolbar {...makeProps()} />);
+      expect(document.body).toHaveFocus();
+    });
+
+    it('names the search field "Search" by default (#988)', () => {
+      render(<PaginationToolbar {...makeProps()} />);
+      expect(
+        screen.getByRole("textbox", { name: "Search" })
+      ).toBeInTheDocument();
+    });
+
+    it("names the search field from a custom placeholder (#988)", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({ searchPlaceholder: "Search text columns" })}
+        />
+      );
+      expect(
+        screen.getByRole("textbox", { name: "Search text columns" })
+      ).toBeInTheDocument();
+    });
+
     it("should render search input", () => {
       render(<PaginationToolbar {...makeProps()} />);
       expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
