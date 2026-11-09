@@ -159,7 +159,8 @@ With `visuallyHidden`:
 ```ts
 export interface PaginationToolbarProps {
   // …existing
-  /** The list's request is in flight. Drives the delayed "Loading results…". */
+  /** The list's request is in flight. Drives the delayed "Loading results…".
+   *  Default: React Query's `useIsFetching() > 0`. */
   loading?: boolean;
 }
 ```
@@ -261,7 +262,7 @@ A pure adapter: MUI hands `href` to the component, and TanStack's `Link` takes `
 | `Toolpacks.view`, `EntityGroupDetail.view`, `ColumnDefinitionDetail.view` | Navigation clicks become `rowHref` or a `render`ed `RouterLink`. Icon actions name their row: "Refresh {name} schema", "Edit {name}", "Delete {name}", "Remove {entity}", "Set {entity} as primary" / "Remove {entity} as primary", "Edit mapping {key}", "Delete mapping {key}". Bare check icons get "Yes" text alternatives. |
 | `MemberList`, `InferredColumnsTable` | `variant="grid"`. |
 | Card lists: `StationList`, `Entities.view`, `EntityGroups.view`, `CuratedViews.view`, `ColumnDefinitionList.view`, `Jobs.view`, `Tags.view`, `Connector.view` (×2), `PinnedResultsListView.view` | `<Stack spacing={1}>` becomes `<CardList aria-label="…">`. Cards pass `headingLevel={2}`. Navigating cards pass `href` + `linkComponent={RouterLink}` instead of `onClick` + `navigate`. Tag cards keep `onClick` (it opens a dialog). |
-| Every `<PaginationToolbar>` | `loading={query.isLoading}` (or `isFetching` where a refetch replaces results). |
+| Every `<PaginationToolbar>` | No change. Most lists' queries run in a render-prop list below the toolbar, so the toolbar defaults `loading` to `useIsFetching() > 0`. A caller can still pass `loading` to override. (Implementation note, slice 3: the first draft had all 18 callers thread `loading`.) |
 | `CuratedViewDetail.view` | The error path renders `StatusMessage variant="error"`, not `EmptyResults`. |
 | `BulkFailuresTableBlock`, `ConnectorEntity` | Expand toggles get `aria-expanded` and `aria-controls`. `BulkFailures`' empty header gets `headerLabel`. |
 

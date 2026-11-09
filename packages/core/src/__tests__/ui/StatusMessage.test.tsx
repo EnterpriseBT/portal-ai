@@ -133,4 +133,31 @@ describe("StatusMessage accessibility (#797)", () => {
     const { container } = render(<StatusMessage {...props} />);
     await expectNoAxeViolations(container);
   });
+
+  // #794: a screen-reader-only region, mounted for its owner's lifetime so a
+  // change of text is announced.
+  describe("visuallyHidden", () => {
+    it("renders only a status with its text, no icon", () => {
+      const { container } = render(
+        <StatusMessage visuallyHidden message="12 results" />
+      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("12 results");
+      expect(container.querySelector("svg")).toBeNull();
+    });
+
+    it("is present with no text, so a later message is announced", () => {
+      const { rerender } = render(<StatusMessage visuallyHidden message="" />);
+      const status = screen.getByRole("status");
+      expect(status).toBeEmptyDOMElement();
+      rerender(<StatusMessage visuallyHidden message="No results found" />);
+      expect(screen.getByRole("status")).toBe(status);
+      expect(status).toHaveTextContent("No results found");
+    });
+
+    it("is an alert for an error", () => {
+      render(<StatusMessage visuallyHidden variant="error" message="Failed" />);
+      expect(screen.getByRole("alert")).toHaveTextContent("Failed");
+    });
+  });
 });

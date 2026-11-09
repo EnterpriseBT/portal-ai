@@ -17,13 +17,13 @@ import {
   PageHeader,
   PageSection,
   Stack,
+  StatusMessage,
 } from "@portalai/core/ui";
 import CircularProgress from "@mui/material/CircularProgress";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
-import { EmptyResults } from "../components/EmptyResults.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { EntityRecordDataTableUI } from "../components/EntityRecordDataTable.component";
 import { PaginationToolbar } from "../components/PaginationToolbar.component";
@@ -85,7 +85,13 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
 
   let recordsBody: React.ReactNode;
   if (recordsError) {
-    recordsBody = <EmptyResults />;
+    // #794: a failed load is an error (an alert), never "No results found".
+    recordsBody = (
+      <StatusMessage
+        variant="error"
+        message="Couldn't load this view's rows."
+      />
+    );
   } else if (!recordsLoading && records.length === 0) {
     recordsBody = (
       <PageEmptyState

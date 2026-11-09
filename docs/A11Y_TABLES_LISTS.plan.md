@@ -127,7 +127,7 @@ Every `DataTable` gets a name, sorted headers report `aria-sort`, and rows that 
   - the 500 ms loading delay;
   - re-announcing the same text.
 - Edit: `apps/web/src/__tests__/PaginationToolbar.test.tsx`.
-- Edit: every view or component rendering `<PaginationToolbar>`, passing `loading` from its list query.
+- ~~Edit: every view or component rendering `<PaginationToolbar>`, passing `loading` from its list query.~~ Implemented instead as a toolbar default of `useIsFetching() > 0`, because most lists' queries live in a render-prop list below the toolbar. No caller changes.
 - Edit: `CuratedViewDetail.view.tsx`: the error path renders `StatusMessage variant="error"` (Key decision 4 makes every list's error an alert), and its container test.
 
 **Steps**

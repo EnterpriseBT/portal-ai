@@ -1,4 +1,5 @@
 import React from "react";
+import { useIsFetching } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -33,6 +34,7 @@ import {
   MultiSearchableSelect,
   MultiAsyncSearchableSelect,
   MultiInfiniteScrollSelect,
+  StatusMessage,
 } from "@portalai/core/ui";
 import type {
   FetchPageParams,
@@ -53,6 +55,7 @@ import {
   removeConditionByIndex,
   getOperatorLabel,
 } from "../utils/advanced-filter-builder.util";
+import { useResultsAnnouncer } from "../utils/results-announcer.util";
 const AdvancedFilterBuilderLazy = React.lazy(() =>
   import("./AdvancedFilterBuilder.component").then((m) => ({
     default: m.AdvancedFilterBuilder,
@@ -680,6 +683,13 @@ export interface PaginationToolbarProps {
   /** A ref to the search input, for a dialog that focuses it on open
    *  (`useDialogAutoFocus`). The toolbar never focuses itself (#988). */
   searchInputRef?: React.Ref<HTMLInputElement>;
+  /**
+   * The list's request is in flight (#794). After a user change, a load that
+   * outlasts half a second is announced as "Loading results…". Defaults to
+   * whether any query is fetching, since most lists' queries live in a
+   * render-prop list below the toolbar.
+   */
+  loading?: boolean;
 }
 
 /** The search field's accessible name (#988): its placeholder, read as a
@@ -694,37 +704,70 @@ export const PaginationToolbar = React.forwardRef<
   (
     {
       search,
-      onSearchChange,
+      onSearchChange: onSearchChangeProp,
       searchPlaceholder = "Search...",
       searchInputRef,
       filterConfigs,
       filters,
-      onFilterValueChange,
-      onFilterChange,
+      onFilterValueChange: onFilterValueChangeProp,
+      onFilterChange: onFilterChangeProp,
       activeFilterCount,
       sortFields,
       sortBy,
-      onSortByChange,
+      onSortByChange: onSortByChangeProp,
       sortOrder,
-      onSortOrderChange,
+      onSortOrderChange: onSortOrderChangeProp,
       limit,
       limitOptions,
-      onLimitChange,
+      onLimitChange: onLimitChangeProp,
       total,
       currentPage,
       totalPages,
-      onFirst,
-      onPrev,
-      onNext,
-      onLast,
+      onFirst: onFirstProp,
+      onPrev: onPrevProp,
+      onNext: onNextProp,
+      onLast: onLastProp,
       advancedFilters,
-      onAdvancedFiltersChange,
-      onAdvancedFiltersClear,
+      onAdvancedFiltersChange: onAdvancedFiltersChangeProp,
+      onAdvancedFiltersClear: onAdvancedFiltersClearProp,
       advancedFilterConditionCount = 0,
       columnDefinitions,
+      loading: loadingProp,
     },
     ref
   ) => {
+    // #794: a change made through the toolbar is announced once its
+    // results settle ("12 results, page 1 of 2"); arrival says nothing.
+    const fetching = useIsFetching() > 0;
+    const { announcement, markChange } = useResultsAnnouncer({
+      loading: loadingProp ?? fetching,
+      total,
+      currentPage,
+      totalPages,
+    });
+    const changed =
+      <A extends unknown[]>(fn: ((...args: A) => void) | undefined) =>
+      (...args: A) => {
+        markChange();
+        fn?.(...args);
+      };
+    const onSearchChange = changed(onSearchChangeProp);
+    const onFilterValueChange = changed(onFilterValueChangeProp);
+    const onFilterChange = changed(onFilterChangeProp);
+    const onSortByChange = changed(onSortByChangeProp);
+    const onSortOrderChange = changed(onSortOrderChangeProp);
+    const onLimitChange = changed(onLimitChangeProp);
+    const onFirst = changed(onFirstProp);
+    const onPrev = changed(onPrevProp);
+    const onNext = changed(onNextProp);
+    const onLast = changed(onLastProp);
+    const onAdvancedFiltersChange = onAdvancedFiltersChangeProp
+      ? changed(onAdvancedFiltersChangeProp)
+      : undefined;
+    const onAdvancedFiltersClear = onAdvancedFiltersClearProp
+      ? changed(onAdvancedFiltersClearProp)
+      : undefined;
+
     const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement | null>(
       null
     );
@@ -743,6 +786,7 @@ export const PaginationToolbar = React.forwardRef<
 
     return (
       <Box ref={ref} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <StatusMessage visuallyHidden message={announcement} />
         <Box
           sx={{
             display: "flex",

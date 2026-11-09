@@ -415,6 +415,48 @@ describe("usePagination", () => {
 // =============================================================================
 
 describe("PaginationToolbar", () => {
+  // #794: changes made through the toolbar are spoken once they settle.
+  describe("result announcements", () => {
+    afterEach(() => jest.useRealTimers());
+
+    it("holds an empty status from mount, and says nothing on arrival", () => {
+      jest.useFakeTimers();
+      render(<PaginationToolbar {...makeProps()} />);
+      act(() => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    });
+
+    it("announces the count after a search settles", async () => {
+      jest.useFakeTimers();
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(
+        <PaginationToolbar {...makeProps({ total: 12, totalPages: 1 })} />
+      );
+      await user.type(screen.getByRole("textbox", { name: "Search" }), "ac");
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("12 results");
+    });
+
+    it("announces the page after paging", async () => {
+      jest.useFakeTimers();
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(
+        <PaginationToolbar {...makeProps({ currentPage: 2, totalPages: 5 })} />
+      );
+      await user.click(screen.getByRole("button", { name: "Next page" }));
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "95 results, page 2 of 5"
+      );
+    });
+  });
+
   describe("search", () => {
     // #988: autoFocus here took focus from the page h1 the route announcer
     // had just focused (#797), on every list page.

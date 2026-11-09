@@ -5,6 +5,10 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
   class="MuiBox-root css-1821gv5"
 >
   <div
+    role="status"
+    style="border: 0px; height: 1px; margin: -1px; overflow: hidden; padding: 0px; position: absolute; white-space: nowrap; width: 1px;"
+  />
+  <div
     class="MuiBox-root css-1qocved"
   >
     <div
@@ -38,7 +42,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
           aria-invalid="false"
           aria-label="Search"
           class="MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall MuiInputBase-inputAdornedStart MuiInputBase-inputAdornedEnd css-195mg07-MuiInputBase-input-MuiOutlinedInput-input"
-          id="_r_bd_"
+          id="_r_c2_"
           placeholder="Search..."
           type="text"
           value="test"
