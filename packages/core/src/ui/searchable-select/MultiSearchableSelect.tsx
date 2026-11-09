@@ -41,6 +41,8 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
+      // Key by value, not MUI's default label: equal labels shared a key (#986).
+      getOptionKey={(option) => String(option.value)}
       getOptionDisabled={(option) => option.disabled === true}
       disabled={disabled}
       size={size}

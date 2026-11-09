@@ -135,6 +135,8 @@ export const MultiAsyncSearchableSelect: React.FC<
       }}
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
+      // Key by value, not MUI's default label: equal labels shared a key (#986).
+      getOptionKey={(option) => String(option.value)}
       filterOptions={(x) => x}
       loading={loading}
       disabled={disabled}
