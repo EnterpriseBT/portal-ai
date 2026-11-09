@@ -56,8 +56,8 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])(
       );
       const title = screen.getByRole("heading", { name: LONG_NAME });
       const content = screen.getByText(/^Delete /).parentElement!;
-      expect(getComputedStyle(title).overflowWrap).toBe("anywhere");
-      expect(getComputedStyle(content).overflowWrap).toBe("break-word");
+      expect(window.getComputedStyle(title).overflowWrap).toBe("anywhere");
+      expect(window.getComputedStyle(content).overflowWrap).toBe("break-word");
     });
   }
 );
