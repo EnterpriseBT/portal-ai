@@ -241,6 +241,30 @@ describe("RegionDrawingStepUI — keyboard delete", () => {
 });
 
 describe("RegionDrawingStepUI — keyboard Escape", () => {
+  test("with a selection on the sheet, Escape clears it first and a second Escape deselects (#795)", () => {
+    const onSelectRegion = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onSelectRegion })} />);
+    const cell = screen.getByTestId("cell-3-0");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "ArrowRight", shiftKey: true });
+    expect(screen.getByRole("grid")).toHaveAttribute("data-has-selection");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.getByRole("grid")).not.toHaveAttribute("data-has-selection");
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(onSelectRegion).toHaveBeenCalledWith(null);
+  });
+
+  test("Delete still deletes the selected region while the sheet has a selection (#795)", () => {
+    const onRegionDelete = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
+    const cell = screen.getByTestId("cell-3-0");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+    expect(onRegionDelete).toHaveBeenCalledWith("r1");
+  });
+
   test("pressing Escape unselects the region via onSelectRegion(null)", () => {
     const onSelectRegion = jest.fn();
     const onRegionDelete = jest.fn();

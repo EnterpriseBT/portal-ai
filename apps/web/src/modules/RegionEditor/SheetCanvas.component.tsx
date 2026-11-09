@@ -107,6 +107,10 @@ export interface SheetCanvasUIProps {
    * whose cells were inlined in the parse response.
    */
   loadSlice?: LoadSliceFn;
+  /** The keyboard selection changed (#795); the step announces its extent. */
+  onSelectionChange?: (bounds: CellBounds | null) => void;
+  /** Enter on the sheet with nothing to create or open (#795). */
+  onKeyboardHint?: () => void;
 }
 
 const DEFAULT_CELL_WIDTH = 96;
@@ -202,6 +206,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   cellSize,
   maxHeight = 420,
   loadSlice,
+  onSelectionChange,
+  onKeyboardHint,
 }) => {
   const cellWidth = cellSize?.width ?? DEFAULT_CELL_WIDTH;
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
@@ -892,13 +898,38 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     const height = scrollRef.current?.clientHeight || initialRectHeight;
     return Math.max(1, Math.floor((height - COL_HEADER_HEIGHT) / cellHeight));
   }, [initialRectHeight, cellHeight]);
+  const regionAt = useCallback(
+    (coord: CellCoord) => {
+      // The last-drawn region sits on top, as on screen.
+      for (let i = visibleRegions.length - 1; i >= 0; i--) {
+        if (coordInBounds(coord, visibleRegions[i].bounds)) {
+          return visibleRegions[i].id;
+        }
+      }
+      return null;
+    },
+    [visibleRegions]
+  );
   const keyboard = useSheetKeyboard({
     rowCount: sheet.rowCount,
     colCount: sheet.colCount,
     pageRows,
     scrollToRow,
     gridRef,
+    regionAt,
+    onCreate: onRegionDraft,
+    onSelectRegion: onRegionSelect,
+    onSelectionChange,
+    onHint: onKeyboardHint,
+    readOnly,
   });
+  // One marquee: a pointer gesture replaces the keyboard's selection.
+  const { setSelection: setKeyboardSelection } = keyboard;
+  const pointerOpKind = activeOp?.kind;
+  useEffect(() => {
+    if (pointerOpKind) setKeyboardSelection(null);
+  }, [pointerOpKind, setKeyboardSelection]);
+  const marqueeBounds = pendingBounds ?? keyboard.selection;
   const activeRow = keyboard.active.row;
 
   // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
@@ -1889,17 +1920,19 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             );
           })}
 
-          {pendingBounds && (
+          {marqueeBounds && (
             <Box
+              data-testid="selection-marquee"
+              aria-hidden
               sx={{
                 position: "absolute",
-                left: ROW_HEADER_WIDTH + pendingBounds.startCol * cellWidth,
-                top: COL_HEADER_HEIGHT + pendingBounds.startRow * cellHeight,
+                left: ROW_HEADER_WIDTH + marqueeBounds.startCol * cellWidth,
+                top: COL_HEADER_HEIGHT + marqueeBounds.startRow * cellHeight,
                 width:
-                  (pendingBounds.endCol - pendingBounds.startCol + 1) *
+                  (marqueeBounds.endCol - marqueeBounds.startCol + 1) *
                   cellWidth,
                 height:
-                  (pendingBounds.endRow - pendingBounds.startRow + 1) *
+                  (marqueeBounds.endRow - marqueeBounds.startRow + 1) *
                   cellHeight,
                 border: "2px dashed",
                 borderColor: "primary.main",

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import type { ComponentProps } from "react";
 import { jest } from "@jest/globals";
 import {
   act,
@@ -1376,6 +1377,104 @@ describe("SheetCanvasUI", () => {
     test("has no axe violations as a grid", async () => {
       const { container } = renderSheet();
       await expectNoAxeViolations(container);
+    });
+  });
+
+  describe("keyboard selection (#795)", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 3, endRow: 4, startCol: 3, endCol: 4 },
+      targetEntityDefinitionId: "ent_a",
+    };
+
+    function renderSheet(
+      props: Partial<ComponentProps<typeof SheetCanvasUI>> = {}
+    ) {
+      const onRegionDraft = jest.fn();
+      const onRegionSelect = jest.fn();
+      const onKeyboardHint = jest.fn();
+      const onSelectionChange = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={onRegionSelect}
+          onRegionDraft={onRegionDraft}
+          onKeyboardHint={onKeyboardHint}
+          onSelectionChange={onSelectionChange}
+          {...props}
+        />
+      );
+      return {
+        onRegionDraft,
+        onRegionSelect,
+        onKeyboardHint,
+        onSelectionChange,
+      };
+    }
+    const key = (k: string, init: Partial<KeyboardEventInit> = {}) =>
+      fireEvent.keyDown(document.activeElement!, { key: k, ...init });
+
+    test("Shift+arrows then Enter drafts the selected bounds", () => {
+      const { onRegionDraft, onSelectionChange } = renderSheet();
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      key("ArrowDown", { shiftKey: true });
+      expect(onSelectionChange).toHaveBeenLastCalledWith({
+        startRow: 0,
+        endRow: 1,
+        startCol: 0,
+        endCol: 1,
+      });
+      expect(screen.getByTestId("selection-marquee")).toBeInTheDocument();
+      key("Enter");
+      expect(onRegionDraft).toHaveBeenCalledWith({
+        startRow: 0,
+        endRow: 1,
+        startCol: 0,
+        endCol: 1,
+      });
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+    });
+
+    test("Enter on a cell in a region selects it; elsewhere it asks for the hint", () => {
+      const { onRegionSelect, onKeyboardHint } = renderSheet();
+      screen.getByTestId("cell-3-3").focus();
+      key("Enter");
+      expect(onRegionSelect).toHaveBeenCalledWith("r1");
+      key("ArrowUp");
+      key("Enter");
+      expect(onKeyboardHint).toHaveBeenCalledTimes(1);
+    });
+
+    test("a pointer draw replaces the keyboard selection's marquee", () => {
+      const { onRegionDraft } = renderSheet();
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      expect(screen.getAllByTestId("selection-marquee")).toHaveLength(1);
+      const start = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(start, { pointerId: 1, clientX: 150, clientY: 60 });
+      fireEvent.pointerMove(start, {
+        pointerId: 1,
+        clientX: 300,
+        clientY: 120,
+      });
+      expect(screen.getAllByTestId("selection-marquee")).toHaveLength(1);
+      fireEvent.pointerUp(start, { pointerId: 1, clientX: 300, clientY: 120 });
+      expect(onRegionDraft).toHaveBeenCalled();
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+    });
+
+    test("read-only selects nothing", () => {
+      const { onRegionDraft } = renderSheet({ readOnly: true });
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      key("Enter");
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+      expect(onRegionDraft).not.toHaveBeenCalled();
     });
   });
 });

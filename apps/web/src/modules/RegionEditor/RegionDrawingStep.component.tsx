@@ -320,6 +320,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       );
       if (popup && !popup.contains(rootRef.current)) return;
       if (e.key === "Escape") {
+        // A selection on the sheet takes Escape first (#795): the grid
+        // clears it, and the next Escape deselects the region.
+        if (target?.closest?.('[role="grid"][data-has-selection]')) return;
         e.preventDefault();
         onSelectRegion(null);
         return;

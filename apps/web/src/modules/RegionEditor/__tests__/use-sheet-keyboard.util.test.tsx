@@ -4,6 +4,7 @@ import { jest } from "@jest/globals";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { useSheetKeyboard } from "../utils/use-sheet-keyboard.util";
+import type { SheetKeyboardOptions } from "../utils/use-sheet-keyboard.util";
 
 const ROWS = 1000;
 const COLS = 5;
@@ -13,7 +14,25 @@ const WINDOW = 20;
  * A fake virtualized grid: only WINDOW rows from `first` render, and
  * `scrollToRow` moves the window on a later tick, as the virtualizer does.
  */
-function Harness({ scrollSpy }: { scrollSpy: (row: number) => void }) {
+type ExtraOptions = Partial<
+  Pick<
+    SheetKeyboardOptions,
+    | "regionAt"
+    | "onCreate"
+    | "onSelectRegion"
+    | "onSelectionChange"
+    | "onHint"
+    | "readOnly"
+  >
+>;
+
+function Harness({
+  scrollSpy,
+  extra = {},
+}: {
+  scrollSpy: (row: number) => void;
+  extra?: ExtraOptions;
+}) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [first, setFirst] = useState(0);
   const { gridProps, cellProps } = useSheetKeyboard({
@@ -27,6 +46,7 @@ function Harness({ scrollSpy }: { scrollSpy: (row: number) => void }) {
       }
     },
     gridRef,
+    ...extra,
   });
   const rows = [];
   for (let r = first; r < Math.min(ROWS, first + WINDOW); r++) {
@@ -47,9 +67,9 @@ function Harness({ scrollSpy }: { scrollSpy: (row: number) => void }) {
   );
 }
 
-function setup() {
+function setup(extra: ExtraOptions = {}) {
   const scrollSpy = jest.fn<(row: number) => void>();
-  render(<Harness scrollSpy={scrollSpy} />);
+  render(<Harness scrollSpy={scrollSpy} extra={extra} />);
   const cell = (r: number, c: number) =>
     document.querySelector<HTMLElement>(`[data-cell-coord="${r}:${c}"]`);
   return { scrollSpy, cell };
@@ -148,5 +168,144 @@ describe("useSheetKeyboard — movement (#795)", () => {
     const grid = screen.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowDown" });
     expect(scrollSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSheetKeyboard — selection (#795)", () => {
+  const selected = () =>
+    Array.from(document.querySelectorAll('[aria-selected="true"]')).map((el) =>
+      el.getAttribute("data-cell-coord")
+    );
+
+  test("Shift+arrows extend a selection from where it began", () => {
+    const { cell } = setup();
+    cell(1, 1)!.focus();
+    press("ArrowRight", { shiftKey: true });
+    press("ArrowDown", { shiftKey: true });
+    expect(selected()).toEqual(["1:1", "1:2", "2:1", "2:2"]);
+    // Back toward the anchor shrinks it.
+    press("ArrowLeft", { shiftKey: true });
+    expect(selected()).toEqual(["1:1", "2:1"]);
+    expect(screen.getByRole("grid")).toHaveAttribute("data-has-selection");
+    expect(screen.getByRole("grid")).toHaveAttribute(
+      "aria-multiselectable",
+      "true"
+    );
+  });
+
+  test("a plain move clears the selection", () => {
+    const { cell } = setup();
+    cell(1, 1)!.focus();
+    press("ArrowRight", { shiftKey: true });
+    press("ArrowDown");
+    expect(selected()).toEqual([]);
+    expect(screen.getByRole("grid")).not.toHaveAttribute("data-has-selection");
+  });
+
+  test("Shift+Space selects the row, Ctrl+Space the column, Ctrl+A the sheet", () => {
+    const onSelectionChange = jest.fn();
+    const { cell } = setup({ onSelectionChange });
+    cell(2, 3)!.focus();
+    press(" ", { shiftKey: true });
+    expect(onSelectionChange).toHaveBeenLastCalledWith({
+      startRow: 2,
+      endRow: 2,
+      startCol: 0,
+      endCol: COLS - 1,
+    });
+    press(" ", { ctrlKey: true });
+    expect(onSelectionChange).toHaveBeenLastCalledWith({
+      startRow: 0,
+      endRow: ROWS - 1,
+      startCol: 3,
+      endCol: 3,
+    });
+    press("a", { metaKey: true });
+    expect(onSelectionChange).toHaveBeenLastCalledWith({
+      startRow: 0,
+      endRow: ROWS - 1,
+      startCol: 0,
+      endCol: COLS - 1,
+    });
+  });
+
+  test("Enter on a selection creates a region from it and clears it", () => {
+    const onCreate = jest.fn();
+    const { cell } = setup({ onCreate });
+    cell(0, 0)!.focus();
+    press("ArrowDown", { shiftKey: true });
+    press("ArrowRight", { shiftKey: true });
+    press("Enter");
+    expect(onCreate).toHaveBeenCalledWith({
+      startRow: 0,
+      endRow: 1,
+      startCol: 0,
+      endCol: 1,
+    });
+    expect(selected()).toEqual([]);
+  });
+
+  test("Enter in a region opens it; Enter on nothing asks for the hint", () => {
+    const onSelectRegion = jest.fn();
+    const onHint = jest.fn();
+    const onCreate = jest.fn();
+    const { cell } = setup({
+      onSelectRegion,
+      onHint,
+      onCreate,
+      regionAt: (c) => (c.row < 2 ? "r1" : null),
+    });
+    cell(1, 0)!.focus();
+    press("Enter");
+    expect(onSelectRegion).toHaveBeenCalledWith("r1");
+    press("ArrowDown");
+    press("Enter");
+    expect(onHint).toHaveBeenCalledTimes(1);
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  test("Escape clears a selection, and without one is left alone", () => {
+    const { cell } = setup();
+    cell(1, 1)!.focus();
+    press("ArrowRight", { shiftKey: true });
+    const withSelection = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.activeElement!.dispatchEvent(withSelection);
+    });
+    expect(withSelection.defaultPrevented).toBe(true);
+    expect(selected()).toEqual([]);
+    const without = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.activeElement!.dispatchEvent(without);
+    });
+    expect(without.defaultPrevented).toBe(false);
+  });
+
+  test("read-only moves but never selects, creates or opens", () => {
+    const onCreate = jest.fn();
+    const onSelectRegion = jest.fn();
+    const { cell } = setup({
+      readOnly: true,
+      onCreate,
+      onSelectRegion,
+      regionAt: () => "r1",
+    });
+    cell(0, 0)!.focus();
+    press("ArrowRight", { shiftKey: true });
+    expect(cell(0, 1)).toHaveFocus();
+    press(" ", { shiftKey: true });
+    press("a", { ctrlKey: true });
+    expect(selected()).toEqual([]);
+    press("Enter");
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onSelectRegion).not.toHaveBeenCalled();
   });
 });

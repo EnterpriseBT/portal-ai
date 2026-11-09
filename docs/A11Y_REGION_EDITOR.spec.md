@@ -201,7 +201,7 @@ export interface SheetKeyboard {
   - Default description: `Region <label>, <A1:D20>`.
 - **Decorative elements get `aria-hidden="true"` and lose their `aria-label`:** segment overlays (:1355), non-editable intersections (:1535), dividers (:1682), and `SegmentStrip`'s wrapper (:134).
 - **The editable intersection keeps its button role and name.** It isn't under an `aria-hidden` ancestor.
-- **The pointer marquee and keyboard selection share state.** A pointer draw calls `setSelection` while dragging. On release it calls `onRegionDraft`, then clears the selection.
+- **The pointer marquee and keyboard selection share one marquee.** It renders the pointer gesture's bounds while one is in progress, otherwise the keyboard `selection`; a pointer gesture clears the keyboard selection when it starts (implementation note: rather than the pointer writing through `setSelection`, which kept pointer state out of the hook). On release the pointer path calls `onRegionDraft` as before.
 - **Selected cells** use the existing marquee fill. The theme handles focus: the active cell shows the 2 px ring from `a11yComponents` (an `&:focus-visible` rule on `[role=gridcell]` added there).
 
 ### `RegionOverlayUI` (`RegionOverlay.component.tsx`)
