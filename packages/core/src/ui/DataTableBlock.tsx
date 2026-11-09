@@ -12,6 +12,7 @@ import TableRow from "@mui/material/TableRow";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import TextField from "@mui/material/TextField";
 import SearchIcon from "@mui/icons-material/Search";
+import { visuallyHidden } from "./visually-hidden.js";
 
 const DEFAULT_ROWS_PER_PAGE = 10;
 const ROWS_PER_PAGE_OPTIONS = [5, 10, 25, 50, 100];
@@ -34,11 +35,14 @@ function compareValues(a: unknown, b: unknown): number {
 }
 
 export interface DataTableBlockProps {
+  /** The table's accessible name (#794), also naming its search. */
+  label: string;
   columns: string[];
   rows: Record<string, unknown>[];
 }
 
 export const DataTableBlock: React.FC<DataTableBlockProps> = ({
+  label,
   columns,
   rows,
 }) => {
@@ -116,6 +120,7 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
           value={search}
           onChange={handleSearchChange}
           slotProps={{
+            htmlInput: { "aria-label": `Search ${label}` },
             input: {
               startAdornment: (
                 <InputAdornment position="start">
@@ -142,10 +147,16 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
       </Box>
       <TableContainer>
         <Table size="small" stickyHeader>
+          <caption style={visuallyHidden}>{label}</caption>
           <TableHead>
             <TableRow>
               {columns.map((col) => (
-                <TableCell key={col} sx={{ fontWeight: 600 }}>
+                <TableCell
+                  key={col}
+                  sx={{ fontWeight: 600 }}
+                  // MUI renders this as aria-sort on the header (#794).
+                  sortDirection={sortColumn === col ? sortDirection : false}
+                >
                   <TableSortLabel
                     active={sortColumn === col}
                     direction={sortColumn === col ? sortDirection : "asc"}

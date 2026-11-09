@@ -187,7 +187,12 @@ export const EntityGroupDetailViewUI: React.FC<
               if (row.isPrimary) onDemoteMember(row.id as string);
               else onPromoteMember(row.id as string);
             }}
-            aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
+            // #794: names the member it acts on.
+            aria-label={
+              row.isPrimary
+                ? `Remove ${String(row.connectorEntityLabel)} as primary`
+                : `Set ${String(row.connectorEntityLabel)} as primary`
+            }
           >
             {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
           </IconButton>
@@ -209,7 +214,7 @@ export const EntityGroupDetailViewUI: React.FC<
                   onRemoveMemberDialogOpen?.();
                   setRemoveDialogMemberId(row.id as string);
                 }}
-                aria-label="Remove member"
+                aria-label={`Remove ${String(row.connectorEntityLabel)}`}
               >
                 <DeleteIcon fontSize="small" />
               </IconButton>

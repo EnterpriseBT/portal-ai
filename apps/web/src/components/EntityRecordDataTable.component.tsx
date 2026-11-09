@@ -83,9 +83,10 @@ const VALID_COLUMN: DataTableColumn = {
   sortable: false,
   render: (value: unknown) =>
     value === false ? (
-      <CancelIcon fontSize="small" color="error" />
+      // #794: the state is text to a screen reader, not only a colour.
+      <CancelIcon fontSize="small" color="error" titleAccess="Invalid" />
     ) : (
-      <CheckCircleIcon fontSize="small" color="success" />
+      <CheckCircleIcon fontSize="small" color="success" titleAccess="Valid" />
     ),
 };
 

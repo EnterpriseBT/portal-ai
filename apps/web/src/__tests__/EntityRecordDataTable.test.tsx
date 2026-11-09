@@ -375,7 +375,11 @@ describe("EntityRecordDataTableUI", () => {
         source="cache"
       />
     );
-    expect(screen.getByText("Valid")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Valid" })
+    ).toBeInTheDocument();
+    // #794: each row's state is text to a screen reader, not only a colour.
+    expect(screen.getAllByTitle("Valid").length).toBeGreaterThan(0);
     unmount();
 
     render(
@@ -386,7 +390,9 @@ describe("EntityRecordDataTableUI", () => {
         showValidity={false}
       />
     );
-    expect(screen.queryByText("Valid")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Valid" })
+    ).not.toBeInTheDocument();
   });
 
   it("#678: renders no Cached/Live chip when source is omitted", () => {

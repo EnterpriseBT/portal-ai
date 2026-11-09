@@ -587,12 +587,15 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       {
         key: "isPrimaryKey",
         label: "Primary Key",
-        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+        // #794: the check says "Yes" to a screen reader too.
+        render: (value) =>
+          value ? <CheckIcon fontSize="small" titleAccess="Yes" /> : null,
       },
       {
         key: "required",
         label: "Required",
-        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+        render: (value) =>
+          value ? <CheckIcon fontSize="small" titleAccess="Yes" /> : null,
       },
       { key: "defaultValue", label: "Default Value" },
       { key: "format", label: "Format" },
@@ -614,6 +617,10 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
             render: (_value: unknown, row: Record<string, unknown>) => {
               const fm = fieldMappings.find((f) => f.id === row.id);
               if (!fm) return null;
+              // #794: each action names the mapping it acts on.
+              const mappingName = fm.connectorEntity
+                ? `${fm.sourceField} in ${fm.connectorEntity.label}`
+                : fm.sourceField;
               const gates = fieldMappingRowGates({
                 capabilities: fm.capabilities,
                 isWriteEnabled:
@@ -631,7 +638,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                         e.stopPropagation();
                         onEdit(fm);
                       }}
-                      aria-label="Edit field mapping"
+                      aria-label={`Edit mapping ${mappingName}`}
                       icon={IconName.Edit}
                     />
                   )}
@@ -644,7 +651,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                         e.stopPropagation();
                         onDelete(fm);
                       }}
-                      aria-label="Delete field mapping"
+                      aria-label={`Delete mapping ${mappingName}`}
                       icon={IconName.Delete}
                     />
                   )}

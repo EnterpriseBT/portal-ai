@@ -124,6 +124,7 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
   testEndpointGate,
 }) => {
   const [expanded, setExpanded] = React.useState(false);
+  const mappingsId = React.useId();
   const mappings = entity.fieldMappings ?? [];
   const mappingCount = mappings.length;
 
@@ -154,15 +155,16 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
           </Box>
           <IconButton
             size="small"
-            aria-label={
-              expanded ? "Collapse field mappings" : "Expand field mappings"
-            }
+            // #794: a stable name; the state is aria-expanded.
+            aria-label={`${entity.label} field mappings`}
+            aria-expanded={expanded}
+            aria-controls={mappingsId}
           >
             {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
         </Stack>
       </CardContent>
-      <Collapse in={expanded}>
+      <Collapse in={expanded} id={mappingsId}>
         <Box sx={{ px: 2, pb: 2 }}>
           <Stack
             direction="row"

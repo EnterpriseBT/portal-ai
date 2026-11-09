@@ -28,9 +28,7 @@ const entity = {
 } as unknown as ConnectorEntityCardUIProps["connectorEntity"];
 
 const expand = async () =>
-  userEvent.click(
-    screen.getByRole("button", { name: /expand field mappings/i })
-  );
+  userEvent.click(screen.getByRole("button", { name: "Users field mappings" }));
 
 describe("ConnectorEntityCardUI — Test endpoint (#780)", () => {
   it("renders no Test action when onTestEndpoint is unset", async () => {
@@ -55,8 +53,8 @@ describe("ConnectorEntityCardUI — Test endpoint (#780)", () => {
     );
     expect(onTestEndpoint).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: /collapse field mappings/i })
-    ).toBeInTheDocument();
+      screen.getByRole("button", { name: "Users field mappings" })
+    ).toHaveAttribute("aria-expanded", "true");
   });
 
   it("renders a disable gate as aria-disabled with its reason, and doesn't fire", async () => {
@@ -136,5 +134,19 @@ describe("ConnectorEntityCardUI — provenance (#641)", () => {
     );
     await expand();
     expect(screen.getAllByText("Created in a portal session")).toHaveLength(1);
+  });
+});
+
+// #794: the mappings toggle has a stable name and reports its state.
+describe("ConnectorEntityCardUI — field mappings toggle (#794)", () => {
+  it("reports aria-expanded and controls the mappings region", async () => {
+    render(<ConnectorEntityCardUI connectorEntity={entity} />);
+    const toggle = screen.getByRole("button", { name: "Users field mappings" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      document.getElementById(toggle.getAttribute("aria-controls") ?? "")
+    ).not.toBeNull();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 });

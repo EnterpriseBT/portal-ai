@@ -229,6 +229,8 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       render: (_value, row) => {
         const tp = toolpacks.find((t) => t.id === row.id);
         if (!tp || tp.kind !== "custom") return null;
+        // #794: each action names its pack, so a list of "Edit" buttons
+        // says which is which.
         // #691: a pack's actions follow its own capabilities (a custom pack
         // is its creator's; owner/admin write any). Refresh and Edit rewrite
         // the pack, so both need write.
@@ -240,7 +242,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
             {onRefresh && canWrite && (
               <IconButton
                 size="small"
-                aria-label="Refresh toolpack schema"
+                aria-label={`Refresh ${tp.name} schema`}
                 disabled={refreshingId === tp.id}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -260,7 +262,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
             {onEdit && canWrite && (
               <IconButton
                 size="small"
-                aria-label="Edit toolpack"
+                aria-label={`Edit ${tp.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(tp);
@@ -273,7 +275,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
               <IconButton
                 size="small"
                 color="error"
-                aria-label="Delete toolpack"
+                aria-label={`Delete ${tp.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(tp);
