@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#986](https://github.com/EnterpriseBT/portal-ai/issues/986) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc). Child of epic #791; branches from and merges into `epic/a11y-conformance`.
 
-**Why.** MUI's `Autocomplete` keys each option by `getOptionLabel` unless it's given `getOptionKey`. Our selects pass only the label, so two options with the same label share a React key: React logs "two children with the same key" and may drop or duplicate an option as the list re-renders, so a user can pick the wrong one. Add Member's "Link Field Mapping" list shows it: two mappings whose column definition is "Enum" both read "Enum", which also leaves them indistinguishable to anyone (WCAG 2.4.6). `packages/core` (the keys), `apps/web` (the mapping label, and three raw `Autocomplete`s with the same keying), and one line of `apps/api` (the mapping search, so the key in the label is searchable).
+**Why.** MUI's `Autocomplete` keys each option by `getOptionLabel` unless it's given `getOptionKey`. Our selects pass only the label, so two options with the same label share a React key: React logs "two children with the same key" and may drop or duplicate an option as the list re-renders, so a user can pick the wrong one. Add Member's "Link Field Mapping" list shows it: two mappings whose column definition is "Enum" both read "Enum", which also leaves them indistinguishable to anyone (WCAG 2.4.6). `packages/core` (the keys), `apps/web` (the mapping label, and three raw `Autocomplete`s with the same keying), and `apps/api` (the mapping search, so the key in the label is searchable; and the group member's link field, which named the column definition, not the mapping).
 
 ## Current shape
 
@@ -16,6 +16,7 @@
 | Caller | `apps/web/src/views/EntityGroupDetail.view.tsx:456` → `AddGroupMemberDialog.component.tsx:100` | The only consumer of `searchWithColumnDefinition` |
 | Raw `Autocomplete`s in web | `CuratedViewEditorDialog.component.tsx:173` (entity) and `:229` (columns), `CreatePortalDialog.component.tsx:67` (station), `CreateStationDialog.component.tsx:242` (toolpack) | Also keyed by label (code review). Entities, stations and packs can share a label |
 | Mapping search | `apps/api/src/routes/field-mapping.router.ts:200` | `search` matched `sourceField` only, so the key now shown in the label wasn't searchable (code review) |
+| Member link field | `apps/api/src/routes/entity-group-member.router.ts:166`, `entity-group.router.ts:335` | `linkFieldMappingSourceField` came from `columnDefinition.key`, so members on "region" and "segment" both read "enum" (smoke walk). Both tests' fixtures had the column key equal to the source field, which hid it |
 | Tests | `packages/core/src/__tests__/ui/SearchableSelect.test.tsx`, `MultiSearchableSelect.test.tsx` | One `describe` per component; none has duplicate labels |
 
 ## Decision — key by value in core, and disambiguate the mapping label
@@ -26,6 +27,7 @@
   - **B. A secondary line under the label.** `SelectOption` has no field for it, so this adds a new option shape to core for one list.
 - The key, not the source field, because only the key is unique within an entity (`field_mappings_entity_normalized_key_unique`, `apps/api/src/db/schema/field-mappings.table.ts:50`). The list is filtered to one entity, so A always tells its options apart.
 - **The search follows the label.** The list's `search` also matches `normalizedKey` (`or(ilike(sourceField), ilike(normalizedKey))`, as column definitions search label and key), so typing the key a user sees finds the option. The column label stays unsearchable here, as before: matching it needs a join this list doesn't do.
+- **The member names its mapping.** Both group routes fill `linkFieldMappingSourceField` from the mapping's `sourceField`, the value the field is named for and its OpenAPI example shows.
 
 ## Plan — 1 slice
 
@@ -35,12 +37,14 @@
 - Edit: `apps/web/src/api/field-mappings.api.ts` (`searchWithColumnDefinition`'s default label)
 - Edit: `CuratedViewEditorDialog`, `CreatePortalDialog`, `CreateStationDialog` (`getOptionKey`)
 - Edit: `apps/api/src/routes/field-mapping.router.ts` (search on the key; OpenAPI description)
+- Edit: `apps/api/src/routes/entity-group-member.router.ts`, `entity-group.router.ts` (the member's link field)
 
 **Tests** (failing first; `cd packages/core && npm run test:unit -- --testPathPattern SearchableSelect`)
 - `SearchableSelect.test.tsx` (`SearchableSelect`, `AsyncSearchableSelect`, `InfiniteScrollSelect`) and `MultiSearchableSelect.test.tsx` (the three multi selects): two options with the same label and different values both render, open without a duplicate-key `console.error`, and picking the second reports its own value.
 - `apps/web`: the mapping search labels an option "Enum (region)" from its column label and key, and a mapping with no column definition by its source field (`__tests__/api/field-mappings.api.test.ts`).
 - `CuratedViewEditorDialog.test.tsx`: two entities labelled "Sheet1" both list without a duplicate-key error, and picking the second reports its id.
 - `field-mapping.router.integration.test.ts`: `search` finds a mapping by its key and by its source field, case-insensitively.
+- `entity-group-member.router.integration.test.ts` and `entity-group.router.integration.test.ts`: with a source field ("work_email") unlike its column's key ("email"), a member's link field is the source field.
 - Then `npm run build` in `packages/core`, and `npm run lint && npm run type-check && npm run format:check` in all three packages.
 
 ## Smoke (manual, against your dev stack)
