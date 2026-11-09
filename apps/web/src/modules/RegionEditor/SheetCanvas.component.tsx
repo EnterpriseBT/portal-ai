@@ -6,8 +6,8 @@ import React, {
   useState,
 } from "react";
 import AnchorIcon from "@mui/icons-material/Anchor";
-import { Box } from "@portalai/core/ui";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Box, VisuallyHidden } from "@portalai/core/ui";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 
 import {
   COL_HEADER_HEIGHT,
@@ -35,6 +35,7 @@ import {
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
 import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
+import { useSheetKeyboard } from "./utils/use-sheet-keyboard.util";
 import type {
   CellBounds,
   CellCoord,
@@ -880,9 +881,39 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({ width: gridWidth, height: initialRectHeight }),
     [gridWidth, initialRectHeight]
   );
+  // The keyboard grid (#795). The virtualizer is built after it, so a move
+  // reaches the virtualizer through a ref.
+  const scrollToRowRef = useRef<(row: number) => void>(() => {});
+  const scrollToRow = useCallback(
+    (row: number) => scrollToRowRef.current(row),
+    []
+  );
+  const pageRows = useCallback(() => {
+    const height = scrollRef.current?.clientHeight || initialRectHeight;
+    return Math.max(1, Math.floor((height - COL_HEADER_HEIGHT) / cellHeight));
+  }, [initialRectHeight, cellHeight]);
+  const keyboard = useSheetKeyboard({
+    rowCount: sheet.rowCount,
+    colCount: sheet.colCount,
+    pageRows,
+    scrollToRow,
+    gridRef,
+  });
+  const activeRow = keyboard.active.row;
+
   // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
   const rowVirtualizer = useVirtualizer({
     count: sheet.rowCount,
+    // The active cell's row always renders, so the grid keeps its tab stop
+    // and a key press has a cell to focus however far it scrolled (#795).
+    rangeExtractor: (range) => {
+      const rows = defaultRangeExtractor(range);
+      if (activeRow < sheet.rowCount && !rows.includes(activeRow)) {
+        rows.push(activeRow);
+        rows.sort((a, b) => a - b);
+      }
+      return rows;
+    },
     getScrollElement: () => scrollRef.current,
     estimateSize: () => cellHeight,
     overscan: 8,
@@ -904,6 +935,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       return () => ro.disconnect();
     },
   });
+
+  useEffect(() => {
+    scrollToRowRef.current = (row) =>
+      rowVirtualizer.scrollToIndex(row, { align: "auto" });
+  }, [rowVirtualizer]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const firstVisibleRow = virtualItems[0]?.index ?? 0;
@@ -1043,13 +1079,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     const cells: React.ReactElement[] = [];
     for (let col = 0; col < sheet.colCount; col++) {
       cells.push(
-        <div key={col} data-col-header={col} style={colHeaderStyle}>
+        <div
+          key={col}
+          role="columnheader"
+          aria-colindex={col + 2}
+          data-col-header={col}
+          style={colHeaderStyle}
+        >
           {colIndexToLetter(col)}
         </div>
       );
     }
     return (
       <div
+        role="row"
+        aria-rowindex={1}
         style={{
           display: "flex",
           flexDirection: "row",
@@ -1061,6 +1105,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         }}
       >
         <div
+          role="columnheader"
+          aria-colindex={1}
           data-corner-header=""
           style={{
             width: ROW_HEADER_WIDTH,
@@ -1110,6 +1156,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     [cellStyle]
   );
 
+  const { cellProps } = keyboard;
   const renderRow = useCallback(
     (rowIndex: number, top: number, size: number): React.ReactElement => {
       const inlineRow = sheet.cells[rowIndex];
@@ -1131,23 +1178,31 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           const raw = cachedRow[col];
           display =
             raw === null || raw === undefined || raw === "" ? "" : String(raw);
-        } else if (rowIsUnloaded) {
-          display = "…";
         }
         cellEls.push(
           <div
             key={col}
             data-testid={`cell-${rowIndex}-${col}`}
+            {...cellProps({ row: rowIndex, col })}
             style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
             aria-busy={rowIsUnloaded || undefined}
           >
-            {display}
+            {rowIsUnloaded ? (
+              <>
+                <span aria-hidden>…</span>
+                <VisuallyHidden>Loading…</VisuallyHidden>
+              </>
+            ) : (
+              display
+            )}
           </div>
         );
       }
       return (
         <div
           key={rowIndex}
+          role="row"
+          aria-rowindex={rowIndex + 2}
           style={{
             position: "absolute",
             top,
@@ -1158,7 +1213,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             flexDirection: "row",
           }}
         >
-          <div data-row-header={rowIndex} style={rowHeaderStyle}>
+          <div
+            role="rowheader"
+            aria-colindex={1}
+            data-row-header={rowIndex}
+            style={rowHeaderStyle}
+          >
             {rowIndex + 1}
           </div>
           {cellEls}
@@ -1174,6 +1234,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       gridWidth,
       sliceCache,
       loadSlice,
+      cellProps,
     ]
   );
 
@@ -1229,10 +1290,19 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             height: rowVirtualizer.getTotalSize(),
           }}
         >
-          {colHeaderRow}
-          {rowVirtualizer
-            .getVirtualItems()
-            .map((v) => renderRow(v.index, v.start, v.size))}
+          {/* The grid holds only rows (#795); the overlays below are its
+              siblings, so the editable intersection's button isn't a child
+              a grid can't own. Both share this wrapper's origin. */}
+          <div
+            {...keyboard.gridProps}
+            aria-label={sheet.name}
+            style={{ position: "absolute", inset: 0 }}
+          >
+            {colHeaderRow}
+            {rowVirtualizer
+              .getVirtualItems()
+              .map((v) => renderRow(v.index, v.start, v.size))}
+          </div>
 
           {(() => {
             const selectedRegion = visibleRegions.find(

@@ -419,6 +419,8 @@ describe("SheetCanvasUI", () => {
     const cell = screen.getByTestId("cell-0-0");
     expect(cell).toHaveTextContent("…");
     expect(cell).toHaveAttribute("aria-busy", "true");
+    // A screen reader hears "Loading…", not an ellipsis (#795).
+    expect(cell).toHaveAccessibleName("Loading…");
   });
 
   test("does not refetch the same rectangle on rerender", async () => {
@@ -1274,7 +1276,7 @@ describe("SheetCanvasUI", () => {
       for (const el of container.querySelectorAll("[aria-label]")) {
         // Every remaining label sits on something that can carry one.
         expect(el.getAttribute("role") ?? el.tagName.toLowerCase()).toMatch(
-          /^(button|input|svg)$/
+          /^(button|input|svg|grid)$/
         );
       }
     });
@@ -1291,6 +1293,88 @@ describe("SheetCanvasUI", () => {
 
     test("has no axe violations with a selected pivot region", async () => {
       const { container } = renderWithRegion();
+      await expectNoAxeViolations(container);
+    });
+  });
+
+  describe("the sheet as a grid (#795)", () => {
+    function renderSheet(sheet: SheetPreview = makeSheet()) {
+      return render(
+        <SheetCanvasUI
+          sheet={sheet}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+    }
+
+    test("is a grid named by the sheet, counting its header row and column", () => {
+      renderSheet();
+      const grid = screen.getByRole("grid", { name: "Sheet 1" });
+      expect(grid).toHaveAttribute("aria-rowcount", "7");
+      expect(grid).toHaveAttribute("aria-colcount", "6");
+    });
+
+    test("headers and cells carry their roles and indices; a cell is named by its value", () => {
+      renderSheet();
+      const headerRow = screen.getAllByRole("row")[0];
+      expect(headerRow).toHaveAttribute("aria-rowindex", "1");
+      const corner = screen
+        .getByRole("button", { name: "Select entire sheet" })
+        .closest("[role=columnheader]");
+      expect(corner).toHaveAttribute("aria-colindex", "1");
+      const colB = screen.getByRole("columnheader", { name: "B" });
+      expect(colB).toHaveAttribute("aria-colindex", "3");
+      const row3 = screen.getByRole("rowheader", { name: "3" });
+      expect(row3.closest("[role=row]")).toHaveAttribute("aria-rowindex", "4");
+      const cell = screen.getByRole("gridcell", { name: "2,1" });
+      expect(cell).toHaveAttribute("aria-colindex", "3");
+      expect(cell).toBe(screen.getByTestId("cell-2-1"));
+    });
+
+    test("one tab stop; the arrow keys move focus between cells", () => {
+      renderSheet();
+      const a1 = screen.getByTestId("cell-0-0");
+      expect(a1).toHaveAttribute("tabindex", "0");
+      expect(
+        screen.getByRole("grid").querySelectorAll('[tabindex="0"]')
+      ).toHaveLength(1);
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "ArrowDown" });
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+      expect(screen.getByTestId("cell-1-1")).toHaveFocus();
+    });
+
+    test("Ctrl+End reaches the last cell of a 1,000-row sheet", () => {
+      const rowCount = 1000;
+      renderSheet({
+        id: "big",
+        name: "Big",
+        rowCount,
+        colCount: 3,
+        cells: Array.from({ length: rowCount }, (_, r) => [
+          `a${r}`,
+          `b${r}`,
+          `c${r}`,
+        ]),
+      });
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "End", ctrlKey: true });
+      const last = screen.getByTestId(`cell-${rowCount - 1}-2`);
+      expect(last).toHaveFocus();
+      expect(last).toHaveAccessibleName("c999");
+      expect(last.closest("[role=row]")).toHaveAttribute(
+        "aria-rowindex",
+        String(rowCount + 1)
+      );
+    });
+
+    test("has no axe violations as a grid", async () => {
+      const { container } = renderSheet();
       await expectNoAxeViolations(container);
     });
   });

@@ -191,7 +191,8 @@ export interface SheetKeyboard {
 ```
 
 **Structure:**
-- The grid element is the existing grid div (`:1188`), spreading `gridProps` and labelled by the sheet's name (`aria-label={sheet.name}`).
+- The grid element is a new inner div of the existing grid div (`:1188`), spreading `gridProps` and labelled by the sheet's name (`aria-label={sheet.name}`). It holds only the header row and the rows; the overlays are its siblings inside the wrapper, which keeps `gridRef` and the pointer handler (implementation note: an editable intersection's button inside the grid fails axe's `aria-required-children`).
+- The active cell's row always renders (the virtualizer's `rangeExtractor` adds it), so the grid never loses its tab stop to virtualization. `pageRows` is a function read at key time (the viewport can resize).
 - Rows and cells spread the row and cell props above. Unloaded cells keep `aria-busy` and render "Loading…" as visually hidden text.
 - **The corner** (`:1048`) becomes `<div role="columnheader" aria-colindex={1}><button type="button" aria-label="Select entire sheet" data-corner-header …/></div>`. A click keeps today's behaviour (a whole-sheet draft).
 - **Descriptions:**
