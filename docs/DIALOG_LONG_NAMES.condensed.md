@@ -16,20 +16,20 @@
 | Card titles | `DetailCard.tsx:79` | Truncate with an ellipsis, by design; the issue calls that fine |
 | Theme tests | `packages/core/src/__tests__/ui/theme-contrast.test.ts` | `describe.each` over `THEME_MAP`, the pattern for a per-theme assertion |
 
-## Decision — `overflow-wrap: anywhere` on dialog content and title, in both theme JSONs
+## Decision — `break-word` on dialog content, `anywhere` on the title, in both theme JSONs
 
-- **Where.** Both JSONs, on `MuiDialogContent` and `MuiDialogTitle` `root`, beside their padding. It's a literal, so it belongs in the JSONs rather than `a11yComponents()`. It reaches every dialog through the theme: no `sx` and no per-dialog change.
-- **`anywhere`, not `break-word`.** Both break a long token only when it can't fit. `anywhere` also lowers the element's min-content width, so a long token inside a flex or grid child (a `Stack` row, a list item's text) shrinks instead of pushing its container wider. Ordinary text with spaces wraps at the spaces, unchanged.
+- **Where.** Both JSONs, on `MuiDialogContent` and `MuiDialogTitle` `root`, beside their padding. It's a literal, so it belongs in the JSONs rather than `a11yComponents()`, and every `Modal` gets it from the theme, with no `sx`.
+- **Content: `break-word`.** `overflow-wrap` is inherited by everything in the dialog. `break-word` breaks a token only when it can't fit its line and leaves min-content widths alone, so a long name in the confirm's paragraph wraps while a table keeps its columns (and scrolls) and a button row keeps its words whole. `anywhere` would also shrink every word's min-content width, so auto-layout tables and flex rows (UsageLedgerDialog's table and toolbar, wizard steppers) would split ordinary words mid-word at narrow widths. Code review caught this in the first draft, which used `anywhere` for both.
+- **Title: `anywhere`.** `Modal`'s `DialogTitle` is `display: flex` (`Modal.tsx:149`), so its text is a flex item that won't shrink below its longest word under `break-word`, and a long name would still overflow. `anywhere` lets it shrink. Since #983 the title holds only its text (the buttons sit beside it), so nothing else in it is affected.
 - **Not `word-break: break-all`.** It breaks every word mid-word, even ones that fit.
-- **Not in scope:** card titles keep their ellipsis; page titles already wrap.
 
 ## Plan — 1 slice
 
 **Files**
-- Edit: `packages/core/src/assets/themes/brand-theme.json`, `brand-theme-dark.json` (`"overflowWrap": "anywhere"` on both overrides)
+- Edit: `packages/core/src/assets/themes/brand-theme.json`, `brand-theme-dark.json` (`overflowWrap` on both overrides)
 
 **Tests** (failing first; `cd packages/core && npm run test:unit -- --testPathPattern theme-text-wrap`)
-- New `packages/core/src/__tests__/ui/theme-text-wrap.test.ts`: for each theme in `THEME_MAP`, `MuiDialogContent` and `MuiDialogTitle` set `overflowWrap: "anywhere"`, and the padding is still there. jsdom has no layout, so the measured overflow is the smoke walk's job.
+- New `packages/core/src/__tests__/ui/theme-text-wrap.test.tsx`: for each theme in `THEME_MAP`, `MuiDialogContent` sets `break-word` and `MuiDialogTitle` `anywhere`, with their padding kept; and a `Modal` rendered under `ThemeProvider` computes those values on its title and content, so a later `sx` in `Modal` can't silently undo them. jsdom has no layout, so the measured overflow is the smoke walk's job.
 - Then `npm run build`, `npm run lint && npm run type-check && npm run format:check` in `packages/core`.
 
 ## Smoke (manual, against your dev stack)
@@ -38,10 +38,12 @@
 2. Resize to 320px wide. The confirm still has no horizontal overflow, and its buttons stay visible.
 3. Open **Share** on a station whose name is 120 characters with no spaces. The title "Share “…”" wraps under the close button rather than behind it.
 4. Open any dialog with ordinary text (Create Tag). Its title and fields look as before.
-5. Repeat step 1 in the dark theme.
-6. Delete the tag and rename or delete the station afterwards.
+5. At 320px, open Settings → Organization → "Itemized usage". The toolbar's buttons and the table's headers and cells keep their words whole (no mid-word splits); a table wider than the dialog scrolls, as before.
+6. Repeat step 1 in the dark theme.
+7. Delete the tag and rename or delete the station afterwards.
 
 ## Out of scope
 
 - Long tokens outside dialogs (table cells, chips, the records grid): #794's area.
+- Long tokens in portaled surfaces opened from a dialog or elsewhere: a select's listbox, menus, tooltips and toasts. They render outside `DialogContent`, so this rule never reaches them (code review). A follow-up, not this ticket.
 - Card titles' ellipsis (`DetailCard`), which is deliberate.

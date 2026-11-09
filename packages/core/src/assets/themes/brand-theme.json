@@ -546,7 +546,7 @@
       "styleOverrides": {
         "root": {
           "padding": "12px 24px",
-          "overflowWrap": "anywhere"
+          "overflowWrap": "break-word"
         }
       }
     },
