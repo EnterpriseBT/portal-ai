@@ -39,6 +39,7 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 
 import { GatedIconButton } from "./GatedIconButton.js";
 import { IconName } from "./Icon.js";
+import { useGridNavigation } from "./use-grid-navigation.js";
 import { visuallyHidden } from "./visually-hidden.js";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -114,6 +115,12 @@ export interface DataTableBaseProps {
   primaryColumn?: string;
   /** Element the row link renders as (the app passes its router link). Default `"a"`. */
   linkComponent?: React.ElementType;
+  /**
+   * `"grid"` (#794): an APG grid, for a table whose cells hold controls (inline
+   * edits, several per row). One Tab stop; arrows move between cells; Enter or
+   * F2 enters a cell's control and Escape returns. Default `"table"`.
+   */
+  variant?: "table" | "grid";
 }
 
 export interface ColumnConfig {
@@ -417,9 +424,11 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
       linkComponent,
       label,
       "aria-labelledby": ariaLabelledBy,
+      variant = "table",
     },
     ref
   ) => {
+    const isGrid = variant === "grid";
     // Resolve visible columns in config order
     const visibleColumns = React.useMemo(() => {
       if (!columnConfig) return columns;
@@ -429,6 +438,20 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
         .filter((c) => c.visible && columnMap.has(c.key))
         .map((c) => columnMap.get(c.key)!);
     }, [columns, columnConfig]);
+
+    const grid = useGridNavigation({
+      rowCount: Math.max(rows.length, 1) + 1,
+      colCount: Math.max(visibleColumns.length, 1),
+    });
+    // Grid roles and keyboard only for variant="grid"; a plain table keeps
+    // its native semantics.
+    const gridTableProps = isGrid ? { role: "grid", ...grid.gridProps } : {};
+    const cellOf = (
+      row: number,
+      col: number,
+      role: "columnheader" | "gridcell"
+    ) => (isGrid ? { role, ...grid.cellProps(row, col) } : {});
+    const rowRole = isGrid ? { role: "row" } : {};
 
     const linkColumn = rowHref
       ? (primaryColumn ?? visibleColumns[0]?.key)
@@ -479,13 +502,18 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
           </Box>
         )}
         <TableContainer>
-          <Table size="small" aria-labelledby={ariaLabelledBy}>
+          <Table
+            size="small"
+            aria-labelledby={ariaLabelledBy}
+            {...gridTableProps}
+          >
             {label && <caption style={visuallyHidden}>{label}</caption>}
             <TableHead>
-              <TableRow sx={{ backgroundColor: "action.hover" }}>
-                {visibleColumns.map((col) => (
+              <TableRow sx={{ backgroundColor: "action.hover" }} {...rowRole}>
+                {visibleColumns.map((col, ci) => (
                   <TableCell
                     key={col.key}
+                    {...cellOf(0, ci, "columnheader")}
                     sx={{ fontWeight: 600 }}
                     // MUI renders this as aria-sort on the header (#794).
                     sortDirection={
@@ -527,8 +555,9 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
             </TableHead>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
+                <TableRow {...rowRole}>
                   <TableCell
+                    {...cellOf(1, 0, "gridcell")}
                     colSpan={visibleColumns.length}
                     sx={{ textAlign: "center", py: 4 }}
                   >
@@ -541,6 +570,7 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                 rows.map((row, idx) => (
                   <TableRow
                     key={idx}
+                    {...rowRole}
                     onClick={
                       rowHref
                         ? followRowLink
@@ -564,9 +594,10 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                         : undefined
                     }
                   >
-                    {visibleColumns.map((col) => (
+                    {visibleColumns.map((col, ci) => (
                       <TableCell
                         key={col.key}
+                        {...cellOf(idx + 1, ci, "gridcell")}
                         onClick={
                           col.onCellClick
                             ? (e) => {

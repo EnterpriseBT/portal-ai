@@ -2,7 +2,12 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  act,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { InferredColumnsTableUI } from "../InferredColumnsTable.component";
 import type { InferredColumnsTableUIProps } from "../InferredColumnsTable.component";
@@ -174,5 +179,47 @@ describe("InferredColumnsTableUI", () => {
     expect(
       screen.getByText("Pick a column definition", { selector: "p" })
     ).toBeInTheDocument();
+  });
+});
+
+// #794: a row of inline edits per column, so the table is an APG grid. A
+// text field owns its arrow keys once entered.
+describe("InferredColumnsTableUI grid (#794)", () => {
+  const at = (row: number, col: number) =>
+    document.querySelector(`[data-grid-cell="${row}:${col}"]`) as HTMLElement;
+
+  it("is a named grid with one tab stop and a named actions column", () => {
+    render(<InferredColumnsTableUI {...makeProps()} />);
+    const grid = screen.getByRole("grid", { name: "Inferred columns" });
+    expect(
+      grid.querySelectorAll('[data-grid-cell][tabindex="0"]')
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("columnheader", { name: "Actions" })
+    ).toBeInTheDocument();
+  });
+
+  it("edits a key from the keyboard: arrows to it, Enter in, Escape out", async () => {
+    const onChange = jest.fn();
+    const user = userEvent.setup();
+    render(<InferredColumnsTableUI {...makeProps({ onChange })} />);
+    act(() => at(0, 0).focus());
+    // Column 0 is the read-only source field; the key is next to it.
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(at(1, 0)).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    const keyCell = document.activeElement as HTMLElement;
+    await user.keyboard("{Enter}");
+    const input = screen.getByLabelText(/normalized key for id/i);
+    expect(input).toHaveFocus();
+    await user.keyboard("{ArrowLeft}x");
+    expect(onChange).toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(keyCell).toHaveFocus();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<InferredColumnsTableUI {...makeProps()} />);
+    await expectNoAxeViolations(container);
   });
 });

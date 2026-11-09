@@ -34,6 +34,7 @@ export * from "./PageGrid.js";
 export * from "./PageEmptyState.js";
 export * from "./MetadataList.js";
 export * from "./DataTable.js";
+export * from "./use-grid-navigation.js";
 export * from "./ColorPicker.js";
 export * from "./ContentBlockRenderer.js";
 export * from "./WidgetFreshnessBar.js";

@@ -755,6 +755,59 @@ describe("DataTable accessibility (#794)", () => {
     });
   });
 
+  // variant="grid": the APG grid, via useGridNavigation.
+  describe("grid variant", () => {
+    const cols: DataTableColumn[] = [
+      { key: "name", label: "Name" },
+      {
+        key: "act",
+        label: "",
+        headerLabel: "Actions",
+        render: (_v, row) => (
+          <button type="button">Remove {String(row.name)}</button>
+        ),
+      },
+    ];
+
+    it("renders grid roles and one tab stop", () => {
+      render(
+        <DataTable label="People" variant="grid" columns={cols} rows={rows} />
+      );
+      const grid = screen.getByRole("grid", { name: "People" });
+      expect(grid).toBeInTheDocument();
+      expect(screen.getAllByRole("gridcell")).toHaveLength(4);
+      expect(
+        grid.querySelectorAll('[data-grid-cell][tabindex="0"]')
+      ).toHaveLength(1);
+      expect(
+        screen.getByRole("button", { name: "Remove Alice" })
+      ).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("moves between cells with arrows and enters a control with Enter", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable label="People" variant="grid" columns={cols} rows={rows} />
+      );
+      screen.getByRole("columnheader", { name: "Name" }).focus();
+      await user.keyboard("{ArrowDown}{ArrowRight}");
+      expect(
+        screen.getByRole("gridcell", { name: "Remove Alice" })
+      ).toHaveFocus();
+      await user.keyboard("{Enter}");
+      expect(
+        screen.getByRole("button", { name: "Remove Alice" })
+      ).toHaveFocus();
+    });
+
+    it("has no axe violations", async () => {
+      const { container } = render(
+        <DataTable label="People" variant="grid" columns={cols} rows={rows} />
+      );
+      await expectNoAxeViolations(container);
+    });
+  });
+
   it("has no axe violations with sort and row links", async () => {
     const { container } = render(
       <DataTable
