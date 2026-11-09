@@ -263,13 +263,14 @@ describe("Entity Group Member Router", () => {
   async function seedEntityWithMapping(
     organizationId: string,
     connectorInstanceId: string,
-    sourceField = "email"
+    sourceField = "email",
+    columnKey = sourceField
   ) {
     const entity = createConnectorEntity(organizationId, connectorInstanceId);
     await (db as ReturnType<typeof drizzle>)
       .insert(connectorEntities)
       .values(entity as never);
-    const colDef = createColumnDef(organizationId, { key: sourceField });
+    const colDef = createColumnDef(organizationId, { key: columnKey });
     await (db as ReturnType<typeof drizzle>)
       .insert(columnDefinitions)
       .values(colDef as never);
@@ -303,9 +304,13 @@ describe("Entity Group Member Router", () => {
     it("should return members with enriched details", async () => {
       const { organizationId, groupId, connectorInstanceId } =
         await seedGroupWithInfra();
+      // #986: the source field differs from its column's key, so a member
+      // names the mapping it links on, not the shared column definition.
       const { entityId, fieldMappingId } = await seedEntityWithMapping(
         organizationId,
-        connectorInstanceId
+        connectorInstanceId,
+        "work_email",
+        "email"
       );
 
       await (db as ReturnType<typeof drizzle>)
@@ -333,7 +338,7 @@ describe("Entity Group Member Router", () => {
       expect(res.body.payload.members).toHaveLength(1);
       expect(res.body.payload.members[0].connectorEntityLabel).toBeDefined();
       expect(res.body.payload.members[0].linkFieldMappingSourceField).toBe(
-        "email"
+        "work_email"
       );
     });
   });

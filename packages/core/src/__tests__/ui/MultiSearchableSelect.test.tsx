@@ -742,3 +742,92 @@ describe("MultiInfiniteScrollSelect", () => {
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── Options with equal labels (#986) ─────────────────────────────────────────
+// MUI keys an option by its label unless told otherwise, so two equal labels
+// shared a React key: React logged it, and could drop or duplicate one.
+
+describe("options with the same label (#986)", () => {
+  const SAME_LABEL: SelectOption[] = [
+    { value: "region", label: "Enum" },
+    { value: "segment", label: "Enum" },
+  ];
+  let consoleError: jest.SpiedFunction<typeof console.error>;
+  const realObserver = globalThis.IntersectionObserver;
+
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.IntersectionObserver = jest.fn(() => ({
+      observe: jest.fn(),
+      disconnect: jest.fn(),
+      unobserve: jest.fn(),
+    })) as unknown as typeof IntersectionObserver;
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+    globalThis.IntersectionObserver = realObserver;
+  });
+
+  const duplicateKeyErrors = () =>
+    consoleError.mock.calls.filter((args) =>
+      args.some((a) => String(a).includes("same key"))
+    );
+
+  const cases: [
+    string,
+    (onChange: (v: string[]) => void) => React.ReactElement,
+  ][] = [
+    [
+      "MultiSearchableSelect",
+      (onChange) => (
+        <MultiSearchableSelect
+          label="Fields"
+          options={SAME_LABEL}
+          value={[]}
+          onChange={onChange}
+        />
+      ),
+    ],
+    [
+      "MultiAsyncSearchableSelect",
+      (onChange) => (
+        <MultiAsyncSearchableSelect
+          label="Fields"
+          value={[]}
+          onChange={onChange}
+          onSearch={async () => SAME_LABEL}
+          debounceMs={0}
+        />
+      ),
+    ],
+    [
+      "MultiInfiniteScrollSelect",
+      (onChange) => (
+        <MultiInfiniteScrollSelect
+          label="Fields"
+          value={[]}
+          onChange={onChange}
+          fetchPage={async () => ({ options: SAME_LABEL, hasMore: false })}
+          debounceMs={0}
+        />
+      ),
+    ],
+  ];
+
+  it.each(cases)(
+    "%s lists both, keys them apart, and picks the second",
+    async (_name, renderSelect) => {
+      const onChange = jest.fn<(v: string[]) => void>();
+      render(renderSelect(onChange));
+
+      await userEvent.click(screen.getByRole("combobox"));
+      const options = await screen.findAllByRole("option", { name: "Enum" });
+      expect(options).toHaveLength(2);
+      expect(duplicateKeyErrors()).toHaveLength(0);
+
+      await userEvent.click(options[1]);
+      expect(onChange).toHaveBeenCalledWith(["segment"]);
+    }
+  );
+});

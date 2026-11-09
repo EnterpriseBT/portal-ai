@@ -243,6 +243,8 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           multiple
           options={allOptions}
           getOptionLabel={(o) => ToolPackUtil.getLabel(o, customLabels)}
+          // By slug: a custom pack can share a built-in's label (#986).
+          getOptionKey={(o) => o}
           groupBy={(o) => (o.startsWith("org:") ? "Custom" : "Built-in")}
           getOptionDisabled={(o) =>
             !isBuiltinPackEntitled(o, entitledBuiltinSlugs)

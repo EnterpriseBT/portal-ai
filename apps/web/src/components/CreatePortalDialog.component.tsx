@@ -67,6 +67,8 @@ const StationPicker: React.FC<StationPickerProps> = ({
           <Autocomplete
             options={options}
             getOptionLabel={(o) => o.label}
+            // By id: two stations can share a name (#986).
+            getOptionKey={(o) => o.value}
             isOptionEqualToValue={(a, b) => a.value === b.value}
             value={selectedOption}
             onChange={(_, newValue) => onChange(newValue?.value ?? null)}

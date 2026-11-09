@@ -7,6 +7,7 @@ import Stack from "@mui/material/Stack";
 import { useForkRef } from "@mui/material/utils";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 
 export interface AsyncSearchableSelectProps extends SelectBaseProps {
   value: string | null;
@@ -189,6 +190,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         onChange={handleSelect}
         isOptionEqualToValue={(option, val) => option.value === val.value}
         getOptionLabel={(option) => option.label}
+        getOptionKey={selectOptionKey}
         filterOptions={(x) => x}
         loading={loading}
         // A status, so the wait is announced when the list opens (#793).
