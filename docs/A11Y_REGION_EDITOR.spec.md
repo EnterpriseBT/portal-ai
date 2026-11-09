@@ -107,7 +107,7 @@ export interface RegionRangeInputUIProps {
 - **Submit:** Enter in the field (`preventDefault`, no form submit) or the "Add region" button (`type="button"`) runs `parseRange`.
 - **On success:** calls `onCreate` and clears the field.
 - **On error:** shows `error`, `aria-invalid` and `helperText` = the parser's message, and focus stays in the field.
-- **Placement:** rendered by `RegionConfigurationPanelUI` in its no-selection state (`:253–273`), with copy reading "Draw a region on the sheet, or type its range:". The panel gets a new prop `onCreateRegionFromRange?: (bounds) => void`, and the step passes `(bounds) => onRegionDraft({ sheetId, bounds })`.
+- **Placement:** rendered by `RegionConfigurationPanelUI` in its no-selection state (`:253–273`), with copy reading "Draw a region on the sheet, or type its range:". The panel gets new props `onCreateRegionFromRange?: (bounds) => void` and `activeSheet?: { rowCount; colCount }` (the parser needs the sheet's extent, which the panel had no way to know with nothing selected); it offers the field only when it has both. The step passes `activeSheet` and `(bounds) => onRegionDraft({ sheetId, bounds })`.
 
 ### `use-sheet-keyboard.util.ts` (new)
 

@@ -611,6 +611,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
                 : undefined
             }
+            activeSheet={activeSheet}
+            onCreateRegionFromRange={(bounds) =>
+              onRegionDraft({ sheetId: activeSheet.id, bounds })
+            }
             onUpdate={(updates) => {
               if (!selectedRegion) return;
               // Bounds-carrying updates (from the panel's manual

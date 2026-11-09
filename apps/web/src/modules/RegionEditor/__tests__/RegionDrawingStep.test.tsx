@@ -154,6 +154,32 @@ describe("RegionDrawingStepUI — C1 claimed entity keys", () => {
   });
 });
 
+describe("RegionDrawingStepUI — typed range (#795)", () => {
+  test("a typed range plus Enter drafts a region on the active sheet without interpreting", async () => {
+    const onRegionDraft = jest.fn();
+    const onInterpret = jest.fn();
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          regions: [],
+          selectedRegionId: null,
+          onRegionDraft,
+          onInterpret,
+        })}
+      />
+    );
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Range" }),
+      "A1:C4{Enter}"
+    );
+    expect(onRegionDraft).toHaveBeenCalledWith({
+      sheetId: "s1",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    });
+    expect(onInterpret).not.toHaveBeenCalled();
+  });
+});
+
 describe("RegionDrawingStepUI — keyboard delete", () => {
   test("pressing Delete removes the selected region", () => {
     const onRegionDelete = jest.fn();

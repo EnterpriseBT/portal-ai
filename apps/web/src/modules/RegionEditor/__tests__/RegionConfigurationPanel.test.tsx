@@ -39,6 +39,51 @@ describe("RegionConfigurationPanelUI", () => {
     ).toBeInTheDocument();
   });
 
+  test("the empty state creates a region from a typed range (#795)", () => {
+    const onCreate = jest.fn();
+    render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        activeSheet={{ rowCount: 10, colCount: 5 }}
+        onCreateRegionFromRange={onCreate}
+      />
+    );
+    expect(
+      screen.getByText(/Draw a region on the sheet, or type its range/i)
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Range" }), {
+      target: { value: "B2:C4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add region" }));
+    expect(onCreate).toHaveBeenCalledWith({
+      startRow: 1,
+      endRow: 3,
+      startCol: 1,
+      endCol: 2,
+    });
+  });
+
+  test("the empty state has no Range field without a create handler", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Range" })
+    ).not.toBeInTheDocument();
+  });
+
   test("renders region label and bounds caption", () => {
     render(
       <RegionConfigurationPanelUI
