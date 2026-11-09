@@ -50,11 +50,13 @@ test("a new org walks the core loop", async ({ page }) => {
   await test.step("import a CSV through the file-upload connector", async () => {
     await page.goto("/connectors");
     await page.getByRole("tab", { name: "Catalog" }).click();
+    // #794: the catalog is a named list of cards, so find the card by its
+    // heading rather than a heading level.
     await page
-      .locator(
-        "xpath=//h3[normalize-space()='File Upload']/ancestor::*[.//button][1]//button"
-      )
-      .first()
+      .getByRole("list", { name: "Connector catalog" })
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("heading", { name: "File Upload" }) })
+      .getByRole("button", { name: "Connect" })
       .click();
 
     const dlg = page.getByRole("dialog", { name: /upload a spreadsheet/i });
