@@ -1,6 +1,11 @@
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  expectNoAxeViolations,
+  fireEvent,
+  render,
+  screen,
+} from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { UploadStep } from "../UploadStep.component";
@@ -218,5 +223,56 @@ describe("UploadStep — onRetry", () => {
     expect(
       screen.queryByRole("button", { name: /retry/i })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("UploadStep — the drop zone by keyboard (#795)", () => {
+  test("is a button named by its visible text and described by the accepted formats", () => {
+    render(<UploadStep {...makeProps()} />);
+    const button = screen.getByRole("button", {
+      name: "Choose files or drop them here",
+    });
+    expect(button).toBe(screen.getByTestId("dropzone"));
+    expect(button.tagName).toBe("BUTTON");
+    expect(button).toHaveAccessibleDescription(/Accepted formats:.*\.csv/);
+  });
+
+  test.each(["{Enter}", " "])(
+    "%s on it opens the file chooser",
+    async (key) => {
+      render(<UploadStep {...makeProps()} />);
+      const input = screen.getByTestId("file-input") as HTMLInputElement;
+      const click = jest.spyOn(input, "click").mockImplementation(() => {});
+      screen
+        .getByRole("button", { name: "Choose files or drop them here" })
+        .focus();
+      await userEvent.keyboard(key);
+      expect(click).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("a drop on it still delivers the files", () => {
+    const onFilesChange = jest.fn();
+    render(<UploadStep {...makeProps({ onFilesChange })} />);
+    fireEvent.drop(screen.getByTestId("dropzone"), {
+      dataTransfer: { files: [SAMPLE_A] },
+    });
+    expect(onFilesChange).toHaveBeenCalled();
+  });
+
+  test("a field error is part of its description", () => {
+    render(
+      <UploadStep
+        {...makeProps({ errors: { files: "Choose at least one file" } })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Choose files or drop them here" })
+    ).toHaveAccessibleDescription(/Choose at least one file/);
+  });
+
+  test("has no axe violations", async () => {
+    const { container } = render(<UploadStep {...makeProps()} />);
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useId, useRef, useState } from "react";
 import Box from "@mui/material/Box";
+import ButtonBase from "@mui/material/ButtonBase";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import IconButton from "@mui/material/IconButton";
@@ -84,6 +85,12 @@ export const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
       setDragActive(false);
     }, []);
 
+    const labelId = useId();
+    const hintId = useId();
+    const label = multiple
+      ? "Choose files or drop them here"
+      : "Choose a file or drop it here";
+
     const handleClick = () => {
       if (!disabled) inputRef.current?.click();
     };
@@ -108,12 +115,19 @@ export const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
 
     return (
       <Box ref={ref} className={className} {...rest}>
-        <Box
+        {/* A real button (#795): Enter and Space open the chooser, and its
+            name is its visible text. */}
+        <ButtonBase
           onClick={handleClick}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
+          disabled={disabled}
+          aria-labelledby={labelId}
+          aria-describedby={accept ? hintId : undefined}
           sx={{
+            display: "block",
+            width: "100%",
             border: 2,
             borderStyle: "dashed",
             borderColor,
@@ -130,15 +144,26 @@ export const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
           <UploadFileIcon
             sx={{ fontSize: 40, color: "text.secondary", mb: 1 }}
           />
-          <Typography variant="body2" color="text.secondary">
-            Drag and drop files here, or click to browse
+          <Typography
+            id={labelId}
+            component="span"
+            variant="body2"
+            color="text.secondary"
+            display="block"
+          >
+            {label}
           </Typography>
           {accept && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              id={hintId}
+              component="span"
+              variant="caption"
+              color="text.secondary"
+            >
               Accepted: {accept}
             </Typography>
           )}
-        </Box>
+        </ButtonBase>
         <input
           ref={inputRef}
           type="file"

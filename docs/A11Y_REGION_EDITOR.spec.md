@@ -282,11 +282,11 @@ Implementation note: the resolvers were inline, and identical, in all three spre
 ### Upload
 
 **`UploadStepUI` (:119–160).** The dropzone becomes a native `<button type="button">` with:
-- `aria-label="Choose a file or drop it here"`, and `aria-describedby` → the accepted-types hint;
+- its visible text, "Choose files or drop them here", as its name (`aria-labelledby`), and `aria-describedby` → the accepted-types and size hint plus any field error. Implementation note: an `aria-label` that differed from the visible "Drag and drop … or click to browse" would fail 2.5.3 (label in name), so the visible copy changed instead. It's an MUI `ButtonBase` (a native button with the theme's focus ring);
 - Enter/Space (native) calling the hidden input's `click()`;
 - `onDrop` and `onDragOver` kept.
 
-**Core `FileUploader` (:110–150).** The same pattern: the drop area is a native `button` that opens the file input. Its props are unchanged.
+**Core `FileUploader` (:110–150).** The same pattern: the drop area is a `ButtonBase` named by its visible text ("Choose a file or drop it here", or "Choose files or drop them here" with `multiple`) and described by `Accepted: <accept>`. Its props are unchanged.
 
 ## Migration
 
