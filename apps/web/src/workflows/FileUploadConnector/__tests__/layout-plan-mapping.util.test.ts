@@ -11,6 +11,7 @@ import {
   overallConfidenceFromPlan,
   planRegionsToDrafts,
   preserveUserRegionConfig,
+  reconcileCellValueFields,
   regionDraftsToHints,
   workbookToBackend,
 } from "../utils/layout-plan-mapping.util";
@@ -48,6 +49,20 @@ const baseDraft = (overrides: Partial<RegionDraft> = {}): RegionDraft => ({
   ...overrides,
 });
 
+/** Segments with a pivot, which a cellValueField needs (#998). */
+const pivotedRow = (): RegionDraft["segmentsByAxis"] => ({
+  row: [
+    { kind: "field", positionCount: 1 },
+    {
+      kind: "pivot",
+      id: "rp1",
+      axisName: "Quarter",
+      axisNameSource: "user",
+      positionCount: 1,
+    },
+  ],
+});
+
 describe("regionDraftsToHints", () => {
   it("returns [] for empty input", () => {
     expect(regionDraftsToHints(makeWorkbook(), [])).toEqual([]);
@@ -71,6 +86,7 @@ describe("regionDraftsToHints", () => {
   it("passes user-confirmed cell-value field + anchor fields through (anchor converted 0→1-indexed)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
+        segmentsByAxis: pivotedRow(),
         cellValueField: { name: "Revenue", nameSource: "user" },
         axisAnchorCell: { row: 2, col: 1 },
         proposedLabel: "Quarterly fact",
@@ -88,6 +104,7 @@ describe("regionDraftsToHints", () => {
   it("forwards cellValueField verbatim regardless of nameSource", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
+        segmentsByAxis: pivotedRow(),
         cellValueField: { name: "metric", nameSource: "anchor-cell" },
         axisAnchorCell: { row: 0, col: 0 },
       }),
@@ -102,6 +119,7 @@ describe("regionDraftsToHints", () => {
   it("forwards AI-suggested cellValueField names", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
+        segmentsByAxis: pivotedRow(),
         cellValueField: { name: "Revenue", nameSource: "ai" },
       }),
     ]);
@@ -114,6 +132,37 @@ describe("regionDraftsToHints", () => {
   it("forwards intersectionCellValueFields onto the hint so re-interpret keeps per-block names", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+        headerAxes: ["row", "column"],
+        segmentsByAxis: {
+          row: [
+            { kind: "field", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "rp1",
+              axisName: "Quarter",
+              axisNameSource: "user",
+              positionCount: 2,
+            },
+          ],
+          column: [
+            { kind: "field", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "cp1",
+              axisName: "Metric",
+              axisNameSource: "user",
+              positionCount: 1,
+            },
+            {
+              kind: "pivot",
+              id: "cp2",
+              axisName: "Unit",
+              axisNameSource: "user",
+              positionCount: 1,
+            },
+          ],
+        },
         cellValueField: { name: "value", nameSource: "user" },
         intersectionCellValueFields: {
           rp1__cp1: { name: "Revenue", nameSource: "user" },
@@ -1070,5 +1119,171 @@ describe("draftsToRegions", () => {
     expect(() => draftsToRegions(drafts, makeWorkbook(), plan)).toThrow(
       /no target entity/
     );
+  });
+});
+
+// #998: the merge after Interpret kept interpret's cellValueField over the
+// user's pivot-less segments; Commit refused it (400) and the next
+// interpret failed on it (500).
+describe("cell-value fields follow the pivots (#998)", () => {
+  type Region = LayoutPlan["regions"][number];
+  const PIVOT = {
+    kind: "pivot" as const,
+    id: "pivot-date",
+    axisName: "Date",
+    axisNameSource: "ai" as const,
+    positionCount: 1,
+  };
+  const responseRegion: Region = {
+    id: "region-1",
+    sheet: "Alpha",
+    bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 5 },
+    targetEntityDefinitionId: "ent_contact",
+    headerAxes: ["row"],
+    // Interpret classified the last column as a date pivot.
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 4 }, PIVOT],
+    },
+    cellValueField: { name: "value", nameSource: "ai" },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Alpha", row: 1 },
+        confidence: 0.95,
+      },
+    },
+    identityStrategy: { kind: "rowPosition", confidence: 0.9 },
+    columnBindings: [],
+    skipRules: [],
+    drift: {
+      headerShiftRows: 0,
+      addedColumns: "halt",
+      removedColumns: { max: 0, action: "halt" },
+    },
+    confidence: { region: 0.9, aggregate: 0.85 },
+    warnings: [],
+  };
+  const plan = (region: Region): LayoutPlan => ({
+    planVersion: "1.0.0",
+    workbookFingerprint: {
+      sheetNames: ["Alpha"],
+      dimensions: { Alpha: { rows: 3, cols: 5 } },
+      anchorCells: [],
+    },
+    regions: [region],
+    confidence: { overall: 0.85, perRegion: { "region-1": 0.85 } },
+  });
+
+  it("drops interpret's cellValueField when the user's segments have no pivot", () => {
+    const result = preserveUserRegionConfig(plan(responseRegion), [
+      baseDraft({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
+      }),
+    ]);
+    expect(result.regions[0].segmentsByAxis?.row).toEqual([
+      { kind: "field", positionCount: 5 },
+    ]);
+    expect(result.regions[0].cellValueField).toBeUndefined();
+  });
+
+  it("keeps interpret's cellValueField when the user's segments keep the pivot", () => {
+    const result = preserveUserRegionConfig(plan(responseRegion), [
+      baseDraft({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 4 }, PIVOT],
+        },
+      }),
+    ]);
+    expect(result.regions[0].cellValueField).toEqual({
+      name: "value",
+      nameSource: "ai",
+    });
+  });
+
+  it("gives a pivot with no cellValueField the panel's default", () => {
+    const noPivotResponse: Region = {
+      ...responseRegion,
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
+      cellValueField: undefined,
+    };
+    const result = preserveUserRegionConfig(plan(noPivotResponse), [
+      baseDraft({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 4 }, PIVOT],
+        },
+      }),
+    ]);
+    expect(result.regions[0].cellValueField).toEqual({
+      name: "value",
+      nameSource: "user",
+    });
+  });
+
+  it("drops an intersection entry whose pivots are gone", () => {
+    const out = reconcileCellValueFields({
+      segmentsByAxis: {
+        row: [{ kind: "pivot", id: "r1" }],
+        column: [{ kind: "pivot", id: "c1" }],
+      },
+      cellValueField: { name: "value", nameSource: "user" as const },
+      intersectionCellValueFields: {
+        r1__c1: { name: "kept", nameSource: "user" as const },
+        r1__c_gone: { name: "dropped", nameSource: "user" as const },
+        malformed: { name: "dropped too", nameSource: "user" as const },
+      },
+    });
+    expect(Object.keys(out.intersectionCellValueFields ?? {})).toEqual([
+      "r1__c1",
+    ]);
+  });
+
+  it("drops intersection fields altogether when none still match", () => {
+    const out = reconcileCellValueFields({
+      segmentsByAxis: { row: [{ kind: "field" }] },
+      cellValueField: { name: "value", nameSource: "user" as const },
+      intersectionCellValueFields: {
+        r1__c1: { name: "x", nameSource: "user" as const },
+      },
+    });
+    expect(out).not.toHaveProperty("intersectionCellValueFields");
+    expect(out).not.toHaveProperty("cellValueField");
+  });
+
+  it("a stale draft's cellValueField doesn't reach the interpret hint", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        cellValueField: { name: "value", nameSource: "ai" },
+      }),
+    ]);
+    expect(hints[0].segmentsByAxis).toBeDefined();
+    expect(hints[0]).not.toHaveProperty("cellValueField");
+  });
+
+  it("a hint keeps its cellValueField with a pivot, and gets none added without one", () => {
+    const [withPivot] = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 1 }, PIVOT],
+        },
+        cellValueField: { name: "amount", nameSource: "user" },
+      }),
+    ]);
+    expect(withPivot.cellValueField).toEqual({
+      name: "amount",
+      nameSource: "user",
+    });
+    const [pivotNoName] = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 1 }, PIVOT],
+        },
+      }),
+    ]);
+    // Interpret proposes the name; the hint doesn't invent one.
+    expect(pivotNoName).not.toHaveProperty("cellValueField");
   });
 });
