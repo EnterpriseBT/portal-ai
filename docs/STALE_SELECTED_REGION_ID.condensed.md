@@ -44,8 +44,8 @@ Its rules, in order:
 1. Connectors → File Upload → upload `supported_layouts.csv`. Draw two regions, bind both to an entity, and select the **second**. Interpret.
 2. Click Back to regions. The second region is still selected (outlined, "Selected" badge), and "Jump to region" shows it.
 3. The browser console has no "out-of-range value … for the select component" warning at any point in steps 1–2.
-4. Draw a third region with no entity, select it, and Interpret. After Back to regions, nothing is selected and the console stays clean.
-5. On an existing file-upload connector, open Edit layout, select a region, re-interpret, and go back to drawing. The same region is selected and the console is clean.
+4. Draw a third region with no entity and click Interpret. Interpret refuses ("1 region has validation errors — fix them before interpreting."), so a draft without an entity never reaches interpret from the UI. The remap's rule for that case (clear the selection) is covered by `layout-plan-mapping.util.test.ts` and `file-upload-workflow.util.test.ts`.
+5. On a Google Sheets or Excel connector (Edit layout doesn't support file-upload connectors), open Edit layout, draw and bind a new region, select it, re-interpret, and go back to drawing. The new region is still selected and the console is clean. — manual (needs a real vendor account)
 
 ## Out of scope
 
