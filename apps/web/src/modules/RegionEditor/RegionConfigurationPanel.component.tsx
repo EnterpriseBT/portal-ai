@@ -619,6 +619,12 @@ export const RegionConfigurationPanelUI: React.FC<
   return (
     <Box
       ref={panelRef}
+      // Named and focusable (not tabbable) so focus has somewhere to go
+      // when a control here unmounts, e.g. "+ Add row axis" (#795).
+      role="group"
+      aria-label={`Region ${formatBounds(region.bounds)} settings`}
+      tabIndex={-1}
+      data-region-panel=""
       sx={{
         width: "100%",
         minWidth: 0,

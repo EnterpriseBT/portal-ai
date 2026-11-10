@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Box,
   Stack,
@@ -20,6 +20,7 @@ import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { RegionReviewCardUI } from "./RegionReviewCard.component";
 import { BindingEditorPopoverUI } from "./BindingEditorPopover.component";
 import { applyBindingDraftPatch } from "./utils/binding-draft.util";
+import { useFocusOnArrival } from "./utils/focus-recovery.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import {
   validateBindingDraft,
@@ -509,9 +510,17 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   const commitDisabled =
     isCommitting || hasBlockers || Boolean(effectiveCommitDisabledReason);
 
+  // Arriving from Interpret, focus would drop to the wizard (the Interpret
+  // button is gone), where one Escape discards the import (#795). It lands
+  // on this step's heading instead, which also says where the user is.
+  const rootRef = useRef<HTMLFormElement>(null);
+  const headingRef = useRef<HTMLElement>(null);
+  useFocusOnArrival(rootRef, () => headingRef.current);
+
   return (
     <Stack
       component="form"
+      ref={rootRef}
       noValidate
       onKeyDown={preventToggleEnterSubmit}
       onSubmit={handleOwnSubmit(() => {
@@ -536,7 +545,12 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           flexWrap="wrap"
           useFlexGap
         >
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          <Typography
+            ref={headingRef}
+            tabIndex={-1}
+            variant="subtitle1"
+            sx={{ fontWeight: 600 }}
+          >
             Review interpretation
           </Typography>
           {overallConfidence !== undefined && (

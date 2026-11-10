@@ -18,6 +18,8 @@ import type {
   FileUploadParseSheet,
 } from "@portalai/core/contracts";
 
+import { DiscardImportDialogUI } from "../_shared/spreadsheet/DiscardImportDialog.component";
+import { useConfirmDiscard } from "../_shared/spreadsheet/use-confirm-discard.util";
 import { UploadStep } from "./UploadStep.component";
 import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
 import { FileUploadReviewStepUI } from "./FileUploadReviewStep.component";
@@ -263,10 +265,17 @@ export const FileUploadConnectorWorkflowUI: React.FC<
 
   const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
 
+  // #795: Escape and the close button ask before dropping drawn regions;
+  // one Escape used to discard the whole import.
+  const { requestClose, discardDialogProps } = useConfirmDiscard(
+    regions.length > 0,
+    onClose
+  );
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title="Upload a spreadsheet"
       defaultMaximized
       maximizable
@@ -369,6 +378,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
           </Stack>
         )}
       </Stack>
+      <DiscardImportDialogUI {...discardDialogProps} />
     </Modal>
   );
 };

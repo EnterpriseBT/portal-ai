@@ -185,14 +185,16 @@ describe("RegionDrawingStepUI — keyboard delete", () => {
   test("pressing Delete removes the selected region", () => {
     const onRegionDelete = jest.fn();
     render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
-    fireEvent.keyDown(document, { key: "Delete" });
+    // The step puts focus on the sheet, where Delete acts (#795).
+    fireEvent.keyDown(document.activeElement!, { key: "Delete" });
     expect(onRegionDelete).toHaveBeenCalledWith("r1");
   });
 
   test("pressing Backspace removes the selected region", () => {
     const onRegionDelete = jest.fn();
     render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
-    fireEvent.keyDown(document, { key: "Backspace" });
+    // The step puts focus on the sheet, where Delete acts (#795).
+    fireEvent.keyDown(document.activeElement!, { key: "Backspace" });
     expect(onRegionDelete).toHaveBeenCalledWith("r1");
   });
 
@@ -609,5 +611,99 @@ describe("RegionDrawingStepUI — region context and announcements (#795)", () =
       />
     );
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("RegionDrawingStepUI — keys and focus from the adversarial walk (#795)", () => {
+  test.each(["Delete", "Backspace"])(
+    "%s on a panel button doesn't delete the region",
+    (key) => {
+      const onRegionDelete = jest.fn();
+      render(
+        <RegionDrawingStepUI
+          {...baseProps({
+            onRegionDelete,
+            regions: [baseRegion({ headerAxes: [], segmentsByAxis: {} })],
+          })}
+        />
+      );
+      const button = screen.getByRole("button", { name: "+ Add row axis" });
+      button.focus();
+      fireEvent.keyDown(button, { key });
+      expect(onRegionDelete).not.toHaveBeenCalled();
+    }
+  );
+
+  test("Delete on a cell of the sheet deletes the region", () => {
+    const onRegionDelete = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
+    const cell = screen.getByTestId("cell-1-1");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "Delete" });
+    expect(onRegionDelete).toHaveBeenCalledWith("r1");
+  });
+
+  test("arriving at the step puts focus on the sheet's tab stop", () => {
+    render(<RegionDrawingStepUI {...baseProps({ selectedRegionId: null })} />);
+    expect(document.activeElement).toHaveAttribute("data-cell-coord", "0:0");
+  });
+
+  test("arriving with focus already somewhere real leaves it there", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+    render(<RegionDrawingStepUI {...baseProps({ selectedRegionId: null })} />);
+    expect(outside).toHaveFocus();
+    document.body.removeChild(outside);
+  });
+
+  test("Delete region from the panel hands focus to the sheet", () => {
+    const props = baseProps();
+    const { rerender } = render(<RegionDrawingStepUI {...props} />);
+    screen.getByRole("button", { name: "Delete region" }).focus();
+    rerender(
+      <RegionDrawingStepUI {...props} regions={[]} selectedRegionId={null} />
+    );
+    expect(document.activeElement).toHaveAttribute("data-cell-coord");
+    expect(document.activeElement?.closest('[role="grid"]')).not.toBeNull();
+  });
+
+  test("+ Add row axis hands focus to the region's settings", () => {
+    const region = baseRegion({ headerAxes: [], segmentsByAxis: {} });
+    const props = baseProps({ regions: [region] });
+    const { rerender } = render(<RegionDrawingStepUI {...props} />);
+    screen.getByRole("button", { name: "+ Add row axis" }).focus();
+    rerender(<RegionDrawingStepUI {...props} regions={[baseRegion()]} />);
+    expect(
+      screen.getByRole("group", { name: "Region A1:C3 settings" })
+    ).toHaveFocus();
+  });
+
+  test("a burst of Enters on the corner drafts one region, and focus moves to its form", () => {
+    const onRegionDraft = jest.fn();
+    const props = baseProps({ onRegionDraft, selectedRegionId: null });
+    const { rerender } = render(<RegionDrawingStepUI {...props} />);
+    const corner = screen.getByRole("button", { name: "Select entire sheet" });
+    corner.focus();
+    fireEvent.click(corner);
+    fireEvent.click(corner);
+    fireEvent.click(corner);
+    expect(onRegionDraft).toHaveBeenCalledTimes(1);
+    expect(onRegionDraft).toHaveBeenCalledWith({
+      sheetId: "s1",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    });
+    const whole = baseRegion({
+      id: "r_whole",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    });
+    rerender(
+      <RegionDrawingStepUI
+        {...props}
+        regions={[whole]}
+        selectedRegionId="r_whole"
+      />
+    );
+    expect(screen.getByRole("spinbutton", { name: "Start row" })).toHaveFocus();
   });
 });

@@ -50,6 +50,8 @@ import {
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { useBindingEditorResolvers } from "../_shared/spreadsheet/use-binding-editor-resolvers.util";
+import { DiscardImportDialogUI } from "../_shared/spreadsheet/DiscardImportDialog.component";
+import { useConfirmDiscard } from "../_shared/spreadsheet/use-confirm-discard.util";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
 import { generatedConnectorName } from "../../utils/connector-instance-name.util";
@@ -247,6 +249,13 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     onClose();
   }, [workflow, onClose]);
 
+  // #795: Escape, the close button and Cancel ask before dropping drawn
+  // regions; one Escape used to discard the whole import.
+  const { requestClose, discardDialogProps } = useConfirmDiscard(
+    workflow.regions.length > 0,
+    handleClose
+  );
+
   // ── Authorize step ─────────────────────────────────────────────────
 
   const [authorizeState, setAuthorizeState] =
@@ -343,7 +352,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={requestClose}
       title="Connect Google Sheets"
       defaultMaximized
       maximizable
@@ -460,14 +469,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
         {workflow.step === 0 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button type="button" variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={requestClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 1 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button type="button" variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={requestClose}>
               Cancel
             </Button>
           </Stack>
@@ -480,6 +489,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
           </Stack>
         )}
       </Stack>
+      <DiscardImportDialogUI {...discardDialogProps} />
     </Modal>
   );
 };

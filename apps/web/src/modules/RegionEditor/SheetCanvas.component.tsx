@@ -118,6 +118,11 @@ export interface SheetCanvasUIProps {
   /** Enter on the sheet with nothing to create or open (#795). */
   onKeyboardHint?: () => void;
   /**
+   * The corner button drafted the whole sheet from a key or a screen
+   * reader's tap (#795); the step moves focus into the new region's form.
+   */
+  onCornerDraft?: () => void;
+  /**
    * One description per region, read with each of its cells (#795).
    * Default: "Region <label>, <A1:D20>".
    */
@@ -221,6 +226,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   loadSlice,
   onSelectionChange,
   onKeyboardHint,
+  onCornerDraft,
   regionDescriptions,
   invalidRegionIds,
 }) => {
@@ -228,9 +234,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
 
   const gridRef = useRef<HTMLDivElement | null>(null);
-  // When a pointer press on the corner last drafted the whole sheet, so the
-  // click that follows it doesn't draft a second time. A time, not a flag:
-  // a press whose click never arrives mustn't swallow a later key press.
+  // When the corner last drafted the whole sheet, so the click that follows
+  // a pointer press, or a quick repeat of a key press, doesn't draft a
+  // second region. A time, not a flag: a press whose click never arrives
+  // mustn't swallow a later key press.
   const cornerDraftedAtRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -416,8 +423,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         startCol: 0,
         endCol: sheet.colCount - 1,
       });
+      onCornerDraft?.();
     };
-  }, [readOnly, onRegionDraft, sheet.rowCount, sheet.colCount]);
+  }, [readOnly, onRegionDraft, onCornerDraft, sheet.rowCount, sheet.colCount]);
 
   const runAutoScrollTickRef = useRef<() => void>(() => {});
   useEffect(() => {
@@ -1199,12 +1207,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             aria-label="Select entire sheet"
             disabled={readOnly}
             onClick={() => {
-              // The pointer path already drafted this press; any other
-              // activation (a key, a screen reader's tap) drafts here.
-              if (Date.now() - cornerDraftedAtRef.current < 1000) {
-                cornerDraftedAtRef.current = 0;
-                return;
-              }
+              // The pointer path already drafted this press, or this is a
+              // repeat of one (a burst of Enters made duplicate whole-sheet
+              // regions, #795). Any other activation drafts here.
+              if (Date.now() - cornerDraftedAtRef.current < 1000) return;
+              cornerDraftedAtRef.current = Date.now();
               selectWholeSheetRef.current();
             }}
             style={{
@@ -1376,6 +1383,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       >
         <div
           ref={gridRef}
+          // Where Delete and Backspace act on the selected region (#795).
+          data-sheet-surface=""
           onPointerDown={handleGridPointerDown}
           style={{
             position: "relative",

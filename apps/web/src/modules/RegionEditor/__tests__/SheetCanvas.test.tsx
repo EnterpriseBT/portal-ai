@@ -1621,10 +1621,37 @@ describe("SheetCanvasUI", () => {
       fireEvent.pointerUp(corner, { pointerId: 1, clientX: 10, clientY: 10 });
       fireEvent.click(corner, { detail: 1 });
       expect(onDraft).toHaveBeenCalledTimes(1);
-      // A screen reader's activation: a click (detail 1) with no pointer
-      // press behind it.
+      // A screen reader's activation a moment later: a click (detail 1)
+      // with no pointer press behind it.
+      const now = Date.now();
+      const clock = jest.spyOn(Date, "now").mockReturnValue(now + 1500);
       fireEvent.click(corner, { detail: 1 });
       expect(onDraft).toHaveBeenCalledTimes(2);
+      clock.mockRestore();
+    });
+
+    test("a quick repeat of a key press doesn't draft a second whole-sheet region", () => {
+      const onDraft = jest.fn();
+      const onCornerDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+          onCornerDraft={onCornerDraft}
+        />
+      );
+      const corner = screen.getByRole("button", {
+        name: "Select entire sheet",
+      });
+      fireEvent.click(corner);
+      fireEvent.click(corner);
+      fireEvent.click(corner);
+      expect(onDraft).toHaveBeenCalledTimes(1);
+      expect(onCornerDraft).toHaveBeenCalledTimes(1);
     });
   });
 });

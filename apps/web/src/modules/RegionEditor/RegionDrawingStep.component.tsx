@@ -33,6 +33,11 @@ import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import { resizeSegment } from "./utils/segment-ops.util";
 import { orientationFromDraft } from "./utils/region-orientation.util";
+import {
+  isFocusLost,
+  useFocusOnArrival,
+  useRestoreFocusOnRemoval,
+} from "./utils/focus-recovery.util";
 import { useRegionAnnouncements } from "./utils/use-region-announcements.util";
 import type {
   CellBounds,
@@ -357,6 +362,12 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         return;
       }
       if (!selectedRegionId) return;
+      // Delete belongs to the sheet (#795). From a panel control (a button,
+      // the closed entity select) it would take the region and all its
+      // settings with no undo. Focus on the page itself counts as the
+      // sheet: a pointer selection doesn't move focus.
+      const onSheet = !!target?.closest?.("[data-sheet-surface]");
+      if (!onSheet && !isFocusLost(rootRef.current)) return;
       // Delete + Backspace are no-ops when deletion is locked (edit-
       // plan view). Without this gate the UI hides the Delete button
       // but the keyboard shortcut would still cascade-delete the
@@ -374,6 +385,34 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     return () =>
       document.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [selectedRegionId, onRegionDelete, onSelectRegion, regionDeletionLocked]);
+
+  // Focus never drops to the wizard (#795), where one Escape discards the
+  // import: arriving at this step (from Upload, or Back from Review) lands
+  // on the sheet's tab stop, and a control that unmounts under focus hands
+  // it to the region's form, or to the sheet when no region is left.
+  const sheetTabStop = () =>
+    rootRef.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
+  const regionPanel = () =>
+    rootRef.current?.querySelector<HTMLElement>("[data-region-panel]");
+  useFocusOnArrival(rootRef, sheetTabStop);
+  useRestoreFocusOnRemoval(rootRef, () =>
+    selectedRegionId ? (regionPanel() ?? sheetTabStop()) : sheetTabStop()
+  );
+  // The corner button made a region from a key: focus its first field, as
+  // a typed range does, once the new region is the selected one.
+  const cornerDraftFromRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const from = cornerDraftFromRef.current;
+    if (from === undefined || !selectedRegionId || selectedRegionId === from) {
+      return;
+    }
+    cornerDraftFromRef.current = undefined;
+    regionPanel()
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]):not([type=hidden]):not([aria-hidden=true])"
+      )
+      ?.focus();
+  }, [selectedRegionId]);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
@@ -621,6 +660,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             invalidRegionIds={shownInvalidIds}
             onSelectionChange={announceSelection}
             onKeyboardHint={announceHint}
+            onCornerDraft={() => {
+              cornerDraftFromRef.current = selectedRegionId;
+            }}
             onRegionResize={handleBoundsChange}
             onSegmentResize={(
               regionId,
