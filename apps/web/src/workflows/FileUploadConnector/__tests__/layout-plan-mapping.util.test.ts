@@ -1327,13 +1327,18 @@ describe("remapSelectedRegionId", () => {
   });
 
   it("keeps an id interpret didn't change", () => {
+    // Edit layout re-interprets against the saved plan, which keeps a
+    // matching region's id: the selected id is already in the result.
+    const editDrafts = [
+      { id: "region-1", targetEntityDefinitionId: "ent_a" },
+      { id: "sheet_0-r9", targetEntityDefinitionId: "ent_b" },
+    ];
     expect(
-      remapSelectedRegionId(
-        "region-2",
-        [],
-        [{ id: "region-1" }, { id: "region-2" }]
-      )
-    ).toBe("region-2");
+      remapSelectedRegionId("region-1", editDrafts, [
+        { id: "region-1" },
+        { id: "region-2" },
+      ])
+    ).toBe("region-1");
   });
 
   it("clears a selected draft without a target entity, which interpret drops", () => {
