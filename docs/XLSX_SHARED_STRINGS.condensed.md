@@ -16,7 +16,7 @@
 
 ## Decision — give ExcelJS the zip in an order it reads deterministically
 
-- **A. Spool, then stream the entries metadata-first (chosen).** Write the source to a temp file. Read its central directory (`unzipper.Open.file`) and build a stream of the zip's local entries, copied byte for byte, with `[Content_Types].xml`, `_rels/*`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/sharedStrings.xml` and `xl/styles.xml` first and every other entry after, in its original order. ExcelJS reads that stream through its public API unchanged. Raw copying means no re-compression and no full-workbook memory. The cost is one sequential disk write and read of the compressed file, which is bounded by the 250 MB upload limit. ExcelJS already spools sheets to temp files on the failing path.
+- **A. Spool, then stream the entries metadata-first (chosen).** Write the source to a temp file. Read its central directory and build a stream of the zip's local entries, copied byte for byte, with `[Content_Types].xml`, `_rels/*`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/sharedStrings.xml` and `xl/styles.xml` first and every other entry after, in its original order. ExcelJS reads that stream through its public API unchanged. Raw copying means no re-compression and no full-workbook memory. The cost is one sequential disk write and read of the compressed file, which is bounded by the 250 MB upload limit. ExcelJS already spools sheets to temp files on the failing path.
 - B. Drive ExcelJS internals (`_parseSharedStrings`, `_parseWorksheet`) from a random-access unzip: couples us to underscore methods of an unmaintained dependency.
 - C. `workbook.xlsx.readFile` (non-streaming): holds the whole workbook in memory, which is what the streaming adapter exists to avoid.
 - D. Our own XLSX parser: shared strings, styles-based date detection, inline strings and formulas. Too much surface for a bug fix.
@@ -31,14 +31,13 @@ The temp file is removed in a `finally`, so a failed parse doesn't leak it.
 
 **Files**
 - Edit: `apps/api/src/services/workbook-adapters/xlsx.adapter.ts`: spool, the metadata-first entry stream, the `coerceCell` cases, the sheet-count check.
-- New: `apps/api/src/services/workbook-adapters/xlsx-entry-order.util.ts`: the central-directory read and local-entry copy, plus its local-header and data-descriptor arithmetic.
-- Edit: `apps/api/package.json`: declare `unzipper`, which is only ExcelJS' transitive dependency today (the API image builds from declared deps).
+- New: `apps/api/src/services/workbook-adapters/xlsx-entry-order.util.ts`: reads the central directory (zip64 too). Each entry's bytes run from its local header to the next entry's, so the copy carries any data descriptor with no size arithmetic and needs no new dependency.
 - Edit: `xlsx-adapter.test.ts`: drop `jest.retryTimes(3)` and its comment.
 
 **Tests** (`cd apps/api && npm run test:unit -- --testPathPattern workbook-adapters`)
-- The app's sample read 20 times: 11 sheets and 142 rows every time, no cell `[object Object]`, and the "Single Axis Static - Table 1" header reads `employee_id`.
+- The app's sample read 20 times: 11 sheets and 148 rows (142 plus the blank rows that keep numbering) every time, no cell `[object Object]`, and the "Single Axis Static - Table 1" header reads `employee_id`.
 - A fixture written by ExcelJS (sheets before shared strings) with shared strings across 3 sheets: every sheet and every string comes through.
-- The entry-order util: the output stream parses with `unzipper.Parse` to the same entries and bytes as the input. Metadata comes first, and an entry with a data descriptor survives.
+- The entry-order util (`xlsx-entry-order.util.test.ts`): the spans tile the file, metadata comes first, each entry's bytes are unchanged, ExcelJS reads the reordered stream in full, and a non-zip is refused.
 - `coerceCell`: `{ error: "#N/A" }` → `"#N/A"`, `{ formula }` with no result → `null`, `{ sharedString: 3 }` → throws `XLSX_PARSE_FAILED`.
 - A truncated or non-zip source still fails as `XLSX_PARSE_FAILED`, and the temp file is gone afterwards.
 

@@ -1,4 +1,9 @@
+import { createWriteStream } from "node:fs";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import ExcelJS from "exceljs";
 
@@ -10,6 +15,12 @@ import type {
   ChunkRow,
   SessionWriter,
 } from "../workbook-cache.service.js";
+import {
+  metadataFirst,
+  readZipEntrySpans,
+  streamEntries,
+  ZipLayoutError,
+} from "./xlsx-entry-order.util.js";
 
 const STAGE_SIZE = 256;
 
@@ -47,7 +58,7 @@ export interface XlsxToCacheContext {
  * `JSON.stringify(workbook)`, so the round-trip behavior matches the
  * pre-Phase-4 single-blob cache.
  */
-function coerceCell(raw: unknown): ChunkCell {
+export function coerceCell(raw: unknown): ChunkCell {
   if (raw === null || raw === undefined) return null;
   if (raw instanceof Date) return raw.toISOString();
   if (typeof raw === "boolean") return raw;
@@ -58,7 +69,10 @@ function coerceCell(raw: unknown): ChunkCell {
       richText?: Array<{ text?: string }>;
       text?: string | number | boolean | Date;
       result?: unknown;
-      hyperlink?: string;
+      formula?: string;
+      sharedFormula?: string;
+      error?: string;
+      sharedString?: number;
     };
     if (Array.isArray(obj.richText)) {
       const joined = obj.richText.map((p) => p.text ?? "").join("");
@@ -68,6 +82,22 @@ function coerceCell(raw: unknown): ChunkCell {
       return obj.text === "" ? null : obj.text;
     }
     if (obj.result !== undefined) return coerceCell(obj.result);
+    // A formula error ("#N/A", "#DIV/0!") reads as its text.
+    if (typeof obj.error === "string") return obj.error;
+    // A formula the file saved without a cached result has no value.
+    if (obj.formula !== undefined || obj.sharedFormula !== undefined) {
+      return null;
+    }
+    // #997: an unresolved shared string, or a shape we don't know, used to
+    // be stored as "[object Object]". Refuse the file instead.
+    const shape =
+      obj.sharedString !== undefined
+        ? "an unresolved shared string"
+        : `a cell of shape {${Object.keys(obj).join(", ")}}`;
+    throw new ProcessorError(
+      "XLSX_PARSE_FAILED",
+      `Failed to parse XLSX file: ${shape}`
+    );
   }
   return String(raw);
 }
@@ -139,16 +169,27 @@ export async function xlsxToCache(
   writer: SessionWriter,
   ctx: XlsxToCacheContext
 ): Promise<XlsxParsedSheetMeta[]> {
-  const reader = new WorkbookReader(source, {
-    sharedStrings: "cache",
-    styles: "cache",
-    hyperlinks: "ignore",
-    worksheets: "emit",
-  });
-
   const out: XlsxParsedSheetMeta[] = [];
+  const dir = await mkdtemp(join(tmpdir(), "xlsx-"));
+  const path = join(dir, "source.xlsx");
 
   try {
+    // #997: ExcelJS reads a zip deterministically only with its metadata
+    // (shared strings, styles) ahead of the sheets, so spool the one-shot
+    // source and hand it the entries in that order.
+    await pipeline(source, createWriteStream(path));
+    const { size } = await stat(path);
+    const spans = metadataFirst(await readZipEntrySpans(path, size));
+    const expectedSheets = spans.filter((s) =>
+      /^xl\/worksheets\/sheet\d+\.xml$/.test(s.name)
+    ).length;
+    const reader = new WorkbookReader(streamEntries(path, spans), {
+      sharedStrings: "cache",
+      styles: "cache",
+      hyperlinks: "ignore",
+      worksheets: "emit",
+    });
+
     for await (const worksheet of reader) {
       const rawName = worksheet.name ?? `Sheet${worksheet.id}`;
       const { name, sheetId } = ctx.resolveSheet(rawName);
@@ -212,8 +253,24 @@ export async function xlsxToCache(
 
       out.push({ sheetId, name, rowCount, colCount });
     }
+
+    // A sheet the reader skipped is data lost without a trace (#997).
+    if (out.length < expectedSheets) {
+      throw new ProcessorError(
+        "XLSX_PARSE_FAILED",
+        `Failed to parse XLSX file: read ${out.length} of ${expectedSheets} sheets`
+      );
+    }
   } catch (err) {
+    if (err instanceof ZipLayoutError) {
+      throw new ProcessorError(
+        "XLSX_PARSE_FAILED",
+        `Failed to parse XLSX file: ${err.message}`
+      );
+    }
     throw wrapXlsxError(err);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 
   return out;

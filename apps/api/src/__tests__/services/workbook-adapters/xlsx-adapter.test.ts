@@ -1,7 +1,15 @@
-import { describe, it, expect, jest } from "@jest/globals";
+import { readFile, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { describe, it, expect } from "@jest/globals";
 import ExcelJS from "exceljs";
 
-import { xlsxToCache } from "../../../services/workbook-adapters/xlsx.adapter.js";
+import {
+  coerceCell,
+  xlsxToCache,
+} from "../../../services/workbook-adapters/xlsx.adapter.js";
 import type {
   ChunkRow,
   SessionWriter,
@@ -12,15 +20,8 @@ import {
   toStream,
 } from "../../utils/xlsx-fixtures.util.js";
 
-// ExcelJS' streaming WorkbookReader has a race condition (line 303 of
-// `node_modules/exceljs/lib/stream/xlsx/workbook-reader.js` —
-// `_parseWorksheet` reads `this.model.sheets` before `_parseWorkbook`
-// may have set `this.model`) that flakes ~5-25% of runs against
-// in-memory xlsx fixtures. The bug doesn't reproduce against real S3
-// streams (kernel I/O ticks sequence the zip entries the way the
-// reader expects). Until a fix lands upstream, retry up to 3 times.
-// See `xlsx-fixtures.util.ts:toStream` for context.
-jest.retryTimes(3);
+// No retries (#997): the adapter hands ExcelJS each zip metadata-first,
+// which takes it off the racy path these tests used to retry around.
 
 /** In-memory writer that captures everything xlsxToCache hands it. */
 function makeRecorder(): {
@@ -173,5 +174,103 @@ describe("xlsxToCache", () => {
       },
     });
     expect(seen).toEqual(["Alpha", "Beta", "Gamma"]);
+  });
+});
+
+// #997: ExcelJS' streaming reader dropped sheets and left shared strings
+// unresolved when a zip's sheets precede `xl/sharedStrings.xml`, the order
+// ExcelJS itself writes. Each case reads the file repeatedly, since the
+// race was nondeterministic.
+describe("xlsxToCache — sheets before shared strings (#997)", () => {
+  const RUNS = 20;
+  const here = dirname(fileURLToPath(import.meta.url));
+  const SAMPLE = join(
+    here,
+    "../../../../../web/public/samples/supported_layouts.xlsx"
+  );
+
+  it(`reads every sheet and string of the app's sample, ${RUNS} times out of ${RUNS}`, async () => {
+    const bytes = await readFile(SAMPLE);
+    for (let run = 0; run < RUNS; run++) {
+      const { writer, rowsBySheet } = makeRecorder();
+      const out = await xlsxToCache(toStream(bytes), writer, {
+        resolveSheet: defaultResolveSheet(),
+      });
+      expect(out).toHaveLength(11);
+      // 142 rows in the file, plus the blank rows between them that keep
+      // row numbers aligned.
+      expect(out.reduce((n, s) => n + s.rowCount, 0)).toBe(148);
+      const cells = [...rowsBySheet.values()].flat(2);
+      expect(cells).not.toContain("[object Object]");
+      const table = out.find((s) => s.name === "Single Axis Static - Table 1");
+      expect(rowsBySheet.get(table!.sheetId)?.flat()).toContain("employee_id");
+    }
+  });
+
+  it(`reads shared strings on every sheet of an ExcelJS-written file, ${RUNS} times out of ${RUNS}`, async () => {
+    const buf = await buildMultiSheetXlsx({
+      Alpha: [
+        ["name", "team"],
+        ["Ada", "Core"],
+      ],
+      Beta: [
+        ["name", "team"],
+        ["Grace", "Core"],
+      ],
+      Gamma: [["Ada"], ["Grace"], ["Linus"]],
+    });
+    for (let run = 0; run < RUNS; run++) {
+      const { writer, rowsBySheet } = makeRecorder();
+      const out = await xlsxToCache(toStream(buf), writer, {
+        resolveSheet: defaultResolveSheet(),
+      });
+      expect(out.map((s) => s.name)).toEqual(["Alpha", "Beta", "Gamma"]);
+      expect(rowsBySheet.get("sheet_1_Beta")).toEqual([
+        ["name", "team"],
+        ["Grace", "Core"],
+      ]);
+      expect(rowsBySheet.get("sheet_2_Gamma")).toEqual([
+        ["Ada"],
+        ["Grace"],
+        ["Linus"],
+      ]);
+    }
+  });
+
+  it("fails a file that isn't a zip as XLSX_PARSE_FAILED and leaves no temp file", async () => {
+    const before = (await readdir(tmpdir())).filter((n) =>
+      n.startsWith("xlsx-")
+    );
+    const { writer } = makeRecorder();
+    await expect(
+      xlsxToCache(toStream(Buffer.from("name,team\nAda,Core\n")), writer, {
+        resolveSheet: defaultResolveSheet(),
+      })
+    ).rejects.toMatchObject({ code: "XLSX_PARSE_FAILED" });
+    const after = (await readdir(tmpdir())).filter((n) =>
+      n.startsWith("xlsx-")
+    );
+    expect(after.sort()).toEqual(before.sort());
+  });
+});
+
+describe("coerceCell (#997)", () => {
+  it("reads a formula error as its text", () => {
+    expect(coerceCell({ error: "#N/A" })).toBe("#N/A");
+  });
+
+  it("reads a formula with no cached result as empty", () => {
+    expect(coerceCell({ formula: "B1*2" })).toBeNull();
+    expect(coerceCell({ sharedFormula: "C1" })).toBeNull();
+  });
+
+  it("refuses an unresolved shared string instead of storing [object Object]", () => {
+    expect(() => coerceCell({ sharedString: 3 })).toThrow(
+      expect.objectContaining({ code: "XLSX_PARSE_FAILED" })
+    );
+  });
+
+  it("refuses an unknown object shape", () => {
+    expect(() => coerceCell({ mystery: true })).toThrow(/mystery/);
   });
 });
