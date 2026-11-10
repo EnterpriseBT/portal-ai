@@ -1,6 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import { describe, it, expect } from "@jest/globals";
@@ -8,6 +9,7 @@ import ExcelJS from "exceljs";
 
 import {
   coerceCell,
+  declaredWorksheetCount,
   xlsxToCache,
 } from "../../../services/workbook-adapters/xlsx.adapter.js";
 import type {
@@ -184,10 +186,9 @@ describe("xlsxToCache", () => {
 describe("xlsxToCache — sheets before shared strings (#997)", () => {
   const RUNS = 20;
   const here = dirname(fileURLToPath(import.meta.url));
-  const SAMPLE = join(
-    here,
-    "../../../../../web/public/samples/supported_layouts.xlsx"
-  );
+  // A copy of the web app's sample (`apps/web/public/samples/`), kept in
+  // this package so turbo hashes it with the tests that read it.
+  const SAMPLE = join(here, "fixtures/supported_layouts.xlsx");
 
   it(`reads every sheet and string of the app's sample, ${RUNS} times out of ${RUNS}`, async () => {
     const bytes = await readFile(SAMPLE);
@@ -238,19 +239,115 @@ describe("xlsxToCache — sheets before shared strings (#997)", () => {
   });
 
   it("fails a file that isn't a zip as XLSX_PARSE_FAILED and leaves no temp file", async () => {
-    const before = (await readdir(tmpdir())).filter((n) =>
-      n.startsWith("xlsx-")
-    );
-    const { writer } = makeRecorder();
-    await expect(
-      xlsxToCache(toStream(Buffer.from("name,team\nAda,Core\n")), writer, {
+    // Its own temp dir, so a parallel test's files can't move the count.
+    const own = await mkdtemp(join(tmpdir(), "xlsx-adapter-test-"));
+    const savedTmp = process.env.TMPDIR;
+    process.env.TMPDIR = own;
+    try {
+      const { writer } = makeRecorder();
+      await expect(
+        xlsxToCache(toStream(Buffer.from("name,team\nAda,Core\n")), writer, {
+          resolveSheet: defaultResolveSheet(),
+        })
+      ).rejects.toMatchObject({ code: "XLSX_PARSE_FAILED" });
+      expect(await readdir(own)).toEqual([]);
+    } finally {
+      process.env.TMPDIR = savedTmp;
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  it(`reads every sheet of a workbook with no shared strings, ${RUNS} times out of ${RUNS}`, async () => {
+    const workbook = new ExcelJS.Workbook();
+    for (let s = 0; s < 6; s++) {
+      const ws = workbook.addWorksheet(`N${s}`);
+      for (let r = 0; r < 20; r++) ws.addRow([r, r * 2]);
+    }
+    const buf = Buffer.from(await workbook.xlsx.writeBuffer());
+    expect(buf.includes(Buffer.from("xl/sharedStrings.xml"))).toBe(false);
+    for (let run = 0; run < RUNS; run++) {
+      const { writer, rowsBySheet } = makeRecorder();
+      const out = await xlsxToCache(toStream(buf), writer, {
         resolveSheet: defaultResolveSheet(),
+      });
+      expect(out.map((s) => s.name)).toEqual([
+        "N0",
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+      ]);
+      expect(rowsBySheet.get("sheet_5_N5")?.[19]).toEqual([19, 38]);
+    }
+  });
+
+  it("keeps a formula's falsy cached result, which ExcelJS' row values drop", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet("Totals");
+    ws.getCell("A1").value = { formula: "1-1", result: 0 };
+    ws.getCell("B1").value = { formula: '""&""', result: "" };
+    ws.getCell("C1").value = { formula: "2+3", result: 5 };
+    ws.getCell("D1").value = { formula: "C1*2" } as ExcelJS.CellFormulaValue;
+    ws.getCell("E1").value = "end";
+    const buf = Buffer.from(await workbook.xlsx.writeBuffer());
+    const { writer, rowsBySheet } = makeRecorder();
+    await xlsxToCache(toStream(buf), writer, {
+      resolveSheet: defaultResolveSheet(),
+    });
+    // 0 stays 0; "" and a formula saved without a result are empty.
+    expect(rowsBySheet.get("sheet_0_Totals")).toEqual([
+      [0, null, 5, null, "end"],
+    ]);
+  });
+
+  it("leaves a failed download as the stream's own error, not a bad file", async () => {
+    const failing = new Readable({
+      read() {
+        this.destroy(new Error("ECONNRESET"));
+      },
+    });
+    const { writer } = makeRecorder();
+    const err = await xlsxToCache(failing, writer, {
+      resolveSheet: defaultResolveSheet(),
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toMatchObject({ code: "XLSX_PARSE_FAILED" });
+    expect((err as Error).message).toBe("ECONNRESET");
+  });
+});
+
+describe("declaredWorksheetCount (#997)", () => {
+  const SHEET =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+  const STRICT =
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/worksheet";
+  const CHART =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chartsheet";
+
+  it("counts declared worksheets whatever their part is named, and skips chart sheets", () => {
+    expect(
+      declaredWorksheetCount({
+        model: {
+          sheets: [
+            { rId: "rId1" },
+            { rId: "rId2" },
+            { rId: "rId3" },
+            { rId: "rId4" },
+          ],
+        },
+        workbookRels: [
+          { Id: "rId1", Type: SHEET, Target: "worksheets/sheet1.xml" },
+          { Id: "rId2", Type: SHEET, Target: "worksheets/data.xml" },
+          { Id: "rId3", Type: CHART, Target: "chartsheets/sheet1.xml" },
+          { Id: "rId4", Type: STRICT, Target: "worksheets/sheet3.xml" },
+        ],
       })
-    ).rejects.toMatchObject({ code: "XLSX_PARSE_FAILED" });
-    const after = (await readdir(tmpdir())).filter((n) =>
-      n.startsWith("xlsx-")
-    );
-    expect(after.sort()).toEqual(before.sort());
+    ).toBe(3);
+  });
+
+  it("counts nothing for a reader that never read the workbook", () => {
+    expect(declaredWorksheetCount({})).toBe(0);
   });
 });
 

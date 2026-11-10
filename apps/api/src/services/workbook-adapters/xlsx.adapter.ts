@@ -16,6 +16,7 @@ import type {
   SessionWriter,
 } from "../workbook-cache.service.js";
 import {
+  emptySharedStringsEntry,
   metadataFirst,
   readZipLayout,
   streamEntries,
@@ -102,6 +103,44 @@ export function coerceCell(raw: unknown): ChunkCell {
   return String(raw);
 }
 
+/**
+ * ExcelJS' `row.values` drops a formula's cached result when it's falsy
+ * (0, "", false), which would read a zero total as blank; the cell keeps
+ * it (#997).
+ */
+function withCachedResult(raw: unknown, row: ExcelJsRow, col: number): unknown {
+  if (
+    raw !== null &&
+    typeof raw === "object" &&
+    ("formula" in raw || "sharedFormula" in raw) &&
+    (raw as { result?: unknown }).result === undefined
+  ) {
+    const result = row.getCell(col).result;
+    if (result !== undefined) return { ...raw, result };
+  }
+  return raw;
+}
+
+/**
+ * The worksheets `xl/workbook.xml` declares, by their relationship type
+ * (chart sheets aren't worksheets and are never emitted). Matched on the
+ * type's last segment, so both the transitional and strict namespaces count. Counted from the
+ * workbook rather than from zip entry names, so a sheet stored under any
+ * name is counted (#997).
+ */
+export function declaredWorksheetCount(reader: object): number {
+  const { model, workbookRels } = reader as {
+    model?: { sheets?: Array<{ rId?: string }> };
+    workbookRels?: Array<{ Id?: string; Type?: string }>;
+  };
+  const worksheetIds = new Set(
+    (workbookRels ?? [])
+      .filter((rel) => rel.Type?.endsWith("/worksheet"))
+      .map((rel) => rel.Id)
+  );
+  return (model?.sheets ?? []).filter((s) => worksheetIds.has(s.rId)).length;
+}
+
 function wrapXlsxError(err: unknown): ProcessorError {
   if (err instanceof ProcessorError) return err;
   const message = err instanceof Error ? err.message : String(err);
@@ -120,6 +159,8 @@ function wrapXlsxError(err: unknown): ProcessorError {
 interface ExcelJsRow {
   number: number;
   values: unknown[]; // sparse 1-indexed array
+  /** The cell at a 1-based column; `result` keeps a falsy cached value. */
+  getCell(col: number): { result?: unknown };
 }
 
 interface ExcelJsWorksheetReader {
@@ -149,8 +190,11 @@ const WorkbookReader = (
 ).stream.xlsx.WorkbookReader;
 
 /**
- * Stream an XLSX byte source through ExcelJS' `WorkbookReader` straight into
- * the chunked workbook cache. Memory is bounded by:
+ * Read an XLSX byte source through ExcelJS' `WorkbookReader` into the
+ * chunked workbook cache. The source is first spooled to a temp file, up to
+ * the upload size limit, so its zip entries can be handed to ExcelJS in an
+ * order it reads deterministically (#997); the file is removed when the
+ * parse ends, however it ends. Memory is bounded by:
  *
  *   - the shared-strings cache (one entry per unique string in the file)
  *   - one chunk's worth of staged rows (`STAGE_SIZE × maxColCount`)
@@ -174,102 +218,116 @@ export async function xlsxToCache(
   const path = join(dir, "source.xlsx");
 
   try {
-    // #997: ExcelJS reads a zip deterministically only with its metadata
-    // (shared strings, styles) ahead of the sheets, so spool the one-shot
-    // source and hand it the entries in that order.
+    // Spooling is outside the parse-error wrapping below: a failed download
+    // or a full disk is the server's failure, not a bad file.
     await pipeline(source, createWriteStream(path));
     const { size } = await stat(path);
-    const layout = await readZipLayout(path, size);
-    const ordered = { ...layout, entries: metadataFirst(layout.entries) };
-    const expectedSheets = layout.entries.filter((s) =>
-      /^xl\/worksheets\/sheet\d+\.xml$/.test(s.name)
-    ).length;
-    const reader = new WorkbookReader(streamEntries(path, ordered), {
-      sharedStrings: "cache",
-      styles: "cache",
-      hyperlinks: "ignore",
-      worksheets: "emit",
-    });
 
-    for await (const worksheet of reader) {
-      const rawName = worksheet.name ?? `Sheet${worksheet.id}`;
-      const { name, sheetId } = ctx.resolveSheet(rawName);
-
-      let rowCount = 0;
-      let colCount = 0;
-      let stage: ChunkRow[] = [];
-
-      const flushIfFull = async (): Promise<void> => {
-        if (stage.length >= STAGE_SIZE) {
-          const count = stage.length;
-          await writer.appendRows(sheetId, stage);
-          stage = [];
-          ctx.onRowsFlushed?.(count);
+    try {
+      // #997: ExcelJS reads a zip deterministically only with its metadata
+      // (shared strings, styles) ahead of the sheets, so hand it the
+      // entries in that order, with an empty shared-strings part when the
+      // file has none.
+      const layout = await readZipLayout(path, size);
+      const ordered = { ...layout, entries: metadataFirst(layout.entries) };
+      const hasSharedStrings = layout.entries.some(
+        (e) => e.name === "xl/sharedStrings.xml"
+      );
+      const reader = new WorkbookReader(
+        streamEntries(
+          path,
+          ordered,
+          hasSharedStrings ? [] : [emptySharedStringsEntry()]
+        ),
+        {
+          sharedStrings: "cache",
+          styles: "cache",
+          hyperlinks: "ignore",
+          worksheets: "emit",
         }
-      };
+      );
 
-      for await (const row of worksheet) {
-        const targetRow = row.number;
+      for await (const worksheet of reader) {
+        const rawName = worksheet.name ?? `Sheet${worksheet.id}`;
+        const { name, sheetId } = ctx.resolveSheet(rawName);
 
-        // Fill any gap rows the source skipped (XLSX rows are sparse by row
-        // number; the dense layout needs explicit empties to keep the row
-        // index aligned).
-        while (rowCount + 1 < targetRow) {
+        let rowCount = 0;
+        let colCount = 0;
+        let stage: ChunkRow[] = [];
+
+        const flushIfFull = async (): Promise<void> => {
+          if (stage.length >= STAGE_SIZE) {
+            const count = stage.length;
+            await writer.appendRows(sheetId, stage);
+            stage = [];
+            ctx.onRowsFlushed?.(count);
+          }
+        };
+
+        for await (const row of worksheet) {
+          const targetRow = row.number;
+
+          // Fill any gap rows the source skipped (XLSX rows are sparse by row
+          // number; the dense layout needs explicit empties to keep the row
+          // index aligned).
+          while (rowCount + 1 < targetRow) {
+            rowCount++;
+            stage.push([]);
+            await flushIfFull();
+          }
+
+          const values = row.values; // 1-indexed sparse, [undefined, v1, v2, ...]
+          const denseRow: ChunkCell[] = new Array(
+            values.length > 0 ? values.length - 1 : 0
+          );
+          for (let c = 1; c < values.length; c++) {
+            denseRow[c - 1] = coerceCell(withCachedResult(values[c], row, c));
+          }
+          // Trim trailing-null run so empty tails don't bloat the chunk.
+          let lastNonNull = denseRow.length - 1;
+          while (lastNonNull >= 0 && denseRow[lastNonNull] === null) {
+            lastNonNull--;
+          }
+          const trimmed: ChunkCell[] = denseRow.slice(0, lastNonNull + 1);
+          if (trimmed.length > colCount) colCount = trimmed.length;
+
           rowCount++;
-          stage.push([]);
+          stage.push(trimmed);
           await flushIfFull();
         }
 
-        const values = row.values; // 1-indexed sparse, [undefined, v1, v2, ...]
-        const denseRow: ChunkCell[] = new Array(
-          values.length > 0 ? values.length - 1 : 0
+        if (stage.length > 0) {
+          const count = stage.length;
+          await writer.appendRows(sheetId, stage);
+          ctx.onRowsFlushed?.(count);
+        }
+
+        await writer.finishSheet(sheetId, {
+          name,
+          rowCount,
+          colCount,
+        });
+
+        out.push({ sheetId, name, rowCount, colCount });
+      }
+
+      // A sheet the reader skipped is data lost without a trace (#997).
+      const expectedSheets = declaredWorksheetCount(reader);
+      if (out.length < expectedSheets) {
+        throw new ProcessorError(
+          "XLSX_PARSE_FAILED",
+          `Failed to parse XLSX file: read ${out.length} of ${expectedSheets} sheets`
         );
-        for (let c = 1; c < values.length; c++) {
-          denseRow[c - 1] = coerceCell(values[c]);
-        }
-        // Trim trailing-null run so empty tails don't bloat the chunk.
-        let lastNonNull = denseRow.length - 1;
-        while (lastNonNull >= 0 && denseRow[lastNonNull] === null) {
-          lastNonNull--;
-        }
-        const trimmed: ChunkCell[] = denseRow.slice(0, lastNonNull + 1);
-        if (trimmed.length > colCount) colCount = trimmed.length;
-
-        rowCount++;
-        stage.push(trimmed);
-        await flushIfFull();
       }
-
-      if (stage.length > 0) {
-        const count = stage.length;
-        await writer.appendRows(sheetId, stage);
-        ctx.onRowsFlushed?.(count);
+    } catch (err) {
+      if (err instanceof ZipLayoutError) {
+        throw new ProcessorError(
+          "XLSX_PARSE_FAILED",
+          `Failed to parse XLSX file: ${err.message}`
+        );
       }
-
-      await writer.finishSheet(sheetId, {
-        name,
-        rowCount,
-        colCount,
-      });
-
-      out.push({ sheetId, name, rowCount, colCount });
+      throw wrapXlsxError(err);
     }
-
-    // A sheet the reader skipped is data lost without a trace (#997).
-    if (out.length < expectedSheets) {
-      throw new ProcessorError(
-        "XLSX_PARSE_FAILED",
-        `Failed to parse XLSX file: read ${out.length} of ${expectedSheets} sheets`
-      );
-    }
-  } catch (err) {
-    if (err instanceof ZipLayoutError) {
-      throw new ProcessorError(
-        "XLSX_PARSE_FAILED",
-        `Failed to parse XLSX file: ${err.message}`
-      );
-    }
-    throw wrapXlsxError(err);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

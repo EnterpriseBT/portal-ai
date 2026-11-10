@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { crc32 } from "node:zlib";
 
 /**
  * ExcelJS' streaming `WorkbookReader` races when a workbook's sheets come
@@ -73,6 +74,22 @@ export async function readZipLayout(
   path: string,
   fileSize: number
 ): Promise<ZipLayout> {
+  try {
+    return await parseZipLayout(path, fileSize);
+  } catch (err) {
+    // A truncated or crafted structure overruns a buffer read; say so in
+    // the same words as any other malformed zip, not Node's RangeError.
+    if (err instanceof RangeError) {
+      throw new ZipLayoutError("malformed zip structure");
+    }
+    throw err;
+  }
+}
+
+async function parseZipLayout(
+  path: string,
+  fileSize: number
+): Promise<ZipLayout> {
   const tailStart = Math.max(0, fileSize - EOCD_SEARCH);
   const tail = await readAt(path, tailStart, fileSize - tailStart);
   let eocd = -1;
@@ -94,7 +111,7 @@ export async function readZipLayout(
     }
     const z64Offset = Number(tail.readBigUInt64LE(loc + 8));
     const z64 = await readAt(path, z64Offset, 56);
-    if (z64.readUInt32LE(0) !== ZIP64_EOCD_SIG) {
+    if (z64.length < 56 || z64.readUInt32LE(0) !== ZIP64_EOCD_SIG) {
       throw new ZipLayoutError("zip64 end record missing");
     }
     count = Number(z64.readBigUInt64LE(32));
@@ -168,14 +185,49 @@ export function metadataFirst(spans: ZipEntrySpan[]): ZipEntrySpan[] {
  * offsets no longer match, which a streaming reader doesn't use; it only
  * needs the directory to know the entries are over.
  */
-export function streamEntries(path: string, layout: ZipLayout): Readable {
+export function streamEntries(
+  path: string,
+  layout: ZipLayout,
+  prefix: Buffer[] = []
+): Readable {
   const spans = [...layout.entries, layout.tail];
   return Readable.from(
     (async function* () {
+      yield* prefix;
       for (const span of spans) {
         if (span.end <= span.start) continue;
         yield* createReadStream(path, { start: span.start, end: span.end - 1 });
       }
     })()
   );
+}
+
+const EMPTY_SHARED_STRINGS = Buffer.from(
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>'
+);
+
+/**
+ * A stored (uncompressed) local entry for an empty `xl/sharedStrings.xml`.
+ * ExcelJS parses a sheet inline only once it has seen a shared-strings
+ * part, so a workbook without one (all numbers, or inline strings) would
+ * still take the racy temp-file path. Streamed ahead of the zip's own
+ * entries, this keeps it inline. Its offsets aren't in the central
+ * directory, which a streaming reader doesn't consult.
+ */
+export function emptySharedStringsEntry(): Buffer {
+  const name = Buffer.from("xl/sharedStrings.xml");
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(20, 4); // version needed: 2.0
+  header.writeUInt16LE(0, 6); // flags: sizes in the header
+  header.writeUInt16LE(0, 8); // method: stored
+  header.writeUInt16LE(0, 10); // time
+  header.writeUInt16LE(0x21, 12); // date: 1980-01-01
+  header.writeUInt32LE(crc32(EMPTY_SHARED_STRINGS) >>> 0, 14);
+  header.writeUInt32LE(EMPTY_SHARED_STRINGS.length, 18);
+  header.writeUInt32LE(EMPTY_SHARED_STRINGS.length, 22);
+  header.writeUInt16LE(name.length, 26);
+  header.writeUInt16LE(0, 28);
+  return Buffer.concat([header, name, EMPTY_SHARED_STRINGS]);
 }

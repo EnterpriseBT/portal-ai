@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import ExcelJS from "exceljs";
 
 import {
+  emptySharedStringsEntry,
   metadataFirst,
   readZipLayout,
   streamEntries,
@@ -127,6 +128,36 @@ describe("xlsx entry order (#997)", () => {
       One: [["alpha", "beta"]],
       Two: [["gamma"], ["alpha"]],
     });
+  });
+
+  it("puts an empty shared-strings entry ahead of the zip when asked", async () => {
+    const layout = await readZipLayout(path, bytes.length);
+    const entry = emptySharedStringsEntry();
+    const out = await collect(streamEntries(path, layout, [entry]));
+    expect(out.subarray(0, entry.length).equals(entry)).toBe(true);
+    expect(entry.readUInt32LE(0)).toBe(0x04034b50);
+    const nameLen = entry.readUInt16LE(26);
+    expect(entry.toString("utf8", 30, 30 + nameLen)).toBe(
+      "xl/sharedStrings.xml"
+    );
+  });
+
+  it("refuses a zip64 end record that points past the file", async () => {
+    // A zip64 locator, then an end record whose fields say "see zip64".
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(10_000_000n, 8);
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    eocd.writeUInt16LE(0xffff, 10);
+    eocd.writeUInt32LE(0xffffffff, 12);
+    eocd.writeUInt32LE(0xffffffff, 16);
+    const bad = join(dir, "bad64.xlsx");
+    const content = Buffer.concat([locator, eocd]);
+    await writeFile(bad, content);
+    await expect(readZipLayout(bad, content.length)).rejects.toBeInstanceOf(
+      ZipLayoutError
+    );
   });
 
   it("refuses a file with no zip end record", async () => {
