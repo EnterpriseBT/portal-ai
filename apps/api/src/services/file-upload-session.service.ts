@@ -152,7 +152,7 @@ async function parseUploadIntoCache(
       return [{ sheetId: sId, name, ...stats }];
     }
 
-    // XLSX/XLS — streamed via ExcelJS' WorkbookReader. The adapter calls
+    // XLSX/XLS — spooled, then read by ExcelJS' WorkbookReader (#997). The adapter calls
     // back into `resolveSheet` so name uniqueness + sheet-id minting stay
     // here, where the file-upload pipeline owns the policy.
     let nextOffset = sheetIndexOffset;

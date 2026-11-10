@@ -319,10 +319,10 @@ export class MicrosoftExcelConnectorService {
 
     const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
 
-    // Stream the xlsx straight into the chunked cache. No more
-    // buffer-the-world `xlsxToWorkbook` — large workbooks parse in bounded
-    // memory, and the slice/preview/resolve paths all read from the same
-    // chunk layout the file-upload pipeline uses.
+    // Parse the xlsx into the chunked cache. No more buffer-the-world
+    // `xlsxToWorkbook`: the adapter spools the download to a temp file and
+    // parses it in bounded memory (#997), and the slice/preview/resolve
+    // paths all read from the same chunk layout the file-upload pipeline uses.
     const prefix = workbookCacheKey(
       MICROSOFT_EXCEL_SLUG,
       input.connectorInstanceId
