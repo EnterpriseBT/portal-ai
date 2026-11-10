@@ -37,7 +37,7 @@ Its rules, in order:
 **Tests** (`npm run test:unit -- --testPathPattern …` from `apps/web`)
 - `FileUploadConnector/__tests__/layout-plan-mapping.util.test.ts`: cover the four rules, plus a mismatched count.
 - `FileUploadConnector/__tests__/file-upload-workflow.util.test.ts`: draw two regions with entities, select the second, Interpret (stub ids differ), and assert `selectedRegionId` is the second plan region's id. Also cover a selected region without an entity → `null`.
-- `__tests__/EditLayoutPlanView.test.tsx`: after a re-interpret that renames ids, the selected region is still selected.
+- Edit layout: no test renders the `EditLayoutPlan` container (`EditLayoutPlanView.test.tsx` renders only the UI, which never sees interpret), so its one-line wiring through the tested helper is covered by Smoke step 5.
 
 ## Smoke (manual, against your dev stack)
 

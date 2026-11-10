@@ -12,6 +12,7 @@ import {
   planRegionsToDrafts,
   preserveUserRegionConfig,
   regionDraftsToHints,
+  remapSelectedRegionId,
   workbookToBackend,
 } from "../utils/layout-plan-mapping.util";
 
@@ -1302,5 +1303,50 @@ describe("cell-value fields follow the pivots (#998)", () => {
     ]);
     // Interpret proposes the name; the hint doesn't invent one.
     expect(pivotNoName).not.toHaveProperty("cellValueField");
+  });
+});
+
+describe("remapSelectedRegionId", () => {
+  // Interpret renames every region (draft id → plan region id). Drafts with
+  // a target entity line up with the returned regions by index; one without
+  // isn't sent, so it has no counterpart (#999).
+  const drafts = [
+    { id: "sheet_0-r1", targetEntityDefinitionId: "ent_a" },
+    { id: "sheet_0-r2", targetEntityDefinitionId: null },
+    { id: "sheet_0-r3", targetEntityDefinitionId: "ent_b" },
+  ];
+  const next = [{ id: "region-1" }, { id: "region-2" }];
+
+  it("keeps no selection as no selection", () => {
+    expect(remapSelectedRegionId(null, drafts, next)).toBeNull();
+  });
+
+  it("maps a selected draft to the region interpret returned for it", () => {
+    expect(remapSelectedRegionId("sheet_0-r1", drafts, next)).toBe("region-1");
+    expect(remapSelectedRegionId("sheet_0-r3", drafts, next)).toBe("region-2");
+  });
+
+  it("keeps an id interpret didn't change", () => {
+    expect(
+      remapSelectedRegionId(
+        "region-2",
+        [],
+        [{ id: "region-1" }, { id: "region-2" }]
+      )
+    ).toBe("region-2");
+  });
+
+  it("clears a selected draft without a target entity, which interpret drops", () => {
+    expect(remapSelectedRegionId("sheet_0-r2", drafts, next)).toBeNull();
+  });
+
+  it("clears an id that names no draft", () => {
+    expect(remapSelectedRegionId("gone", drafts, next)).toBeNull();
+  });
+
+  it("clears rather than guesses when the counts don't line up", () => {
+    expect(
+      remapSelectedRegionId("sheet_0-r3", drafts, [{ id: "region-1" }])
+    ).toBeNull();
   });
 });

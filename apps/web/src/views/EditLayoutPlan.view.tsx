@@ -49,6 +49,7 @@ import {
   planRegionsToDrafts,
   preserveUserRegionConfig,
   regionDraftsToHints,
+  remapSelectedRegionId,
 } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 
 const STEP_CONFIGS: StepConfig[] = [
@@ -713,7 +714,12 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // re-interpret doesn't clobber decisions the user already
       // made.
       const nextPlan = preserveUserRegionConfig(res.plan, regions);
-      setRegions(planRegionsToDrafts(nextPlan, workbook));
+      const nextRegions = planRegionsToDrafts(nextPlan, workbook);
+      setRegions(nextRegions);
+      // Interpret renames the regions; keep the same one selected (#999).
+      setSelectedRegionId((prev) =>
+        remapSelectedRegionId(prev, regions, nextRegions)
+      );
       setStep(1);
     } catch (err) {
       // Surface as the same Save-Draft snackbar channel — it's the

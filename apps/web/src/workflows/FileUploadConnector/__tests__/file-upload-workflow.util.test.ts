@@ -865,6 +865,76 @@ describe("useFileUploadWorkflow — atomic commit (deferred persistence)", () =>
     act(() => result.current.reset());
     expect(result.current.plan).toBeNull();
   });
+
+  describe("keeps the selected region across interpret (#999)", () => {
+    // Interpret renames regions: each draft sent comes back as a plan region
+    // with a new id, in the order sent.
+    const renamingInterpret = () =>
+      jest
+        .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+        .mockImplementation(async (regions) => ({
+          regions: regions
+            .filter((r) => r.targetEntityDefinitionId !== null)
+            .map((r, i) => ({ ...r, id: `region-${i + 1}` })),
+          plan: STUB_PLAN,
+          overallConfidence: 0.86,
+        }));
+
+    async function drawTwo(entities: [string | null, string | null]) {
+      const callbacks = makeCallbacks({ runInterpret: renamingInterpret() });
+      const hook = renderHook(() => useFileUploadWorkflow(callbacks));
+      act(() => hook.result.current.addFiles([SAMPLE_FILE]));
+      await act(async () => {
+        await hook.result.current.startParse();
+      });
+      for (const [i, entity] of entities.entries()) {
+        act(() =>
+          hook.result.current.onRegionDraft({
+            sheetId: DEMO_WORKBOOK.sheets[0].id,
+            bounds: {
+              startRow: i * 5,
+              endRow: i * 5 + 3,
+              startCol: 0,
+              endCol: 2,
+            },
+          })
+        );
+        const id = hook.result.current.regions[i].id;
+        act(() =>
+          hook.result.current.onRegionUpdate(id, {
+            targetEntityDefinitionId: entity,
+          })
+        );
+      }
+      return hook;
+    }
+
+    test("a selected region stays selected under its new id", async () => {
+      const { result } = await drawTwo(["ent_a", "ent_b"]);
+      act(() => result.current.onSelectRegion(result.current.regions[1].id));
+
+      await act(async () => {
+        await result.current.onInterpret();
+      });
+
+      expect(result.current.regions.map((r) => r.id)).toEqual([
+        "region-1",
+        "region-2",
+      ]);
+      expect(result.current.selectedRegionId).toBe("region-2");
+    });
+
+    test("a selected region without an entity, which interpret drops, is deselected", async () => {
+      const { result } = await drawTwo(["ent_a", null]);
+      act(() => result.current.onSelectRegion(result.current.regions[1].id));
+
+      await act(async () => {
+        await result.current.onInterpret();
+      });
+
+      expect(result.current.selectedRegionId).toBeNull();
+    });
+  });
 });
 
 describe("useFileUploadWorkflow — binding edits", () => {

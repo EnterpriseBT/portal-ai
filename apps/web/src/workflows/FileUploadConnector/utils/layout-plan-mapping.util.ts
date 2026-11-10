@@ -311,6 +311,28 @@ export function preserveUserRegionConfig(
   };
 }
 
+/**
+ * The selected region's id after interpret replaced the drafts (#999).
+ * Interpret returns regions with new ids, pairing them with the drafts the
+ * way `regionDraftsToHints` / `preserveUserRegionConfig` do: drafts without a
+ * target entity aren't sent, and the rest line up with the returned regions
+ * by index. An id interpret kept stays selected; a draft that wasn't sent,
+ * or a pairing whose counts don't match, clears the selection rather than
+ * selecting the wrong region.
+ */
+export function remapSelectedRegionId(
+  selectedId: string | null,
+  priorDrafts: Pick<RegionDraft, "id" | "targetEntityDefinitionId">[],
+  nextRegions: Pick<RegionDraft, "id">[]
+): string | null {
+  if (selectedId === null) return null;
+  if (nextRegions.some((r) => r.id === selectedId)) return selectedId;
+  const sent = priorDrafts.filter((d) => d.targetEntityDefinitionId !== null);
+  if (sent.length !== nextRegions.length) return null;
+  const index = sent.findIndex((d) => d.id === selectedId);
+  return index === -1 ? null : nextRegions[index].id;
+}
+
 type BackendAxis = "row" | "column";
 
 export function regionDraftsToHints(
