@@ -458,6 +458,9 @@ export function planRegionsToDrafts(
         ...(region.cellValueField.columnDefinitionId !== undefined && {
           columnDefinitionId: region.cellValueField.columnDefinitionId,
         }),
+        ...(region.cellValueField.excluded !== undefined && {
+          excluded: region.cellValueField.excluded,
+        }),
       };
     }
     if (region.intersectionCellValueFields) {
@@ -792,6 +795,9 @@ export function draftsToRegions(
         nameSource: draft.cellValueField.nameSource,
         ...(draft.cellValueField.columnDefinitionId !== undefined && {
           columnDefinitionId: draft.cellValueField.columnDefinitionId,
+        }),
+        ...(draft.cellValueField.excluded !== undefined && {
+          excluded: draft.cellValueField.excluded,
         }),
       };
     }

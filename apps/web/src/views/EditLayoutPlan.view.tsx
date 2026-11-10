@@ -486,6 +486,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   // The review step's binding editor (#795): the same resolvers the
   // spreadsheet workflows use, and saves that patch the page's draft.
   const {
+    regionsWithResolvedLabels,
     columnDefinitionSearch,
     resolveReferenceOptions,
     resolveReferenceFieldOptions,
@@ -903,7 +904,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       entityOptions={entityOptions}
       onCreateEntity={handleCreateEntity}
       loadSlice={loadSlice}
-      regions={regions}
+      // The chips' labels come from the catalog (a plan stores only ids);
+      // the drafts in state, which commit saves, stay as they are.
+      regions={regionsWithResolvedLabels}
       activeSheetId={activeSheetId}
       selectedRegionId={selectedRegionId}
       step={step}

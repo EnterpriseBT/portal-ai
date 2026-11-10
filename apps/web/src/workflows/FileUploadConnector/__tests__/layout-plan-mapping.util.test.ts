@@ -1007,6 +1007,36 @@ describe("draftsToRegions", () => {
     },
   } as unknown as LayoutPlan;
 
+  it("carries an omitted cell value's `excluded` both ways (#795)", () => {
+    const withCellValue = {
+      ...plan,
+      regions: [
+        {
+          ...plan.regions[0],
+          cellValueField: {
+            name: "Revenue",
+            nameSource: "user" as const,
+            columnDefinitionId: "coldef_revenue",
+            excluded: true,
+          },
+        },
+      ],
+    } as unknown as LayoutPlan;
+    const [draft] = planRegionsToDrafts(withCellValue, makeWorkbook());
+    expect(draft.cellValueField?.excluded).toBe(true);
+    const [region] = draftsToRegions(
+      [
+        {
+          ...draft,
+          cellValueField: { ...draft.cellValueField!, excluded: false },
+        },
+      ],
+      makeWorkbook(),
+      withCellValue
+    );
+    expect(region.cellValueField?.excluded).toBe(false);
+  });
+
   it("round-trips planRegionsToDrafts → draftsToRegions losslessly for an unedited plan", () => {
     const drafts = planRegionsToDrafts(plan, makeWorkbook());
     const regions = draftsToRegions(drafts, makeWorkbook(), plan);

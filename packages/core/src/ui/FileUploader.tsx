@@ -117,53 +117,59 @@ export const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
       <Box ref={ref} className={className} {...rest}>
         {/* A real button (#795): Enter and Space open the chooser, and its
             name is its visible text. */}
-        <ButtonBase
-          onClick={handleClick}
+        {/* The drop target wraps the button: a disabled ButtonBase takes no
+            pointer events, and a drop the page doesn't prevent opens the
+            file in the tab, leaving the app (#795). */}
+        <Box
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          disabled={disabled}
-          aria-labelledby={labelId}
-          aria-describedby={accept ? hintId : undefined}
-          sx={{
-            display: "block",
-            width: "100%",
-            border: 2,
-            borderStyle: "dashed",
-            borderColor,
-            borderRadius: 1,
-            p: 3,
-            textAlign: "center",
-            cursor: disabled ? "default" : "pointer",
-            opacity: disabled ? 0.5 : 1,
-            bgcolor: dragActive ? "action.hover" : "transparent",
-            transition: "all 0.2s ease",
-          }}
-          data-testid="dropzone"
         >
-          <UploadFileIcon
-            sx={{ fontSize: 40, color: "text.secondary", mb: 1 }}
-          />
-          <Typography
-            id={labelId}
-            component="span"
-            variant="body2"
-            color="text.secondary"
-            display="block"
+          <ButtonBase
+            onClick={handleClick}
+            disabled={disabled}
+            aria-labelledby={labelId}
+            aria-describedby={accept ? hintId : undefined}
+            sx={{
+              display: "block",
+              width: "100%",
+              border: 2,
+              borderStyle: "dashed",
+              borderColor,
+              borderRadius: 1,
+              p: 3,
+              textAlign: "center",
+              cursor: disabled ? "default" : "pointer",
+              opacity: disabled ? 0.5 : 1,
+              bgcolor: dragActive ? "action.hover" : "transparent",
+              transition: "all 0.2s ease",
+            }}
+            data-testid="dropzone"
           >
-            {label}
-          </Typography>
-          {accept && (
+            <UploadFileIcon
+              sx={{ fontSize: 40, color: "text.secondary", mb: 1 }}
+            />
             <Typography
-              id={hintId}
+              id={labelId}
               component="span"
-              variant="caption"
+              variant="body2"
               color="text.secondary"
+              display="block"
             >
-              Accepted: {accept}
+              {label}
             </Typography>
-          )}
-        </ButtonBase>
+            {accept && (
+              <Typography
+                id={hintId}
+                component="span"
+                variant="caption"
+                color="text.secondary"
+              >
+                Accepted: {accept}
+              </Typography>
+            )}
+          </ButtonBase>
+        </Box>
         <input
           ref={inputRef}
           type="file"

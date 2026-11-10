@@ -85,14 +85,14 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLButtonElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     setDragActive(false);
     if (isBusy) return;
     handleIncoming(event.dataTransfer.files);
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLButtonElement>) => {
+  const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     if (!isBusy) setDragActive(true);
   };
@@ -120,63 +120,69 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
 
       {/* A real button (#795): Enter and Space open the chooser, and its
           name is its visible text; the formats and any error describe it. */}
-      <ButtonBase
-        data-testid="dropzone"
-        onClick={handleClick}
+      {/* The drop target wraps the button: a disabled ButtonBase takes no
+          pointer events, and a drop the page doesn't prevent opens the
+          file in the tab, leaving the app (#795). */}
+      <Box
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        disabled={isBusy}
-        aria-labelledby="upload-step-dropzone-label"
-        aria-describedby={[
-          "upload-step-dropzone-hint",
-          hasFieldError ? "upload-step-files-error" : null,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        sx={{
-          display: "block",
-          width: "100%",
-          border: 2,
-          borderStyle: "dashed",
-          borderColor,
-          borderRadius: 1,
-          p: 3,
-          textAlign: "center",
-          cursor: isBusy ? "default" : "pointer",
-          opacity: isBusy ? 0.5 : 1,
-          bgcolor: dragActive ? "action.hover" : "transparent",
-          transition: "all 0.2s ease",
-        }}
       >
-        <Typography
-          id="upload-step-dropzone-label"
-          component="span"
-          variant="body2"
-          color="text.secondary"
-          display="block"
+        <ButtonBase
+          data-testid="dropzone"
+          onClick={handleClick}
+          disabled={isBusy}
+          aria-labelledby="upload-step-dropzone-label"
+          aria-describedby={[
+            "upload-step-dropzone-hint",
+            hasFieldError ? "upload-step-files-error" : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          sx={{
+            display: "block",
+            width: "100%",
+            border: 2,
+            borderStyle: "dashed",
+            borderColor,
+            borderRadius: 1,
+            p: 3,
+            textAlign: "center",
+            cursor: isBusy ? "default" : "pointer",
+            opacity: isBusy ? 0.5 : 1,
+            bgcolor: dragActive ? "action.hover" : "transparent",
+            transition: "all 0.2s ease",
+          }}
         >
-          Choose files or drop them here
-        </Typography>
-        <Box component="span" id="upload-step-dropzone-hint" display="block">
           <Typography
+            id="upload-step-dropzone-label"
             component="span"
-            variant="caption"
+            variant="body2"
             color="text.secondary"
             display="block"
           >
-            Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
+            Choose files or drop them here
           </Typography>
-          <Typography
-            component="span"
-            variant="caption"
-            color="text.secondary"
-            display="block"
-          >
-            Maximum file size: {MAX_UPLOAD_FILE_SIZE_LABEL}
-          </Typography>
-        </Box>
-      </ButtonBase>
+          <Box component="span" id="upload-step-dropzone-hint" display="block">
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              display="block"
+            >
+              Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
+            </Typography>
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              display="block"
+            >
+              Maximum file size: {MAX_UPLOAD_FILE_SIZE_LABEL}
+            </Typography>
+          </Box>
+        </ButtonBase>
+      </Box>
 
       <input
         ref={inputRef}

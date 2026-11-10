@@ -1540,4 +1540,91 @@ describe("SheetCanvasUI", () => {
       expect(overlay).toHaveTextContent("Needs attention");
     });
   });
+
+  describe("code-review fixes (#795)", () => {
+    test("a far-off active row doesn't widen the slice fetch", async () => {
+      const loadSlice = jest.fn<LoadSliceFn>(
+        async ({ rowStart, rowEnd, colEnd }) =>
+          Array.from({ length: rowEnd - rowStart }, () =>
+            Array.from({ length: colEnd }, () => "x")
+          )
+      );
+      render(
+        <SheetCanvasUI
+          sheet={{
+            id: "lazy",
+            name: "Lazy",
+            rowCount: 1000,
+            colCount: 4,
+            cells: [],
+          }}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          loadSlice={loadSlice}
+        />
+      );
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "End", ctrlKey: true });
+      await waitFor(() => expect(loadSlice).toHaveBeenCalled());
+      for (const [args] of loadSlice.mock.calls) {
+        expect(args.rowEnd - args.rowStart).toBeLessThan(100);
+      }
+    });
+
+    test("switching sheets drops the keyboard selection", () => {
+      const props = {
+        regions: [],
+        entityOrder: [],
+        selectedRegionId: null,
+        onRegionSelect: jest.fn(),
+        onRegionDraft: jest.fn(),
+      };
+      const { rerender } = render(
+        <SheetCanvasUI sheet={makeSheet()} {...props} />
+      );
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "ArrowDown", shiftKey: true });
+      expect(screen.getByTestId("selection-marquee")).toBeInTheDocument();
+      rerender(
+        <SheetCanvasUI
+          sheet={{ ...makeSheet(), id: "s2", name: "Sheet 2" }}
+          {...props}
+        />
+      );
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+      expect(screen.getByRole("grid")).not.toHaveAttribute(
+        "data-has-selection"
+      );
+    });
+
+    test("the corner drafts once for a pointer press, and a tap with no pointer events still drafts", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const corner = screen.getByRole("button", {
+        name: "Select entire sheet",
+      });
+      fireEvent.pointerDown(corner, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(corner, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.click(corner, { detail: 1 });
+      expect(onDraft).toHaveBeenCalledTimes(1);
+      // A screen reader's activation: a click (detail 1) with no pointer
+      // press behind it.
+      fireEvent.click(corner, { detail: 1 });
+      expect(onDraft).toHaveBeenCalledTimes(2);
+    });
+  });
 });

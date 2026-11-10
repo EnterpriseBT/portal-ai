@@ -170,6 +170,15 @@ describe("FileUploader — by keyboard (#795)", () => {
     ).toBeDisabled();
   });
 
+  it("when disabled, a drop over it is still prevented", () => {
+    render(<FileUploader disabled />);
+    const target = screen.getByRole("button", {
+      name: "Choose a file or drop it here",
+    }).parentElement!;
+    expect(fireEvent.dragOver(target)).toBe(false);
+    expect(fireEvent.drop(target, { dataTransfer: { files: [] } })).toBe(false);
+  });
+
   it("has no axe violations", async () => {
     const { container } = render(
       <FileUploader accept=".csv" helperText="Max 5MB" />

@@ -68,6 +68,33 @@ describe("RegionConfigurationPanelUI", () => {
     });
   });
 
+  test("after a range creates a region, focus moves into its form (#795)", () => {
+    function Harness() {
+      const [region, setRegion] = useState<RegionDraft | null>(null);
+      return (
+        <RegionConfigurationPanelUI
+          region={region}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+          activeSheet={{ rowCount: 10, colCount: 5 }}
+          onCreateRegionFromRange={(bounds) =>
+            setRegion(baseRegion({ bounds }))
+          }
+        />
+      );
+    }
+    render(<Harness />);
+    const field = screen.getByRole("textbox", { name: "Range" });
+    fireEvent.change(field, { target: { value: "B2:C4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add region" }));
+    expect(field).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.closest("form, div")).not.toBeNull();
+  });
+
   test("the empty state has no Range field without a create handler", () => {
     render(
       <RegionConfigurationPanelUI

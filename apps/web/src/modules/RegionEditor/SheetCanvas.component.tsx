@@ -8,7 +8,11 @@ import React, {
 } from "react";
 import AnchorIcon from "@mui/icons-material/Anchor";
 import { Box, VisuallyHidden } from "@portalai/core/ui";
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type Range,
+} from "@tanstack/react-virtual";
 
 import {
   COL_HEADER_HEIGHT,
@@ -224,6 +228,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
 
   const gridRef = useRef<HTMLDivElement | null>(null);
+  // When a pointer press on the corner last drafted the whole sheet, so the
+  // click that follows it doesn't draft a second time. A time, not a flag:
+  // a press whose click never arrives mustn't swallow a later key press.
+  const cornerDraftedAtRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
@@ -508,6 +516,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     ) => {
       if (readOnly) return;
       if (target?.closest("[data-corner-header]")) {
+        cornerDraftedAtRef.current = Date.now();
         onRegionDraft({
           startRow: 0,
           endRow: sheet.rowCount - 1,
@@ -940,15 +949,15 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   useEffect(() => {
     if (pointerOpKind) setKeyboardSelection(null);
   }, [pointerOpKind, setKeyboardSelection]);
+  // Another sheet: a selection made on the last one doesn't carry over.
+  useEffect(() => {
+    setKeyboardSelection(null);
+  }, [sheet.id, setKeyboardSelection]);
   const marqueeBounds = pendingBounds ?? keyboard.selection;
   const activeRow = keyboard.active.row;
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
-  const rowVirtualizer = useVirtualizer({
-    count: sheet.rowCount,
-    // The active cell's row always renders, so the grid keeps its tab stop
-    // and a key press has a cell to focus however far it scrolled (#795).
-    rangeExtractor: (range) => {
+  const rangeExtractor = useCallback(
+    (range: Range) => {
       const rows = defaultRangeExtractor(range);
       if (activeRow < sheet.rowCount && !rows.includes(activeRow)) {
         rows.push(activeRow);
@@ -956,6 +965,15 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       }
       return rows;
     },
+    [activeRow, sheet.rowCount]
+  );
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
+  const rowVirtualizer = useVirtualizer({
+    count: sheet.rowCount,
+    // The active cell's row always renders, so the grid keeps its tab stop
+    // and a key press has a cell to focus however far it scrolled (#795).
+    rangeExtractor,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => cellHeight,
     overscan: 8,
@@ -984,9 +1002,15 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   }, [rowVirtualizer]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const firstVisibleRow = virtualItems[0]?.index ?? 0;
+  // The viewport's own rows, not the rendered list: that also holds the
+  // active cell's row (#795), which may be far away, and fetching from it
+  // to the viewport would ask for most of the sheet.
+  const firstVisibleRow =
+    rowVirtualizer.range?.startIndex ?? virtualItems[0]?.index ?? 0;
   const lastVisibleRow =
-    virtualItems[virtualItems.length - 1]?.index ?? firstVisibleRow;
+    rowVirtualizer.range?.endIndex ??
+    virtualItems[virtualItems.length - 1]?.index ??
+    firstVisibleRow;
 
   // Fetch cells for visible rows whose data isn't already inline or cached.
   // The fetched rectangle spans the full column range — users scan rows much
@@ -1174,8 +1198,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             type="button"
             aria-label="Select entire sheet"
             disabled={readOnly}
-            onClick={(event) => {
-              if (event.detail !== 0) return;
+            onClick={() => {
+              // The pointer path already drafted this press; any other
+              // activation (a key, a screen reader's tap) drafts here.
+              if (Date.now() - cornerDraftedAtRef.current < 1000) {
+                cornerDraftedAtRef.current = 0;
+                return;
+              }
               selectWholeSheetRef.current();
             }}
             style={{
@@ -1205,12 +1234,18 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     (regionId: string) => `${descIdPrefix}-region-${regionId}`,
     [descIdPrefix]
   );
-  const describedBy = useCallback(
-    (coord: CellCoord) => {
-      const ids = visibleRegions
-        .filter((r) => coordInBounds(coord, r.bounds))
-        .map((r) => descId(r.id));
-      return ids.length ? ids.join(" ") : undefined;
+  // The regions crossing a row, found once per row rather than per cell.
+  const describedByForRow = useCallback(
+    (row: number) => {
+      const rowRegions = visibleRegions.filter(
+        (r) => row >= r.bounds.startRow && row <= r.bounds.endRow
+      );
+      return (col: number) => {
+        const ids = rowRegions
+          .filter((r) => col >= r.bounds.startCol && col <= r.bounds.endCol)
+          .map((r) => descId(r.id));
+        return ids.length ? ids.join(" ") : undefined;
+      };
     },
     [visibleRegions, descId]
   );
@@ -1225,6 +1260,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         cachedRow === undefined &&
         Boolean(loadSlice);
       const cellEls: React.ReactElement[] = [];
+      const describedBy = describedByForRow(rowIndex);
       for (let col = 0; col < sheet.colCount; col++) {
         let display = "";
         if (inlineRow !== undefined) {
@@ -1241,7 +1277,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             key={col}
             data-testid={`cell-${rowIndex}-${col}`}
             {...cellProps({ row: rowIndex, col })}
-            aria-describedby={describedBy({ row: rowIndex, col })}
+            aria-describedby={describedBy(col)}
             style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
             aria-busy={rowIsUnloaded || undefined}
           >
@@ -1293,7 +1329,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       sliceCache,
       loadSlice,
       cellProps,
-      describedBy,
+      describedByForRow,
     ]
   );
 

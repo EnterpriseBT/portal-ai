@@ -16,6 +16,37 @@ export interface ColumnDefinitionMeta {
 }
 
 /**
+ * Each binding's label and type from the catalog, by its current id (#795).
+ * The catalog wins over what's cached on the draft: a rebind patches only
+ * `columnDefinitionId`, so the cached label would still name the old
+ * definition. A binding the catalog doesn't know keeps its own.
+ */
+export function withResolvedLabels(
+  regions: RegionDraft[],
+  columnDefinitionsById: ReadonlyMap<string, ColumnDefinitionMeta>
+): RegionDraft[] {
+  if (columnDefinitionsById.size === 0) return regions;
+  return regions.map((region) => {
+    if (!region.columnBindings || region.columnBindings.length === 0) {
+      return region;
+    }
+    return {
+      ...region,
+      columnBindings: region.columnBindings.map((binding) => {
+        if (!binding.columnDefinitionId) return binding;
+        const meta = columnDefinitionsById.get(binding.columnDefinitionId);
+        if (!meta) return binding;
+        return {
+          ...binding,
+          columnDefinitionLabel: meta.label,
+          columnDefinitionType: meta.type,
+        };
+      }),
+    };
+  });
+}
+
+/**
  * What the review step's binding editor needs from the org (#795): the
  * column-definition catalog and search, the connector-entity search, and
  * the resolvers built from them and the plan's regions. One hook for the
@@ -40,27 +71,10 @@ export function useBindingEditorResolvers(regions: RegionDraft[]) {
     return map;
   }, [columnDefinitionsQuery.data]);
 
-  const regionsWithResolvedLabels = useMemo(() => {
-    if (columnDefinitionsById.size === 0) return regions;
-    return regions.map((region) => {
-      if (!region.columnBindings || region.columnBindings.length === 0) {
-        return region;
-      }
-      return {
-        ...region,
-        columnBindings: region.columnBindings.map((binding) => {
-          if (!binding.columnDefinitionId) return binding;
-          const meta = columnDefinitionsById.get(binding.columnDefinitionId);
-          if (!meta) return binding;
-          return {
-            ...binding,
-            columnDefinitionLabel: binding.columnDefinitionLabel ?? meta.label,
-            columnDefinitionType: binding.columnDefinitionType ?? meta.type,
-          };
-        }),
-      };
-    });
-  }, [regions, columnDefinitionsById]);
+  const regionsWithResolvedLabels = useMemo(
+    () => withResolvedLabels(regions, columnDefinitionsById),
+    [regions, columnDefinitionsById]
+  );
 
   // `columnDefinitions.search` populates the rebind picker;
   // `connectorEntities.search` the reference editor's DB targets (staged

@@ -260,6 +260,19 @@ describe("UploadStep — the drop zone by keyboard (#795)", () => {
     expect(onFilesChange).toHaveBeenCalled();
   });
 
+  test("while busy, a drop over it is still prevented, so the browser can't open the file", () => {
+    render(<UploadStep {...makeProps({ uploadPhase: "uploading" })} />);
+    const button = screen.getByTestId("dropzone");
+    expect(button).toBeDisabled();
+    // A disabled button takes no pointer events: the drop lands on what's
+    // under it, which must prevent the browser's default.
+    const target = button.parentElement!;
+    expect(fireEvent.dragOver(target)).toBe(false);
+    expect(
+      fireEvent.drop(target, { dataTransfer: { files: [SAMPLE_A] } })
+    ).toBe(false);
+  });
+
   test("a field error is part of its description", () => {
     render(
       <UploadStep

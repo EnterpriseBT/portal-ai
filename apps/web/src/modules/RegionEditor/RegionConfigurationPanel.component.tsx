@@ -247,6 +247,26 @@ export const RegionConfigurationPanelUI: React.FC<
     return () => clearTimeout(timer);
   }, [cellValueFieldFocusToken]);
 
+  // A region made from the Range field replaces that field with this
+  // form, so focus would fall to the page; it moves to the form's first
+  // control instead (#795).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const focusAfterCreateRef = useRef(false);
+  const regionId = region?.id ?? null;
+  useEffect(() => {
+    if (!regionId || !focusAfterCreateRef.current) return;
+    focusAfterCreateRef.current = false;
+    panelRef.current
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+      )
+      ?.focus();
+  }, [regionId]);
+  const handleCreateFromRange = (bounds: CellBounds) => {
+    focusAfterCreateRef.current = true;
+    onCreateRegionFromRange?.(bounds);
+  };
+
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
     () => buildSelectOptions(entityOptions, claimedEntityKeys, currentTarget),
@@ -286,7 +306,7 @@ export const RegionConfigurationPanelUI: React.FC<
             </Typography>
             <RegionRangeInputUI
               sheet={activeSheet}
-              onCreate={onCreateRegionFromRange}
+              onCreate={handleCreateFromRange}
             />
             <Typography variant="body2" color="text.secondary">
               Select an existing region to configure it here.
@@ -596,6 +616,7 @@ export const RegionConfigurationPanelUI: React.FC<
 
   return (
     <Box
+      ref={panelRef}
       sx={{
         width: "100%",
         minWidth: 0,
