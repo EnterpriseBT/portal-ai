@@ -528,6 +528,33 @@ describe("Layout Plans Draft Router", () => {
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
     });
 
+    // #998: a hint whose segments have no pivot can't carry a cellValueField;
+    // it used to fail interpret's final plan parse as a 500.
+    it("refuses a cellValueField over pivot-less segments with 400 naming the field", async () => {
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          uploadSessionId: "00000000-0000-4000-8000-000000000000",
+          regionHints: [
+            {
+              sheet: "Sheet1",
+              bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+              targetEntityDefinitionId: "ent_contact",
+              headerAxes: ["row"],
+              segmentsByAxis: {
+                row: [{ kind: "field", positionCount: 3 }],
+              },
+              cellValueField: { name: "value", nameSource: "ai" },
+            },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+      expect(res.body.message).toContain("regionHints.0.cellValueField");
+    });
+
     // #687: a 500's message no longer reaches the client, so the parser's
     // input errors (a hint naming a sheet that isn't there) answer 400 with
     // their explanation; any other failure stays a scrubbed 500.
