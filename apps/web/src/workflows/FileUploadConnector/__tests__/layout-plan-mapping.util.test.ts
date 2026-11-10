@@ -11,7 +11,6 @@ import {
   overallConfidenceFromPlan,
   planRegionsToDrafts,
   preserveUserRegionConfig,
-  reconcileCellValueFields,
   regionDraftsToHints,
   workbookToBackend,
 } from "../utils/layout-plan-mapping.util";
@@ -1231,48 +1230,27 @@ describe("cell-value fields follow the pivots (#998)", () => {
     });
   });
 
-  it("drops an intersection entry whose pivots are gone", () => {
-    const out = reconcileCellValueFields({
-      segmentsByAxis: {
-        row: [{ kind: "pivot", id: "r1" }],
-        column: [{ kind: "pivot", id: "c1" }],
-      },
-      cellValueField: { name: "value", nameSource: "user" as const },
-      intersectionCellValueFields: {
-        r1__c1: { name: "kept", nameSource: "user" as const },
-        r1__c_gone: { name: "dropped", nameSource: "user" as const },
-        malformed: { name: "dropped too", nameSource: "user" as const },
-      },
-    });
-    expect(Object.keys(out.intersectionCellValueFields ?? {})).toEqual([
-      "r1__c1",
-    ]);
-  });
-
-  it("drops intersection fields altogether when none still match", () => {
-    const out = reconcileCellValueFields({
-      segmentsByAxis: { row: [{ kind: "field" }] },
-      cellValueField: { name: "value", nameSource: "user" as const },
-      intersectionCellValueFields: {
-        r1__c1: { name: "x", nameSource: "user" as const },
-      },
-    });
-    expect(out).not.toHaveProperty("intersectionCellValueFields");
-    expect(out).not.toHaveProperty("cellValueField");
-  });
-
-  it("a stale draft's cellValueField doesn't reach the interpret hint", () => {
-    const hints = regionDraftsToHints(makeWorkbook(), [
+  it("a stale pivot on an axis the region no longer has doesn't bring the seed back", () => {
+    // Interpret only saw the row axis's seed segment and re-detected it; a
+    // user pivot left on the removed column axis never reached it (#998).
+    const result = preserveUserRegionConfig(plan(responseRegion), [
       baseDraft({
-        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
-        cellValueField: { name: "value", nameSource: "ai" },
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 5 }],
+          column: [{ ...PIVOT, id: "stale", axisNameSource: "user" }],
+        },
       }),
     ]);
-    expect(hints[0].segmentsByAxis).toBeDefined();
-    expect(hints[0]).not.toHaveProperty("cellValueField");
+    expect(result.regions[0].segmentsByAxis?.row).toEqual([
+      { kind: "field", positionCount: 4 },
+      PIVOT,
+    ]);
+    expect(result.regions[0].segmentsByAxis?.column).toBeUndefined();
   });
 
-  it("a hint keeps its cellValueField with a pivot, and gets none added without one", () => {
+  it("a hint carries the draft's cellValueField with a pivot, and invents none without one", () => {
     const [withPivot] = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
         segmentsByAxis: {

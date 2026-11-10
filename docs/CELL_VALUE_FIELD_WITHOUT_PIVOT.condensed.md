@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#998](https://github.com/EnterpriseBT/portal-ai/issues/998) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** After Interpret, the web merges the user's region config over interpret's plan (`preserveUserRegionConfig`). It always puts the user's segments back, even when they're only the full-span field segment the editor seeds on "+ Add row axis". Interpret replaces such a seed with what it detects (a date column as a pivot), and its bindings and `cellValueField` follow that. So the merged region had a pivot-less segment, interpret's `cellValueField` (which the region schema allows only alongside a pivot) and no binding for the date column. Commit then refuses the plan (`400 LAYOUT_PLAN_INVALID_PAYLOAD`). The draft carries that `cellValueField` into the next interpret hint, and interpret copies it onto the region and fails its own final plan parse with a Zod error, which the route answers as a 500. Packages: `apps/web` (the merge) and `packages/spreadsheet-parsing` (the hint schema the API validates requests with).
+**Why.** After Interpret, the web merges the user's region config over interpret's plan (`preserveUserRegionConfig`). It always puts the user's segments back, even when they're only the full-span field segment the editor seeds on "+ Add row axis". Interpret replaces such a seed with what it detects (a date column as a pivot), and its bindings and `cellValueField` follow that. So the merged region had a pivot-less segment, interpret's `cellValueField` (which the region schema allows only alongside a pivot) and no binding for the date column. Commit then refuses the plan (`400 LAYOUT_PLAN_INVALID_PAYLOAD`). The draft carries that `cellValueField` into the next interpret hint, and interpret copies it onto the region and fails its own final plan parse with a Zod error, which the route answers as a 500. Packages: `apps/web` (the merge), `packages/spreadsheet-parsing` (interpret and the shared rule) and `packages/core` (re-export).
 
 ## Current shape
 
@@ -13,44 +13,39 @@
 | The panel's own sync | `apps/web/src/modules/RegionEditor/RegionConfigurationPanel.component.tsx:132` (`withPivotSync`) | already adds or drops `cellValueField` as the user edits segments; the merge is the path that skips it |
 | Interpret's own precedence | `packages/spreadsheet-parsing/src/interpret/stages/pivoted.util.ts` (`resolveEffectiveSegments`) | keeps a hint's segments only when the user authored them (a user-named pivot, or field header/skip overrides); otherwise detect-segments wins |
 | Region rule | `packages/spreadsheet-parsing/src/plan/region.schema.ts:405` | refinement 7: `cellValueField` required iff ≥1 pivot; 6a: intersection keys must name pivots on both axes |
-| Hint schema | `packages/spreadsheet-parsing/src/plan/interpret-input.schema.ts:19` (`RegionHintSchema`) | no such rule; the interpret routes validate request bodies with it |
 | Where the 500 comes from | `packages/spreadsheet-parsing/src/interpret/stages/detect-regions.ts:41`, `interpret/index.ts:57` | the hint's `cellValueField` is copied onto the region; `LayoutPlanSchema.parse` throws; `interpretFailure` maps a non-input error to 500 |
 
-## Decision — the merge keeps the segments interpret kept; the cell-value rule backs it up
+## Decision — interpret settles cell-value fields; the merge keeps the segments interpret kept
 
-- **Web, the fix:** `preserveUserRegionConfig` puts the user's segments back only when interpret would have kept them, by the same rule interpret uses. `spreadsheet-parsing` exports it as `segmentsAreUserAuthored` (re-exported through core's contracts), so the two can't drift apart. Otherwise interpret's segments, bindings and `cellValueField` stay together.
-- **Web, the backstop:** `reconcileCellValueFields` applies the panel's rule to every merged region, and to each hint that carries segments (without inventing a name there):
-  - with no pivot, no `cellValueField` and no intersection fields;
-  - a pivot gets a `cellValueField`;
-  - an intersection entry must name existing pivots.
-- **Server, a 400 rather than a 500:** `RegionHintSchema` gets the rule refinements 7 and 6a state. When a hint carries `segmentsByAxis`, a `cellValueField` with no pivot segment, or an intersection key naming a missing pivot, fails with the region schema's wording. The interpret routes already answer a body failure with `400 LAYOUT_PLAN_INVALID_PAYLOAD` naming the field. Without segments, interpret detects pivots itself, so there's nothing to check.
-- **Found on the way:** dropping only the `cellValueField` (the first version of this fix) turned the 400 into a commit job that halted on drift, because the date column was left unbound. Hence the segment rule above.
-- Rejected: silently dropping the field on the server, and mapping the final plan's Zod error to 400. The first hides a client bug; the second also hides interpreter bugs.
+- **Interpret, the server fix:** once `proposeBindings` has settled a region's segments, it applies the cell-value rule (`reconcileCellValueFields`, in `spreadsheet-parsing/src/plan/cell-value-fields.util.ts`):
+  - no pivot means no `cellValueField` and no intersection fields;
+  - a pivot without a `cellValueField` gets interpret's default `{ name: "value", nameSource: "ai" }`;
+  - an intersection key must name a row and a column pivot on a two-axis region.
+
+  A hint's cell-value fields are copied onto the region as given, but its segments win only when user-authored, so the two could disagree and fail the final plan parse as a 500. Any hint the request schema accepts now interprets to a valid plan.
+- **Web, the fix for Commit:** `preserveUserRegionConfig` puts the user's segments back only when interpret would have kept them, by interpret's own rule, exported as `segmentsAreUserAuthored`. It tests only the segments on the region's header axes, which is what the hint sent. Otherwise interpret's segments, bindings and `cellValueField` stay together. The merged region then goes through the same `reconcileCellValueFields`, which the web takes from core's contracts so the rule lives in one place.
+- **Changed after code review:** a first version refused contradictory hints at the request boundary with a 400. Interpret, not the request, decides the final segments, so that check passed hints that still failed (an AI-named pivot that wasn't detected; a user pivot with no cell-value field; no segments plus a user cell-value field), and refused one interpret could handle. Reconciling inside interpret covers them all.
+- **Found during smoke:** dropping only the `cellValueField` turned Commit's 400 into a drift halt, because the date column was left unbound. Hence the segment rule.
+- Rejected: mapping the final plan's Zod error to 400. It would also hide real interpreter bugs.
 
 ## Plan — 3 slices
 
-**Slice 1 — web merge.**
-- Files: `layout-plan-mapping.util.ts`: a `reconcileCellValueFields(region)` used by `preserveUserRegionConfig` and `regionDraftsToHints`.
-- Tests (`apps/web/src/workflows/FileUploadConnector/__tests__/layout-plan-mapping.util.test.ts`):
-  - the #998 shape (user field-only segments, response pivot plus `cellValueField`) merges with no `cellValueField`;
-  - user segments with a pivot keep interpret's `cellValueField`, or get the default;
-  - an intersection entry for a removed pivot is dropped;
-  - `regionDraftsToHints` drops a stale `cellValueField`.
-- Command: `cd apps/web && npm run test:unit -- --testPathPattern layout-plan-mapping`.
+**Slice 1 — the cell-value rule, shared.**
+- Files: `spreadsheet-parsing/src/plan/cell-value-fields.util.ts`, exported through `plan/index.ts` and core's `spreadsheet-parsing.contract.ts`.
+- Tests: `src/plan/__tests__/cell-value-fields.util.test.ts`.
 
-**Slice 3 — the merge keeps the segments interpret kept.**
-- Files: `spreadsheet-parsing/src/interpret/stages/pivoted.util.ts` (`segmentsAreUserAuthored`, used by `resolveEffectiveSegments`) and its exports; `core/src/contracts/spreadsheet-parsing.contract.ts`; `layout-plan-mapping.util.ts`.
-- Tests (`layout-plan-mapping.util.test.ts`):
+**Slice 2 — interpret applies it.**
+- Files: `interpret/stages/propose-bindings.ts`.
+- Tests: `src/interpret/__tests__/cell-value-fields.interpret.test.ts`. Each case is a hint that used to fail the final parse: an undetected AI pivot, a user pivot with no `cellValueField`, no segments plus a user `cellValueField`, and intersection fields on a one-axis region.
+
+**Slice 3 — the web merge.**
+- Files: `spreadsheet-parsing/src/interpret/stages/pivoted.util.ts` (`segmentsAreUserAuthored`) and `layout-plan-mapping.util.ts`.
+- Tests: `layout-plan-mapping.util.test.ts`:
   - the #998 shape keeps interpret's segments and `cellValueField`;
-  - user-authored pivot-less segments are kept and drop interpret's `cellValueField`;
-  - a user-named pivot gets the default when interpret proposed none.
-
-**Slice 2 — hint rule.**
-- Files: `interpret-input.schema.ts`.
-- Tests:
-  - the schema's own tests: a hint with field-only segments plus `cellValueField` fails at `cellValueField`; one with a pivot passes; one without segments passes; an intersection key naming a missing pivot fails;
-  - an api route test: interpret with that hint answers `400 LAYOUT_PLAN_INVALID_PAYLOAD` naming `regionHints.0.cellValueField`.
-- Commands: `npm run build --workspace=packages/spreadsheet-parsing`, then `cd packages/spreadsheet-parsing && npm run test:unit` and the api route test.
+  - user-authored pivot-less segments drop it;
+  - a user pivot gets the default;
+  - a stale pivot on a removed axis doesn't win.
+- Commands: `cd packages/spreadsheet-parsing && npm run test:unit`; `cd apps/web && npm run test:unit -- --testPathPattern layout-plan-mapping`.
 
 ## Smoke (manual, against your dev stack)
 

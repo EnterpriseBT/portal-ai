@@ -127,6 +127,9 @@ export type {
 } from "./interpret-input.schema.js";
 
 export { ExtractedRecordSchema, ReplayResultSchema } from "./replay.schema.js";
+
+export { reconcileCellValueFields } from "./cell-value-fields.util.js";
+export type { CellValueFieldShape } from "./cell-value-fields.util.js";
 export type { ExtractedRecord, ReplayResult } from "./replay.schema.js";
 
 export {

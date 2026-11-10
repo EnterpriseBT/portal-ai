@@ -1,4 +1,7 @@
-import { segmentsAreUserAuthored } from "@portalai/core/contracts";
+import {
+  reconcileCellValueFields,
+  segmentsAreUserAuthored,
+} from "@portalai/core/contracts";
 import type {
   InterpretRequestBody,
   LayoutPlan,
@@ -170,57 +173,17 @@ function draftSkipRuleToBackend(
 }
 
 /**
- * The region rule for cell-value fields, applied wherever a region is put
- * together from more than one source (#998): `cellValueField` exists iff a
- * pivot segment does, and each `intersectionCellValueFields` key names a
- * row pivot and a column pivot that exist. The panel keeps drafts to it as
- * the user edits segments (`withPivotSync`); the merge after Interpret
- * combined the user's segments with interpret's fields and broke it, which
- * Commit refused (400) and the next interpret failed on (500).
- *
- * `fillMissing: false` only removes what contradicts the segments: a hint
- * without a `cellValueField` lets interpret propose its own name.
+ * The draft's segments on its header axes: what `regionDraftsToHints` sends
+ * interpret, and so what interpret could have kept. Segments left on an
+ * axis the region no longer has never reach it.
  */
-export function reconcileCellValueFields<
-  T extends {
-    segmentsByAxis?: {
-      row?: ReadonlyArray<{ kind: string; id?: string }>;
-      column?: ReadonlyArray<{ kind: string; id?: string }>;
-    };
-    cellValueField?: BackendRegion["cellValueField"];
-    intersectionCellValueFields?: BackendRegion["intersectionCellValueFields"];
-  },
->(region: T, { fillMissing = true }: { fillMissing?: boolean } = {}): T {
-  const pivotIds = (axis: BackendAxis) =>
-    new Set(
-      (region.segmentsByAxis?.[axis] ?? [])
-        .filter((s) => s.kind === "pivot")
-        .map((s) => s.id)
-    );
-  const rowPivots = pivotIds("row");
-  const colPivots = pivotIds("column");
-  const out: T = { ...region };
-
-  if (rowPivots.size + colPivots.size === 0) {
-    delete out.cellValueField;
-  } else if (!out.cellValueField && fillMissing) {
-    // The panel's default for a newly pivoted region.
-    out.cellValueField = { name: "value", nameSource: "user" };
-  }
-
-  if (out.intersectionCellValueFields) {
-    const kept = Object.fromEntries(
-      Object.entries(out.intersectionCellValueFields).filter(([key]) => {
-        const sep = key.indexOf("__");
-        return (
-          sep > 0 &&
-          rowPivots.has(key.slice(0, sep)) &&
-          colPivots.has(key.slice(sep + 2))
-        );
-      })
-    );
-    if (Object.keys(kept).length > 0) out.intersectionCellValueFields = kept;
-    else delete out.intersectionCellValueFields;
+function segmentsOnHeaderAxes(
+  draft: RegionDraft
+): NonNullable<RegionDraft["segmentsByAxis"]> {
+  const out: NonNullable<RegionDraft["segmentsByAxis"]> = {};
+  for (const axis of draft.headerAxes ?? []) {
+    const segs = draft.segmentsByAxis?.[axis];
+    if (segs && segs.length > 0) out[axis] = segs;
   }
   return out;
 }
@@ -259,21 +222,19 @@ export function preserveUserRegionConfig(
       // as a pivot, say), and its bindings and cellValueField match that.
       // Restoring the seed left a column without a binding, which Commit
       // refused.
-      if (
-        prior.segmentsByAxis &&
-        segmentsAreUserAuthored(prior.segmentsByAxis)
-      ) {
+      const sentSegments = segmentsOnHeaderAxes(prior);
+      if (segmentsAreUserAuthored(sentSegments)) {
         // Preserve the user's segment edits but adopt the response's
         // freshly-classified `columnDefinitionId` per pivot — those are
         // classifier output, not user knobs, and a re-interpret must
         // surface the latest binding on the review chip.
         merged.segmentsByAxis = {
           row: adoptResponseSegmentBindings(
-            prior.segmentsByAxis.row,
+            sentSegments.row,
             region.segmentsByAxis?.row
           ),
           column: adoptResponseSegmentBindings(
-            prior.segmentsByAxis.column,
+            sentSegments.column,
             region.segmentsByAxis?.column
           ),
         };
@@ -343,7 +304,9 @@ export function preserveUserRegionConfig(
       }
       // The user's segments and interpret's cell-value fields can disagree
       // about pivots; settle it the way the panel would (#998).
-      return reconcileCellValueFields(merged);
+      return reconcileCellValueFields(merged, {
+        defaultField: { name: "value", nameSource: "user" },
+      });
     }),
   };
 }
@@ -458,14 +421,7 @@ export function regionDraftsToHints(
       // composite that gets locked falls back to skip — interpret() re-runs.
     }
 
-    // A draft from before a pivot was removed can't send a contradictory
-    // hint, which the interpret routes refuse (#998). Without segments
-    // interpret detects pivots itself, so there's nothing to check.
-    hints.push(
-      hint.segmentsByAxis
-        ? reconcileCellValueFields(hint, { fillMissing: false })
-        : hint
-    );
+    hints.push(hint);
   }
 
   return hints;

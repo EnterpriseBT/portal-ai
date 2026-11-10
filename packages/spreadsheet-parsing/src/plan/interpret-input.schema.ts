@@ -16,85 +16,49 @@ import { IdentityStrategySchema } from "./strategies.schema.js";
  * a caller (UI / auto-detect) can determine upfront. Everything else (header
  * strategy per axis, identity, bindings) is filled in by interpret().
  */
-export const RegionHintSchema = z
-  .object({
-    sheet: z.string().min(1),
-    bounds: z.object({
-      startRow: z.number().int().min(1),
-      startCol: z.number().int().min(1),
-      endRow: z.number().int().min(1),
-      endCol: z.number().int().min(1),
-    }),
-    targetEntityDefinitionId: z.string().min(1),
-    headerAxes: z.array(AxisMemberEnum).max(2).default([]),
-    segmentsByAxis: z
-      .object({
-        row: z.array(SegmentSchema).optional(),
-        column: z.array(SegmentSchema).optional(),
-      })
-      .optional(),
-    cellValueField: CellValueFieldSchema.optional(),
-    /**
-     * Per-intersection cell-value overrides on a 2D crosstab hint. Keys are
-     * `${rowPivotSegmentId}__${colPivotSegmentId}` referring to pivot
-     * segments inside `segmentsByAxis`. Round-trips through interpret so a
-     * user's panel edits survive a re-classification.
-     */
-    intersectionCellValueFields: z
-      .record(z.string(), CellValueFieldSchema)
-      .optional(),
-    recordsAxis: AxisMemberEnum.optional(),
-    recordAxisTerminator: TerminatorSchema.optional(),
-    axisAnchorCell: z
-      .object({
-        row: z.number().int().min(1),
-        col: z.number().int().min(1),
-      })
-      .optional(),
-    proposedLabel: z.string().optional(),
-    /**
-     * Pre-seed the region's identity. When omitted, `detectIdentity` runs the
-     * uniqueness heuristic. When provided with `source: "user"`, the heuristic
-     * is skipped and this strategy is preserved verbatim through interpret.
-     * Lets the review-step's identity override survive a re-interpret.
-     */
-    identityStrategy: IdentityStrategySchema.optional(),
-  })
-  .superRefine((hint, ctx) => {
-    // #998: a hint that gives segments is held to the region's own rules
-    // for cell-value fields (region.schema refinements 7 and 6a), so a
-    // contradictory one is refused here, naming the field, rather than
-    // failing interpret's final plan parse as a 500. Without segments
-    // interpret detects pivots itself, so there's nothing to hold it to.
-    if (!hint.segmentsByAxis) return;
-    const pivotIds = (axis: "row" | "column") =>
-      new Set(
-        (hint.segmentsByAxis?.[axis] ?? []).flatMap((s) =>
-          s.kind === "pivot" ? [s.id] : []
-        )
-      );
-    const rowPivots = pivotIds("row");
-    const colPivots = pivotIds("column");
-    if (hint.cellValueField && rowPivots.size + colPivots.size === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "cellValueField is only allowed when a pivot segment exists",
-        path: ["cellValueField"],
-      });
-    }
-    for (const key of Object.keys(hint.intersectionCellValueFields ?? {})) {
-      const sep = key.indexOf("__");
-      const rowId = sep > 0 ? key.slice(0, sep) : "";
-      const colId = sep > 0 ? key.slice(sep + 2) : "";
-      if (!rowPivots.has(rowId) || !colPivots.has(colId)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `intersectionCellValueFields key "${key}" must name a row pivot and a column pivot in segmentsByAxis`,
-          path: ["intersectionCellValueFields", key],
-        });
-      }
-    }
-  });
+export const RegionHintSchema = z.object({
+  sheet: z.string().min(1),
+  bounds: z.object({
+    startRow: z.number().int().min(1),
+    startCol: z.number().int().min(1),
+    endRow: z.number().int().min(1),
+    endCol: z.number().int().min(1),
+  }),
+  targetEntityDefinitionId: z.string().min(1),
+  headerAxes: z.array(AxisMemberEnum).max(2).default([]),
+  segmentsByAxis: z
+    .object({
+      row: z.array(SegmentSchema).optional(),
+      column: z.array(SegmentSchema).optional(),
+    })
+    .optional(),
+  cellValueField: CellValueFieldSchema.optional(),
+  /**
+   * Per-intersection cell-value overrides on a 2D crosstab hint. Keys are
+   * `${rowPivotSegmentId}__${colPivotSegmentId}` referring to pivot
+   * segments inside `segmentsByAxis`. Round-trips through interpret so a
+   * user's panel edits survive a re-classification.
+   */
+  intersectionCellValueFields: z
+    .record(z.string(), CellValueFieldSchema)
+    .optional(),
+  recordsAxis: AxisMemberEnum.optional(),
+  recordAxisTerminator: TerminatorSchema.optional(),
+  axisAnchorCell: z
+    .object({
+      row: z.number().int().min(1),
+      col: z.number().int().min(1),
+    })
+    .optional(),
+  proposedLabel: z.string().optional(),
+  /**
+   * Pre-seed the region's identity. When omitted, `detectIdentity` runs the
+   * uniqueness heuristic. When provided with `source: "user"`, the heuristic
+   * is skipped and this strategy is preserved verbatim through interpret.
+   * Lets the review-step's identity override survive a re-interpret.
+   */
+  identityStrategy: IdentityStrategySchema.optional(),
+});
 
 export type RegionHint = z.infer<typeof RegionHintSchema>;
 
