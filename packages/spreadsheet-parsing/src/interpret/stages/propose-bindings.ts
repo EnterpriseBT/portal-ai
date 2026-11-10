@@ -13,6 +13,7 @@ import type {
   RecordsAxisNameSuggestion,
 } from "../types.js";
 import { toNormalizedKey } from "./classifier-heuristic.util.js";
+import { reconcileCellValueFields } from "../../plan/index.js";
 import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 function headerStrategyFromCandidate(
@@ -251,6 +252,14 @@ export function proposeBindings(state: InterpretState): InterpretState {
     if (computedCellValueField && next.cellValueField?.nameSource !== "user") {
       next = { ...next, cellValueField: computedCellValueField };
     }
+
+    // The cell-value fields must agree with the segments settled above
+    // (#998). A hint's fields are copied onto the region as given, but its
+    // segments win only when the user authored them, so the two could
+    // disagree, which failed the final plan parse as a 500.
+    next = reconcileCellValueFields(next, {
+      defaultField: { name: "value", nameSource: "ai" },
+    });
 
     // Apply AI axis-name suggestions to pivot segments (keyed by segment id).
     next = {
