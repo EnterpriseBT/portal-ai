@@ -1174,7 +1174,9 @@ describe("cell-value fields follow the pivots (#998)", () => {
     confidence: { overall: 0.85, perRegion: { "region-1": 0.85 } },
   });
 
-  it("drops interpret's cellValueField when the user's segments have no pivot", () => {
+  it("keeps interpret's segments and cellValueField over the editor's seed segment", () => {
+    // The #998 repro: "+ Add row axis" seeds one full-span field segment;
+    // interpret detects a date pivot instead and binds the other four.
     const result = preserveUserRegionConfig(plan(responseRegion), [
       baseDraft({
         bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
@@ -1182,19 +1184,8 @@ describe("cell-value fields follow the pivots (#998)", () => {
       }),
     ]);
     expect(result.regions[0].segmentsByAxis?.row).toEqual([
-      { kind: "field", positionCount: 5 },
-    ]);
-    expect(result.regions[0].cellValueField).toBeUndefined();
-  });
-
-  it("keeps interpret's cellValueField when the user's segments keep the pivot", () => {
-    const result = preserveUserRegionConfig(plan(responseRegion), [
-      baseDraft({
-        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
-        segmentsByAxis: {
-          row: [{ kind: "field", positionCount: 4 }, PIVOT],
-        },
-      }),
+      { kind: "field", positionCount: 4 },
+      PIVOT,
     ]);
     expect(result.regions[0].cellValueField).toEqual({
       name: "value",
@@ -1202,20 +1193,38 @@ describe("cell-value fields follow the pivots (#998)", () => {
     });
   });
 
-  it("gives a pivot with no cellValueField the panel's default", () => {
+  it("keeps user-authored segments with no pivot, and drops interpret's cellValueField", () => {
+    const authored = {
+      kind: "field" as const,
+      positionCount: 5,
+      headers: ["id", "name", "team", "salary", "hired"],
+    };
+    const result = preserveUserRegionConfig(plan(responseRegion), [
+      baseDraft({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+        segmentsByAxis: { row: [authored] },
+      }),
+    ]);
+    expect(result.regions[0].segmentsByAxis?.row).toEqual([authored]);
+    expect(result.regions[0].cellValueField).toBeUndefined();
+  });
+
+  it("gives a user-named pivot the panel's default cellValueField when interpret proposed none", () => {
     const noPivotResponse: Region = {
       ...responseRegion,
       segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
       cellValueField: undefined,
     };
+    const userPivot = { ...PIVOT, axisNameSource: "user" as const };
     const result = preserveUserRegionConfig(plan(noPivotResponse), [
       baseDraft({
         bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
         segmentsByAxis: {
-          row: [{ kind: "field", positionCount: 4 }, PIVOT],
+          row: [{ kind: "field", positionCount: 4 }, userPivot],
         },
       }),
     ]);
+    expect(result.regions[0].segmentsByAxis?.row).toContainEqual(userPivot);
     expect(result.regions[0].cellValueField).toEqual({
       name: "value",
       nameSource: "user",

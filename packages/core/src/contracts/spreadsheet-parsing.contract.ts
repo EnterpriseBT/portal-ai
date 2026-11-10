@@ -151,6 +151,7 @@ export {
   ExtractedRecordSchema,
   ReplayResultSchema,
   interpret,
+  segmentsAreUserAuthored,
 } from "@portalai/spreadsheet-parsing";
 export type {
   InterpretInput,

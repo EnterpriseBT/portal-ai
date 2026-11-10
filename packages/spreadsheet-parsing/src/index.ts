@@ -29,6 +29,7 @@ export * from "./plan/index.js";
 
 // ── Interpret (Phase 3) ────────────────────────────────────────────────────
 export { interpret } from "./interpret/index.js";
+export { segmentsAreUserAuthored } from "./interpret/stages/pivoted.util.js";
 export type {
   InterpretDeps,
   InterpretRuntimeInput,

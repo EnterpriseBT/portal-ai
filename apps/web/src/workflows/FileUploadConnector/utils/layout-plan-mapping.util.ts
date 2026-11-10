@@ -1,3 +1,4 @@
+import { segmentsAreUserAuthored } from "@portalai/core/contracts";
 import type {
   InterpretRequestBody,
   LayoutPlan,
@@ -252,7 +253,16 @@ export function preserveUserRegionConfig(
       if (prior.headerAxes) {
         merged.headerAxes = [...prior.headerAxes];
       }
-      if (prior.segmentsByAxis) {
+      // Only segments interpret itself kept (#998). The full-span field
+      // segment the editor seeds when an axis is added isn't the user's
+      // layout: interpret replaces it with what it detects (a date column
+      // as a pivot, say), and its bindings and cellValueField match that.
+      // Restoring the seed left a column without a binding, which Commit
+      // refused.
+      if (
+        prior.segmentsByAxis &&
+        segmentsAreUserAuthored(prior.segmentsByAxis)
+      ) {
         // Preserve the user's segment edits but adopt the response's
         // freshly-classified `columnDefinitionId` per pivot — those are
         // classifier output, not user knobs, and a re-interpret must

@@ -56,6 +56,20 @@ function hasAnySegments(segments: SegmentsByAxis | undefined): boolean {
 }
 
 /**
+ * Whether a hint's segments are the user's own layout, which interpret keeps
+ * rather than re-detecting: a pivot whose axis name the user set, or a field
+ * segment with header or skip overrides. Anything else (the full-span field
+ * segment the editor seeds when an axis is added) is a starting point that
+ * detect-segments replaces. Exported so the web's merge after interpret
+ * keeps the same segments interpret did (#998).
+ */
+export function segmentsAreUserAuthored(
+  segments: SegmentsByAxis | undefined
+): boolean {
+  return hintHasUserSourcedPivot(segments) || hintHasFieldOverrides(segments);
+}
+
+/**
  * Resolve the segmentation a stage should act on for a region. Hint segments
  * win when they contain a user-sourced pivot — the user has pinned a specific
  * layout and the heuristic detector's re-clustering must not override it.
@@ -72,11 +86,10 @@ export function resolveEffectiveSegments(
   computed: SegmentsByAxis | undefined
 ): SegmentsByAxis | undefined {
   const hint = region.segmentsByAxis;
-  if (hintHasUserSourcedPivot(hint)) return hint;
-  // Field-segment overrides (`headers` / `skipped`) are user-authored —
-  // detect-segments would never synthesise them — so prefer the hint when
-  // either is set on any field segment.
-  if (hintHasFieldOverrides(hint)) return hint;
+  // A user-sourced pivot, or field-segment overrides (`headers` /
+  // `skipped`, which detect-segments would never synthesise), pin the
+  // user's layout.
+  if (segmentsAreUserAuthored(hint)) return hint;
   if (hasAnySegments(computed)) return computed;
   return undefined;
 }
