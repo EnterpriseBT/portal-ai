@@ -24,6 +24,7 @@ import { CellPositionInputUI } from "./CellPositionInput.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { RecordAxisTerminatorPopoverUI } from "./RecordAxisTerminatorPopover.component";
 import { RecordsPreviewDialogUI } from "./RecordsPreviewDialog.component";
+import { RegionRangeInputUI } from "./RegionRangeInput.component";
 import { SectionHelpUI } from "./SectionHelp.component";
 import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
 import { SegmentStripUI } from "./SegmentStrip.component";
@@ -41,7 +42,11 @@ import {
   DECORATION_LABEL,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
-import type { EntityOption, RegionDraft } from "./utils/region-editor.types";
+import type {
+  CellBounds,
+  EntityOption,
+  RegionDraft,
+} from "./utils/region-editor.types";
 import {
   isDraftCrosstab,
   isDraftPivoted,
@@ -74,6 +79,13 @@ export interface RegionConfigurationPanelUIProps {
    * sheet data isn't available — the button is hidden.
    */
   regionSheet?: import("./utils/region-editor.types").SheetPreview;
+  /**
+   * The sheet on show, and the handler that creates a region on it from a
+   * typed range (#795). With both, the no-selection state offers the Range
+   * field: the keyboard's way to create a region.
+   */
+  activeSheet?: { rowCount: number; colCount: number };
+  onCreateRegionFromRange?: (bounds: CellBounds) => void;
   /**
    * Lock the region's entity association. When `true`, the
    * Target-Entity Select and the Label TextField render disabled and
@@ -204,6 +216,8 @@ export const RegionConfigurationPanelUI: React.FC<
   claimedEntityKeys,
   validateEntityKey,
   regionSheet,
+  activeSheet,
+  onCreateRegionFromRange,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EditingSegment | null>(
@@ -232,6 +246,28 @@ export const RegionConfigurationPanelUI: React.FC<
     }, 50);
     return () => clearTimeout(timer);
   }, [cellValueFieldFocusToken]);
+
+  // A region made from the Range field replaces that field with this
+  // form, so focus would fall to the page; it moves to the form's first
+  // field instead (#795).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const focusAfterCreateRef = useRef(false);
+  const regionId = region?.id ?? null;
+  useEffect(() => {
+    if (!regionId || !focusAfterCreateRef.current) return;
+    focusAfterCreateRef.current = false;
+    // The first field (Start row), not the first control: the panel leads
+    // with Delete region, and Enter there would undo what was just made.
+    panelRef.current
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]):not([type=hidden]):not([aria-hidden=true])"
+      )
+      ?.focus();
+  }, [regionId]);
+  const handleCreateFromRange = (bounds: CellBounds) => {
+    focusAfterCreateRef.current = true;
+    onCreateRegionFromRange?.(bounds);
+  };
 
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
@@ -265,10 +301,25 @@ export const RegionConfigurationPanelUI: React.FC<
           textAlign: "center",
         }}
       >
-        <Typography variant="body2" color="text.secondary">
-          Draw a region on the canvas, or select an existing region, to
-          configure it here.
-        </Typography>
+        {activeSheet && onCreateRegionFromRange ? (
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Draw a region on the sheet, or type its range:
+            </Typography>
+            <RegionRangeInputUI
+              sheet={activeSheet}
+              onCreate={handleCreateFromRange}
+            />
+            <Typography variant="body2" color="text.secondary">
+              Select an existing region to configure it here.
+            </Typography>
+          </>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Draw a region on the canvas, or select an existing region, to
+            configure it here.
+          </Typography>
+        )}
       </Stack>
     );
   }
@@ -567,6 +618,13 @@ export const RegionConfigurationPanelUI: React.FC<
 
   return (
     <Box
+      ref={panelRef}
+      // Named and focusable (not tabbable) so focus has somewhere to go
+      // when a control here unmounts, e.g. "+ Add row axis" (#795).
+      role="group"
+      aria-label={`Region ${formatBounds(region.bounds)} settings`}
+      tabIndex={-1}
+      data-region-panel=""
       sx={{
         width: "100%",
         minWidth: 0,

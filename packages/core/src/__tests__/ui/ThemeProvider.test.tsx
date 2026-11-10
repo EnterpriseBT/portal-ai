@@ -527,6 +527,19 @@ describe("accessibility defaults (#797)", () => {
     }
   );
 
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s rings a keyboard-focused grid cell and keeps the JSON's baseline (#795)",
+    (name) => {
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      expect(overrides['[role="gridcell"]:focus-visible']).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${THEME_MAP[name].palette.primary.main}`,
+        outlineOffset: -FOCUS_RING_WIDTH,
+      });
+      expect(overrides.body).toEqual({ backgroundImage: "none" });
+    }
+  );
+
   it("names an unnamed CircularProgress 'Loading'", () => {
     render(
       <ThemeProvider>

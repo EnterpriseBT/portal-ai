@@ -18,8 +18,6 @@ import {
   Stepper,
   Typography,
 } from "@portalai/core/ui";
-import type { SelectOption } from "@portalai/core/ui";
-import type { ColumnDataType } from "@portalai/core/models";
 
 import GoogleIcon from "@mui/icons-material/Google";
 
@@ -51,14 +49,15 @@ import {
 } from "../../modules/RegionEditor/utils/identity-panel-wiring.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
+import { useBindingEditorResolvers } from "../_shared/spreadsheet/use-binding-editor-resolvers.util";
+import { DiscardImportDialogUI } from "../_shared/spreadsheet/DiscardImportDialog.component";
+import { useConfirmDiscard } from "../_shared/spreadsheet/use-confirm-discard.util";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
 import { generatedConnectorName } from "../../utils/connector-instance-name.util";
 import type {
-  ColumnBindingDraft,
   EntityOption,
   LoadSliceFn,
-  RegionDraft,
   Workbook,
 } from "../../modules/RegionEditor";
 
@@ -250,6 +249,13 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     onClose();
   }, [workflow, onClose]);
 
+  // #795: Escape, the close button and Cancel ask before dropping drawn
+  // regions; one Escape used to discard the whole import.
+  const { requestClose, discardDialogProps } = useConfirmDiscard(
+    workflow.regions.length > 0,
+    handleClose
+  );
+
   // ── Authorize step ─────────────────────────────────────────────────
 
   const [authorizeState, setAuthorizeState] =
@@ -304,77 +310,16 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   // ── Column definitions for binding labels (shared with file-upload) ─
 
-  // #414: `listAll` pages to exhaustion. The previous `limit: 1000` was clamped
-  // to 100 by the pagination contract, so a binding whose column definition
-  // sorted past the cap rendered with no label at all.
-  const columnDefinitionsQuery = sdk.columnDefinitions.listAll();
-  const columnDefinitionsById = useMemo(() => {
-    const map = new Map<
-      string,
-      { label: string; type: ColumnDataType; description: string | null }
-    >();
-    const rows = columnDefinitionsQuery.data?.columnDefinitions ?? [];
-    for (const cd of rows) {
-      map.set(cd.id, {
-        label: cd.label,
-        type: cd.type as ColumnDataType,
-        description: cd.description,
-      });
-    }
-    return map;
-  }, [columnDefinitionsQuery.data]);
-
-  const regionsWithResolvedLabels = useMemo(() => {
-    if (columnDefinitionsById.size === 0) return workflow.regions;
-    return workflow.regions.map((region) => {
-      if (!region.columnBindings || region.columnBindings.length === 0) {
-        return region;
-      }
-      return {
-        ...region,
-        columnBindings: region.columnBindings.map((binding) => {
-          if (!binding.columnDefinitionId) return binding;
-          const meta = columnDefinitionsById.get(binding.columnDefinitionId);
-          if (!meta) return binding;
-          return {
-            ...binding,
-            columnDefinitionLabel: binding.columnDefinitionLabel ?? meta.label,
-            columnDefinitionType: binding.columnDefinitionType ?? meta.type,
-          };
-        }),
-      };
-    });
-  }, [workflow.regions, columnDefinitionsById]);
-
-  const columnDefinitionSearch = sdk.columnDefinitions.search();
-  const connectorEntitySearch = sdk.connectorEntities.search();
-
-  const resolveColumnDefinitionType = useCallback(
-    (binding: ColumnBindingDraft): ColumnDataType | undefined => {
-      if (binding.columnDefinitionId) {
-        const fromCatalog = columnDefinitionsById.get(
-          binding.columnDefinitionId
-        )?.type;
-        if (fromCatalog) return fromCatalog;
-      }
-      return binding.columnDefinitionType;
-    },
-    [columnDefinitionsById]
-  );
-
-  const resolveColumnDefinitionDescription = useCallback(
-    (binding: ColumnBindingDraft): string | null | undefined => {
-      if (!binding.columnDefinitionId) return undefined;
-      return columnDefinitionsById.get(binding.columnDefinitionId)?.description;
-    },
-    [columnDefinitionsById]
-  );
-
-  const resolveColumnLabel = useCallback(
-    (columnDefinitionId: string): string | undefined =>
-      columnDefinitionsById.get(columnDefinitionId)?.label,
-    [columnDefinitionsById]
-  );
+  const {
+    regionsWithResolvedLabels,
+    columnDefinitionSearch,
+    connectorEntitySearch,
+    resolveColumnDefinitionType,
+    resolveColumnDefinitionDescription,
+    resolveColumnLabel,
+    resolveReferenceOptions,
+    resolveReferenceFieldOptions,
+  } = useBindingEditorResolvers(workflow.regions);
 
   const validateEntityKey = useCallback(
     async (
@@ -399,75 +344,6 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     [workflow.workbook, stagedEntities]
   );
 
-  const resolveReferenceOptions = useCallback(
-    (currentRegion: RegionDraft): SelectOption[] => {
-      const staged = new Map<string, SelectOption>();
-      for (const r of workflow.regions) {
-        if (!r.targetEntityDefinitionId) continue;
-        if (r.id === currentRegion.id) continue;
-        if (staged.has(r.targetEntityDefinitionId)) continue;
-        const label = r.targetEntityLabel ?? r.targetEntityDefinitionId;
-        staged.set(r.targetEntityDefinitionId, {
-          value: r.targetEntityDefinitionId,
-          label: `${label} (this import)`,
-        });
-      }
-      const metaMap = connectorEntitySearch.metaMap ?? {};
-      const dbOptions = Object.entries(connectorEntitySearch.labelMap).map(
-        ([value, label]) => {
-          const connectorName = metaMap[value]?.connectorInstanceName;
-          const suffix = connectorName
-            ? ` (existing · ${connectorName})`
-            : " (existing)";
-          return { value, label: `${label}${suffix}` };
-        }
-      );
-      const all = [...staged.values(), ...dbOptions];
-      const seen = new Set<string>();
-      return all.filter((opt) => {
-        if (seen.has(String(opt.value))) return false;
-        seen.add(String(opt.value));
-        return true;
-      });
-    },
-    [
-      workflow.regions,
-      connectorEntitySearch.labelMap,
-      connectorEntitySearch.metaMap,
-    ]
-  );
-
-  const resolveReferenceFieldOptions = useCallback(
-    (
-      _region: RegionDraft,
-      refEntityKey: string | null | undefined
-    ): SelectOption[] => {
-      if (!refEntityKey) return [];
-      const stagedRegion = workflow.regions.find(
-        (r) => r.targetEntityDefinitionId === refEntityKey
-      );
-      if (stagedRegion) {
-        const seen = new Set<string>();
-        const out: SelectOption[] = [];
-        for (const b of stagedRegion.columnBindings ?? []) {
-          if (b.excluded) continue;
-          const key =
-            b.normalizedKey ??
-            (b.columnDefinitionId
-              ? (columnDefinitionsById.get(b.columnDefinitionId)?.label ??
-                b.columnDefinitionId)
-              : null);
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          out.push({ value: key, label: key });
-        }
-        return out;
-      }
-      return [];
-    },
-    [workflow.regions, columnDefinitionsById]
-  );
-
   // ── Render ─────────────────────────────────────────────────────────
 
   const resolvedActiveSheetId =
@@ -476,7 +352,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   return (
     <Modal
       open={open}
-      onClose={handleClose}
+      onClose={requestClose}
       title="Connect Google Sheets"
       defaultMaximized
       maximizable
@@ -593,14 +469,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
         {workflow.step === 0 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button type="button" variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={requestClose}>
               Cancel
             </Button>
           </Stack>
         )}
         {workflow.step === 1 && (
           <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button type="button" variant="text" onClick={handleClose}>
+            <Button type="button" variant="text" onClick={requestClose}>
               Cancel
             </Button>
           </Stack>
@@ -613,6 +489,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
           </Stack>
         )}
       </Stack>
+      <DiscardImportDialogUI {...discardDialogProps} />
     </Modal>
   );
 };

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import type { ComponentProps } from "react";
 import { jest } from "@jest/globals";
 import {
   act,
@@ -8,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { SheetCanvasUI } from "../SheetCanvas.component";
 import type { LoadSliceFn } from "../SheetCanvas.component";
 import type {
@@ -85,7 +87,7 @@ describe("SheetCanvasUI", () => {
         onRegionDraft={jest.fn()}
       />
     );
-    const overlay = screen.getByLabelText(/Region/i);
+    const overlay = screen.getByTestId("region-overlay-r1");
     fireEvent.pointerDown(overlay, { pointerId: 1, clientX: 200, clientY: 60 });
     expect(onSelect).toHaveBeenCalledWith("r1");
   });
@@ -156,18 +158,19 @@ describe("SheetCanvasUI", () => {
       />
     );
     // One overlay per row-axis segment, each with its 1-based number and
-    // kind surfaced in aria-label / title for hover/ally affordance.
+    // kind surfaced in its hover title (the overlays are decorative to
+    // assistive tech, #795; the panel's segment strip carries the same).
     expect(screen.getByTestId("segment-overlay-row-0")).toHaveAttribute(
-      "aria-label",
+      "title",
       expect.stringMatching(/row axis segment 1 \(Field\)/i)
     );
     expect(screen.getByTestId("segment-overlay-row-1")).toHaveAttribute(
-      "aria-label",
+      "title",
       expect.stringMatching(/row axis segment 2 \(Skip\)/i)
     );
     const pivotOverlay = screen.getByTestId("segment-overlay-row-2");
     expect(pivotOverlay).toHaveAttribute(
-      "aria-label",
+      "title",
       expect.stringMatching(/row axis segment 3 \(Pivot\) — Quarter/i)
     );
     // Pivot overlay surfaces the axis name inline.
@@ -198,9 +201,7 @@ describe("SheetCanvasUI", () => {
         onRegionResize={jest.fn()}
       />
     );
-    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(
-      0
-    );
+    expect(screen.getAllByTestId(/^region-resize-/).length).toBeGreaterThan(0);
   });
 
   test("a headerless region (no segments) still renders resize handles", () => {
@@ -221,9 +222,7 @@ describe("SheetCanvasUI", () => {
         onRegionResize={jest.fn()}
       />
     );
-    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(
-      0
-    );
+    expect(screen.getAllByTestId(/^region-resize-/).length).toBeGreaterThan(0);
   });
 
   test("dragging a segment divider fires onSegmentResize with redistributed counts", () => {
@@ -253,6 +252,10 @@ describe("SheetCanvasUI", () => {
       />
     );
     const divider = screen.getByTestId("segment-divider-row-0");
+    // Decorative to assistive tech (#795): the segment strip's popover
+    // edits the same counts from the keyboard.
+    expect(divider).toHaveAttribute("aria-hidden", "true");
+    expect(divider).not.toHaveAttribute("aria-label");
     // clientToCell converts clientX → col via (clientX - rect.left - ROW_HEADER_WIDTH) / cellWidth
     // where rect.left is 0 in jsdom, ROW_HEADER_WIDTH=44, cellWidth=96. So col=3
     // for any clientX in [332, 428).
@@ -417,6 +420,8 @@ describe("SheetCanvasUI", () => {
     const cell = screen.getByTestId("cell-0-0");
     expect(cell).toHaveTextContent("…");
     expect(cell).toHaveAttribute("aria-busy", "true");
+    // A screen reader hears "Loading…", not an ellipsis (#795).
+    expect(cell).toHaveAccessibleName("Loading…");
   });
 
   test("does not refetch the same rectangle on rerender", async () => {
@@ -615,7 +620,7 @@ describe("SheetCanvasUI", () => {
           onRegionDraft={onDraft}
         />
       );
-      const overlay = screen.getByLabelText(/Region/i);
+      const overlay = screen.getByTestId("region-overlay-r1");
       fireEvent.pointerDown(overlay, {
         pointerId: 1,
         pointerType: "touch",
@@ -959,7 +964,7 @@ describe("SheetCanvasUI", () => {
           onRegionResize={onResize}
         />
       );
-      const overlay = screen.getByLabelText(/Region/i);
+      const overlay = screen.getByTestId("region-overlay-r1");
       // Region body has local touchAction: "none" — pointerdown selects
       // synchronously and primes a move op that commits only if the
       // pointer moves before release.
@@ -998,7 +1003,7 @@ describe("SheetCanvasUI", () => {
           onRegionResize={onResize}
         />
       );
-      const seHandle = screen.getByLabelText("Resize region se");
+      const seHandle = screen.getByTestId("region-resize-se");
       // Resize handles set local touchAction: "none" and engage immediately.
       fireEvent.pointerDown(seHandle, {
         pointerId: 1,
@@ -1191,5 +1196,462 @@ describe("SheetCanvasUI", () => {
         name: /cell-value field name for this intersection/i,
       })
     ).toBeInTheDocument();
+  });
+
+  describe("assistive-tech roles (#795)", () => {
+    const pivotRegion: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "rp1",
+            axisName: "Region",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "cp1",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+      cellValueField: { name: "Revenue", nameSource: "user" },
+      targetEntityDefinitionId: "ent_a",
+    };
+
+    function renderWithRegion(onDraft = jest.fn()) {
+      return render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[pivotRegion]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+          onRegionResize={jest.fn()}
+          onRegionUpdate={jest.fn()}
+        />
+      );
+    }
+
+    test("the corner is a named button that selects the whole sheet from the keyboard", () => {
+      const onDraft = jest.fn();
+      renderWithRegion(onDraft);
+      const corner = screen.getByRole("button", {
+        name: "Select entire sheet",
+      });
+      expect(corner.closest("[data-corner-header]")).not.toBeNull();
+      // A keyboard activation is a click with no pointer gesture behind it.
+      fireEvent.click(corner, { detail: 0 });
+      expect(onDraft).toHaveBeenCalledTimes(1);
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 0,
+        endRow: 5,
+        startCol: 0,
+        endCol: 4,
+      });
+    });
+
+    test("region and segment overlays are hidden from assistive tech and carry no aria-label", () => {
+      const { container } = renderWithRegion();
+      const decorative = [
+        screen.getByTestId("region-overlay-r1"),
+        screen.getByTestId("segment-overlay-row-1"),
+        screen.getByTestId("segment-overlay-column-0"),
+      ];
+      for (const el of decorative) {
+        expect(el).toHaveAttribute("aria-hidden", "true");
+        expect(el).not.toHaveAttribute("aria-label");
+      }
+      for (const el of container.querySelectorAll("[aria-label]")) {
+        // Every remaining label sits on something that can carry one.
+        expect(el.getAttribute("role") ?? el.tagName.toLowerCase()).toMatch(
+          /^(button|input|svg|grid)$/
+        );
+      }
+    });
+
+    test("an editable intersection stays a named button outside any hidden ancestor", () => {
+      renderWithRegion();
+      const intersection = screen.getByTestId(
+        "intersection-overlay-r1-rp1__cp1"
+      );
+      expect(intersection).toHaveAttribute("role", "button");
+      expect(intersection).toHaveAccessibleName(/Revenue/);
+      expect(intersection.closest("[aria-hidden='true']")).toBeNull();
+    });
+
+    test("has no axe violations with a selected pivot region", async () => {
+      const { container } = renderWithRegion();
+      await expectNoAxeViolations(container);
+    });
+  });
+
+  describe("the sheet as a grid (#795)", () => {
+    function renderSheet(sheet: SheetPreview = makeSheet()) {
+      return render(
+        <SheetCanvasUI
+          sheet={sheet}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+    }
+
+    test("is a grid named by the sheet, counting its header row and column", () => {
+      renderSheet();
+      const grid = screen.getByRole("grid", { name: "Sheet 1" });
+      expect(grid).toHaveAttribute("aria-rowcount", "7");
+      expect(grid).toHaveAttribute("aria-colcount", "6");
+    });
+
+    test("headers and cells carry their roles and indices; a cell is named by its value", () => {
+      renderSheet();
+      const headerRow = screen.getAllByRole("row")[0];
+      expect(headerRow).toHaveAttribute("aria-rowindex", "1");
+      const corner = screen
+        .getByRole("button", { name: "Select entire sheet" })
+        .closest("[role=columnheader]");
+      expect(corner).toHaveAttribute("aria-colindex", "1");
+      const colB = screen.getByRole("columnheader", { name: "B" });
+      expect(colB).toHaveAttribute("aria-colindex", "3");
+      const row3 = screen.getByRole("rowheader", { name: "3" });
+      expect(row3.closest("[role=row]")).toHaveAttribute("aria-rowindex", "4");
+      const cell = screen.getByRole("gridcell", { name: "2,1" });
+      expect(cell).toHaveAttribute("aria-colindex", "3");
+      expect(cell).toBe(screen.getByTestId("cell-2-1"));
+    });
+
+    test("one tab stop; the arrow keys move focus between cells", () => {
+      renderSheet();
+      const a1 = screen.getByTestId("cell-0-0");
+      expect(a1).toHaveAttribute("tabindex", "0");
+      expect(
+        screen.getByRole("grid").querySelectorAll('[tabindex="0"]')
+      ).toHaveLength(1);
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "ArrowDown" });
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+      expect(screen.getByTestId("cell-1-1")).toHaveFocus();
+    });
+
+    test("Ctrl+End reaches the last cell of a 1,000-row sheet", () => {
+      const rowCount = 1000;
+      renderSheet({
+        id: "big",
+        name: "Big",
+        rowCount,
+        colCount: 3,
+        cells: Array.from({ length: rowCount }, (_, r) => [
+          `a${r}`,
+          `b${r}`,
+          `c${r}`,
+        ]),
+      });
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "End", ctrlKey: true });
+      const last = screen.getByTestId(`cell-${rowCount - 1}-2`);
+      expect(last).toHaveFocus();
+      expect(last).toHaveAccessibleName("c999");
+      expect(last.closest("[role=row]")).toHaveAttribute(
+        "aria-rowindex",
+        String(rowCount + 1)
+      );
+    });
+
+    test("has no axe violations as a grid", async () => {
+      const { container } = renderSheet();
+      await expectNoAxeViolations(container);
+    });
+  });
+
+  describe("keyboard selection (#795)", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 3, endRow: 4, startCol: 3, endCol: 4 },
+      targetEntityDefinitionId: "ent_a",
+    };
+
+    function renderSheet(
+      props: Partial<ComponentProps<typeof SheetCanvasUI>> = {}
+    ) {
+      const onRegionDraft = jest.fn();
+      const onRegionSelect = jest.fn();
+      const onKeyboardHint = jest.fn();
+      const onSelectionChange = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={onRegionSelect}
+          onRegionDraft={onRegionDraft}
+          onKeyboardHint={onKeyboardHint}
+          onSelectionChange={onSelectionChange}
+          {...props}
+        />
+      );
+      return {
+        onRegionDraft,
+        onRegionSelect,
+        onKeyboardHint,
+        onSelectionChange,
+      };
+    }
+    const key = (k: string, init: Partial<KeyboardEventInit> = {}) =>
+      fireEvent.keyDown(document.activeElement!, { key: k, ...init });
+
+    test("Shift+arrows then Enter drafts the selected bounds", () => {
+      const { onRegionDraft, onSelectionChange } = renderSheet();
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      key("ArrowDown", { shiftKey: true });
+      expect(onSelectionChange).toHaveBeenLastCalledWith({
+        startRow: 0,
+        endRow: 1,
+        startCol: 0,
+        endCol: 1,
+      });
+      expect(screen.getByTestId("selection-marquee")).toBeInTheDocument();
+      key("Enter");
+      expect(onRegionDraft).toHaveBeenCalledWith({
+        startRow: 0,
+        endRow: 1,
+        startCol: 0,
+        endCol: 1,
+      });
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+    });
+
+    test("Enter on a cell in a region selects it; elsewhere it asks for the hint", () => {
+      const { onRegionSelect, onKeyboardHint } = renderSheet();
+      screen.getByTestId("cell-3-3").focus();
+      key("Enter");
+      expect(onRegionSelect).toHaveBeenCalledWith("r1");
+      key("ArrowUp");
+      key("Enter");
+      expect(onKeyboardHint).toHaveBeenCalledTimes(1);
+    });
+
+    test("a pointer draw replaces the keyboard selection's marquee", () => {
+      const { onRegionDraft } = renderSheet();
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      expect(screen.getAllByTestId("selection-marquee")).toHaveLength(1);
+      const start = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(start, { pointerId: 1, clientX: 150, clientY: 60 });
+      fireEvent.pointerMove(start, {
+        pointerId: 1,
+        clientX: 300,
+        clientY: 120,
+      });
+      expect(screen.getAllByTestId("selection-marquee")).toHaveLength(1);
+      fireEvent.pointerUp(start, { pointerId: 1, clientX: 300, clientY: 120 });
+      expect(onRegionDraft).toHaveBeenCalled();
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+    });
+
+    test("read-only selects nothing", () => {
+      const { onRegionDraft } = renderSheet({ readOnly: true });
+      screen.getByTestId("cell-0-0").focus();
+      key("ArrowRight", { shiftKey: true });
+      key("Enter");
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+      expect(onRegionDraft).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("region context for assistive tech (#795)", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 2, startCol: 1, endCol: 2 },
+      targetEntityDefinitionId: "ent_a",
+      targetEntityLabel: "Customers",
+    };
+
+    test("a cell in a region is described by the region; others aren't", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          regionDescriptions={{ r1: "Region Customers, B2:C3, records by row" }}
+        />
+      );
+      expect(screen.getByTestId("cell-1-1")).toHaveAccessibleDescription(
+        "Region Customers, B2:C3, records by row"
+      );
+      expect(screen.getByTestId("cell-0-0")).not.toHaveAttribute(
+        "aria-describedby"
+      );
+    });
+
+    test("without descriptions, a region is described by its label and bounds", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+      expect(screen.getByTestId("cell-2-2")).toHaveAccessibleDescription(
+        "Region Customers, B2:C3"
+      );
+    });
+
+    test("the region tab says Selected and Needs attention in text", () => {
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          invalidRegionIds={["r1"]}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+        />
+      );
+      const overlay = screen.getByTestId("region-overlay-r1");
+      expect(overlay).toHaveTextContent("Selected");
+      expect(overlay).toHaveTextContent("Needs attention");
+    });
+  });
+
+  describe("code-review fixes (#795)", () => {
+    test("a far-off active row doesn't widen the slice fetch", async () => {
+      const loadSlice = jest.fn<LoadSliceFn>(
+        async ({ rowStart, rowEnd, colEnd }) =>
+          Array.from({ length: rowEnd - rowStart }, () =>
+            Array.from({ length: colEnd }, () => "x")
+          )
+      );
+      render(
+        <SheetCanvasUI
+          sheet={{
+            id: "lazy",
+            name: "Lazy",
+            rowCount: 1000,
+            colCount: 4,
+            cells: [],
+          }}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          loadSlice={loadSlice}
+        />
+      );
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "End", ctrlKey: true });
+      await waitFor(() => expect(loadSlice).toHaveBeenCalled());
+      for (const [args] of loadSlice.mock.calls) {
+        expect(args.rowEnd - args.rowStart).toBeLessThan(100);
+      }
+    });
+
+    test("switching sheets drops the keyboard selection", () => {
+      const props = {
+        regions: [],
+        entityOrder: [],
+        selectedRegionId: null,
+        onRegionSelect: jest.fn(),
+        onRegionDraft: jest.fn(),
+      };
+      const { rerender } = render(
+        <SheetCanvasUI sheet={makeSheet()} {...props} />
+      );
+      const a1 = screen.getByTestId("cell-0-0");
+      a1.focus();
+      fireEvent.keyDown(a1, { key: "ArrowDown", shiftKey: true });
+      expect(screen.getByTestId("selection-marquee")).toBeInTheDocument();
+      rerender(
+        <SheetCanvasUI
+          sheet={{ ...makeSheet(), id: "s2", name: "Sheet 2" }}
+          {...props}
+        />
+      );
+      expect(screen.queryByTestId("selection-marquee")).toBeNull();
+      expect(screen.getByRole("grid")).not.toHaveAttribute(
+        "data-has-selection"
+      );
+    });
+
+    test("the corner drafts once for a pointer press, and a tap with no pointer events still drafts", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const corner = screen.getByRole("button", {
+        name: "Select entire sheet",
+      });
+      fireEvent.pointerDown(corner, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(corner, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.click(corner, { detail: 1 });
+      expect(onDraft).toHaveBeenCalledTimes(1);
+      // A screen reader's activation a moment later: a click (detail 1)
+      // with no pointer press behind it.
+      const now = Date.now();
+      const clock = jest.spyOn(Date, "now").mockReturnValue(now + 1500);
+      fireEvent.click(corner, { detail: 1 });
+      expect(onDraft).toHaveBeenCalledTimes(2);
+      clock.mockRestore();
+    });
+
+    test("a quick repeat of a key press doesn't draft a second whole-sheet region", () => {
+      const onDraft = jest.fn();
+      const onCornerDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+          onCornerDraft={onCornerDraft}
+        />
+      );
+      const corner = screen.getByRole("button", {
+        name: "Select entire sheet",
+      });
+      fireEvent.click(corner);
+      fireEvent.click(corner);
+      fireEvent.click(corner);
+      expect(onDraft).toHaveBeenCalledTimes(1);
+      expect(onCornerDraft).toHaveBeenCalledTimes(1);
+    });
   });
 });

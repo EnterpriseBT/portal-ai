@@ -134,6 +134,8 @@ export const Empty: Story = {
     siblingsInSameEntity: 0,
     onUpdate: fn(),
     onDelete: fn(),
+    activeSheet: { rowCount: 200, colCount: 26 },
+    onCreateRegionFromRange: fn(),
   },
 };
 

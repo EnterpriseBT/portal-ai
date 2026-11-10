@@ -3,6 +3,7 @@ import MuiPopover from "@mui/material/Popover";
 import { Box, Button, Checkbox, Stack, Typography } from "@portalai/core/ui";
 import type { AxisMember, Terminator } from "@portalai/core/contracts";
 
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import { TerminatorFormUI } from "./TerminatorForm.component";
 
 export interface RecordAxisTerminatorPopoverUIProps {
@@ -34,6 +35,8 @@ export const RecordAxisTerminatorPopoverUI: React.FC<
   onClose,
 }) => {
   const on = !!terminator;
+  // A popover is a dialog: focus lands on its first field (#795).
+  const toggleRef = useDialogAutoFocus<HTMLInputElement>(open);
   return (
     <MuiPopover
       open={open}
@@ -59,6 +62,7 @@ export const RecordAxisTerminatorPopoverUI: React.FC<
         </Typography>
 
         <Checkbox
+          inputRef={toggleRef}
           checked={on}
           onChange={(checked) => onToggle(checked)}
           label="Grow until terminator"

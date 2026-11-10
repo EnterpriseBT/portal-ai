@@ -230,219 +230,226 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
       anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
       transformOrigin={{ vertical: "top", horizontal: "left" }}
       slotProps={{
+        // The paper is the dialog and a form sits inside it: `role="dialog"`
+        // isn't allowed on a <form> (#795, as Modal does since #793).
         paper: {
-          component: "form",
           role: "dialog",
           "aria-label": "Edit column binding",
-          onSubmit: handleSubmit,
-          onKeyDown: preventToggleEnterSubmit,
           sx: { width: 380, maxWidth: "95vw", p: 2 },
         } as object,
       }}
     >
-      <Stack spacing={1.5}>
-        {/* Header — status icon + source locator */}
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Tooltip title={stateMeta.tooltip} arrow>
-            <Box
-              component="span"
-              sx={{ display: "inline-flex", alignItems: "center" }}
-              data-testid={`binding-state-icon-${bindingState}`}
-              aria-label={stateMeta.tooltip}
-            >
-              <Icon
-                name={stateMeta.iconName}
-                sx={{ fontSize: 18, color: stateMeta.iconColor }}
-              />
-            </Box>
-          </Tooltip>
-          <MuiChip size="small" label={title.kind} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            {title.primary}
-          </Typography>
-        </Stack>
+      <Box
+        component="form"
+        noValidate
+        onSubmit={handleSubmit}
+        onKeyDown={preventToggleEnterSubmit}
+      >
+        <Stack spacing={1.5}>
+          {/* Header — status icon + source locator */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title={stateMeta.tooltip} arrow>
+              <Box
+                component="span"
+                sx={{ display: "inline-flex", alignItems: "center" }}
+                data-testid={`binding-state-icon-${bindingState}`}
+                role="img"
+                aria-label={stateMeta.tooltip}
+              >
+                <Icon
+                  name={stateMeta.iconName}
+                  sx={{ fontSize: 18, color: stateMeta.iconColor }}
+                />
+              </Box>
+            </Tooltip>
+            <MuiChip size="small" label={title.kind} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              {title.primary}
+            </Typography>
+          </Stack>
 
-        {/* Synthetic-locator name input — pivot's `axisName` /
+          {/* Synthetic-locator name input — pivot's `axisName` /
             cellValueField's `name`. Static columnBindings have their
             source name baked into the locator and don't render this. */}
-        {nameField && (
-          <TextInput
-            inputRef={nameInputRef}
-            label={nameField.label}
-            value={draft.sourceField ?? ""}
-            onChange={(e) => onChange({ sourceField: e.target.value })}
+          {nameField && (
+            <TextInput
+              inputRef={nameInputRef}
+              label={nameField.label}
+              value={draft.sourceField ?? ""}
+              onChange={(e) => onChange({ sourceField: e.target.value })}
+              disabled={isExcluded}
+              helperText={nameField.helperText}
+              fullWidth
+            />
+          )}
+
+          {/* Server-error banner (outside the per-field errors) */}
+          {serverError && <FormAlert serverError={serverError} />}
+
+          {/* Excluded notice */}
+          {isExcluded && (
+            <Alert severity="info">
+              Excluded — no field mapping will be created for this column.
+            </Alert>
+          )}
+
+          {/* ColumnDefinition picker */}
+          <AsyncSearchableSelect
+            label="Column Definition"
+            value={draft.columnDefinitionId}
+            onChange={(value) => onChange({ columnDefinitionId: value })}
+            onSearch={columnDefinitionSearch.onSearch}
+            loadSelectedOption={columnDefinitionSearch.getById}
             disabled={isExcluded}
-            helperText={nameField.helperText}
+            error={!!errors.columnDefinitionId}
+            helperText={errors.columnDefinitionId}
             fullWidth
           />
-        )}
 
-        {/* Server-error banner (outside the per-field errors) */}
-        {serverError && <FormAlert serverError={serverError} />}
+          {/* Read-only ColumnDefinition metadata */}
+          {(columnDefinitionType || columnDefinitionDescription) && (
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
+              {columnDefinitionType && (
+                <MuiChip
+                  size="small"
+                  variant="outlined"
+                  label={columnDefinitionType}
+                />
+              )}
+              {columnDefinitionDescription && (
+                <Typography variant="caption" color="text.secondary">
+                  {columnDefinitionDescription}
+                </Typography>
+              )}
+            </Stack>
+          )}
 
-        {/* Excluded notice */}
-        {isExcluded && (
-          <Alert severity="info">
-            Excluded — no field mapping will be created for this column.
-          </Alert>
-        )}
+          {/* Omit toggle */}
+          <Checkbox
+            label="Omit this column from the entity"
+            checked={isExcluded}
+            onChange={(checked) => onChange({ excluded: checked })}
+          />
 
-        {/* ColumnDefinition picker */}
-        <AsyncSearchableSelect
-          label="Column Definition"
-          value={draft.columnDefinitionId}
-          onChange={(value) => onChange({ columnDefinitionId: value })}
-          onSearch={columnDefinitionSearch.onSearch}
-          loadSelectedOption={columnDefinitionSearch.getById}
-          disabled={isExcluded}
-          error={!!errors.columnDefinitionId}
-          helperText={errors.columnDefinitionId}
-          fullWidth
-        />
+          <Divider />
 
-        {/* Read-only ColumnDefinition metadata */}
-        {(columnDefinitionType || columnDefinitionDescription) && (
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            useFlexGap
-          >
-            {columnDefinitionType && (
-              <MuiChip
-                size="small"
-                variant="outlined"
-                label={columnDefinitionType}
-              />
-            )}
-            {columnDefinitionDescription && (
-              <Typography variant="caption" color="text.secondary">
-                {columnDefinitionDescription}
-              </Typography>
-            )}
-          </Stack>
-        )}
-
-        {/* Omit toggle */}
-        <Checkbox
-          label="Omit this column from the entity"
-          checked={isExcluded}
-          onChange={(checked) => onChange({ excluded: checked })}
-        />
-
-        <Divider />
-
-        {/* Normalized key — pre-populated by the parent with the derived
+          {/* Normalized key — pre-populated by the parent with the derived
             source-name default. The field is always a real string so clearing
             actually clears; the parent's Apply diff treats "matches derived
             default" as "no override" so commit falls back to the derived
             default without persisting a spurious user override. */}
-        <TextInput
-          label="Normalized key"
-          value={draft.normalizedKey ?? ""}
-          onChange={(e) => onChange({ normalizedKey: e.target.value })}
-          disabled={isExcluded}
-          error={!!errors.normalizedKey}
-          helperText={
-            errors.normalizedKey ??
-            `Defaults to the normalised source name ("${derivedNormalizedKey}"). Edit to override.`
-          }
-          slotProps={{
-            htmlInput: {
-              "aria-invalid": !!errors.normalizedKey,
-            },
-          }}
-          fullWidth
-        />
-
-        {/* Reference editor */}
-        {!isExcluded && isReference && (
-          <>
-            <Select
-              label="Ref entity"
-              value={draft.refEntityKey ?? ""}
-              onChange={(e) =>
-                onChange({ refEntityKey: e.target.value || null })
-              }
-              options={referenceEntityOptions ?? []}
-              error={!!errors.refEntityKey}
-              helperText={errors.refEntityKey}
-              fullWidth
-            />
-            <Select
-              label="Ref field"
-              value={draft.refNormalizedKey ?? ""}
-              onChange={(e) =>
-                onChange({ refNormalizedKey: e.target.value || null })
-              }
-              options={referenceFieldOptions ?? []}
-              disabled={!draft.refEntityKey}
-              error={!!errors.refNormalizedKey}
-              helperText={errors.refNormalizedKey}
-              fullWidth
-            />
-          </>
-        )}
-
-        {/* Enum values */}
-        {!isExcluded && columnDefinitionType === "enum" && (
           <TextInput
-            label="Enum values"
-            value={draft.enumValues?.join(", ") ?? ""}
-            onChange={(e) => {
-              const raw = e.target.value.trim();
-              const values = raw
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean);
-              onChange({
-                enumValues: values.length > 0 ? values : null,
-              });
+            label="Normalized key"
+            value={draft.normalizedKey ?? ""}
+            onChange={(e) => onChange({ normalizedKey: e.target.value })}
+            disabled={isExcluded}
+            error={!!errors.normalizedKey}
+            helperText={
+              errors.normalizedKey ??
+              `Defaults to the normalised source name ("${derivedNormalizedKey}"). Edit to override.`
+            }
+            slotProps={{
+              htmlInput: {
+                "aria-invalid": !!errors.normalizedKey,
+              },
             }}
-            helperText="Comma-separated list of allowed values."
             fullWidth
           />
-        )}
 
-        {/* Default + format + required */}
-        {!isExcluded && (
-          <>
+          {/* Reference editor */}
+          {!isExcluded && isReference && (
+            <>
+              <Select
+                label="Ref entity"
+                value={draft.refEntityKey ?? ""}
+                onChange={(e) =>
+                  onChange({ refEntityKey: e.target.value || null })
+                }
+                options={referenceEntityOptions ?? []}
+                error={!!errors.refEntityKey}
+                helperText={errors.refEntityKey}
+                fullWidth
+              />
+              <Select
+                label="Ref field"
+                value={draft.refNormalizedKey ?? ""}
+                onChange={(e) =>
+                  onChange({ refNormalizedKey: e.target.value || null })
+                }
+                options={referenceFieldOptions ?? []}
+                disabled={!draft.refEntityKey}
+                error={!!errors.refNormalizedKey}
+                helperText={errors.refNormalizedKey}
+                fullWidth
+              />
+            </>
+          )}
+
+          {/* Enum values */}
+          {!isExcluded && columnDefinitionType === "enum" && (
             <TextInput
-              label="Default value"
-              value={draft.defaultValue ?? ""}
-              onChange={(e) =>
-                onChange({ defaultValue: e.target.value || null })
-              }
+              label="Enum values"
+              value={draft.enumValues?.join(", ") ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                const values = raw
+                  .split(",")
+                  .map((v) => v.trim())
+                  .filter(Boolean);
+                onChange({
+                  enumValues: values.length > 0 ? values : null,
+                });
+              }}
+              helperText="Comma-separated list of allowed values."
               fullWidth
             />
-            <TextInput
-              label="Format"
-              value={draft.format ?? ""}
-              onChange={(e) => onChange({ format: e.target.value || null })}
-              helperText="How to parse the raw source values (optional)."
-              fullWidth
-            />
-            <Checkbox
-              label="Required"
-              checked={draft.required === true}
-              onChange={(checked) => onChange({ required: checked })}
-            />
-          </>
-        )}
+          )}
 
-        {/* Footer actions */}
-        <Box sx={{ pt: 0.5 }}>
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Button type="button" variant="text" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="contained" disabled={hasErrors}>
-              Apply
-            </Button>
-          </Stack>
-        </Box>
-      </Stack>
+          {/* Default + format + required */}
+          {!isExcluded && (
+            <>
+              <TextInput
+                label="Default value"
+                value={draft.defaultValue ?? ""}
+                onChange={(e) =>
+                  onChange({ defaultValue: e.target.value || null })
+                }
+                fullWidth
+              />
+              <TextInput
+                label="Format"
+                value={draft.format ?? ""}
+                onChange={(e) => onChange({ format: e.target.value || null })}
+                helperText="How to parse the raw source values (optional)."
+                fullWidth
+              />
+              <Checkbox
+                label="Required"
+                checked={draft.required === true}
+                onChange={(checked) => onChange({ required: checked })}
+              />
+            </>
+          )}
+
+          {/* Footer actions */}
+          <Box sx={{ pt: 0.5 }}>
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button type="button" variant="text" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="contained" disabled={hasErrors}>
+                Apply
+              </Button>
+            </Stack>
+          </Box>
+        </Stack>
+      </Box>
     </MuiPopover>
   );
 };

@@ -64,6 +64,17 @@ export function a11yComponents(palette: Palette): ThemeOptions {
   };
   return {
     components: {
+      // A grid cell that isn't an MUI control (the region editor's sheet,
+      // #795) rings the same way. Inset, so the cell's neighbours and the
+      // sticky headers can't hide it.
+      MuiCssBaseline: {
+        styleOverrides: {
+          '[role="gridcell"]:focus-visible': {
+            ...ring,
+            outlineOffset: -FOCUS_RING_WIDTH,
+          },
+        },
+      },
       MuiButtonBase: {
         styleOverrides: { root: { "&.Mui-focusVisible": ring } },
       },

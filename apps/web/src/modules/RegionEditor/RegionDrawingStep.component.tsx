@@ -16,6 +16,7 @@ import {
   FormDefaultButton,
   handleOwnSubmit,
   preventToggleEnterSubmit,
+  StatusMessage,
 } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
@@ -31,6 +32,13 @@ import { adjustSegmentsForBoundsChange } from "./utils/adjust-segments-for-bound
 import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import { resizeSegment } from "./utils/segment-ops.util";
+import { orientationFromDraft } from "./utils/region-orientation.util";
+import {
+  isFocusLost,
+  useFocusOnArrival,
+  useRestoreFocusOnRemoval,
+} from "./utils/focus-recovery.util";
+import { useRegionAnnouncements } from "./utils/use-region-announcements.util";
 import type {
   CellBounds,
   EntityLegendEntry,
@@ -177,21 +185,26 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     });
   }, [regions, entityOrder, entityOptions]);
 
+  const entityLabelFor = useCallback(
+    (region: RegionDraft): string =>
+      region.targetEntityLabel ??
+      (region.targetEntityDefinitionId
+        ? (entityOptions.find(
+            (o) => o.value === region.targetEntityDefinitionId
+          )?.label ?? region.targetEntityDefinitionId)
+        : "Unbound"),
+    [entityOptions]
+  );
+
   const regionDisplayLabel = useCallback(
     (region: RegionDraft): string => {
       const sheet = workbook.sheets.find((s) => s.id === region.sheetId);
       const sheetName = sheet?.name ?? region.sheetId;
-      const entityLabel =
-        region.targetEntityLabel ??
-        (region.targetEntityDefinitionId
-          ? (entityOptions.find(
-              (o) => o.value === region.targetEntityDefinitionId
-            )?.label ?? region.targetEntityDefinitionId)
-          : "Unbound");
+      const entityLabel = entityLabelFor(region);
       const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
       return `${labelPart} · ${sheetName} · ${entityLabel}`;
     },
-    [workbook.sheets, entityOptions]
+    [workbook.sheets, entityLabelFor]
   );
 
   const regionSelectOptions: SelectOption[] = useMemo(
@@ -224,6 +237,20 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         .filter((id) => effectiveErrors[id] !== undefined),
     [regions, effectiveErrors]
   );
+
+  // What a screen reader hears about each region (#795): on its cells, as
+  // their description, and as regions change.
+  const describeRegion = useCallback(
+    (region: RegionDraft) =>
+      `${entityLabelFor(region)}, ${formatBounds(region.bounds)}`,
+    [entityLabelFor]
+  );
+  const { announcement, announceSelection, announceHint } =
+    useRegionAnnouncements({
+      regions,
+      selectedRegionId,
+      describe: describeRegion,
+    });
 
   const handleJumpToRegion = (nextId: string) => {
     if (!nextId) {
@@ -294,7 +321,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   };
 
   useEffect(() => {
-    if (!selectedRegionId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape")
         return;
@@ -320,10 +346,28 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       );
       if (popup && !popup.contains(rootRef.current)) return;
       if (e.key === "Escape") {
-        e.preventDefault();
-        onSelectRegion(null);
+        // A selection on the sheet takes Escape first (#795): the grid
+        // clears it, and the next Escape deselects the region.
+        if (target?.closest?.('[role="grid"][data-has-selection]')) return;
+        if (selectedRegionId) {
+          e.preventDefault();
+          onSelectRegion(null);
+          return;
+        }
+        // Nothing left to clear: an Escape on the sheet stays there rather
+        // than closing the wizard and discarding the import (#795). Escape
+        // from anywhere else still closes it.
+        const grid = target?.closest?.('[role="grid"]');
+        if (grid && rootRef.current?.contains(grid)) e.preventDefault();
         return;
       }
+      if (!selectedRegionId) return;
+      // Delete belongs to the sheet (#795). From a panel control (a button,
+      // the closed entity select) it would take the region and all its
+      // settings with no undo. Focus on the page itself counts as the
+      // sheet: a pointer selection doesn't move focus.
+      const onSheet = !!target?.closest?.("[data-sheet-surface]");
+      if (!onSheet && !isFocusLost(rootRef.current)) return;
       // Delete + Backspace are no-ops when deletion is locked (edit-
       // plan view). Without this gate the UI hides the Delete button
       // but the keyboard shortcut would still cascade-delete the
@@ -342,6 +386,34 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       document.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [selectedRegionId, onRegionDelete, onSelectRegion, regionDeletionLocked]);
 
+  // Focus never drops to the wizard (#795), where one Escape discards the
+  // import: arriving at this step (from Upload, or Back from Review) lands
+  // on the sheet's tab stop, and a control that unmounts under focus hands
+  // it to the region's form, or to the sheet when no region is left.
+  const sheetTabStop = () =>
+    rootRef.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
+  const regionPanel = () =>
+    rootRef.current?.querySelector<HTMLElement>("[data-region-panel]");
+  useFocusOnArrival(rootRef, sheetTabStop);
+  useRestoreFocusOnRemoval(rootRef, () =>
+    selectedRegionId ? (regionPanel() ?? sheetTabStop()) : sheetTabStop()
+  );
+  // The corner button made a region from a key: focus its first field, as
+  // a typed range does, once the new region is the selected one.
+  const cornerDraftFromRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const from = cornerDraftFromRef.current;
+    if (from === undefined || !selectedRegionId || selectedRegionId === from) {
+      return;
+    }
+    cornerDraftFromRef.current = undefined;
+    regionPanel()
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]):not([type=hidden]):not([aria-hidden=true])"
+      )
+      ?.focus();
+  }, [selectedRegionId]);
+
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
     ? regions.filter(
@@ -357,6 +429,28 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       ? effectiveErrors[selectedRegion.id]
       : errors?.[selectedRegion.id]
     : undefined;
+
+  // The errors a region shows, the same ones its panel shows: computed ones
+  // after an Interpret attempt, the caller's before.
+  const shownErrors = (id: string): RegionErrors | undefined =>
+    showErrors ? effectiveErrors[id] : errors?.[id];
+  const RECORDS_BY = {
+    "rows-as-records": "row",
+    "columns-as-records": "column",
+    "cells-as-records": "cell",
+  } as const;
+  const regionDescriptions: Record<string, string> = {};
+  const shownInvalidIds: string[] = [];
+  for (const region of regions) {
+    let text = `Region ${entityLabelFor(region)}, ${formatBounds(region.bounds)}, records by ${RECORDS_BY[orientationFromDraft(region)]}`;
+    const firstError = Object.values(shownErrors(region.id) ?? {})[0];
+    if (firstError) {
+      text += `, needs attention: ${firstError}`;
+      shownInvalidIds.push(region.id);
+    }
+    if (region.drift?.flagged) text += ", drift detected";
+    regionDescriptions[region.id] = text;
+  }
 
   if (!activeSheet) {
     return (
@@ -562,6 +656,13 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             onRegionDraft={(bounds) =>
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
+            regionDescriptions={regionDescriptions}
+            invalidRegionIds={shownInvalidIds}
+            onSelectionChange={announceSelection}
+            onKeyboardHint={announceHint}
+            onCornerDraft={() => {
+              cornerDraftFromRef.current = selectedRegionId;
+            }}
             onRegionResize={handleBoundsChange}
             onSegmentResize={(
               regionId,
@@ -611,6 +712,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
                 : undefined
             }
+            activeSheet={activeSheet}
+            onCreateRegionFromRange={(bounds) =>
+              onRegionDraft({ sheetId: activeSheet.id, bounds })
+            }
             onUpdate={(updates) => {
               if (!selectedRegion) return;
               // Bounds-carrying updates (from the panel's manual
@@ -643,6 +748,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           />
         </Box>
       </Stack>
+
+      {/* Region changes, the keyboard selection and its hint (#795). */}
+      <StatusMessage visuallyHidden message={announcement} />
 
       {showErrors && invalidRegionIds.length > 0 && (
         <Box

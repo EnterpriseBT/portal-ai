@@ -4,6 +4,7 @@ import {
   render,
   screen,
   expectNoAxeViolations,
+  waitForElementToBeRemoved,
 } from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
@@ -406,7 +407,9 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
     });
     await user.click(chip);
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).not.toBeNull();
   });
 
@@ -468,7 +471,9 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
     );
     expect(onEditBinding).toHaveBeenCalledWith("region-a", "header:Email");
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).toBeNull();
   });
 });
@@ -512,5 +517,56 @@ describe("FileUploadConnectorWorkflowUI — commit blocks dismissal", () => {
     render(<FileUploadConnectorWorkflowUI {...makeProps({ onClose })} />);
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FileUploadConnectorWorkflowUI — asks before discarding regions (#795)", () => {
+  const reviewProps = () =>
+    makeProps({
+      step: 2,
+      workbook: DEMO_WORKBOOK,
+      activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+      regions: POST_INTERPRET_REGIONS,
+      files: [SAMPLE_FILE],
+      uploadPhase: "parsed",
+      overallConfidence: 0.85,
+    });
+
+  test("arriving at Review puts focus on its heading", () => {
+    render(<FileUploadConnectorWorkflowUI {...reviewProps()} />);
+    expect(screen.getByText("Review interpretation")).toHaveFocus();
+  });
+
+  test("Escape with regions drawn asks first; Keep editing keeps the wizard", async () => {
+    const props = reviewProps();
+    render(<FileUploadConnectorWorkflowUI {...props} />);
+    await userEvent.keyboard("{Escape}");
+    const confirm = await screen.findByRole("dialog", {
+      name: "Discard this import?",
+    });
+    expect(props.onClose).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    await waitForElementToBeRemoved(confirm);
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  test("Discard closes the wizard", async () => {
+    const props = reviewProps();
+    render(<FileUploadConnectorWorkflowUI {...props} />);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Discard" })
+    );
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("with no regions, Escape closes at once", async () => {
+    const props = makeProps();
+    render(<FileUploadConnectorWorkflowUI {...props} />);
+    await userEvent.keyboard("{Escape}");
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("dialog", { name: "Discard this import?" })
+    ).toBeNull();
   });
 });

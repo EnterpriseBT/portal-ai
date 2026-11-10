@@ -87,11 +87,22 @@ function anchorOffset(
   return { left: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
 }
 
+const tabBadgeStyle = (color: string): React.CSSProperties => ({
+  backgroundColor: "#fff",
+  color,
+  borderRadius: 4,
+  padding: "0 4px",
+  fontSize: 10,
+  fontWeight: 700,
+});
+
 export interface RegionOverlayUIProps {
   region: RegionDraft;
   bounds: CellBounds;
   entityOrder: string[];
   selected: boolean;
+  /** The region has validation errors (#795): its tab says so in text. */
+  invalid?: boolean;
   resizable: boolean;
   movable?: boolean;
   cellWidth: number;
@@ -112,6 +123,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   bounds,
   entityOrder,
   selected,
+  invalid = false,
   resizable,
   movable = false,
   cellWidth,
@@ -159,7 +171,13 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
 
   return (
     <>
+      {/* Decorative to assistive tech (#795): the region's name, bounds,
+          state and errors reach a screen reader through the cells'
+          descriptions and the configuration panel, and every pointer action
+          here has a keyboard path there. */}
       <Box
+        data-testid={`region-overlay-${region.id}`}
+        aria-hidden
         onPointerDown={onBodyPointerDown(region.id, bounds)}
         sx={{
           position: "absolute",
@@ -180,7 +198,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           // every touch immediately and JS owns the move/select decision.
           touchAction: "none",
         }}
-        aria-label={`Region ${region.proposedLabel ?? formatBounds(bounds)}`}
       >
         <Box
           sx={{
@@ -202,7 +219,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           }}
         >
           <span
-            aria-label={orientationArrowLabel(orientation)}
             title={orientationArrowLabel(orientation)}
             style={{ fontWeight: 700 }}
           >
@@ -241,6 +257,11 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               DRIFT
             </span>
           )}
+          {/* State in words, not only in colour and weight (#795, 1.4.1).
+              Same badge as the others: it takes the entity's colour, which
+              only exists at runtime. */}
+          {selected && <span style={tabBadgeStyle(color)}>Selected</span>}
+          {invalid && <span style={tabBadgeStyle(color)}>Needs attention</span>}
         </Box>
 
         {selected &&
@@ -248,7 +269,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           HANDLE_DEFS.map((h) => (
             <Box
               key={h.kind}
-              aria-label={`Resize region ${h.kind}`}
+              data-testid={`region-resize-${h.kind}`}
               onPointerDown={onResizeStart(region.id, h.kind, bounds)}
               sx={{
                 position: "absolute",

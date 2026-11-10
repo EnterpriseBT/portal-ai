@@ -20,7 +20,22 @@ export default [
     // sweep (a11y:stories) audits what the stories render instead.
     ignores: ["src/**/__tests__/**", "src/**/*.test.tsx", "src/**/*.stories.tsx", "src/stories/**"],
     plugins: { "jsx-a11y": jsxA11y },
-    rules: jsxA11y.flatConfigs.strict.rules,
+    rules: {
+      ...jsxA11y.flatConfigs.strict.rules,
+      // A form's onKeyDown is #789's Enter-submit delegation
+      // (`preventToggleEnterSubmit`): it keeps Enter on a checkbox or radio
+      // from submitting, and the form itself is never the key's target
+      // (#795). Strict's own element allowances are kept.
+      "jsx-a11y/no-noninteractive-element-interactions": [
+        "error",
+        {
+          ...jsxA11y.flatConfigs.strict.rules[
+            "jsx-a11y/no-noninteractive-element-interactions"
+          ][1],
+          form: ["onKeyDown"],
+        },
+      ],
+    },
     settings: {
       "jsx-a11y": {
         polymorphicPropName: "component",

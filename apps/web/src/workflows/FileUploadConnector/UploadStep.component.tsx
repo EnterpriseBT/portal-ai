@@ -1,5 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 
+import ButtonBase from "@mui/material/ButtonBase";
+
 import { Box, Stack, Typography, Progress, Button } from "@portalai/core/ui";
 
 import { FormAlert } from "../../components/FormAlert.component";
@@ -83,14 +85,14 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     setDragActive(false);
     if (isBusy) return;
     handleIncoming(event.dataTransfer.files);
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     if (!isBusy) setDragActive(true);
   };
@@ -116,34 +118,70 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
 
       <SampleFiles />
 
+      {/* A real button (#795): Enter and Space open the chooser, and its
+          name is its visible text; the formats and any error describe it. */}
+      {/* The drop target wraps the button: a disabled ButtonBase takes no
+          pointer events, and a drop the page doesn't prevent opens the
+          file in the tab, leaving the app (#795). */}
       <Box
-        data-testid="dropzone"
-        onClick={handleClick}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        sx={{
-          border: 2,
-          borderStyle: "dashed",
-          borderColor,
-          borderRadius: 1,
-          p: 3,
-          textAlign: "center",
-          cursor: isBusy ? "default" : "pointer",
-          opacity: isBusy ? 0.5 : 1,
-          bgcolor: dragActive ? "action.hover" : "transparent",
-          transition: "all 0.2s ease",
-        }}
       >
-        <Typography variant="body2" color="text.secondary">
-          Drag and drop spreadsheets here, or click to browse.
-        </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          Maximum file size: {MAX_UPLOAD_FILE_SIZE_LABEL}
-        </Typography>
+        <ButtonBase
+          data-testid="dropzone"
+          onClick={handleClick}
+          disabled={isBusy}
+          aria-labelledby="upload-step-dropzone-label"
+          aria-describedby={[
+            "upload-step-dropzone-hint",
+            hasFieldError ? "upload-step-files-error" : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          sx={{
+            display: "block",
+            width: "100%",
+            border: 2,
+            borderStyle: "dashed",
+            borderColor,
+            borderRadius: 1,
+            p: 3,
+            textAlign: "center",
+            cursor: isBusy ? "default" : "pointer",
+            opacity: isBusy ? 0.5 : 1,
+            bgcolor: dragActive ? "action.hover" : "transparent",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <Typography
+            id="upload-step-dropzone-label"
+            component="span"
+            variant="body2"
+            color="text.secondary"
+            display="block"
+          >
+            Choose files or drop them here
+          </Typography>
+          <Box component="span" id="upload-step-dropzone-hint" display="block">
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              display="block"
+            >
+              Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
+            </Typography>
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              display="block"
+            >
+              Maximum file size: {MAX_UPLOAD_FILE_SIZE_LABEL}
+            </Typography>
+          </Box>
+        </ButtonBase>
       </Box>
 
       <input

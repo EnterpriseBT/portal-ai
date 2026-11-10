@@ -83,7 +83,7 @@ describe("ReviewStepUI — binding editor popover", () => {
       screen.getByRole("button", { name: /edit binding.*header:email/i })
     );
     const popover = document.querySelector(
-      'form[aria-label="Edit column binding"]'
+      '[role="dialog"][aria-label="Edit column binding"] form'
     );
     expect(popover).not.toBeNull();
   });
@@ -104,7 +104,9 @@ describe("ReviewStepUI — binding editor popover", () => {
     );
     // popover unmounts after apply
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).toBeNull();
   });
 
@@ -121,7 +123,9 @@ describe("ReviewStepUI — binding editor popover", () => {
     );
     // popover stays open for follow-up edits
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).not.toBeNull();
   });
 
@@ -133,7 +137,9 @@ describe("ReviewStepUI — binding editor popover", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onUpdateBinding).not.toHaveBeenCalled();
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).toBeNull();
   });
 
@@ -262,7 +268,9 @@ describe("ReviewStepUI — binding editor popover", () => {
     expect(onEditBinding).toHaveBeenCalledWith("region-a", "header:Email");
     // no popover in legacy mode
     expect(
-      document.querySelector('form[aria-label="Edit column binding"]')
+      document.querySelector(
+        '[role="dialog"][aria-label="Edit column binding"] form'
+      )
     ).toBeNull();
   });
 });
@@ -338,7 +346,7 @@ describe("ReviewStepUI — keyboard and commit (#789)", () => {
       screen.getByRole("button", { name: /edit binding.*header:email/i })
     );
     const popover = document.querySelector(
-      'form[aria-label="Edit column binding"]'
+      '[role="dialog"][aria-label="Edit column binding"] form'
     ) as HTMLFormElement;
     const field = popover.querySelector("input") as HTMLInputElement;
     await user.type(field, "{Enter}");

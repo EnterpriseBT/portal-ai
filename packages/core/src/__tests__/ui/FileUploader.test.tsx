@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { FileUploader } from "../../ui/FileUploader";
+import { expectNoAxeViolations } from "../axe.util";
 
 function createFile(name: string, sizeMB: number, type = "text/plain"): File {
   const bytes = new ArrayBuffer(sizeMB * 1024 * 1024);
@@ -14,7 +15,7 @@ describe("FileUploader Component", () => {
     it("should render the dropzone", () => {
       render(<FileUploader />);
       expect(
-        screen.getByText("Drag and drop files here, or click to browse")
+        screen.getByText("Choose a file or drop it here")
       ).toBeInTheDocument();
     });
 
@@ -138,5 +139,50 @@ describe("FileUploader Component", () => {
       render(<FileUploader ref={ref} />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+});
+
+describe("FileUploader — by keyboard (#795)", () => {
+  it("is a native button named by its visible text, described by its formats", () => {
+    render(<FileUploader accept=".png,.jpg" multiple />);
+    const button = screen.getByRole("button", {
+      name: "Choose files or drop them here",
+    });
+    expect(button.tagName).toBe("BUTTON");
+    expect(button).toHaveAccessibleDescription("Accepted: .png,.jpg");
+  });
+
+  it.each(["{Enter}", " "])("%s on it opens the file chooser", async (key) => {
+    render(<FileUploader />);
+    const input = screen.getByTestId("file-input") as HTMLInputElement;
+    const click = jest.spyOn(input, "click").mockImplementation(() => {});
+    screen
+      .getByRole("button", { name: "Choose a file or drop it here" })
+      .focus();
+    await userEvent.keyboard(key);
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it("is disabled, not a dead tab stop, when disabled", () => {
+    render(<FileUploader disabled />);
+    expect(
+      screen.getByRole("button", { name: "Choose a file or drop it here" })
+    ).toBeDisabled();
+  });
+
+  it("when disabled, a drop over it is still prevented", () => {
+    render(<FileUploader disabled />);
+    const target = screen.getByRole("button", {
+      name: "Choose a file or drop it here",
+    }).parentElement!;
+    expect(fireEvent.dragOver(target)).toBe(false);
+    expect(fireEvent.drop(target, { dataTransfer: { files: [] } })).toBe(false);
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <FileUploader accept=".csv" helperText="Max 5MB" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

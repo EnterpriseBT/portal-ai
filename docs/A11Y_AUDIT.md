@@ -36,13 +36,13 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:08 | 911 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-09 19:13 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:09 | 335 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-09 19:13 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-09 19:09 | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-09 19:47 | 426 | 60 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-09 19:47 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:38 | 920 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-10 00:07 | 281 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:40 | 338 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-10 00:08 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:41 | 31 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-10 00:47 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-10 00:47 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -119,8 +119,8 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 0 | 0 | — | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 0 | 0 | — | 1 |
-| [#795 RegionEditor spreadsheet canvas](#owner-795) | 13 | 51 | 4.1.2 | 1 |
+| [#794 Tables, grids and lists](#owner-794) | 0 | 0 | — | 0 |
+| [#795 RegionEditor spreadsheet canvas](#owner-795) | 0 | 0 | — | 0 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
 | [#798 Marketing site](#owner-798) | 0 | 0 | — | 1 |
@@ -142,21 +142,7 @@ No automated findings.
 
 ## #795 RegionEditor spreadsheet canvas
 
-| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
-|---|---|---|---|---|---|---|---|---|
-| 2345f6f1 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx` | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
-| 23a381c2 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx` | 5: CrosstabSelected, DriftSeeded, MessyPipelineSkipRules, MessyQuartersSkipRules, WithProposedRegions | 5 | — | jest-axe |
-| 5292aa4d | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionDrawingStep.stories.tsx div[data-corner-header]` | 7: CrosstabSelected, DriftSeeded, Empty, Interactive, MessyPipelineSkipRules, MessyQuartersSkipRules, +1 more | 7 | — | jest-axe |
-| e0d4f664 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx` | 1: ModeB_DriftHalt | 1 | — | jest-axe |
-| 1741e9ce | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/RegionEditor.stories.tsx div[data-corner-header]` | 3: Interactive, ModeA_Empty, ModeB_DriftHalt | 3 | — | jest-axe |
-| 1d220399 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/modules/RegionEditor/stories/SheetCanvas.stories.tsx div[data-corner-header]` | 8: CrosstabSheet, DriftHighlighted, Empty, InteractiveDrawing, MessyPipelineSkipRules, MessyQuartersSkipRules, +2 more | 8 | — | jest-axe |
-| de9c47a9 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx` | 2: Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 2 | — | jest-axe |
-| bb99c709 | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadConnectorWorkflow.stories.tsx div[data-corner-header]` | 3: Step1_Empty, Step1_InvalidRegion, Step1_RegionsDrawn_Valid | 3 | — | jest-axe |
-| 7273f52e | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx` | 3: InvalidRegion_AttemptedInterpret, OneRegion_Valid, ServerError | 3 | — | jest-axe |
-| 864ce79f | 4.1.2 | aria-prohibited-attr | serious | `apps/web/src/workflows/FileUploadConnector/stories/FileUploadRegionDrawingStep.stories.tsx div[data-corner-header]` | 5: Empty, InvalidRegion_AttemptedInterpret, MultipleRegions_MergedEntity, OneRegion_Valid, ServerError | 5 | — | jest-axe |
-| fd0eeb17 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/RegionDrawingStep.component.tsx` | 1: :387 | 1 | — | eslint |
-| 424ee260 | 4.1.2 | jsx-a11y/no-noninteractive-element-interactions | — | `apps/web/src/modules/RegionEditor/ReviewStep.component.tsx` | 1: :509 | 1 | — | eslint |
-| 0182bd69 | best practice | aria-allowed-role | minor | `apps/web/src/modules/RegionEditor/stories/BindingEditorPopover.stories.tsx form` | 6: EnumColumn, ExcludedState, NormalizedKeyValidationError, ReferenceColumn, ServerErrorAlert, StringColumn | 6 | — | jest-axe |
+No automated findings.
 
 <a id="owner-796"></a>
 
@@ -228,7 +214,7 @@ The flows:
 | KB-05 | All app pages | sidebar | 2.4.7 | **Closed:** sidebar entries get the same 2px focus ring (#797, 074eb99f). Re-walked 2026-11-05 in both themes. | keyboard | #797 |
 | KB-06 | All app pages | sidebar | 2.5.8 | **Closed:** the 16 px toggle answers clicks over 24 px (#797, 25f32b83). Re-walked 2026-11-05: clicks 3 px outside on either side hit it. | keyboard | #797 |
 | KB-07 | CSV import → records | records table | 2.5.7 | **Closed:** the column-config list gives each column "Move {label} up" and "Move {label} down" buttons, so reordering needs neither a drag nor dnd-kit's keyboard mode; the ends say why they're unavailable (#794, a6979bf3). Was: column reorder was a drag, with dnd-kit's keyboard sensor but no single-pointer alternative. | inspection | #794 |
-| KB-08 | CSV import → records | layout plan | 2.5.7 | Drawing a region in the RegionEditor takes a pointer drag. Typed bounds exist only for a region already drawn (verify). | inspection | #795 |
+| KB-08 | CSV import → records | layout plan | 2.5.7 | **Closed:** with no region selected the panel takes a typed range ("A1:D20", "A:D", "3:10") and Add region (#795, 23e698ce), and the sheet is a keyboard grid where Shift-selection plus Enter creates a region and Enter opens the one under the active cell (#795, b3069f20, d946f03a). Was: drawing a region took a pointer drag, and typed bounds existed only for a region already drawn. | inspection | #795 |
 | KB-09 | Station → portal → pin | chart result | 1.1.1, 4.1.2 | D3 charts render inside a sandboxed iframe that axe can't enter. There's no text alternative contract for a chart's content. | inspection | #796 |
 | KB-10 | Marketing site | header and footer nav | 2.5.8 | Nav links are 19 px tall. Check whether the spacing exception holds (verify). | keyboard | #798 |
 
