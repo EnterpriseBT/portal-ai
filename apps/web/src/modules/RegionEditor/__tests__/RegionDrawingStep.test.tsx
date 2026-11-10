@@ -455,6 +455,32 @@ describe("RegionDrawingStepUI — keyboard (#789)", () => {
     expect(onSelectRegion).toHaveBeenCalledWith(null);
     expect(onClose).not.toHaveBeenCalled();
   });
+  test("Escape on the sheet with nothing to clear doesn't close the wizard (#795)", async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(
+      <Modal open onClose={onClose} title="Wizard">
+        <RegionDrawingStepUI {...baseProps({ selectedRegionId: null })} />
+      </Modal>
+    );
+    screen.getByTestId("cell-3-0").focus();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test("Escape outside the sheet with nothing selected still closes the wizard", async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(
+      <Modal open onClose={onClose} title="Wizard">
+        <RegionDrawingStepUI {...baseProps({ selectedRegionId: null })} />
+      </Modal>
+    );
+    screen.getByRole("button", { name: "Interpret" }).focus();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+
   test("Escape in a dialog opened over the step closes that dialog, not the region", async () => {
     const user = userEvent.setup();
     const onSelectRegion = jest.fn();

@@ -249,16 +249,18 @@ export const RegionConfigurationPanelUI: React.FC<
 
   // A region made from the Range field replaces that field with this
   // form, so focus would fall to the page; it moves to the form's first
-  // control instead (#795).
+  // field instead (#795).
   const panelRef = useRef<HTMLDivElement>(null);
   const focusAfterCreateRef = useRef(false);
   const regionId = region?.id ?? null;
   useEffect(() => {
     if (!regionId || !focusAfterCreateRef.current) return;
     focusAfterCreateRef.current = false;
+    // The first field (Start row), not the first control: the panel leads
+    // with Delete region, and Enter there would undo what was just made.
     panelRef.current
       ?.querySelector<HTMLElement>(
-        "input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        "input:not([disabled]):not([type=hidden]):not([aria-hidden=true])"
       )
       ?.focus();
   }, [regionId]);

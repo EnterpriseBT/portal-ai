@@ -316,7 +316,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   };
 
   useEffect(() => {
-    if (!selectedRegionId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape")
         return;
@@ -345,10 +344,19 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         // A selection on the sheet takes Escape first (#795): the grid
         // clears it, and the next Escape deselects the region.
         if (target?.closest?.('[role="grid"][data-has-selection]')) return;
-        e.preventDefault();
-        onSelectRegion(null);
+        if (selectedRegionId) {
+          e.preventDefault();
+          onSelectRegion(null);
+          return;
+        }
+        // Nothing left to clear: an Escape on the sheet stays there rather
+        // than closing the wizard and discarding the import (#795). Escape
+        // from anywhere else still closes it.
+        const grid = target?.closest?.('[role="grid"]');
+        if (grid && rootRef.current?.contains(grid)) e.preventDefault();
         return;
       }
+      if (!selectedRegionId) return;
       // Delete + Backspace are no-ops when deletion is locked (edit-
       // plan view). Without this gate the UI hides the Delete button
       // but the keyboard shortcut would still cascade-delete the

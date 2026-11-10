@@ -91,8 +91,8 @@ describe("RegionConfigurationPanelUI", () => {
     fireEvent.change(field, { target: { value: "B2:C4" } });
     fireEvent.click(screen.getByRole("button", { name: "Add region" }));
     expect(field).not.toBeInTheDocument();
-    expect(document.activeElement).not.toBe(document.body);
-    expect(document.activeElement?.closest("form, div")).not.toBeNull();
+    // The first field, never the Delete button that leads the panel.
+    expect(screen.getByRole("spinbutton", { name: "Start row" })).toHaveFocus();
   });
 
   test("the empty state has no Range field without a create handler", () => {
