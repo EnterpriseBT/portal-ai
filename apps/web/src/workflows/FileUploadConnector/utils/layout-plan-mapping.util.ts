@@ -1,3 +1,7 @@
+import {
+  reconcileCellValueFields,
+  segmentsAreUserAuthored,
+} from "@portalai/core/contracts";
 import type {
   InterpretRequestBody,
   LayoutPlan,
@@ -169,6 +173,22 @@ function draftSkipRuleToBackend(
 }
 
 /**
+ * The draft's segments on its header axes: what `regionDraftsToHints` sends
+ * interpret, and so what interpret could have kept. Segments left on an
+ * axis the region no longer has never reach it.
+ */
+function segmentsOnHeaderAxes(
+  draft: RegionDraft
+): NonNullable<RegionDraft["segmentsByAxis"]> {
+  const out: NonNullable<RegionDraft["segmentsByAxis"]> = {};
+  for (const axis of draft.headerAxes ?? []) {
+    const segs = draft.segmentsByAxis?.[axis];
+    if (segs && segs.length > 0) out[axis] = segs;
+  }
+  return out;
+}
+
+/**
  * Merge user-configured knobs from the prior draft list into a plan freshly
  * returned from `interpret()`. Preserves the user's segment edits
  * (headerAxes, segmentsByAxis, cellValueField, recordAxisTerminator) as well
@@ -196,18 +216,25 @@ export function preserveUserRegionConfig(
       if (prior.headerAxes) {
         merged.headerAxes = [...prior.headerAxes];
       }
-      if (prior.segmentsByAxis) {
+      // Only segments interpret itself kept (#998). The full-span field
+      // segment the editor seeds when an axis is added isn't the user's
+      // layout: interpret replaces it with what it detects (a date column
+      // as a pivot, say), and its bindings and cellValueField match that.
+      // Restoring the seed left a column without a binding, which Commit
+      // refused.
+      const sentSegments = segmentsOnHeaderAxes(prior);
+      if (segmentsAreUserAuthored(sentSegments)) {
         // Preserve the user's segment edits but adopt the response's
         // freshly-classified `columnDefinitionId` per pivot — those are
         // classifier output, not user knobs, and a re-interpret must
         // surface the latest binding on the review chip.
         merged.segmentsByAxis = {
           row: adoptResponseSegmentBindings(
-            prior.segmentsByAxis.row,
+            sentSegments.row,
             region.segmentsByAxis?.row
           ),
           column: adoptResponseSegmentBindings(
-            prior.segmentsByAxis.column,
+            sentSegments.column,
             region.segmentsByAxis?.column
           ),
         };
@@ -275,7 +302,11 @@ export function preserveUserRegionConfig(
             : binding;
         });
       }
-      return merged;
+      // The user's segments and interpret's cell-value fields can disagree
+      // about pivots; settle it the way the panel would (#998).
+      return reconcileCellValueFields(merged, {
+        defaultField: { name: "value", nameSource: "user" },
+      });
     }),
   };
 }
