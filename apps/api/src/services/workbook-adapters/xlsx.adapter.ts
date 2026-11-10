@@ -17,7 +17,7 @@ import type {
 } from "../workbook-cache.service.js";
 import {
   metadataFirst,
-  readZipEntrySpans,
+  readZipLayout,
   streamEntries,
   ZipLayoutError,
 } from "./xlsx-entry-order.util.js";
@@ -179,11 +179,12 @@ export async function xlsxToCache(
     // source and hand it the entries in that order.
     await pipeline(source, createWriteStream(path));
     const { size } = await stat(path);
-    const spans = metadataFirst(await readZipEntrySpans(path, size));
-    const expectedSheets = spans.filter((s) =>
+    const layout = await readZipLayout(path, size);
+    const ordered = { ...layout, entries: metadataFirst(layout.entries) };
+    const expectedSheets = layout.entries.filter((s) =>
       /^xl\/worksheets\/sheet\d+\.xml$/.test(s.name)
     ).length;
-    const reader = new WorkbookReader(streamEntries(path, spans), {
+    const reader = new WorkbookReader(streamEntries(path, ordered), {
       sharedStrings: "cache",
       styles: "cache",
       hyperlinks: "ignore",

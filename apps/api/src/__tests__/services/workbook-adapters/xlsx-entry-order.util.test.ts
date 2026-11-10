@@ -8,7 +8,7 @@ import ExcelJS from "exceljs";
 
 import {
   metadataFirst,
-  readZipEntrySpans,
+  readZipLayout,
   streamEntries,
   ZipLayoutError,
 } from "../../../services/workbook-adapters/xlsx-entry-order.util.js";
@@ -40,9 +40,8 @@ describe("xlsx entry order (#997)", () => {
   });
 
   it("reads every entry, with spans that tile the file up to the central directory", async () => {
-    const spans = await readZipEntrySpans(path, bytes.length);
-    const names = spans.map((s) => s.name);
-    expect(names).toEqual(
+    const { entries, tail } = await readZipLayout(path, bytes.length);
+    expect(entries.map((s) => s.name)).toEqual(
       expect.arrayContaining([
         "xl/workbook.xml",
         "xl/sharedStrings.xml",
@@ -50,24 +49,28 @@ describe("xlsx entry order (#997)", () => {
         "xl/worksheets/sheet2.xml",
       ])
     );
-    expect(spans[0].start).toBe(0);
-    for (let i = 1; i < spans.length; i++) {
-      expect(spans[i].start).toBe(spans[i - 1].end);
+    expect(entries[0].start).toBe(0);
+    for (let i = 1; i < entries.length; i++) {
+      expect(entries[i].start).toBe(entries[i - 1].end);
     }
-    // Each span opens with a local file header.
-    for (const s of spans) expect(bytes.readUInt32LE(s.start)).toBe(0x04034b50);
+    expect(tail).toEqual({
+      start: entries[entries.length - 1].end,
+      end: bytes.length,
+    });
+    // Each span opens with a local file header, the tail with the directory.
+    for (const s of entries) {
+      expect(bytes.readUInt32LE(s.start)).toBe(0x04034b50);
+    }
+    expect(bytes.readUInt32LE(tail.start)).toBe(0x02014b50);
   });
 
   it("puts the metadata ahead of the sheets, which ExcelJS writes first", async () => {
-    const stored = (await readZipEntrySpans(path, bytes.length)).map(
-      (s) => s.name
-    );
+    const { entries } = await readZipLayout(path, bytes.length);
+    const stored = entries.map((s) => s.name);
     expect(stored.indexOf("xl/worksheets/sheet1.xml")).toBeLessThan(
       stored.indexOf("xl/sharedStrings.xml")
     );
-    const ordered = metadataFirst(
-      await readZipEntrySpans(path, bytes.length)
-    ).map((s) => s.name);
+    const ordered = metadataFirst(entries).map((s) => s.name);
     expect(ordered.indexOf("xl/sharedStrings.xml")).toBeLessThan(
       ordered.indexOf("xl/worksheets/sheet1.xml")
     );
@@ -77,11 +80,12 @@ describe("xlsx entry order (#997)", () => {
     expect([...ordered].sort()).toEqual([...stored].sort());
   });
 
-  it("streams each entry's bytes unchanged, in the new order", async () => {
-    const spans = metadataFirst(await readZipEntrySpans(path, bytes.length));
-    const out = await collect(streamEntries(path, spans));
+  it("streams each entry's bytes unchanged, in the new order, then the central directory", async () => {
+    const layout = await readZipLayout(path, bytes.length);
+    const ordered = { ...layout, entries: metadataFirst(layout.entries) };
+    const out = await collect(streamEntries(path, ordered));
     let at = 0;
-    for (const s of spans) {
+    for (const s of [...ordered.entries, ordered.tail]) {
       const len = s.end - s.start;
       expect(
         out.subarray(at, at + len).equals(bytes.subarray(s.start, s.end))
@@ -89,10 +93,14 @@ describe("xlsx entry order (#997)", () => {
       at += len;
     }
     expect(at).toBe(out.length);
+    // Without the directory a streaming reader hits FILE_ENDED and ExcelJS
+    // drops whatever it hadn't read yet, which lost a sheet in the app.
+    expect(out.readUInt32LE(out.length - 22)).toBe(0x06054b50);
   });
 
   it("gives ExcelJS a stream it reads in full", async () => {
-    const spans = metadataFirst(await readZipEntrySpans(path, bytes.length));
+    const layout = await readZipLayout(path, bytes.length);
+    const ordered = { ...layout, entries: metadataFirst(layout.entries) };
     const reader = new (
       ExcelJS as unknown as {
         stream: {
@@ -106,7 +114,7 @@ describe("xlsx entry order (#997)", () => {
           };
         };
       }
-    ).stream.xlsx.WorkbookReader(streamEntries(path, spans), {
+    ).stream.xlsx.WorkbookReader(streamEntries(path, ordered), {
       sharedStrings: "cache",
       worksheets: "emit",
     });
@@ -124,7 +132,7 @@ describe("xlsx entry order (#997)", () => {
   it("refuses a file with no zip end record", async () => {
     const notZip = join(dir, "not.xlsx");
     await writeFile(notZip, "name,team\nAda,Core\n");
-    await expect(readZipEntrySpans(notZip, 19)).rejects.toBeInstanceOf(
+    await expect(readZipLayout(notZip, 19)).rejects.toBeInstanceOf(
       ZipLayoutError
     );
   });

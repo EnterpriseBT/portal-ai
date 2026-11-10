@@ -28,6 +28,17 @@ export interface ZipEntrySpan {
   end: number;
 }
 
+/** A zip's local entries and the span of its central directory + end record. */
+export interface ZipLayout {
+  entries: ZipEntrySpan[];
+  /**
+   * From the central directory's start to the end of the file. A streaming
+   * reader stops when it reaches it; a stream that just ends instead fails
+   * with FILE_ENDED, which ExcelJS swallows, dropping what's still unread.
+   */
+  tail: { start: number; end: number };
+}
+
 export class ZipLayoutError extends Error {}
 
 const EOCD_SIG = 0x06054b50;
@@ -58,10 +69,10 @@ async function readAt(
  * start. A span therefore carries the header, the compressed data and any
  * data descriptor, with no size arithmetic. Zip64 is supported.
  */
-export async function readZipEntrySpans(
+export async function readZipLayout(
   path: string,
   fileSize: number
-): Promise<ZipEntrySpan[]> {
+): Promise<ZipLayout> {
   const tailStart = Math.max(0, fileSize - EOCD_SEARCH);
   const tail = await readAt(path, tailStart, fileSize - tailStart);
   let eocd = -1;
@@ -129,10 +140,13 @@ export async function readZipEntrySpans(
   }
 
   const byOffset = [...entries].sort((a, b) => a.start - b.start);
-  return byOffset.map((entry, i) => ({
-    ...entry,
-    end: i + 1 < byOffset.length ? byOffset[i + 1].start : cdOffset,
-  }));
+  return {
+    entries: byOffset.map((entry, i) => ({
+      ...entry,
+      end: i + 1 < byOffset.length ? byOffset[i + 1].start : cdOffset,
+    })),
+    tail: { start: cdOffset, end: fileSize },
+  };
 }
 
 /** The spans reordered: `METADATA_FIRST` names, then the rest as stored. */
@@ -149,11 +163,13 @@ export function metadataFirst(spans: ZipEntrySpan[]): ZipEntrySpan[] {
 }
 
 /**
- * A stream of the zip at `path` with its local entries in `spans` order,
- * each copied byte for byte. It has no central directory, which a
- * streaming reader doesn't need.
+ * A stream of the zip at `path` with its local entries in `entries` order,
+ * each copied byte for byte, then its central directory. The directory's
+ * offsets no longer match, which a streaming reader doesn't use; it only
+ * needs the directory to know the entries are over.
  */
-export function streamEntries(path: string, spans: ZipEntrySpan[]): Readable {
+export function streamEntries(path: string, layout: ZipLayout): Readable {
+  const spans = [...layout.entries, layout.tail];
   return Readable.from(
     (async function* () {
       for (const span of spans) {
