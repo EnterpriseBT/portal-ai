@@ -668,3 +668,43 @@ describe("the a11y layer merges with the JSON (#793)", () => {
     expect(root['&[aria-disabled="true"]']).toBeDefined();
   });
 });
+
+describe("sheet canvas rules (#996)", () => {
+  const baseline = (name: ThemeName) =>
+    THEME_MAP[name].components?.MuiCssBaseline?.styleOverrides as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s styles the canvas from its own palette.sheet",
+    (name) => {
+      const rules = baseline(name);
+      const { sheet } = THEME_MAP[name].palette;
+      expect(rules['[data-sheet-part="row-header"]']).toMatchObject({
+        backgroundColor: sheet.headerBackground,
+        color: sheet.headerText,
+      });
+      expect(
+        rules['[data-sheet-part="segment-chip"][data-kind="pivot"]']
+      ).toEqual({
+        backgroundColor: sheet.segment.pivot.chip,
+        color: sheet.tabText,
+      });
+      expect(
+        rules['[data-sheet-part="intersection"][data-kind="skip-mixed"]']
+      ).toMatchObject({
+        backgroundColor: sheet.intersection.skipMixed.fill,
+        borderColor: sheet.intersection.skipMixed.border,
+      });
+      expect(rules['[data-sheet-part="region-badge"]']).toEqual({
+        backgroundColor: sheet.badgeBackground,
+        color: "var(--region-color)",
+      });
+    }
+  );
+
+  it("keeps the gridcell focus ring beside the canvas rules", () => {
+    expect(baseline("brand")['[role="gridcell"]:focus-visible']).toBeDefined();
+  });
+});

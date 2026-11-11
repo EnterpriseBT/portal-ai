@@ -1,6 +1,64 @@
 import "@mui/material/styles";
 
+/** One overlay kind on the sheet canvas: its tint, its outline, and the
+ *  opaque fill its chip's text sits on (#996). */
+interface SheetOverlayColors {
+  fill: string;
+  border: string;
+  chip: string;
+}
+
+/**
+ * The RegionEditor's sheet canvas (#996). The canvas renders through
+ * `MuiCssBaseline` rules keyed by `data-sheet-part` (see `a11yComponents`),
+ * so every colour on it lives here, in both theme JSONs.
+ */
+interface SheetPalette {
+  gridLine: string;
+  headerBackground: string;
+  headerText: string;
+  placeholderText: string;
+  marquee: string;
+  labelBackground: string;
+  badgeBackground: string;
+  tabText: string;
+  handleBackground: string;
+  anchorIcon: string;
+  decoration: {
+    header: string;
+    rowAxisLabel: string;
+    colAxisLabel: string;
+    axisNameAnchor: string;
+    cellValue: string;
+    skipped: string;
+    skippedStripe: string;
+  };
+  segment: {
+    field: SheetOverlayColors;
+    pivot: SheetOverlayColors;
+    skip: SheetOverlayColors;
+    skipStripe: string;
+  };
+  intersection: {
+    fieldField: SheetOverlayColors;
+    fieldPivot: SheetOverlayColors;
+    pivotPivot: SheetOverlayColors;
+    skipMixed: SheetOverlayColors;
+    hover: string;
+    skipStripe: string;
+  };
+  divider: { rest: string; active: string };
+}
+
 declare module "@mui/material/styles" {
+  interface Palette {
+    sheet: SheetPalette;
+  }
+
+  interface PaletteOptions {
+    sheet?: SheetPalette;
+  }
+
   interface TypographyVariants {
     monospace: React.CSSProperties;
   }
