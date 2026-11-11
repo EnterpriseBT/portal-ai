@@ -58,6 +58,17 @@ This change moves every canvas colour into the theme, adds dark values, and fixe
   - gridlines: decorative, since headers and the keyboard grid locate a cell (the issue's out of scope);
   - the `aria-hidden` "…" on loading rows: "Loading…" is read instead.
 
+## Decision 4 — entity colours are per theme (code review)
+
+- **The problem:** in Brand Dark, one shared palette left four entity outlines at 2.6–2.95:1 against the dark sheet, under 1.4.11's 3:1.
+- **The fix:** the colours move into `palette.sheet.entities`, one set per theme.
+  - Light keeps the 700-tone set with white tab text.
+  - Dark uses 400 tones (≥ 5.4:1) with dark tab text (`entityText`) and a dark badge.
+- **How components use it:** they set `data-entity` (`entitySlot`: "0"…"11", or "none"), and the theme maps each slot to `--region-color`. That covers the region, its extension fades, the legend chip and dot, and the Review step and panel dots. `colorForEntity` and `ENTITY_COLOR_PALETTE` are gone.
+- **Confidence and drift colours** follow the same pattern (`data-confidence`, `drift-banner`). The banner was pastel in dark, and the yellow and "none" bands were under 3:1.
+- **The guard** covers the whole module with no allowlist, and also catches `${color}33`.
+- **The contrast test** composites stacked tints. Dark's hover tint drops to 22% to keep AA.
+
 ## Plan — 2 slices
 
 1. **core: tokens + rules + tests**
@@ -88,5 +99,4 @@ This change moves every canvas colour into the theme, adds dark values, and fixe
 ## Out of scope
 
 - Canvas layout, sizing and interaction (#795).
-- `ConfidenceChip`'s band colours (Review step, not the canvas; its text uses the theme's text colour).
 - Which entity gets which colour (assignment order unchanged).
