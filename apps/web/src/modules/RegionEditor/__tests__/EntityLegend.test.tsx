@@ -6,8 +6,8 @@ import { EntityLegendUI } from "../EntityLegend.component";
 import type { EntityLegendEntry } from "../utils/region-editor.types";
 
 const ENTRIES: EntityLegendEntry[] = [
-  { id: "ent_a", label: "Contact", color: "#2563eb", regionCount: 2 },
-  { id: "ent_b", label: "Deal", color: "#db2777", regionCount: 1 },
+  { id: "ent_a", label: "Contact", entitySlot: "0", regionCount: 2 },
+  { id: "ent_b", label: "Deal", entitySlot: "1", regionCount: 1 },
 ];
 
 describe("EntityLegendUI", () => {

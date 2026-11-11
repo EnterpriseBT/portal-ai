@@ -9,6 +9,9 @@ import {
   type ThemeOptions,
 } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+// The palette and typography augmentations (`palette.sheet`, #996). A module,
+// not a bare .d.ts, so the build emits it and consumers of the theme see it.
+import "../types/theme.js";
 import brandTheme from "../assets/themes/brand-theme.json" with { type: "json" };
 import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type: "json" };
 
@@ -36,6 +39,182 @@ const disabledLook = (action: Palette["action"]) => ({
   boxShadow: "none",
   borderColor: action.disabledBackground,
 });
+
+/** A `[data-sheet-part]` selector, optionally narrowed to one `data-kind`. */
+const part = (name: string, kind?: string) =>
+  // The attribute twice: 0,2,0 outranks an sx or MUI root class (0,1,0)
+  // whatever order the stylesheets were injected in.
+  `[data-sheet-part][data-sheet-part="${name}"]${kind ? `[data-kind="${kind}"]` : ""}`;
+
+const stripes = (color: string, band: number) =>
+  `repeating-linear-gradient(45deg, ${color} 0 ${band}px, transparent ${band}px ${band * 2}px)`;
+
+/**
+ * The RegionEditor's sheet canvas, styled from `palette.sheet` (#996). The
+ * canvas is plain DOM rendered by the thousand (virtualized cells), so it
+ * marks each piece with `data-sheet-part` (and `data-kind` for overlay
+ * kinds) and keeps only layout inline; every colour comes from here. A
+ * region's entity colour, the one runtime value, arrives as the
+ * `--region-color` custom property on its overlay.
+ */
+export function sheetCanvasRules(
+  palette: Palette,
+  ring: object
+): Record<string, object> {
+  const s = palette.sheet;
+  // The JSONs are cast to ThemeOptions, so a theme missing its sheet palette
+  // would otherwise render a canvas with no gridlines, headers or tints.
+  if (!s) throw new Error("This theme has no palette.sheet (#996).");
+  const grid = `1px solid ${s.gridLine}`;
+  const header = {
+    borderRight: grid,
+    borderBottom: grid,
+    color: s.headerText,
+  };
+  const rules: Record<string, object> = {
+    [part("cell")]: {
+      borderRight: grid,
+      borderBottom: grid,
+      '&[aria-busy="true"]': { color: s.placeholderText },
+    },
+    [part("header-row")]: { backgroundColor: s.headerBackground },
+    [part("col-header")]: header,
+    [part("row-header")]: { ...header, backgroundColor: s.headerBackground },
+    [part("corner")]: {
+      borderRight: grid,
+      borderBottom: grid,
+      backgroundColor: s.headerBackground,
+    },
+    [part("marquee")]: { backgroundColor: s.marquee },
+    [part("region")]: {
+      borderColor: "var(--region-color)",
+      backgroundColor:
+        "color-mix(in srgb, var(--region-color) 10%, transparent)",
+      "&[data-selected]": {
+        boxShadow:
+          "0 0 0 2px color-mix(in srgb, var(--region-color) 50%, transparent)",
+      },
+    },
+    [part("region-tab")]: {
+      backgroundColor: "var(--region-color)",
+      color: s.entityText,
+    },
+    // A region that extends past its bounds fades out in its colour.
+    [part("region-extension")]: {
+      borderColor: "var(--region-color)",
+      "--region-fade":
+        "color-mix(in srgb, var(--region-color) 20%, transparent)",
+    },
+    [`${part("region-extension")}[data-direction="down"]`]: {
+      background:
+        "linear-gradient(180deg, var(--region-fade) 0%, transparent 100%)",
+    },
+    [`${part("region-extension")}[data-direction="right"]`]: {
+      background:
+        "linear-gradient(90deg, var(--region-fade) 0%, transparent 100%)",
+    },
+    // The legend's and Review step's entity dots, and the legend's chip.
+    [part("entity-dot")]: { backgroundColor: "var(--region-color)" },
+    [`${part("entity-chip")}[data-selected]`]: {
+      borderColor: "var(--region-color)",
+      backgroundColor:
+        "color-mix(in srgb, var(--region-color) 8%, transparent)",
+    },
+    [part("confidence-dot")]: { backgroundColor: "var(--confidence-color)" },
+    [part("confidence-chip")]: {
+      borderColor: "var(--confidence-color)",
+      backgroundColor:
+        "color-mix(in srgb, var(--confidence-color) 10%, transparent)",
+    },
+    [`${part("drift-banner")}[data-severity="blocker"]`]: {
+      backgroundColor: s.drift.blocker,
+    },
+    [`${part("drift-banner")}:not([data-severity="blocker"])`]: {
+      backgroundColor: s.drift.warn,
+    },
+    [part("region-badge")]: {
+      backgroundColor: s.badgeBackground,
+      color: "var(--region-color)",
+    },
+    [part("handle")]: {
+      backgroundColor: s.handleBackground,
+      borderColor: "var(--region-color)",
+    },
+    [part("deco-chip")]: {
+      backgroundColor: s.labelBackground,
+      color: palette.text.primary,
+    },
+    [part("anchor-icon")]: { color: s.anchorIcon },
+    [part("decoration", "skipped")]: {
+      backgroundImage: stripes(s.decoration.skippedStripe, 6),
+    },
+    // The configuration panel's legend swatch: the same tint, finer stripes.
+    [`${part("decoration", "skipped")}[data-swatch]`]: {
+      backgroundImage: stripes(s.decoration.skippedStripe, 3),
+    },
+    // The panel's per-intersection notes mirror the canvas's pivot × pivot
+    // block: its tint, its outline.
+    [part("intersection-note")]: {
+      backgroundColor: s.intersection.pivotPivot.fill,
+      borderColor: s.intersection.pivotPivot.border,
+    },
+    [part("segment", "skip")]: {
+      backgroundImage: stripes(s.segment.skipStripe, 5),
+    },
+    [part("intersection", "skip-mixed")]: {
+      backgroundImage: stripes(s.intersection.skipStripe, 5),
+    },
+    [`${part("intersection")}[data-editable]:hover, ${part("intersection")}[data-editable]:focus-visible`]:
+      { backgroundColor: s.intersection.hover },
+    // An editable intersection is a button: the same inset ring as a cell.
+    [`${part("intersection")}[data-editable]:focus-visible`]: ring,
+    [part("divider-tint")]: { backgroundColor: s.divider.rest },
+    [`${part("divider")}:hover > ${part("divider-tint")}, ${part("divider")}:focus-visible > ${part("divider-tint")}`]:
+      { backgroundColor: s.divider.active },
+  };
+  for (const [kind, fill] of Object.entries(s.decoration)) {
+    if (kind === "skippedStripe") continue;
+    rules[part("decoration", kind)] = {
+      ...rules[part("decoration", kind)],
+      backgroundColor: fill,
+    };
+  }
+  const overlays = {
+    segment: {
+      field: s.segment.field,
+      pivot: s.segment.pivot,
+      skip: s.segment.skip,
+    },
+    intersection: {
+      "field-field": s.intersection.fieldField,
+      "field-pivot": s.intersection.fieldPivot,
+      "pivot-pivot": s.intersection.pivotPivot,
+      "skip-mixed": s.intersection.skipMixed,
+    },
+  };
+  for (const [name, kinds] of Object.entries(overlays)) {
+    for (const [kind, c] of Object.entries(kinds)) {
+      rules[part(name, kind)] = {
+        ...rules[part(name, kind)],
+        backgroundColor: c.fill,
+        borderColor: c.border,
+      };
+      rules[part(`${name}-chip`, kind)] = {
+        backgroundColor: c.chip,
+        color: s.chipText,
+      };
+    }
+  }
+  // Entity slots and confidence bands set the colour their parts read.
+  s.entities.forEach((colour, slot) => {
+    rules[`[data-entity="${slot}"]`] = { "--region-color": colour };
+  });
+  rules['[data-entity="none"]'] = { "--region-color": s.entityFallback };
+  for (const [band, colour] of Object.entries(s.confidence)) {
+    rules[`[data-confidence="${band}"]`] = { "--confidence-color": colour };
+  }
+  return rules;
+}
 
 /**
  * The accessibility overrides every theme gets, whatever its JSON says
@@ -73,6 +252,10 @@ export function a11yComponents(palette: Palette): ThemeOptions {
             ...ring,
             outlineOffset: -FOCUS_RING_WIDTH,
           },
+          ...sheetCanvasRules(palette, {
+            ...ring,
+            outlineOffset: -FOCUS_RING_WIDTH,
+          }),
         },
       },
       MuiButtonBase: {

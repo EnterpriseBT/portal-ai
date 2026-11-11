@@ -1,36 +1,45 @@
+import { THEME_MAP } from "@portalai/core/ui";
+
 import {
-  CONFIDENCE_BAND_COLOR,
-  ENTITY_COLOR_PALETTE,
-  colorForEntity,
+  ENTITY_SLOT_COUNT,
   confidenceBand,
+  entitySlot,
 } from "../utils/region-editor-colors.util";
 
-describe("colorForEntity", () => {
-  test("returns fallback for null entity id", () => {
-    expect(colorForEntity(null, [])).toBe("#64748b");
+describe("entitySlot", () => {
+  test("an unbound region is 'none'", () => {
+    expect(entitySlot(null, [])).toBe("none");
   });
 
-  test("returns fallback when entity not in order list", () => {
-    expect(colorForEntity("ent_missing", ["ent_a"])).toBe("#64748b");
+  test("an entity not in the order is 'none'", () => {
+    expect(entitySlot("ent_missing", ["ent_a"])).toBe("none");
   });
 
-  test("assigns palette colors deterministically by order", () => {
+  test("assigns slots by order", () => {
     const order = ["ent_a", "ent_b", "ent_c"];
-    expect(colorForEntity("ent_a", order)).toBe(ENTITY_COLOR_PALETTE[0]);
-    expect(colorForEntity("ent_b", order)).toBe(ENTITY_COLOR_PALETTE[1]);
-    expect(colorForEntity("ent_c", order)).toBe(ENTITY_COLOR_PALETTE[2]);
+    expect(entitySlot("ent_a", order)).toBe("0");
+    expect(entitySlot("ent_b", order)).toBe("1");
+    expect(entitySlot("ent_c", order)).toBe("2");
   });
 
-  test("cycles palette when order exceeds palette length", () => {
+  test("cycles past the last slot", () => {
     const big = Array.from(
-      { length: ENTITY_COLOR_PALETTE.length + 2 },
+      { length: ENTITY_SLOT_COUNT + 2 },
       (_, i) => `e${i}`
     );
-    const last = big[big.length - 1];
-    expect(colorForEntity(last, big)).toBe(
-      ENTITY_COLOR_PALETTE[(big.length - 1) % ENTITY_COLOR_PALETTE.length]
-    );
+    expect(entitySlot(big[ENTITY_SLOT_COUNT + 1], big)).toBe("1");
   });
+
+  // Every slot needs a colour in every theme, or its regions render
+  // uncoloured (#996). The colours' contrast is held in core.
+  test.each(Object.keys(THEME_MAP) as (keyof typeof THEME_MAP)[])(
+    "%s defines a colour for every slot",
+    (name) => {
+      expect(THEME_MAP[name].palette.sheet.entities).toHaveLength(
+        ENTITY_SLOT_COUNT
+      );
+    }
+  );
 });
 
 describe("confidenceBand", () => {
@@ -51,14 +60,5 @@ describe("confidenceBand", () => {
   test("< 0.60 → red", () => {
     expect(confidenceBand(0)).toBe("red");
     expect(confidenceBand(0.59)).toBe("red");
-  });
-});
-
-describe("CONFIDENCE_BAND_COLOR", () => {
-  test("has colors for every band", () => {
-    expect(CONFIDENCE_BAND_COLOR.green).toBeTruthy();
-    expect(CONFIDENCE_BAND_COLOR.yellow).toBeTruthy();
-    expect(CONFIDENCE_BAND_COLOR.red).toBeTruthy();
-    expect(CONFIDENCE_BAND_COLOR.none).toBeTruthy();
   });
 });

@@ -229,7 +229,8 @@ export type RegionDriftState = {
 export type EntityLegendEntry = {
   id: string;
   label: string;
-  color: string;
+  /** Its colour slot (`entitySlot`); the theme colours `data-entity`. */
+  entitySlot: string;
   regionCount: number;
 };
 

@@ -31,28 +31,25 @@ export const EntityLegendUI: React.FC<EntityLegendUIProps> = ({
           <Box
             key={entry.id}
             onClick={() => onEntitySelect?.(entry.id)}
+            data-sheet-part="entity-chip"
+            data-entity={entry.entitySlot}
+            data-selected={isSelected || undefined}
             sx={{
               display: "inline-flex",
               alignItems: "center",
               gap: 0.75,
               border: "1px solid",
-              borderColor: isSelected ? entry.color : "divider",
+              borderColor: "divider",
               borderRadius: 16,
-              backgroundColor: isSelected
-                ? `${entry.color}14`
-                : "background.paper",
+              backgroundColor: "background.paper",
               px: 1,
               py: 0.25,
               cursor: interactive ? "pointer" : "default",
             }}
           >
             <Box
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                backgroundColor: entry.color,
-              }}
+              data-sheet-part="entity-dot"
+              sx={{ width: 10, height: 10, borderRadius: "50%" }}
             />
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
               {entry.label}

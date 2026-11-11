@@ -668,3 +668,82 @@ describe("the a11y layer merges with the JSON (#793)", () => {
     expect(root['&[aria-disabled="true"]']).toBeDefined();
   });
 });
+
+describe("sheet canvas rules (#996)", () => {
+  const baseline = (name: ThemeName) =>
+    THEME_MAP[name].components?.MuiCssBaseline?.styleOverrides as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s styles the canvas from its own palette.sheet",
+    (name) => {
+      const rules = baseline(name);
+      const { sheet } = THEME_MAP[name].palette;
+      expect(
+        rules['[data-sheet-part][data-sheet-part="row-header"]']
+      ).toMatchObject({
+        backgroundColor: sheet.headerBackground,
+        color: sheet.headerText,
+      });
+      expect(
+        rules[
+          '[data-sheet-part][data-sheet-part="segment-chip"][data-kind="pivot"]'
+        ]
+      ).toEqual({
+        backgroundColor: sheet.segment.pivot.chip,
+        color: sheet.chipText,
+      });
+      expect(
+        rules[
+          '[data-sheet-part][data-sheet-part="intersection"][data-kind="skip-mixed"]'
+        ]
+      ).toMatchObject({
+        backgroundColor: sheet.intersection.skipMixed.fill,
+        borderColor: sheet.intersection.skipMixed.border,
+      });
+      expect(
+        rules['[data-sheet-part][data-sheet-part="region-badge"]']
+      ).toEqual({
+        backgroundColor: sheet.badgeBackground,
+        color: "var(--region-color)",
+      });
+    }
+  );
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s maps each entity slot to its own palette colour",
+    (name) => {
+      const rules = baseline(name);
+      const { sheet } = THEME_MAP[name].palette;
+      sheet.entities.forEach((colour, slot) => {
+        expect(rules[`[data-entity="${slot}"]`]).toEqual({
+          "--region-color": colour,
+        });
+      });
+      expect(rules['[data-entity="none"]']).toEqual({
+        "--region-color": sheet.entityFallback,
+      });
+    }
+  );
+
+  it("rings an editable intersection like a cell", () => {
+    expect(
+      baseline("brand")[
+        '[data-sheet-part][data-sheet-part="intersection"][data-editable]:focus-visible'
+      ]
+    ).toMatchObject({ outlineOffset: -FOCUS_RING_WIDTH });
+  });
+
+  it("refuses a theme without a sheet palette", () => {
+    const { sheet: _sheet, ...palette } = THEME_MAP.brand.palette;
+    expect(() =>
+      a11yComponents(palette as typeof THEME_MAP.brand.palette)
+    ).toThrow(/palette\.sheet/);
+  });
+
+  it("keeps the gridcell focus ring beside the canvas rules", () => {
+    expect(baseline("brand")['[role="gridcell"]:focus-visible']).toBeDefined();
+  });
+});
