@@ -12,7 +12,7 @@
 - a dynamic pivot that isn't last, or two on one axis;
 - a terminator on a crosstab.
 
-**5 don't:** field-only segments of the wrong sum, segments on an undeclared axis, intersection fields on a 1D region or with bad keys, and a cell-value field without a pivot. Interpret replaces or reconciles those.
+**6 don't:** field-only segments of the wrong sum, segments on an undeclared axis, intersection fields on a 1D region, with a malformed key, or naming unknown pivots, and a cell-value field without a pivot. Interpret replaces or reconciles those.
 
 The change is in `packages/spreadsheet-parsing` only, following #1002 / #1008: these become `UNSUPPORTED_LAYOUT_SHAPE` 400s naming the region, raised before any model call.
 
@@ -34,7 +34,7 @@ The change is in `packages/spreadsheet-parsing` only, following #1002 / #1008: t
 
   Each kept issue becomes one sentence, `Region <A1> on "<sheet>": <the rule's message>.`, in the shared input error (with #1008's bounds problems, capped at 20).
 - **Why reuse the schema:** the rules stay in one place, so a refinement added later is enforced at the input automatically. A hand-written copy of a dozen rules would drift.
-- **Why filter by path:** fields interpret repairs (cell-value and intersection fields, non-user segments) must not be refused, or hints that work today would 400. The survey's 5 OK cases are the regression set.
+- **Why filter by path:** fields interpret repairs (cell-value and intersection fields, non-user segments) must not be refused, or hints that work today would 400. The survey's 6 OK cases are the regression set.
 - **Rejected:**
   - mapping the final parse's ZodError to a 400 wholesale, which would answer real parser bugs with a 400 that blames the caller;
   - hand-written per-rule checks, which duplicate the schema and drift.
@@ -44,7 +44,7 @@ The change is in `packages/spreadsheet-parsing` only, following #1002 / #1008: t
 
 - **Files:** `src/interpret/stages/detect-regions.ts` (the skeleton check, the path filter, and its sentences into the shared problems list).
 - **Tests (first, red):**
-  - `src/interpret/stages/__tests__/detect-regions.test.ts`: each of the 12 surveyed cases throws `UNSUPPORTED_LAYOUT_SHAPE` naming the region and the rule; each of the 5 OK cases still passes stage 1; a hint with problems on two regions is named in one error;
+  - `src/interpret/stages/__tests__/detect-regions.test.ts`: each of the 12 surveyed cases throws `UNSUPPORTED_LAYOUT_SHAPE` naming the region and the rule; each of the 6 OK cases still passes stage 1; a hint with problems on two regions is named in one error;
   - `src/interpret/__tests__/` (end to end): a hint with a duplicated header axis rejects with the input error, with a mock classifier never called.
   - `npm run test:unit` in `packages/spreadsheet-parsing`, then build it for the API.
 
