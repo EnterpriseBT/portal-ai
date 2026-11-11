@@ -60,3 +60,40 @@ The 500 itself is real and wider than the repro: a **one-column region with a he
 
 - The header heuristic's scoring beyond the minimum.
 - Auto-detecting a header row outside the drawn region.
+
+## Adversarial
+
+Probes for how the new header rule and its 400 break, against PR [#1007](https://github.com/EnterpriseBT/portal-ai/pull/1007). Preflight: the Smoke's setup (File Upload, `supported_layouts.csv`, the dev stack on this branch). Backend probes post to `POST /api/layout-plans/interpret` with the signed-in user's token and an upload session from the wizard.
+
+### §1 — Boundary
+- [ ] A 1×1 region on a text cell ("Account", `B67:B67`) with a row header axis. — A valid plan (200) or the no-header 400; never a 500. — backend
+- [ ] A crosstab hint (`headerAxes: ["row", "column"]`) where only the column axis has no header. — A 400 whose message names only the column axis ("no header column"), and nothing about the row. — backend
+- [ ] Twenty headerless regions in one request. — One 400 naming all twenty, in hint order; no 500 and no truncated JSON. — backend
+
+### §2 — Malformed & injection input
+- [ ] Upload a CSV named `<img src=x onerror=alert(1)>.csv` (its sheet name comes from the file name), draw a headerless region, and Interpret. — The wizard's alert shows the name as literal text: no image request, no script runs, nothing renders as markup.
+- [ ] A hint whose bounds run past the sheet (`endRow: 5000` on a 126-row sheet), with a row header axis. — A clean 4xx, either the existing bounds validation or the no-header 400; never a 500. — backend
+
+### §3 — Concurrency & races — N/A: pure compute in one request, with no shared state or write.
+
+### §4 — Auth & permission boundaries / §5 — Multi-tenant isolation
+- [ ] Interpret another organisation's upload session with a headerless region. — `404 FILE_UPLOAD_SESSION_NOT_FOUND` before any parsing: the no-header message, and with it the other workbook's sheet name, never reaches the caller. — backend
+
+### §6 — State & lifecycle
+- [ ] Re-interpret with a `priorPlan` whose region declares a row header axis over rows that are now blank. — The no-header 400 naming the region; not a 500. — backend
+
+### §7 — Misuse sequences
+- [ ] After the 400 on `B72:G75`, do what the message says: remove the row header axis (leave the region headerless), then Interpret again. — Interpret proceeds: no no-header error, and no 500.
+- [ ] On the one-column region `B67:B71`, also add a column axis (a 2D hint over one column), then Interpret. — A plan or a clean 400 naming the failing axis; never a 500.
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §2 — bounds past the sheet (`B72:G5000` on 126 rows) | 200: the plan keeps `endRow: 5000` and takes row 116 (another table's header) as the header. Nothing checks hint bounds against the sheet; `main` answers the same | low | existing behaviour, outside this PR; filed as #1008 |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name> — confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/job/entity ids):
