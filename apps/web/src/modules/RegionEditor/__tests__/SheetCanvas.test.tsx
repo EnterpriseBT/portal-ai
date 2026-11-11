@@ -1290,3 +1290,40 @@ describe("SheetCanvasUI — scroll extent held during a resize", () => {
     expect(screen.queryByTestId("drag-extent-reserve")).toBeNull();
   });
 });
+
+// A press and release on a handle without moving is a click, not a resize.
+// On an overhanging region the handle sits past the grid, where the pointer
+// maps to the last row, so committing it would have trimmed the region.
+describe("SheetCanvasUI — a click on a resize handle", () => {
+  test("doesn't resize when the pointer never moved", () => {
+    const onRegionResize = jest.fn();
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 9, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={onRegionResize}
+      />
+    );
+    const seHandle = screen.getByLabelText("Resize region se");
+    const at = {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 9 * 28 + 14,
+    };
+    fireEvent.pointerDown(seHandle, at);
+    fireEvent.pointerUp(seHandle, at);
+    expect(onRegionResize).not.toHaveBeenCalled();
+  });
+});

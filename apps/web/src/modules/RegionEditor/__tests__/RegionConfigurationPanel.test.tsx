@@ -920,6 +920,20 @@ describe("RegionConfigurationPanelUI", () => {
       expect(onFit).toHaveBeenCalledTimes(1);
     });
 
+    // The button leaves with the warning, so focus moves to the region's
+    // bounds caption (which states the result) instead of the page body.
+    test("Fit to sheet moves focus to the region's bounds caption", () => {
+      renderPanel(
+        baseRegion({
+          bounds: { startRow: 0, endRow: 6, startCol: 0, endCol: 1 },
+        })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Fit to sheet" }));
+      const focused = document.activeElement as HTMLElement;
+      expect(focused).not.toBe(document.body);
+      expect(focused.textContent).toMatch(/A1:B7 · 7 rows · 2 cols$/);
+    });
+
     test("names only the region's own rows when it starts past the sheet", () => {
       renderPanel(
         baseRegion({

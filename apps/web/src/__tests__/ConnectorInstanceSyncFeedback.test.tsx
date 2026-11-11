@@ -303,6 +303,22 @@ describe("ConnectorInstanceSyncFeedbackUI — replay warnings", () => {
     ).toBeNull();
   });
 
+  it("renders a sheet name carrying markup as text, never as markup", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[
+          { ...missing(1), sheet: "<img src=x onerror=alert(1)>" },
+        ]}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(
+      'was on sheet "<img src=x onerror=alert(1)>", which is no longer in the workbook'
+    );
+    expect(alert.querySelector("img")).toBeNull();
+  });
+
   it("renders today's success when there are no warnings", () => {
     render(
       <ConnectorInstanceSyncFeedbackUI {...props} replayWarnings={null} />

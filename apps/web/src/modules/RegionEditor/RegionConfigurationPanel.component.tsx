@@ -222,6 +222,7 @@ export const RegionConfigurationPanelUI: React.FC<
   validateEntityKey,
   regionSheet,
 }) => {
+  const boundsCaptionRef = useRef<HTMLSpanElement>(null);
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EditingSegment | null>(
     null
@@ -306,6 +307,12 @@ export const RegionConfigurationPanelUI: React.FC<
   const overhang = regionSheet
     ? regionOverhang(region.bounds, regionSheet)
     : null;
+  // The Fit to sheet button leaves with the warning; focus moves to the
+  // bounds caption, which states the trimmed range, not to the page body.
+  const handleFitToSheet = () => {
+    onFitToSheet?.();
+    boundsCaptionRef.current?.focus();
+  };
 
   const editingAxis = editingSegment?.axis;
   const editingSeg: Segment | null = editingSegment
@@ -649,7 +656,12 @@ export const RegionConfigurationPanelUI: React.FC<
           )}
         </Stack>
 
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          ref={boundsCaptionRef}
+          tabIndex={-1}
+          variant="caption"
+          color="text.secondary"
+        >
           <Box
             component="span"
             aria-label={orientationArrowLabel(orientation)}
@@ -748,7 +760,7 @@ export const RegionConfigurationPanelUI: React.FC<
                       type="button"
                       size="small"
                       variant="contained"
-                      onClick={onFitToSheet}
+                      onClick={handleFitToSheet}
                     >
                       Fit to sheet
                     </Button>

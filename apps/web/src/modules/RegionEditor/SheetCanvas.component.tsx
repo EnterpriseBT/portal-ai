@@ -129,6 +129,8 @@ type ActiveOp =
       regionId: string;
       handle: ResizeHandleKind;
       originalBounds: CellBounds;
+      /** Where the pointer went down; an unmoved release isn't a resize. */
+      pointerStart: CellCoord;
       current: CellCoord;
     }
   | {
@@ -613,6 +615,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           regionId,
           handle,
           originalBounds,
+          pointerStart: coord,
           current: coord,
         });
       },
@@ -745,12 +748,20 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           endCol: sheet.colCount - 1,
         });
       } else if (activeOp.kind === "resize") {
-        const next = computeResizedBounds(
-          activeOp.handle,
-          activeOp.originalBounds,
-          activeOp.current
-        );
-        onRegionResize?.(activeOp.regionId, next);
+        // A press and release without moving is a click. On an overhanging
+        // region (#1009) the handle sits past the grid, where the pointer
+        // maps to the last row, so committing it would trim the region.
+        const moved =
+          activeOp.current.row !== activeOp.pointerStart.row ||
+          activeOp.current.col !== activeOp.pointerStart.col;
+        if (moved) {
+          const next = computeResizedBounds(
+            activeOp.handle,
+            activeOp.originalBounds,
+            activeOp.current
+          );
+          onRegionResize?.(activeOp.regionId, next);
+        }
       } else if (activeOp.kind === "move") {
         const moved =
           activeOp.current.row !== activeOp.pointerStart.row ||
