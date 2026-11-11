@@ -277,5 +277,37 @@ describe("detectRegions", () => {
         )
       ).toThrow(/^UNKNOWN_SHEET: /);
     });
+
+    it("caps the error at 20 regions and counts the rest", () => {
+      const hints = Array.from({ length: 25 }, (_, i) =>
+        hint({ startRow: 1, startCol: 1, endRow: 10 + i, endCol: 2 })
+      );
+      let message = "";
+      try {
+        detectRegions(createInitialState(makeInput(hints)));
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message.match(/Region A1:B\d+/g)).toHaveLength(20);
+      expect(message).toContain("Region A1:B29 on");
+      expect(message).not.toContain("Region A1:B30 on");
+      expect(message.endsWith(" And 5 more not shown.")).toBe(true);
+    });
+
+    it("says a region is on an empty sheet rather than naming no column", () => {
+      const input: InterpretInput = {
+        workbook: {
+          sheets: [
+            { name: "Blank", dimensions: { rows: 0, cols: 0 }, cells: [] },
+          ],
+        },
+        regionHints: [
+          hint({ startRow: 1, startCol: 1, endRow: 2, endCol: 2 }, "Blank"),
+        ],
+      };
+      expect(() => detectRegions(createInitialState(input))).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A1:B2 on "Blank" is on an empty sheet. Pick a sheet with data.'
+      );
+    });
   });
 });

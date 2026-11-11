@@ -1,6 +1,7 @@
 import type { Region, RegionHint } from "../../plan/index.js";
 import { columnLetters, formatA1Range } from "../../workbook/index.js";
 import type { SheetDimensions } from "../../workbook/index.js";
+import { inputError } from "../input-error.js";
 import type { InterpretState } from "../types.js";
 
 function regionIdFromHint(hint: RegionHint, index: number): string {
@@ -80,6 +81,10 @@ function boundsProblems(
 ): string[] {
   const { startRow, startCol, endRow, endCol } = hint.bounds;
   const region = `Region ${formatA1Range(hint.bounds)} on "${hint.sheet}"`;
+  // An empty sheet has no last row or column to name.
+  if (dimensions.rows === 0 || dimensions.cols === 0) {
+    return [`${region} is on an empty sheet. Pick a sheet with data.`];
+  }
   const problems: string[] = [];
   if (startRow > endRow) {
     problems.push(
@@ -134,9 +139,7 @@ export function detectRegions(state: InterpretState): InterpretState {
   // detection and the model stages, so an inverted region isn't misreported
   // as headerless and a bad hint costs no model call. The API answers the
   // prefix as a 400 with this message.
-  if (problems.length > 0) {
-    throw new Error(`UNSUPPORTED_LAYOUT_SHAPE: ${problems.join(" ")}`);
-  }
+  if (problems.length > 0) throw inputError(problems);
 
   return { ...state, detectedRegions };
 }

@@ -30,6 +30,8 @@ The editor can't draw past the sheet, so these arrive through the API, a stale `
   - `Region B67:Z71 on "supported_layouts" runs past the sheet's last column (H). Redraw it inside the sheet.`
   - `Region B71:G67 on "supported_layouts" starts after it ends (row 71 is below row 67). Redraw it.`
 
+  A region on an empty sheet (0 × 0) says so instead of naming a last row or column. The error names at most 20 problems, then "And N more not shown." (CLAUDE.md's #745 cap). The cap lives in a shared `interpret/input-error.ts` that #1002's header check uses too (code review).
+
   The A1 range comes from #1002's `formatA1Range`. It throws before header detection and the model stages, so #1002's message can't misreport an inverted region, and a bad hint costs no model call.
 - **Why reject, not clamp:** clamping silently changes the region the user (or their stored plan) named, and on a shrunken sheet it can quietly drop rows from a region the user believes is whole. A dynamic region (`recordAxisTerminator`) needs no clamp, since replay extends it from in-sheet bounds already.
 - **Why stage 1, not the request schema:** the order check could live in `RegionHintSchema`, but the dimension check needs the workbook. One place and one message style covers both, and the request contract is unchanged.

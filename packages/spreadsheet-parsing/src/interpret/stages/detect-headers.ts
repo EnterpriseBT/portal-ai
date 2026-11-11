@@ -1,6 +1,7 @@
 import type { AxisMember, Region } from "../../plan/index.js";
 import { formatA1Range } from "../../workbook/index.js";
 import type { Sheet, WorkbookCell } from "../../workbook/index.js";
+import { inputError } from "../input-error.js";
 import type { HeaderCandidate, InterpretState } from "../types.js";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
@@ -176,8 +177,6 @@ export async function detectHeaders(
   // Every region and axis at once, so one round trip names them all. Thrown
   // before the classifier and axis-name recommender, so a plan that can't be
   // built costs no model call.
-  if (problems.length > 0) {
-    throw new Error(`UNSUPPORTED_LAYOUT_SHAPE: ${problems.join(" ")}`);
-  }
+  if (problems.length > 0) throw inputError(problems);
   return { ...state, headerCandidates: next };
 }
