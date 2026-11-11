@@ -64,3 +64,39 @@ The editor can't draw past the sheet, so these use the API with a File Upload se
 - The draft-commit path, which accepts a client's plan as-is: `BoundsSchema` checks order there, and replay reads blanks past the sheet.
 - Warning when a stored plan's sheet shrinks under it, so its replay reads blanks: #1009.
 - The editor rendering a stored region that now overhangs its sheet (#1009 adds its warning).
+
+## Adversarial
+
+Probes for how the bounds check breaks, against PR [#1010](https://github.com/EnterpriseBT/portal-ai/pull/1010). Backend probes post to `POST /api/layout-plans/interpret` with the signed-in user's token and a File Upload session.
+
+### §1 — Boundary
+- [ ] `A1:H126` vs `A1:H127` vs `A1:I126` on the 126 × 8 CSV sheet. — The first is accepted (not refused for bounds); the other two are refused naming the last row (126) and the last column (H). No off-by-one. — backend
+- [ ] On `supported_layouts.xlsx` (several sheets of different sizes), a hint on a small sheet with bounds that fit only a larger sheet. — Refused against its own sheet's size, not the workbook's largest. — backend
+- [ ] In the editor, drag a region to the very last row and column the grid shows, bind it, Interpret. — No "runs past the sheet" refusal: the editor's grid and the parser agree on the sheet's size.
+
+### §2 — Malformed input
+- [ ] Bounds of `0`, a negative number, a fraction, and `Number.MAX_SAFE_INTEGER`. — A clean 400 for each (the request schema's `LAYOUT_PLAN_INVALID_PAYLOAD`, or this check's message); never a 500. — backend
+- [ ] A huge column (`endCol: 20000`). — A 400 naming the sheet's last column; the message's letters are computed without error. — backend
+
+### §3 — Concurrency & races — N/A: pure compute in one request.
+
+### §4 — Auth & permission boundaries / §5 — Multi-tenant isolation
+- [ ] An out-of-sheet hint against an upload session the caller doesn't own (an unknown id). — A 404 before parsing: the message, and with it the workbook's size, never reaches the caller. — backend
+
+### §6 — State & lifecycle
+- [ ] Re-interpret with a `priorPlan` whose region overhangs the sheet, and a hint inside the sheet. — 200, and the returned plan uses the hint's bounds; the prior's overhang isn't adopted. — backend
+
+### §7 — Misuse sequences
+- [ ] Send the same out-of-sheet hint twice, then fix it and send it again. — The first two get the same 400; the fixed one gets 200 (nothing sticky between requests). — backend
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| _(filled during the walk; empty when every probe held)_ | | | |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name> — confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/job/entity ids):
