@@ -1,9 +1,10 @@
 import { RegionSchema } from "../../plan/index.js";
-import type { AxisMember, Region, RegionHint } from "../../plan/index.js";
 import { columnLetters, formatA1Range } from "../../workbook/index.js";
-import type { SheetDimensions } from "../../workbook/index.js";
 import { inputError } from "../input-error.js";
 import { segmentsAreUserAuthored } from "./pivoted.util.js";
+
+import type { Region, RegionHint } from "../../plan/index.js";
+import type { SheetDimensions } from "../../workbook/index.js";
 import type { InterpretState } from "../types.js";
 
 function regionIdFromHint(hint: RegionHint, index: number): string {
@@ -129,40 +130,12 @@ const PASSED_THROUGH = new Set([
  * interpret passes through unrepaired are the caller's: segments count only
  * when they're user-authored (interpret keeps them, the same rule
  * `resolveEffectiveSegments` applies; otherwise they're re-detected), and
- * cell-value / intersection fields are reconciled later (#998). Placeholder
- * header strategies keep the "strategy required" rule, which interpret
- * satisfies itself (#1002), quiet.
+ * cell-value / intersection fields are reconciled later (#998). The
+ * "header strategy required" rule fails on every skeleton (interpret fills
+ * strategies in later, #1002); its path isn't passed through, so it drops out.
  */
 function hintRuleProblems(hint: RegionHint, skeleton: Region): string[] {
-  const axes = [...new Set(skeleton.headerAxes)] as AxisMember[];
-  const probe: Region = {
-    ...skeleton,
-    headerStrategyByAxis: Object.fromEntries(
-      axes.map((axis) => [
-        axis,
-        axis === "row"
-          ? {
-              kind: "row" as const,
-              locator: {
-                kind: "row" as const,
-                sheet: skeleton.sheet,
-                row: skeleton.bounds.startRow,
-              },
-              confidence: 0,
-            }
-          : {
-              kind: "column" as const,
-              locator: {
-                kind: "column" as const,
-                sheet: skeleton.sheet,
-                col: skeleton.bounds.startCol,
-              },
-              confidence: 0,
-            },
-      ])
-    ),
-  };
-  const parsed = RegionSchema.safeParse(probe);
+  const parsed = RegionSchema.safeParse(skeleton);
   if (parsed.success) return [];
   const keepSegments = segmentsAreUserAuthored(hint.segmentsByAxis);
   const region = `Region ${formatA1Range(hint.bounds)} on "${hint.sheet}"`;
@@ -203,7 +176,12 @@ export function detectRegions(state: InterpretState): InterpretState {
     }
     problems.push(...boundsProblems(hint, dimensions));
     const skeleton = skeletonRegionFromHint(hint, i);
-    problems.push(...hintRuleProblems(hint, skeleton));
+    // Inverted bounds have a negative span, so the span rules (anchor inside
+    // the bounds, segment sums) would only add false problems to #1008's.
+    const { startRow, endRow, startCol, endCol } = hint.bounds;
+    if (startRow <= endRow && startCol <= endCol) {
+      problems.push(...hintRuleProblems(hint, skeleton));
+    }
     return skeleton;
   });
   // Every bad hint at once, as #1002's header check does, and before header

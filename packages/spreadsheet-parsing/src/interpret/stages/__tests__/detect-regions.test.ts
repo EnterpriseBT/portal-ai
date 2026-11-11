@@ -462,7 +462,7 @@ describe("hint fields checked against the region rules (#1011)", () => {
         },
         ...cv,
       },
-      'dynamic pivot segment must be the last segment on axis "row"',
+      'dynamic pivot segment must be the last segment on axis "row". Region A1:F6 on "S": at most one dynamic pivot segment is allowed per axis',
     ],
     [
       "a terminator on a crosstab",
@@ -526,6 +526,30 @@ describe("hint fields checked against the region rules (#1011)", () => {
     ["a cell-value field without a pivot (reconciled)", { ...cv }],
   ])("still accepts %s", (_label, extra) => {
     expect(() => run(extra)).not.toThrow();
+  });
+
+  it("reports only the inversion for inverted bounds, not span rules", () => {
+    let message = "";
+    try {
+      detectRegions(
+        createInitialState({
+          workbook,
+          regionHints: [
+            {
+              sheet: "S",
+              bounds: { startRow: 6, startCol: 1, endRow: 1, endCol: 6 },
+              targetEntityDefinitionId: "a",
+              headerAxes: ["row", "column"],
+              axisAnchorCell: { row: 1, col: 1 },
+            },
+          ] as never,
+        })
+      );
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("starts after it ends (row 6 is below row 1)");
+    expect(message).not.toContain("axisAnchorCell");
   });
 
   it("names every region's problem in one error, with bounds problems", () => {
