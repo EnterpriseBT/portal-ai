@@ -712,7 +712,22 @@ export async function extractRecords(
   // synchronous.
   await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
 
-  const baseBounds = await resolveRegionBounds(region, sheet);
+  const resolved = await resolveRegionBounds(region, sheet);
+  // #1009: a stored region can outlast its sheet (rows or columns deleted at
+  // the source). The part past the sheet doesn't exist, so it yields no
+  // records; read as cells, it came back as records of blanks, all sharing
+  // the empty sourceId.
+  const baseBounds = {
+    ...resolved,
+    endRow: Math.min(resolved.endRow, sheet.dimensions.rows),
+    endCol: Math.min(resolved.endCol, sheet.dimensions.cols),
+  };
+  if (
+    baseBounds.startRow > baseBounds.endRow ||
+    baseBounds.startCol > baseBounds.endCol
+  ) {
+    return [];
+  }
   const numAxes = region.headerAxes.length;
 
   if (numAxes === 0) return extractHeaderless(region, sheet, baseBounds);

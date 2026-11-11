@@ -61,6 +61,7 @@ sheetMissing?: { sheet: string };
 
 - **`detectRegionDrift(region, sheet)`** pushes `"bounds-overflow"` and sets `detail.boundsOverflow` when `region.bounds.endRow > sheet.dimensions.rows` or `region.bounds.endCol > sheet.dimensions.cols`. It uses the stored bounds, not the terminator-extended ones. `withinTolerance` is unaffected.
 - **The other drift checks read only the part inside the sheet** (found in slice 1). They run on the resolved bounds clamped to `sheet.dimensions`. Read as data, the overhang's blank identity cells counted as `identity-column-has-blanks`, which is identity-changing, so the identity gate would have halted every sync of a shrunken sheet with a 409. A region wholly past the sheet reports `bounds-overflow` alone.
+- **Extraction reads only the part inside the sheet too** (found in slice 2's integration test). `extractRecords` clamps its resolved bounds to `sheet.dimensions`, and a region wholly past the sheet yields `[]`. Before, the overhang's rows came back as records of blank cells, all sharing the empty `sourceId` `""`, so a shrunken sheet's sync replaced the gone rows' records with blank phantoms. Now those rows yield nothing and their old records are reaped like any removed row. The sync copy says "removed", not "replayed as blank". This was already happening before #1009, and it's fixed here because the warning describes exactly this case.
 - **The module lives in `src/warnings/`, not `src/replay/`** (found in slice 1). The package's forbidden-deps guard keeps main-entry code from importing the `replay/` subtree (it pulls in `node:crypto`), and core and web need the schema from the main entry.
 - **`kindSeverity`:** `"bounds-overflow"` and `"sheet-missing"` → `"info"`. `kindIsIdentityChanging` is false for both.
 - **New `missingSheetDrift(region: Region): RegionDrift`** returns `{ regionId: region.id, kinds: ["sheet-missing"], details: { severity: "info", identityChanging: false, addedColumns: [], removedColumns: [], identityBlanks: 0, duplicateIdentityValues: 0, sheetMissing: { sheet: region.sheet } }, withinTolerance: true }`.
@@ -126,9 +127,9 @@ export function summarizeReplayWarnings(
   On `completed` with warnings, the success `Alert` renders `severity="warning"` with:
   - **title:** "Synced, but part of the layout plan no longer fits the source";
   - **one line each for the first 3** (`formatReplayWarning`, `utils/replay-warning.util.ts`):
-    - `bounds-overflow`, rows: "B2:F100 on "Q3" (Contacts) runs past the sheet's last row (80): rows 81–100 replayed as blank."
-    - columns: "… last column (H): columns I–K replayed as blank."
-    - both: "… last row (80) and last column (H): rows 81–100 and columns I–K replayed as blank."
+    - `bounds-overflow`, rows: "B2:F100 on "Q3" (Contacts) runs past the sheet's last row (80): rows 81–100 are gone from the sheet, so their records were removed."
+    - columns: "… last column (H): columns I–K are gone from the sheet, so they were skipped."
+    - both: "… last row (80) and last column (H): rows 81–100 and columns I–K are gone from the sheet, so they were skipped and those rows' records removed."
     - `sheet-missing`: "B2:F40 (Contacts) was on sheet "Q3", which is no longer in the workbook, so it replayed nothing. Its records weren't refreshed."
   - **then** "+N more" (the remaining shown entries plus `replayWarningsOmitted`);
   - **the tally**, unchanged;

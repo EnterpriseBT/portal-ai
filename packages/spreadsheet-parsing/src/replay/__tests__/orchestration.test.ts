@@ -155,6 +155,39 @@ describe("replay() — orchestration", () => {
     expect(result.records).toHaveLength(3);
   });
 
+  // #1009: rows past the sheet's end don't exist at the source, so they
+  // yield no records. They used to come back as records of blank cells.
+  it("extracts no records from the part of a region past its sheet", async () => {
+    const plan = contactsPlan();
+    const shrunk: WorkbookData = {
+      sheets: [
+        {
+          ...contactsWorkbookData.sheets[0],
+          dimensions: { rows: 2, cols: 3 },
+          cells: contactsWorkbookData.sheets[0].cells.filter((c) => c.row <= 2),
+        },
+      ],
+    };
+    const result = await replay(plan, shrunk);
+    expect(result.records).toHaveLength(1);
+    expect(result.drift.regionDrifts[0].kinds).toEqual(["bounds-overflow"]);
+  });
+
+  it("extracts no records from a region wholly past its sheet", async () => {
+    const plan = contactsPlan();
+    const empty: WorkbookData = {
+      sheets: [
+        {
+          ...contactsWorkbookData.sheets[0],
+          dimensions: { rows: 0, cols: 0 },
+          cells: [],
+        },
+      ],
+    };
+    const result = await replay(plan, empty);
+    expect(result.records).toEqual([]);
+  });
+
   // #1009: the skip used to leave no trace; it now reports sheet-missing.
   it("reports a region whose sheet is missing as sheet-missing drift, at info", async () => {
     const plan = contactsPlan();
