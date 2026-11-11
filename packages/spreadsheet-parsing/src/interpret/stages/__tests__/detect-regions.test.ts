@@ -107,6 +107,8 @@ describe("detectRegions", () => {
         axisAnchorCell: { row: 1, col: 1 },
       },
     ]);
+    // The hint covers 5×5, so the sheet must too (#1008 checks bounds).
+    input.workbook.sheets[0].dimensions = { rows: 5, cols: 5 };
     const state = detectRegions(createInitialState(input));
     const region = state.detectedRegions[0];
     expect(region.segmentsByAxis?.row?.[1]).toMatchObject({
@@ -148,5 +150,132 @@ describe("detectRegions", () => {
       },
     ]);
     expect(() => detectRegions(createInitialState(input))).toThrow(/Ghost/i);
+  });
+
+  // #1008: a hint's bounds were taken on trust. A region past the sheet got
+  // a 200 with impossible bounds; an inverted one failed the final plan
+  // parse as a 500 (or #1002's misleading "no header row").
+  describe("bounds checked against the sheet (#1008)", () => {
+    function hint(
+      bounds: {
+        startRow: number;
+        startCol: number;
+        endRow: number;
+        endCol: number;
+      },
+      sheet = "Sheet1"
+    ) {
+      return {
+        sheet,
+        bounds,
+        targetEntityDefinitionId: "contacts",
+        headerAxes: ["row" as const],
+      };
+    }
+
+    function wide(): InterpretInput {
+      return {
+        workbook: {
+          sheets: [
+            {
+              name: "Wide",
+              dimensions: { rows: 4, cols: 28 },
+              cells: [{ row: 1, col: 1, value: "a" }],
+            },
+          ],
+        },
+        regionHints: [
+          hint({ startRow: 1, startCol: 1, endRow: 4, endCol: 30 }, "Wide"),
+        ],
+      };
+    }
+
+    it("rejects a region past the sheet's last row", () => {
+      expect(() =>
+        detectRegions(
+          createInitialState(
+            makeInput([
+              hint({ startRow: 2, startCol: 1, endRow: 50, endCol: 2 }),
+            ])
+          )
+        )
+      ).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A2:B50 on "Sheet1" runs past the sheet\'s last row (3). Redraw it inside the sheet.'
+      );
+    });
+
+    it("rejects a region past the sheet's last column, naming its letters", () => {
+      expect(() => detectRegions(createInitialState(wide()))).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A1:AD4 on "Wide" runs past the sheet\'s last column (AB). Redraw it inside the sheet.'
+      );
+    });
+
+    it("rejects a region that starts after it ends, on rows and on columns", () => {
+      expect(() =>
+        detectRegions(
+          createInitialState(
+            makeInput([
+              hint({ startRow: 3, startCol: 1, endRow: 1, endCol: 2 }),
+            ])
+          )
+        )
+      ).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A3:B1 on "Sheet1" starts after it ends (row 3 is below row 1). Redraw it.'
+      );
+      expect(() =>
+        detectRegions(
+          createInitialState(
+            makeInput([
+              hint({ startRow: 1, startCol: 3, endRow: 2, endCol: 1 }),
+            ])
+          )
+        )
+      ).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region C1:A2 on "Sheet1" starts after it ends (column C is right of column A). Redraw it.'
+      );
+    });
+
+    it("accepts a region ending exactly on the sheet's last row and column", () => {
+      const state = detectRegions(
+        createInitialState(
+          makeInput([hint({ startRow: 1, startCol: 1, endRow: 3, endCol: 3 })])
+        )
+      );
+      expect(state.detectedRegions[0].bounds).toEqual({
+        startRow: 1,
+        startCol: 1,
+        endRow: 3,
+        endCol: 3,
+      });
+    });
+
+    it("names every bad region in one error, in hint order", () => {
+      expect(() =>
+        detectRegions(
+          createInitialState(
+            makeInput([
+              hint({ startRow: 1, startCol: 1, endRow: 9, endCol: 2 }),
+              hint({ startRow: 1, startCol: 1, endRow: 3, endCol: 2 }),
+              hint({ startRow: 2, startCol: 2, endRow: 1, endCol: 2 }),
+            ])
+          )
+        )
+      ).toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A1:B9 on "Sheet1" runs past the sheet\'s last row (3). Redraw it inside the sheet. ' +
+          'Region B2:B1 on "Sheet1" starts after it ends (row 2 is below row 1). Redraw it.'
+      );
+    });
+
+    it("still reports an unknown sheet as UNKNOWN_SHEET", () => {
+      expect(() =>
+        detectRegions(
+          createInitialState(
+            makeInput([
+              hint({ startRow: 1, startCol: 1, endRow: 99, endCol: 2 }, "Nope"),
+            ])
+          )
+        )
+      ).toThrow(/^UNKNOWN_SHEET: /);
+    });
   });
 });
