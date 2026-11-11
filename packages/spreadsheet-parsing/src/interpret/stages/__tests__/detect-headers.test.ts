@@ -218,4 +218,143 @@ describe("detectHeaders", () => {
       second.headerCandidates.get(id)
     );
   });
+
+  // #1002: a declared header axis with no qualifying row or column used to
+  // leave the region without a header strategy, and the final plan parse
+  // failed as a 500.
+  describe("a header axis with no two-label row (#1002)", () => {
+    function oneSheet(
+      cells: { row: number; col: number; value: string | number }[],
+      dimensions: { rows: number; cols: number }
+    ) {
+      return { sheets: [{ name: "Sheet1", dimensions, cells }] };
+    }
+
+    it("scores the top cell of a one-column region with a row header", async () => {
+      const state = await runWith({
+        workbook: oneSheet(
+          [
+            { row: 2, col: 2, value: "Account" },
+            { row: 3, col: 2, value: "Google" },
+            { row: 4, col: 2, value: "Microsoft" },
+          ],
+          { rows: 4, cols: 3 }
+        ),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 2, startCol: 2, endRow: 4, endCol: 2 },
+            targetEntityDefinitionId: "accounts",
+            headerAxes: ["row"],
+          },
+        ],
+      });
+      const best = state.headerCandidates.get(state.detectedRegions[0].id)![0];
+      expect(best).toMatchObject({
+        axis: "row",
+        index: 2,
+        labels: ["Account"],
+      });
+    });
+
+    it("scores the left cell of a one-row region with a column header", async () => {
+      const state = await runWith({
+        workbook: oneSheet(
+          [
+            { row: 2, col: 1, value: "Account" },
+            { row: 2, col: 2, value: "Google" },
+            { row: 2, col: 3, value: "Microsoft" },
+          ],
+          { rows: 3, cols: 3 }
+        ),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 2, startCol: 1, endRow: 2, endCol: 3 },
+            targetEntityDefinitionId: "accounts",
+            headerAxes: ["column"],
+          },
+        ],
+      });
+      const best = state.headerCandidates.get(state.detectedRegions[0].id)![0];
+      expect(best).toMatchObject({
+        axis: "column",
+        index: 1,
+        labels: ["Account"],
+      });
+    });
+
+    it("rejects a wide region with no header row as the caller's input error", async () => {
+      // A blank row, a one-cell note, a blank: nothing to name the fields.
+      const input: InterpretInput = {
+        workbook: oneSheet([{ row: 73, col: 2, value: "a note" }], {
+          rows: 75,
+          cols: 7,
+        }),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 72, startCol: 2, endRow: 75, endCol: 7 },
+            targetEntityDefinitionId: "pivot",
+            headerAxes: ["row"],
+          },
+        ],
+      };
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: region B72:G75 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.'
+      );
+    });
+
+    it("names the header column when the column axis has none", async () => {
+      const input: InterpretInput = {
+        workbook: oneSheet([{ row: 1, col: 27, value: "only" }], {
+          rows: 3,
+          cols: 28,
+        }),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 27, endRow: 3, endCol: 28 },
+            targetEntityDefinitionId: "wide",
+            headerAxes: ["column"],
+          },
+        ],
+      };
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: region AA1:AB3 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
+      );
+    });
+
+    it("doesn't reject an axis whose region already carries a header strategy", async () => {
+      const input: InterpretInput = {
+        workbook: oneSheet([], { rows: 3, cols: 3 }),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
+            targetEntityDefinitionId: "blank",
+            headerAxes: ["row"],
+          },
+        ],
+      };
+      const detected = detectRegions(createInitialState(input));
+      const withStrategy: InterpretState = {
+        ...detected,
+        detectedRegions: detected.detectedRegions.map((region) => ({
+          ...region,
+          headerStrategyByAxis: {
+            row: {
+              kind: "row",
+              locator: { kind: "row", sheet: "Sheet1", row: 1 },
+              confidence: 1,
+            },
+          },
+        })),
+      };
+      const state = await detectHeaders(withStrategy);
+      expect(state.headerCandidates.get(state.detectedRegions[0].id)).toEqual(
+        []
+      );
+    });
+  });
 });

@@ -17,12 +17,14 @@ function cellLabel(cell: WorkbookCell | undefined): string {
  *   1. Non-empty cells dominate — a row of all blanks scores 0.
  *   2. Fraction of cells that are non-numeric strings.
  *   3. Distinct values — a header row rarely repeats a label.
- *   4. At least two cells — a single-cell row is more likely a title.
+ *   4. At least two cells — a single-cell row is more likely a title. In a
+ *      region one cell wide on this axis, though, one label is the whole
+ *      header (#1002), so the minimum is never more than the width.
  */
 function scoreHeaderRow(labels: string[]): number {
   if (labels.length === 0) return 0;
   const nonEmpty = labels.filter((l) => l.trim() !== "");
-  if (nonEmpty.length < 2) return 0;
+  if (nonEmpty.length < Math.min(2, labels.length)) return 0;
 
   const nonEmptyFraction = nonEmpty.length / labels.length;
   const nonNumericFraction =
@@ -111,6 +113,33 @@ function candidatesForAxis(
   return out;
 }
 
+/** 1-based column index → letters (1 → A, 27 → AA). */
+function columnLetters(col: number): string {
+  let out = "";
+  for (let n = col; n > 0; n = Math.floor((n - 1) / 26)) {
+    out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
+  }
+  return out;
+}
+
+/**
+ * #1002: a declared header axis with nothing to name its fields. Without a
+ * header strategy the plan fails its final parse, which reached the user as
+ * a scrubbed 500. This is the caller's input to change, so it carries the
+ * `UNSUPPORTED_LAYOUT_SHAPE` prefix the API answers as a 400 with this
+ * message.
+ */
+function noHeaderError(region: Region, axis: AxisMember): Error {
+  const { startRow, startCol, endRow, endCol } = region.bounds;
+  const range = `${columnLetters(startCol)}${startRow}:${columnLetters(endCol)}${endRow}`;
+  const line = axis === "row" ? "row" : "column";
+  return new Error(
+    `UNSUPPORTED_LAYOUT_SHAPE: region ${range} on "${region.sheet}" has no header ${line} ` +
+      `(no ${line} in it has two or more labels). Redraw it to include its header ${line}, ` +
+      `or remove its ${line} header axis.`
+  );
+}
+
 /**
  * Stage 2 — populate `headerCandidates` per region. Scans every axis in
  * `region.headerAxes` and merges the per-axis candidate lists (already sorted
@@ -138,7 +167,13 @@ export async function detectHeaders(
     await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
     const merged: HeaderCandidate[] = [];
     for (const axis of region.headerAxes) {
-      merged.push(...candidatesForAxis(region, sheet, axis));
+      const candidates = candidatesForAxis(region, sheet, axis);
+      // Thrown here, before the classifier and axis-name recommender, so a
+      // region that can't produce a plan costs no model call.
+      if (candidates.length === 0 && !region.headerStrategyByAxis?.[axis]) {
+        throw noHeaderError(region, axis);
+      }
+      merged.push(...candidates);
     }
     next.set(region.id, merged);
   }
