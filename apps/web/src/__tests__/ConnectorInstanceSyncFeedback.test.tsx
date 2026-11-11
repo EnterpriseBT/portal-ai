@@ -226,3 +226,105 @@ describe("ConnectorInstanceSyncFeedbackUI", () => {
     ).toBeDisabled();
   });
 });
+
+// #1009: a sync that read past a sheet, or skipped a missing one, completes
+// as a warning naming the regions, with a link for whoever can edit the plan.
+describe("ConnectorInstanceSyncFeedbackUI — replay warnings", () => {
+  const props = {
+    jobStatus: "completed" as const,
+    progress: 100,
+    recordCounts: { created: 1, updated: 0, unchanged: 2, deleted: 3 },
+    errorMessage: null,
+    onDismissResult: jest.fn(),
+  };
+  const missing = (i: number) => ({
+    kind: "sheet-missing" as const,
+    regionId: `r${i}`,
+    sheet: `S${i}`,
+    targetEntityDefinitionId: "contacts",
+    bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+    recordsAxis: "row" as const,
+  });
+
+  it("renders a warning naming each region, and the tally", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[missing(1)]}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.className).toMatch(/Warning/);
+    expect(alert).toHaveTextContent(
+      "Synced, but part of the layout plan no longer fits the source"
+    );
+    expect(alert).toHaveTextContent(
+      'was on sheet "S1", which is no longer in the workbook'
+    );
+    expect(alert).toHaveTextContent(
+      "1 added, 0 updated, 2 unchanged, 3 removed"
+    );
+  });
+
+  it("names three regions, then counts the rest including the omitted ones", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[missing(1), missing(2), missing(3), missing(4)]}
+        replayWarningsOmitted={2}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent('"S3"');
+    expect(alert).not.toHaveTextContent('"S4"');
+    expect(alert).toHaveTextContent("+3 more");
+  });
+
+  it("links to the layout editor only when given the instance to edit", () => {
+    const { unmount } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[missing(1)]}
+        editLayoutPlanLink={{ connectorInstanceId: "ci-1" }}
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: "Modify layout plan" })
+    ).toHaveAttribute("href", "/connectors/ci-1/layout-plan/edit");
+    unmount();
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[missing(1)]}
+      />
+    );
+    expect(
+      screen.queryByRole("link", { name: "Modify layout plan" })
+    ).toBeNull();
+  });
+
+  it("renders a sheet name carrying markup as text, never as markup", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...props}
+        replayWarnings={[
+          { ...missing(1), sheet: "<img src=x onerror=alert(1)>" },
+        ]}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(
+      'was on sheet "<img src=x onerror=alert(1)>", which is no longer in the workbook'
+    );
+    expect(alert.querySelector("img")).toBeNull();
+  });
+
+  it("renders today's success when there are no warnings", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI {...props} replayWarnings={null} />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.className).toMatch(/Success/);
+    expect(alert).toHaveTextContent("Sync complete: 1 added");
+  });
+});

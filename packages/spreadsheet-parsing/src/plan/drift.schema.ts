@@ -24,6 +24,9 @@ export const DRIFT_KINDS = [
   "records-axis-value-renamed",
   "identity-column-has-blanks",
   "duplicate-identity-values",
+  // #1009: a region whose sheet is gone from the workbook (deleted or
+  // renamed at the source). Replay skips it; this records that it did.
+  "sheet-missing",
 ] as const;
 export const DriftKindEnum = z.enum(DRIFT_KINDS);
 export type DriftKind = z.infer<typeof DriftKindEnum>;

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { ReplayWarning } from "@portalai/core/contracts";
+import { ConnectorSyncResultSchema } from "@portalai/core/models";
 import type { JobProgressDetail, JobStatus } from "@portalai/core/models";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -24,6 +26,11 @@ export interface ConnectorInstanceSyncState {
   progressDetail: JobProgressDetail | null;
   /** Tally rendered when a job completes successfully (else null). */
   recordCounts: SyncRecordCounts | null;
+  /** #1009: regions the completed sync read past their sheet or skipped (a
+   *  missing sheet), or null when none. */
+  replayWarnings: ReplayWarning[] | null;
+  /** #1009: warnings past the result's cap (0 when none). */
+  replayWarningsOmitted: number;
   /** Error message rendered on POST failure or stream failure (else null). */
   errorMessage: string | null;
   /** Click handler — fires the sync mutation. */
@@ -51,6 +58,32 @@ function extractRecordCounts(
     return { created, updated, unchanged, deleted };
   }
   return null;
+}
+
+/**
+ * #1009: the completed sync's replay warnings. Parsed rather than trusted, so
+ * a malformed payload falls back to today's success instead of breaking it.
+ */
+function extractReplayWarnings(result: Record<string, unknown> | null): {
+  replayWarnings: ReplayWarning[] | null;
+  replayWarningsOmitted: number;
+} {
+  const none = { replayWarnings: null, replayWarningsOmitted: 0 };
+  if (!result) return none;
+  const warnings = ConnectorSyncResultSchema.shape.replayWarnings.safeParse(
+    result.replayWarnings
+  );
+  if (!warnings.success || !warnings.data || warnings.data.length === 0) {
+    return none;
+  }
+  const omitted =
+    ConnectorSyncResultSchema.shape.replayWarningsOmitted.safeParse(
+      result.replayWarningsOmitted
+    );
+  return {
+    replayWarnings: warnings.data,
+    replayWarningsOmitted: omitted.success ? (omitted.data ?? 0) : 0,
+  };
 }
 
 /**
@@ -149,6 +182,10 @@ export const useConnectorInstanceSync = (
   // Derive surface state from the stream so we don't double-buffer it.
   const recordCounts =
     stream.status === "completed" ? extractRecordCounts(stream.result) : null;
+  const { replayWarnings, replayWarningsOmitted } =
+    stream.status === "completed"
+      ? extractReplayWarnings(stream.result)
+      : { replayWarnings: null, replayWarningsOmitted: 0 };
   const errorMessage =
     mutationError ?? (stream.status === "failed" ? stream.error : null);
 
@@ -158,6 +195,8 @@ export const useConnectorInstanceSync = (
     progress: stream.progress,
     progressDetail: stream.progressDetail,
     recordCounts,
+    replayWarnings,
+    replayWarningsOmitted,
     errorMessage,
     onSync,
     onDismissResult,

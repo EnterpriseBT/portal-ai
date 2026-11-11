@@ -7,7 +7,7 @@ import {
 import { makeWorkbook } from "../workbook/helpers.js";
 import type { Workbook, WorkbookData } from "../workbook/types.js";
 import { computeChecksum } from "./checksum.js";
-import { detectRegionDrift, rollUpDrift } from "./drift.js";
+import { detectRegionDrift, missingSheetDrift, rollUpDrift } from "./drift.js";
 import { extractRecords } from "./extract-records.js";
 
 export { computeChecksum } from "./checksum.js";
@@ -43,7 +43,12 @@ export async function replay(
 
   for (const region of validatedPlan.regions as Region[]) {
     const sheet = sheetByName.get(region.sheet);
-    if (!sheet) continue;
+    if (!sheet) {
+      // #1009: the region still contributes no records, but the skip is
+      // reported so the user hears about it.
+      regionDrifts.push(missingSheetDrift(region));
+      continue;
+    }
     // Append per-record rather than spreading: a 400k-row sheet would
     // otherwise blow V8's argument-count limit and throw "Maximum call
     // stack size exceeded" (LAYOUT_PLAN_COMMIT_FAILED).

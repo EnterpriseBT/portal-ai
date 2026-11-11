@@ -4,6 +4,10 @@ import { ApiErrorSchema } from "../contracts/api.contract.js";
 import { QueryHandleEnvelopeSchema } from "../contracts/portal-sql.contract.js";
 import { DEFAULT_BULK_BATCH } from "../constants/large-data-ops.constants.js";
 import { BatchOutcomeFieldsSchema } from "./batch-outcome.util.js";
+import {
+  REPLAY_WARNINGS_MAX,
+  ReplayWarningSchema,
+} from "../contracts/spreadsheet-parsing.contract.js";
 
 /**
  * Async job model.
@@ -223,6 +227,17 @@ export const ConnectorSyncResultSchema = z.object({
    * distinguishable holder could be identified; never guessed.
    */
   supersededBy: z.string().optional(),
+  /**
+   * #1009: regions this run read blank (they run past their sheet's last row
+   * or column) or skipped (their sheet is gone), in plan order, capped at
+   * REPLAY_WARNINGS_MAX. Absent on a clean run. Advisory: nothing halted.
+   */
+  replayWarnings: z
+    .array(ReplayWarningSchema)
+    .max(REPLAY_WARNINGS_MAX)
+    .optional(),
+  /** #1009: how many more warnings there were past the cap. Absent when none. */
+  replayWarningsOmitted: z.number().int().positive().optional(),
 });
 export type ConnectorSyncResult = z.infer<typeof ConnectorSyncResultSchema>;
 

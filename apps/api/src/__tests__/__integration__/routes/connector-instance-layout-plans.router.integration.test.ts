@@ -1778,6 +1778,82 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(keys).toEqual(["contacts", "leads"]);
     });
 
+    // #1009: a recommit against a workbook the plan no longer fits isn't
+    // halted (the warnings are info drift) and says what it read blank or
+    // skipped. The region's identity column runs into the overhang too.
+    it("#1009: commits past a shrunken sheet and a missing sheet, returning replayWarnings", async () => {
+      const colEmailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const colNameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const plan: LayoutPlan = {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1", "Gone"],
+          dimensions: {
+            Sheet1: { rows: 3, cols: 2 },
+            Gone: { rows: 3, cols: 2 },
+          },
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
+        },
+        regions: [
+          simpleRegion("r1", "contacts", colEmailId, colNameId),
+          {
+            ...simpleRegion("r2", "leads", colEmailId, colNameId),
+            sheet: "Gone",
+          },
+        ],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9, r2: 0.9 } },
+      };
+      const planId = await insertPlanRow(db as Db, plan);
+
+      const shrunk: WorkbookData = {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 2 },
+            cells: [
+              { row: 1, col: 1, value: "email" },
+              { row: 1, col: 2, value: "name" },
+              { row: 2, col: 1, value: "a@x.com" },
+              { row: 2, col: 2, value: "alice" },
+            ],
+          },
+        ],
+      };
+
+      const result = await commitInline(planId, shrunk);
+
+      expect(result.recordCounts.created).toBe(1);
+      expect(result.replayWarnings).toEqual([
+        {
+          kind: "bounds-overflow",
+          regionId: "r1",
+          sheet: "Sheet1",
+          targetEntityDefinitionId: "contacts",
+          bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
+          sheetLastRow: 2,
+          sheetLastCol: 2,
+          recordsAxis: "row",
+          targetEntityLabel: "contacts",
+        },
+        {
+          kind: "sheet-missing",
+          regionId: "r2",
+          sheet: "Gone",
+          targetEntityDefinitionId: "leads",
+          bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
+          recordsAxis: "row",
+        },
+      ]);
+    });
+
     it("idempotent: re-committing the same plan + workbook leaves records unchanged", async () => {
       const colEmailId = await seedColumnDefinition(
         db as Db,
