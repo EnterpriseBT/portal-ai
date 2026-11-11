@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { FileUploadParseSheetSchema } from "./file-uploads.contract.js";
+import {
+  REPLAY_WARNINGS_MAX,
+  ReplayWarningSchema,
+} from "./spreadsheet-parsing.contract.js";
 import { nameField, planTextLimitIssues } from "./text-limits.contract.js";
 import {
   InterpretationTraceSchema,
@@ -138,6 +142,17 @@ export const LayoutPlanCommitResultSchema = z.object({
     unchanged: z.number().int().min(0),
     invalid: z.number().int().min(0),
   }),
+  /**
+   * #1009: regions this run read blank (they run past their sheet's last row
+   * or column) or skipped (their sheet is gone), in plan order, capped at
+   * REPLAY_WARNINGS_MAX. Absent on a clean run. Advisory: nothing halted.
+   */
+  replayWarnings: z
+    .array(ReplayWarningSchema)
+    .max(REPLAY_WARNINGS_MAX)
+    .optional(),
+  /** #1009: how many more warnings there were past the cap. Absent when none. */
+  replayWarningsOmitted: z.number().int().positive().optional(),
 });
 export type LayoutPlanCommitResult = z.infer<
   typeof LayoutPlanCommitResultSchema

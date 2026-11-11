@@ -495,6 +495,48 @@ describe("googleSheetsAdapter.syncInstance", () => {
     expect(alice?.data).toEqual({ email: "alice@example.com", name: "Alice" });
   });
 
+  // #1009: the sheet shrank under the stored region (it ends at row 3; the
+  // sheet now has 2 rows). The overhang replays as blank: the sync completes,
+  // isn't halted by the overhang's blank identity cells, and says so.
+  it("syncs a sheet that shrank under its region, and reports the overhang", async () => {
+    const { instance, entityId } = await seedCommittedInstance({
+      rows: [
+        { email: "alice@example.com", name: "Alice" },
+        { email: "bob@example.com", name: "Bob" },
+      ],
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([{ email: "alice@example.com", name: "Alice" }])
+      )
+    );
+
+    const result = await googleSheetsAdapter.syncInstance!(instance, userId);
+
+    expect(result.replayWarnings).toEqual([
+      {
+        kind: "bounds-overflow",
+        regionId: "r1",
+        sheet: "Sheet1",
+        targetEntityDefinitionId: "people",
+        bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
+        sheetLastRow: 2,
+        sheetLastCol: 2,
+      },
+    ]);
+    expect(result).not.toHaveProperty("replayWarningsOmitted");
+    const live = (
+      await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.connectorEntityId, entityId))
+    ).filter((r) => !r.deleted);
+    expect(live.map((r) => (r.data as { email: string }).email)).toEqual([
+      "alice@example.com",
+    ]);
+  });
+
   it("calls progress with monotonically-increasing percents through 100", async () => {
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],

@@ -192,3 +192,11 @@ export type {
 // Pure content; `@portalai/spreadsheet-parsing` never calls a model.
 // Consumers import via `import { LlmBridge } from "@portalai/core/contracts"`.
 export { LlmBridge } from "@portalai/spreadsheet-parsing";
+
+// ── Replay warnings (#1009) ───────────────────────────────────────────────
+export {
+  REPLAY_WARNINGS_MAX,
+  ReplayWarningSchema,
+  summarizeReplayWarnings,
+} from "@portalai/spreadsheet-parsing";
+export type { ReplayWarning } from "@portalai/spreadsheet-parsing";

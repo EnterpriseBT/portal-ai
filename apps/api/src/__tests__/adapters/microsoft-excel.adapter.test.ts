@@ -63,6 +63,8 @@ const commitMock = jest.fn<
   ) => Promise<{
     recordCounts: { created: number; updated: number; unchanged: number };
     connectorEntityIds: string[];
+    replayWarnings?: unknown[];
+    replayWarningsOmitted?: number;
   }>
 >();
 jest.unstable_mockModule(
@@ -346,6 +348,49 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       "user-1"
     );
     expect(clean).not.toHaveProperty("nulStrippedValues");
+  });
+
+  // #1009: commit's replay warnings ride the sync result, and are absent
+  // when the plan fits its workbook.
+  it("carries the commit's replay warnings, and omits them when clean", async () => {
+    findCurrentByConnectorInstanceIdMock.mockResolvedValue({
+      id: "plan-1",
+      plan: {},
+    });
+    fetchWorkbookForSyncMock.mockResolvedValue({
+      workbook: { sheets: [] },
+      nulStrippedValues: 0,
+    });
+    const warning = {
+      kind: "sheet-missing",
+      regionId: "r1",
+      sheet: "Q3",
+      targetEntityDefinitionId: "contacts",
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 2 },
+    };
+    commitMock.mockResolvedValueOnce({
+      recordCounts: { created: 1, updated: 0, unchanged: 0 },
+      connectorEntityIds: [],
+      replayWarnings: [warning],
+      replayWarningsOmitted: 2,
+    });
+    const warned = await microsoftExcelAdapter.syncInstance!(
+      INSTANCE as never,
+      "user-1"
+    );
+    expect(warned.replayWarnings).toEqual([warning]);
+    expect(warned.replayWarningsOmitted).toBe(2);
+
+    commitMock.mockResolvedValueOnce({
+      recordCounts: { created: 1, updated: 0, unchanged: 0 },
+      connectorEntityIds: [],
+    });
+    const clean = await microsoftExcelAdapter.syncInstance!(
+      INSTANCE as never,
+      "user-1"
+    );
+    expect(clean).not.toHaveProperty("replayWarnings");
+    expect(clean).not.toHaveProperty("replayWarningsOmitted");
   });
 
   it("sums per-entity reap counts across multiple connectorEntityIds", async () => {
