@@ -65,3 +65,39 @@ The fractional values came in with `547176b0` (crosstab per-intersection fields)
 ## Out of scope
 
 - Canvas colours (#996).
+
+## Adversarial
+
+Probes for how the new stacking breaks, against PR [#1006](https://github.com/EnterpriseBT/portal-ai/pull/1006). Preflight and reset: the Smoke's crosstab setup ("Crosstab - Table 1", a bound region with a row pivot and a column pivot, selected); discard the wizard between runs.
+
+### §1 — Boundary
+- [ ] Put the pivot × pivot block in the region's bottom-right corner, under the `se`, `e` and `s` handles. Press the centre of the `se` handle and drag one cell out. — The region resizes (Jump to region shows the new range), and no editor opens.
+- [ ] Drag the dividers until the block is one cell, then click its centre; then press a handle it touches. — The click opens the editor. The handle press resizes, and the block never takes it.
+
+### §2 — Malformed & injection input — N/A: no new input; the change only orders existing layers.
+### §3 — Concurrency & races — N/A: client-side layering, with no request or shared state.
+### §4 — Auth & permission boundaries — N/A: no permission surface. The only read-only canvas is in stories, not the app.
+### §5 — Multi-tenant isolation — N/A: no data path.
+
+### §6 — State & lifecycle
+- [ ] Select another region, then click where the first region's block was. — The click selects the region under the pointer; no editor opens (blocks render only for the selected region).
+- [ ] Scroll so the block sits partly under the column-letter row. Click the header part, then the visible part. — The header part draws that column's band; the visible part opens the editor.
+
+### §7 — Misuse sequences
+- [ ] Press on the block and drag two cells before releasing. — The region's bounds are unchanged, and no marquee or new region appears.
+- [ ] Start a drag on empty cells outside the region and release over the block. — No editor opens; the drag ends as it would anywhere else.
+- [ ] With the editor open, click outside it (on the sheet or a region). — The click only closes the editor: the region doesn't resize or move, and nothing in the editor is saved. The open editor can cover a resize handle; a press there lands in the editor, not on the handle.
+- [ ] Double-click the block. — One editor opens, not two stacked.
+- [ ] On a touch device, tap the block, then touch-drag starting on it. — The tap opens the editor; the drag neither moves the region nor pans into a move. — manual
+
+### Findings
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §7 — press a handle with the editor open (original wording) | The editor's panel covers the `se` handle, so the press lands in its text field and the editor stays open; nothing resized, moved or saved | low | probe premise wrong; reworded to clicking outside the editor |
+
+### Sign-off
+- [ ] Every probe walked; findings resolved or waived-with-reason
+- [ ] <date + name> — confirmed against my own running stack
+
+### Bug-filing template
+Section: · Probe: · Expected (safe): · Got: · Repro: · Identifiers (org/job/entity ids):
