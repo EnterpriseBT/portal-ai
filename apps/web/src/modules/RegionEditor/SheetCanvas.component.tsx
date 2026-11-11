@@ -1783,6 +1783,35 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             );
           })}
 
+          {(activeOp?.kind === "resize" || activeOp?.kind === "move") && (
+            // #1009: hold the dragged region's original extent in the scroll
+            // area until the drag ends. Overlays extend the canvas's scroll
+            // area; without this, dragging an overhanging region back inside
+            // shrank it mid-drag, the scroll snapped, and the rows under the
+            // pointer moved, so the region landed short of the release
+            // point. The extra 12px covers the extension fade below a region.
+            <div
+              aria-hidden
+              data-testid="drag-extent-reserve"
+              style={{
+                position: "absolute",
+                left:
+                  ROW_HEADER_WIDTH +
+                  (activeOp.originalBounds.endCol + 1) * cellWidth -
+                  1,
+                top:
+                  COL_HEADER_HEIGHT +
+                  (activeOp.originalBounds.endRow + 1) * cellHeight +
+                  12 -
+                  1,
+                width: 1,
+                height: 1,
+                pointerEvents: "none",
+                visibility: "hidden",
+              }}
+            />
+          )}
+
           {pendingBounds && (
             <Box
               sx={{
