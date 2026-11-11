@@ -32,13 +32,8 @@ import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
 import { resizeSegment } from "./utils/segment-ops.util";
+import { entitySlot, confidenceBand } from "./utils/region-editor-colors.util";
 import {
-  colorForEntity,
-  confidenceBand,
-  CONFIDENCE_BAND_COLOR,
-} from "./utils/region-editor-colors.util";
-import {
-  DECORATION_COLOR,
   DECORATION_LABEL,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
@@ -331,7 +326,7 @@ export const RegionConfigurationPanelUI: React.FC<
   const headerAxes = region.headerAxes ?? [];
   const canAddSecondAxis = headerAxes.length === 1;
   const canPreview = !!regionSheet;
-  const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
+  const slot = entitySlot(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
 
@@ -651,13 +646,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ minWidth: 0 }}
         >
           <Box
-            sx={{
-              width: 14,
-              height: 14,
-              borderRadius: "50%",
-              backgroundColor: color,
-              flexShrink: 0,
-            }}
+            data-sheet-part="entity-dot"
+            data-entity={slot}
+            sx={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0 }}
           />
           <Typography
             variant="subtitle2"
@@ -718,18 +709,16 @@ export const RegionConfigurationPanelUI: React.FC<
                 sx={{ minWidth: 0 }}
               >
                 <Box
+                  data-sheet-part="decoration"
+                  data-kind={kind}
+                  data-swatch=""
                   sx={{
                     width: 12,
                     height: 12,
-                    backgroundColor: DECORATION_COLOR[kind],
                     borderRadius: 0.5,
                     border: "1px solid",
                     borderColor: "divider",
                     flexShrink: 0,
-                    backgroundImage:
-                      kind === "skipped"
-                        ? "repeating-linear-gradient(45deg, rgba(100,116,139,0.45) 0 3px, transparent 3px 6px)"
-                        : undefined,
                   }}
                 />
                 <Typography variant="caption" color="text.secondary">
@@ -1073,12 +1062,12 @@ export const RegionConfigurationPanelUI: React.FC<
             if (rowPivots.length === 0 || colPivots.length === 0) {
               return (
                 <Box
+                  data-sheet-part="intersection-note"
                   sx={{
                     p: 1.5,
                     borderRadius: 1,
-                    backgroundColor: "rgba(217, 119, 6, 0.08)",
-                    border: "1px dashed",
-                    borderColor: "rgba(180, 83, 9, 0.55)",
+                    borderWidth: 1,
+                    borderStyle: "dashed",
                   }}
                 >
                   <Typography
@@ -1124,22 +1113,20 @@ export const RegionConfigurationPanelUI: React.FC<
                         direction="row"
                         spacing={1}
                         alignItems="center"
+                        data-sheet-part="intersection-note"
                         sx={{
                           p: 1,
                           borderRadius: 1,
-                          backgroundColor: "rgba(217, 119, 6, 0.06)",
-                          border: "1px dashed",
-                          borderColor: "rgba(180, 83, 9, 0.45)",
+                          borderWidth: 1,
+                          borderStyle: "dashed",
                         }}
                       >
                         <MuiChip
                           size="small"
                           label={`${rowName} × ${colName}`}
-                          sx={{
-                            backgroundColor: "rgba(180, 83, 9, 0.85)",
-                            color: "#fff",
-                            fontWeight: 700,
-                          }}
+                          data-sheet-part="intersection-chip"
+                          data-kind="pivot-pivot"
+                          sx={{ fontWeight: 700 }}
                         />
                         <TextInput
                           size="small"
@@ -1362,12 +1349,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ gridColumn: "1 / -1" }}
         >
           <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: CONFIDENCE_BAND_COLOR[band],
-            }}
+            data-sheet-part="confidence-dot"
+            data-confidence={band}
+            sx={{ width: 8, height: 8, borderRadius: "50%" }}
           />
           <Typography variant="caption" color="text.secondary">
             Confidence:{" "}

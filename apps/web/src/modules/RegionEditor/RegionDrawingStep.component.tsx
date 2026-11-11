@@ -30,7 +30,7 @@ import { EntityLegendUI } from "./EntityLegend.component";
 import { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
 import { adjustSegmentsForBoundsChange } from "./utils/adjust-segments-for-bounds.util";
 import { formatBounds } from "./utils/a1-notation.util";
-import { colorForEntity } from "./utils/region-editor-colors.util";
+import { entitySlot } from "./utils/region-editor-colors.util";
 import { resizeSegment } from "./utils/segment-ops.util";
 import { orientationFromDraft } from "./utils/region-orientation.util";
 import {
@@ -179,7 +179,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       return {
         id,
         label: entry.label,
-        color: colorForEntity(id, entityOrder),
+        entitySlot: entitySlot(id, entityOrder),
         regionCount: entry.count,
       };
     });

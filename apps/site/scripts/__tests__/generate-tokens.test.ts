@@ -68,6 +68,10 @@ describe("generateTokensCss", () => {
 
   // ── case 3 — deterministic ─────────────────────────────────────────
 
+  it("leaves out the app-only sheet canvas palette (#996)", () => {
+    expect(css).not.toMatch(/--color-sheet-/);
+  });
+
   it("is deterministic — same input, byte-identical output", () => {
     expect(generateTokensCss(readThemes())).toBe(css);
   });

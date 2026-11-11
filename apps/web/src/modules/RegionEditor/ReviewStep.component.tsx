@@ -21,7 +21,7 @@ import { RegionReviewCardUI } from "./RegionReviewCard.component";
 import { BindingEditorPopoverUI } from "./BindingEditorPopover.component";
 import { applyBindingDraftPatch } from "./utils/binding-draft.util";
 import { useFocusOnArrival } from "./utils/focus-recovery.util";
-import { colorForEntity } from "./utils/region-editor-colors.util";
+import { entitySlot } from "./utils/region-editor-colors.util";
 import {
   validateBindingDraft,
   validateRegionBindings,
@@ -606,12 +606,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
               sx={{ mb: 1 }}
             >
               <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  backgroundColor: colorForEntity(group.entityId, entityOrder),
-                }}
+                data-sheet-part="entity-dot"
+                data-entity={entitySlot(group.entityId, entityOrder)}
+                sx={{ width: 12, height: 12, borderRadius: "50%" }}
               />
               <Typography variant="subtitle2">{group.label}</Typography>
               <Typography variant="caption" color="text.secondary">

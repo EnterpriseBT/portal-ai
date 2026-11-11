@@ -50,6 +50,8 @@ function paletteTokens(palette) {
   const out = [];
   for (const [group, value] of Object.entries(palette ?? {})) {
     if (group === "mode") continue;
+    // The app's sheet canvas (#996): no site page draws it.
+    if (group === "sheet") continue;
     if (typeof value === "string") {
       out.push([`--color-${kebab(group)}`, value]);
       continue;
