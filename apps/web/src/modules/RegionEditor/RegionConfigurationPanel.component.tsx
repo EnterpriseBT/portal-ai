@@ -28,7 +28,8 @@ import { SectionHelpUI } from "./SectionHelp.component";
 import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
 import { SegmentStripUI } from "./SegmentStrip.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
-import { formatBounds } from "./utils/a1-notation.util";
+import { colIndexToLetter, formatBounds } from "./utils/a1-notation.util";
+import { regionOverhang } from "./utils/region-overhang.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
 import { resizeSegment } from "./utils/segment-ops.util";
 import {
@@ -60,6 +61,8 @@ export interface RegionConfigurationPanelUIProps {
   onDelete: () => void;
   onAcceptProposedIdentity?: () => void;
   onKeepPriorIdentity?: () => void;
+  /** #1009: trims a region that runs past its sheet back inside it. */
+  onFitToSheet?: () => void;
   driftProposedIdentityLabel?: string;
   onCreateEntity?: (key: string, label: string) => string;
   claimedEntityKeys?: Set<string>;
@@ -197,6 +200,7 @@ export const RegionConfigurationPanelUI: React.FC<
   onDelete,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
+  onFitToSheet,
   driftProposedIdentityLabel,
   onCreateEntity,
   entityAssociationLocked = false,
@@ -283,6 +287,12 @@ export const RegionConfigurationPanelUI: React.FC<
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
+  // #1009: a stored region can outlast its sheet (rows or columns deleted at
+  // the source). Computed from the sheet as loaded, so it clears as soon as
+  // Fit to sheet or a drag brings the region back inside.
+  const overhang = regionSheet
+    ? regionOverhang(region.bounds, regionSheet)
+    : null;
 
   const editingAxis = editingSegment?.axis;
   const editingSeg: Segment | null = editingSegment
@@ -680,6 +690,64 @@ export const RegionConfigurationPanelUI: React.FC<
               </Stack>
             ))}
           </Stack>
+        )}
+
+        {overhang && (
+          <Box
+            component="section"
+            aria-label="Past the sheet"
+            sx={{
+              p: 1.5,
+              borderRadius: 1,
+              backgroundColor: "warning.lighter",
+              border: "1px solid",
+              borderColor: "warning.main",
+            }}
+          >
+            <Typography
+              variant="subtitle2"
+              color="warning.dark"
+              sx={{ mb: 0.5 }}
+            >
+              {[
+                overhang.rowsPast > 0 &&
+                  (overhang.rowsPast > 1
+                    ? `Rows ${overhang.lastRow + 2}–${region.bounds.endRow + 1} are`
+                    : `Row ${region.bounds.endRow + 1} is`) +
+                    ` past the sheet's last row (${overhang.lastRow + 1}).`,
+                overhang.colsPast > 0 &&
+                  (overhang.colsPast > 1
+                    ? `Columns ${colIndexToLetter(overhang.lastCol + 1)}–${colIndexToLetter(region.bounds.endCol)} are`
+                    : `Column ${colIndexToLetter(region.bounds.endCol)} is`) +
+                    ` past the sheet's last column (${colIndexToLetter(overhang.lastCol)}).`,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            </Typography>
+            <Typography variant="caption" sx={{ display: "block" }}>
+              {`They're gone from the sheet, and Interpret refuses a region outside its sheet.`}
+            </Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ mt: 1 }}
+            >
+              {onFitToSheet && (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="contained"
+                  onClick={onFitToSheet}
+                >
+                  Fit to sheet
+                </Button>
+              )}
+              <Typography variant="caption">
+                {`Or drag its ${overhang.rowsPast > 0 && overhang.colsPast > 0 ? "bottom and right edges" : overhang.rowsPast > 0 ? "bottom edge" : "right edge"} back inside the sheet.`}
+              </Typography>
+            </Stack>
+          </Box>
         )}
 
         {driftFlagged && (

@@ -1193,3 +1193,48 @@ describe("SheetCanvasUI", () => {
     ).toBeInTheDocument();
   });
 });
+
+// #1009: a region past its sheet carries a PAST SHEET tag on its tab.
+describe("SheetCanvasUI — region past its sheet", () => {
+  test("tags a region that runs past the sheet's last row", () => {
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 9, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId={null}
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(screen.getByText("PAST SHEET")).toBeInTheDocument();
+  });
+
+  test("doesn't tag a region inside its sheet", () => {
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId={null}
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(screen.queryByText("PAST SHEET")).toBeNull();
+  });
+});

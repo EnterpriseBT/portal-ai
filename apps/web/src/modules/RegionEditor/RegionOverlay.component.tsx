@@ -105,6 +105,8 @@ export interface RegionOverlayUIProps {
     handle: ResizeHandleKind,
     originalBounds: CellBounds
   ) => (e: React.PointerEvent) => void;
+  /** #1009: the region runs past its sheet's last row or column. */
+  overhanging?: boolean;
 }
 
 export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
@@ -118,6 +120,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   cellHeight,
   onBodyPointerDown,
   onResizeStart,
+  overhanging = false,
 }) => {
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
   const { drift } = region;
@@ -239,6 +242,20 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               }}
             >
               DRIFT
+            </span>
+          )}
+          {overhanging && (
+            <span
+              style={{
+                backgroundColor: "#fff",
+                color,
+                borderRadius: 4,
+                padding: "0 4px",
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              PAST SHEET
             </span>
           )}
         </Box>

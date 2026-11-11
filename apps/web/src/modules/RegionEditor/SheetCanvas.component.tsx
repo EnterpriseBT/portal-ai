@@ -34,6 +34,7 @@ import {
   computeRegionDecorations,
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
+import { regionOverhang } from "./utils/region-overhang.util";
 import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
 import type {
   CellBounds,
@@ -1777,6 +1778,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 cellHeight={cellHeight}
                 onBodyPointerDown={handleRegionBodyPointerDown}
                 onResizeStart={handleResizeStart}
+                overhanging={regionOverhang(region.bounds, sheet) !== null}
               />
             );
           })}

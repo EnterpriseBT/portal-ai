@@ -850,4 +850,85 @@ describe("RegionConfigurationPanelUI", () => {
     const help = screen.getByLabelText("What is the target entity?");
     expect(help).toBeInTheDocument();
   });
+
+  // #1009: a region past its sheet says so, and offers Fit to sheet.
+  describe("overhang", () => {
+    const sheet = {
+      id: "s1",
+      name: "Q3",
+      rowCount: 3,
+      colCount: 2,
+      cells: [
+        ["a", "b"],
+        ["1", "2"],
+        ["3", "4"],
+      ],
+    };
+
+    function renderPanel(region: RegionDraft, onFitToSheet = jest.fn()) {
+      render(
+        <RegionConfigurationPanelUI
+          region={region}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          regionSheet={sheet}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+          onFitToSheet={onFitToSheet}
+        />
+      );
+      return onFitToSheet;
+    }
+
+    test("names the rows past the sheet and what that means", () => {
+      renderPanel(
+        baseRegion({
+          bounds: { startRow: 0, endRow: 6, startCol: 0, endCol: 1 },
+        })
+      );
+      const box = screen.getByRole("region", { name: "Past the sheet" });
+      expect(box).toHaveTextContent(
+        "Rows 4–7 are past the sheet's last row (3)."
+      );
+      expect(box).toHaveTextContent(
+        "They're gone from the sheet, and Interpret refuses a region outside its sheet."
+      );
+      expect(box).toHaveTextContent(
+        "Or drag its bottom edge back inside the sheet."
+      );
+    });
+
+    test("names the columns past the sheet", () => {
+      renderPanel(
+        baseRegion({
+          bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
+        })
+      );
+      expect(
+        screen.getByRole("region", { name: "Past the sheet" })
+      ).toHaveTextContent("Columns C–D are past the sheet's last column (B).");
+    });
+
+    test("Fit to sheet calls onFitToSheet", () => {
+      const onFit = renderPanel(
+        baseRegion({
+          bounds: { startRow: 0, endRow: 6, startCol: 0, endCol: 1 },
+        })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Fit to sheet" }));
+      expect(onFit).toHaveBeenCalledTimes(1);
+    });
+
+    test("shows nothing for a region inside its sheet", () => {
+      renderPanel(
+        baseRegion({
+          bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
+        })
+      );
+      expect(
+        screen.queryByRole("region", { name: "Past the sheet" })
+      ).toBeNull();
+    });
+  });
 });
