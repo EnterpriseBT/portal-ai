@@ -32,11 +32,7 @@ import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
 import { resizeSegment } from "./utils/segment-ops.util";
-import {
-  colorForEntity,
-  confidenceBand,
-  CONFIDENCE_BAND_COLOR,
-} from "./utils/region-editor-colors.util";
+import { entitySlot, confidenceBand } from "./utils/region-editor-colors.util";
 import {
   DECORATION_LABEL,
   type DecorationKind,
@@ -330,7 +326,7 @@ export const RegionConfigurationPanelUI: React.FC<
   const headerAxes = region.headerAxes ?? [];
   const canAddSecondAxis = headerAxes.length === 1;
   const canPreview = !!regionSheet;
-  const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
+  const slot = entitySlot(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
 
@@ -650,13 +646,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ minWidth: 0 }}
         >
           <Box
-            sx={{
-              width: 14,
-              height: 14,
-              borderRadius: "50%",
-              backgroundColor: color,
-              flexShrink: 0,
-            }}
+            data-sheet-part="entity-dot"
+            data-entity={slot}
+            sx={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0 }}
           />
           <Typography
             variant="subtitle2"
@@ -1357,12 +1349,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ gridColumn: "1 / -1" }}
         >
           <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: CONFIDENCE_BAND_COLOR[band],
-            }}
+            data-sheet-part="confidence-dot"
+            data-confidence={band}
+            sx={{ width: 8, height: 8, borderRadius: "50%" }}
           />
           <Typography variant="caption" color="text.secondary">
             Confidence:{" "}

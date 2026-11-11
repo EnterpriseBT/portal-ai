@@ -11,7 +11,7 @@
  *   and the loading row's "…" are decorative and left out (headers and the
  *   keyboard grid locate a cell; "Loading…" is what's read).
  */
-import { decomposeColor, getContrastRatio } from "@mui/material/styles";
+import { alpha, decomposeColor, getContrastRatio } from "@mui/material/styles";
 
 import { THEME_MAP, type ThemeName } from "../../ui/ThemeProvider";
 
@@ -114,7 +114,7 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
       "the %s chip is opaque and its text readable",
       (_kind, chip) => {
         expect(opaque(chip)).toBe(true);
-        expect(getContrastRatio(sheet.tabText, chip)).toBeGreaterThanOrEqual(
+        expect(getContrastRatio(sheet.chipText, chip)).toBeGreaterThanOrEqual(
           TEXT
         );
       }
@@ -125,6 +125,83 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
       expect(
         getContrastRatio(palette.text.primary, sheet.labelBackground)
       ).toBeGreaterThanOrEqual(TEXT);
+    });
+
+    const entities = [...sheet.entities, sheet.entityFallback];
+
+    it.each(entities)(
+      "the %s entity's tab text and badge are readable",
+      (c) => {
+        expect(getContrastRatio(sheet.entityText, c)).toBeGreaterThanOrEqual(
+          TEXT
+        );
+        expect(
+          getContrastRatio(c, sheet.badgeBackground)
+        ).toBeGreaterThanOrEqual(TEXT);
+      }
+    );
+
+    it.each(entities)(
+      "the %s entity's outline stands out on the sheet and its headers",
+      (c) => {
+        expect(getContrastRatio(c, surface)).toBeGreaterThanOrEqual(NON_TEXT);
+        expect(
+          getContrastRatio(c, sheet.headerBackground)
+        ).toBeGreaterThanOrEqual(NON_TEXT);
+      }
+    );
+
+    it.each(Object.entries(sheet.confidence))(
+      "the %s confidence colour stands out (dot, chip outline)",
+      (_band, c) => {
+        expect(getContrastRatio(c, surface)).toBeGreaterThanOrEqual(NON_TEXT);
+      }
+    );
+
+    it.each(Object.entries(sheet.drift))(
+      "text is readable on the %s drift banner",
+      (_severity, bg) => {
+        const banner = composite(bg, surface);
+        expect(
+          getContrastRatio(palette.text.primary, banner)
+        ).toBeGreaterThanOrEqual(TEXT);
+        expect(
+          getContrastRatio(palette.text.secondary, banner)
+        ).toBeGreaterThanOrEqual(TEXT);
+      }
+    );
+
+    it("cell text stays readable under stacked tints", () => {
+      // A cell can sit under its region's fill, a decoration, and a segment
+      // or intersection tint (or the hover that replaces it), all at once.
+      const overlays = [
+        sheet.segment.field.fill,
+        sheet.segment.pivot.fill,
+        sheet.segment.skip.fill,
+        sheet.intersection.fieldField.fill,
+        sheet.intersection.fieldPivot.fill,
+        sheet.intersection.pivotPivot.fill,
+        sheet.intersection.skipMixed.fill,
+        sheet.intersection.hover,
+      ];
+      let worst = { ratio: Infinity, stack: "" };
+      for (const entity of entities) {
+        const region = composite(alpha(entity, 0.1), surface);
+        for (const [deco, decoFill] of Object.entries(decorations)) {
+          const decorated = composite(decoFill, region);
+          for (const overlay of overlays) {
+            const ratio = getContrastRatio(
+              palette.text.primary,
+              composite(overlay, decorated)
+            );
+            if (ratio < worst.ratio) {
+              worst = { ratio, stack: `${entity} + ${deco} + ${overlay}` };
+            }
+          }
+        }
+      }
+      expect(worst).toMatchObject({ ratio: expect.any(Number) });
+      expect(worst.ratio).toBeGreaterThanOrEqual(TEXT);
     });
 
     it("secondary text stays readable on an intersection note", () => {

@@ -23,7 +23,7 @@ export interface SheetPalette {
   marquee: string;
   labelBackground: string;
   badgeBackground: string;
-  tabText: string;
+  chipText: string;
   handleBackground: string;
   anchorIcon: string;
   decoration: {
@@ -50,6 +50,15 @@ export interface SheetPalette {
     skipStripe: string;
   };
   divider: { rest: string; active: string };
+  /** One colour per entity slot (`data-entity="0"`…), mode-specific: light
+   *  tones carry white tab text, dark tones dark text. */
+  entities: string[];
+  /** A region with no entity, or one past the palette's end. */
+  entityFallback: string;
+  /** Tab text on an entity colour. */
+  entityText: string;
+  confidence: { green: string; yellow: string; red: string; none: string };
+  drift: { blocker: string; warn: string };
 }
 
 declare module "@mui/material/styles" {

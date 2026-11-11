@@ -42,7 +42,9 @@ const disabledLook = (action: Palette["action"]) => ({
 
 /** A `[data-sheet-part]` selector, optionally narrowed to one `data-kind`. */
 const part = (name: string, kind?: string) =>
-  `[data-sheet-part="${name}"]${kind ? `[data-kind="${kind}"]` : ""}`;
+  // The attribute twice: 0,2,0 outranks an sx or MUI root class (0,1,0)
+  // whatever order the stylesheets were injected in.
+  `[data-sheet-part][data-sheet-part="${name}"]${kind ? `[data-kind="${kind}"]` : ""}`;
 
 const stripes = (color: string, band: number) =>
   `repeating-linear-gradient(45deg, ${color} 0 ${band}px, transparent ${band}px ${band * 2}px)`;
@@ -55,9 +57,14 @@ const stripes = (color: string, band: number) =>
  * region's entity colour, the one runtime value, arrives as the
  * `--region-color` custom property on its overlay.
  */
-export function sheetCanvasRules(palette: Palette): Record<string, object> {
+export function sheetCanvasRules(
+  palette: Palette,
+  ring: object
+): Record<string, object> {
   const s = palette.sheet;
-  if (!s) return {};
+  // The JSONs are cast to ThemeOptions, so a theme missing its sheet palette
+  // would otherwise render a canvas with no gridlines, headers or tints.
+  if (!s) throw new Error("This theme has no palette.sheet (#996).");
   const grid = `1px solid ${s.gridLine}`;
   const header = {
     borderRight: grid,
@@ -90,7 +97,40 @@ export function sheetCanvasRules(palette: Palette): Record<string, object> {
     },
     [part("region-tab")]: {
       backgroundColor: "var(--region-color)",
-      color: s.tabText,
+      color: s.entityText,
+    },
+    // A region that extends past its bounds fades out in its colour.
+    [part("region-extension")]: {
+      borderColor: "var(--region-color)",
+      "--region-fade":
+        "color-mix(in srgb, var(--region-color) 20%, transparent)",
+    },
+    [`${part("region-extension")}[data-direction="down"]`]: {
+      background:
+        "linear-gradient(180deg, var(--region-fade) 0%, transparent 100%)",
+    },
+    [`${part("region-extension")}[data-direction="right"]`]: {
+      background:
+        "linear-gradient(90deg, var(--region-fade) 0%, transparent 100%)",
+    },
+    // The legend's and Review step's entity dots, and the legend's chip.
+    [part("entity-dot")]: { backgroundColor: "var(--region-color)" },
+    [`${part("entity-chip")}[data-selected]`]: {
+      borderColor: "var(--region-color)",
+      backgroundColor:
+        "color-mix(in srgb, var(--region-color) 8%, transparent)",
+    },
+    [part("confidence-dot")]: { backgroundColor: "var(--confidence-color)" },
+    [part("confidence-chip")]: {
+      borderColor: "var(--confidence-color)",
+      backgroundColor:
+        "color-mix(in srgb, var(--confidence-color) 10%, transparent)",
+    },
+    [`${part("drift-banner")}[data-severity="blocker"]`]: {
+      backgroundColor: s.drift.blocker,
+    },
+    [`${part("drift-banner")}:not([data-severity="blocker"])`]: {
+      backgroundColor: s.drift.warn,
     },
     [part("region-badge")]: {
       backgroundColor: s.badgeBackground,
@@ -126,6 +166,8 @@ export function sheetCanvasRules(palette: Palette): Record<string, object> {
     },
     [`${part("intersection")}[data-editable]:hover, ${part("intersection")}[data-editable]:focus-visible`]:
       { backgroundColor: s.intersection.hover },
+    // An editable intersection is a button: the same inset ring as a cell.
+    [`${part("intersection")}[data-editable]:focus-visible`]: ring,
     [part("divider-tint")]: { backgroundColor: s.divider.rest },
     [`${part("divider")}:hover > ${part("divider-tint")}, ${part("divider")}:focus-visible > ${part("divider-tint")}`]:
       { backgroundColor: s.divider.active },
@@ -159,9 +201,17 @@ export function sheetCanvasRules(palette: Palette): Record<string, object> {
       };
       rules[part(`${name}-chip`, kind)] = {
         backgroundColor: c.chip,
-        color: s.tabText,
+        color: s.chipText,
       };
     }
+  }
+  // Entity slots and confidence bands set the colour their parts read.
+  s.entities.forEach((colour, slot) => {
+    rules[`[data-entity="${slot}"]`] = { "--region-color": colour };
+  });
+  rules['[data-entity="none"]'] = { "--region-color": s.entityFallback };
+  for (const [band, colour] of Object.entries(s.confidence)) {
+    rules[`[data-confidence="${band}"]`] = { "--confidence-color": colour };
   }
   return rules;
 }
@@ -202,7 +252,10 @@ export function a11yComponents(palette: Palette): ThemeOptions {
             ...ring,
             outlineOffset: -FOCUS_RING_WIDTH,
           },
-          ...sheetCanvasRules(palette),
+          ...sheetCanvasRules(palette, {
+            ...ring,
+            outlineOffset: -FOCUS_RING_WIDTH,
+          }),
         },
       },
       MuiButtonBase: {

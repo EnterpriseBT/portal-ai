@@ -67,7 +67,7 @@
       "marquee": "rgba(37,99,235,0.08)",
       "labelBackground": "#ffffff",
       "badgeBackground": "#ffffff",
-      "tabText": "#ffffff",
+      "chipText": "#ffffff",
       "handleBackground": "#ffffff",
       "anchorIcon": "#c2410c",
       "decoration": {
@@ -124,6 +124,32 @@
       "divider": {
         "rest": "rgba(37,99,235,0.28)",
         "active": "rgba(37,99,235,0.75)"
+      },
+      "entities": [
+        "#2563eb",
+        "#db2777",
+        "#047857",
+        "#b45309",
+        "#7c3aed",
+        "#dc2626",
+        "#0e7490",
+        "#9333ea",
+        "#15803d",
+        "#c2410c",
+        "#4f46e5",
+        "#be185d"
+      ],
+      "entityFallback": "#64748b",
+      "entityText": "#ffffff",
+      "confidence": {
+        "green": "#16a34a",
+        "yellow": "#a16207",
+        "red": "#dc2626",
+        "none": "#64748b"
+      },
+      "drift": {
+        "blocker": "#fee2e2",
+        "warn": "#fef3c7"
       }
     }
   },

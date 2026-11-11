@@ -1,26 +1,19 @@
-export const ENTITY_COLOR_PALETTE: readonly string[] = [
-  "#2563eb",
-  "#db2777",
-  "#047857",
-  "#b45309",
-  "#7c3aed",
-  "#dc2626",
-  "#0e7490",
-  "#9333ea",
-  "#15803d",
-  "#c2410c",
-  "#4f46e5",
-  "#be185d",
-];
+/** How many entity colours each theme defines (`palette.sheet.entities`). */
+export const ENTITY_SLOT_COUNT = 12;
 
-export function colorForEntity(
+/**
+ * An entity's colour slot, for `data-entity` on whatever wears its colour
+ * (#996). The theme maps each slot to a mode-specific colour, so a region
+ * reads the same entity in both themes at AA. "none" is a region with no
+ * entity, or an entity not in the order.
+ */
+export function entitySlot(
   entityId: string | null | undefined,
   entityOrder: string[]
 ): string {
-  if (!entityId) return "#64748b";
+  if (!entityId) return "none";
   const index = entityOrder.indexOf(entityId);
-  if (index < 0) return "#64748b";
-  return ENTITY_COLOR_PALETTE[index % ENTITY_COLOR_PALETTE.length] ?? "#64748b";
+  return index < 0 ? "none" : String(index % ENTITY_SLOT_COUNT);
 }
 
 export function confidenceBand(
@@ -31,13 +24,3 @@ export function confidenceBand(
   if (score >= 0.6) return "yellow";
   return "red";
 }
-
-export const CONFIDENCE_BAND_COLOR: Record<
-  "green" | "yellow" | "red" | "none",
-  string
-> = {
-  green: "#16a34a",
-  yellow: "#ca8a04",
-  red: "#dc2626",
-  none: "#94a3b8",
-};

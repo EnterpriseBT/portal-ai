@@ -66,8 +66,8 @@
       "placeholderText": "rgba(240,238,255,0.3)",
       "marquee": "rgba(96,165,250,0.14)",
       "labelBackground": "#16162a",
-      "badgeBackground": "#ffffff",
-      "tabText": "#ffffff",
+      "badgeBackground": "#16162a",
+      "chipText": "#ffffff",
       "handleBackground": "#16162a",
       "anchorIcon": "#fb923c",
       "decoration": {
@@ -118,12 +118,38 @@
           "border": "rgba(148,163,184,0.55)",
           "chip": "#475569"
         },
-        "hover": "rgba(251,191,36,0.28)",
+        "hover": "rgba(251,191,36,0.22)",
         "skipStripe": "rgba(148,163,184,0.28)"
       },
       "divider": {
         "rest": "rgba(96,165,250,0.3)",
         "active": "rgba(96,165,250,0.8)"
+      },
+      "entities": [
+        "#60a5fa",
+        "#f472b6",
+        "#34d399",
+        "#fbbf24",
+        "#a78bfa",
+        "#f87171",
+        "#22d3ee",
+        "#c084fc",
+        "#4ade80",
+        "#fb923c",
+        "#818cf8",
+        "#fb7185"
+      ],
+      "entityFallback": "#94a3b8",
+      "entityText": "#0f0f1f",
+      "confidence": {
+        "green": "#4ade80",
+        "yellow": "#facc15",
+        "red": "#f87171",
+        "none": "#94a3b8"
+      },
+      "drift": {
+        "blocker": "rgba(248,113,113,0.14)",
+        "warn": "rgba(251,191,36,0.12)"
       }
     }
   },

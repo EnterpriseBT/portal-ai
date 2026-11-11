@@ -1756,11 +1756,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     // pointerEvents: "none" already, so the value is
                     // moot for them.
                     touchAction: isEditable ? "none" : undefined,
-                    // The theme tints an editable block on hover and focus
-                    // (#996); the focus ring is the tint, not an outline.
-                    "&:focus-visible": isEditable
-                      ? { outline: "none" }
-                      : undefined,
                   }}
                 >
                   {o.kind === "pivot-pivot" && o.label && (
@@ -1902,7 +1897,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     }}
                   >
                     <Box
-                      className="divider-tint"
                       data-sheet-part="divider-tint"
                       aria-hidden
                       sx={{ ...tintStyle, pointerEvents: "none" }}

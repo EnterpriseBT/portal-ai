@@ -2,7 +2,7 @@ import React from "react";
 import { Box } from "@portalai/core/ui";
 
 import { formatBounds } from "./utils/a1-notation.util";
-import { colorForEntity } from "./utils/region-editor-colors.util";
+import { entitySlot } from "./utils/region-editor-colors.util";
 import type { CellBounds, RegionDraft } from "./utils/region-editor.types";
 import {
   orientationArrow,
@@ -87,7 +87,7 @@ function anchorOffset(
   return { left: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
 }
 
-/** A tab badge's shape; the theme colours it from `--region-color` (#996). */
+/** A tab badge's shape; the theme colours it from the region's entity slot (#996). */
 const TAB_BADGE_STYLE: React.CSSProperties = {
   borderRadius: 4,
   padding: "0 4px",
@@ -130,7 +130,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   onBodyPointerDown,
   onResizeStart,
 }) => {
-  const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
+  const slot = entitySlot(region.targetEntityDefinitionId, entityOrder);
   const { drift } = region;
   const left = ROW_HEADER_WIDTH + bounds.startCol * cellWidth;
   const top = COL_HEADER_HEIGHT + bounds.startRow * cellHeight;
@@ -177,6 +177,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
       <Box
         data-testid={`region-overlay-${region.id}`}
         data-sheet-part="region"
+        data-entity={slot}
         data-selected={selected || undefined}
         aria-hidden
         onPointerDown={onBodyPointerDown(region.id, bounds)}
@@ -186,9 +187,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           top,
           width,
           height,
-          // The entity colour, the one runtime value: the theme paints the
-          // border, fill, tab, badges and handles from it (#996).
-          "--region-color": color,
           borderWidth: 2,
           borderStyle: "solid",
           cursor: movable && selected ? "move" : "pointer",
@@ -294,6 +292,9 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
       </Box>
       {extendsDown && (
         <Box
+          data-sheet-part="region-extension"
+          data-direction="down"
+          data-entity={slot}
           sx={{
             position: "absolute",
             left,
@@ -301,16 +302,17 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             width,
             height: 12,
             pointerEvents: "none",
-            background: `linear-gradient(180deg, ${color}33 0%, transparent 100%)`,
             borderLeft: "2px dashed",
             borderRight: "2px dashed",
-            borderColor: color,
             zIndex: selected ? 6 : 5,
           }}
         />
       )}
       {extendsRight && (
         <Box
+          data-sheet-part="region-extension"
+          data-direction="right"
+          data-entity={slot}
           sx={{
             position: "absolute",
             left: left + width,
@@ -318,10 +320,8 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             width: 12,
             height,
             pointerEvents: "none",
-            background: `linear-gradient(90deg, ${color}33 0%, transparent 100%)`,
             borderTop: "2px dashed",
             borderBottom: "2px dashed",
-            borderColor: color,
             zIndex: selected ? 6 : 5,
           }}
         />

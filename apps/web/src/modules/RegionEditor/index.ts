@@ -64,10 +64,9 @@ export {
 } from "./utils/a1-notation.util";
 
 export {
-  ENTITY_COLOR_PALETTE,
-  colorForEntity,
+  ENTITY_SLOT_COUNT,
+  entitySlot,
   confidenceBand,
-  CONFIDENCE_BAND_COLOR,
 } from "./utils/region-editor-colors.util";
 
 export {
