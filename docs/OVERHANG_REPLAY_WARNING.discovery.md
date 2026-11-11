@@ -130,7 +130,7 @@ Today the editor crashes on open. `planRegionsToDrafts` has to stop throwing:
 
 ## Open questions
 
-1. **Reaping around a missing sheet.** Sync reaps per entity, and only for entities that got records this run. A single-region entity whose sheet vanished therefore keeps its old records, stale. An entity with another region on a live sheet loses the missing region's records. Should a missing sheet protect its records from the reap? **Lean: not here.** The warning states the effect accurately ("its records weren't refreshed"), and changing reap semantics, which needs per-region provenance on records, is its own ticket, filed from this discovery.
+1. **Reaping around a missing sheet.** Sync reaps per entity, and only for entities that got records this run. A single-region entity whose sheet vanished therefore keeps its old records, stale. An entity with another region on a live sheet loses the missing region's records. Should a missing sheet protect its records from the reap? **Lean: not here.** The warning states the effect accurately ("its records weren't refreshed"), and changing reap semantics, which needs per-region provenance on records, is its own ticket: #1012.
 2. **Overhang reaping.** Rows past a shrunken sheet's end really are gone, so their records are reaped by the normal watermark. That's correct, so the warning says "replayed as blank", not "kept". **Lean: keep**; it's the source of truth shrinking.
 3. **Move to sheet scope.** Re-homing keeps the bounds, which may not fit or mean the same thing on the other sheet. **Lean:** keep the bounds and let Decision 5's warning handle any overhang; the user re-interprets anyway.
 4. **Recommit after Fit to sheet.** The editor's commit replays the trimmed plan, so the overhang drift no longer appears. **Lean: no extra handling**; Decision 5 already cleared the warning before commit.
@@ -148,7 +148,7 @@ Today the editor crashes on open. `planRegionsToDrafts` has to stop throwing:
 
 ## What this doesn't decide
 
-- Reap semantics for a missing sheet's records (open question 1), which becomes its own ticket.
+- Reap semantics for a missing sheet's records (open question 1): #1012.
 - Warnings for other drift kinds, or wiring `DriftBannerUI` in general.
 - Clamping stored bounds without the user's action.
 - The draft-commit path's own bounds check (a client plan past the sheet replays blanks, and now warns).
