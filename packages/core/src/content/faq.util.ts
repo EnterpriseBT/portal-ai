@@ -166,6 +166,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Sync", "Connector Entity", "Job"],
   },
   {
+    question: "What happens when a synced sheet gets smaller or is deleted?",
+    answer:
+      "A layout plan remembers where each region sits in the source sheet. If rows or columns are deleted from the sheet, the part of a region past its new last row or column is skipped, and records from rows that are gone are removed. If a region's whole sheet is deleted or renamed, that region is skipped and its records aren't refreshed. Either way the sync still completes, and its message names the affected regions. Open Modify Layout Plan to fix them: Fit to sheet trims a region back inside its sheet, and a region whose sheet is gone can be moved to another sheet or deleted.",
+    category: FAQCategory.Data,
+    relatedGlossaryTerms: ["Sync", "Connector Entity"],
+  },
+  {
     question: "When should I use a SQL filter instead of the filter builder?",
     answer:
       "Use the builder whenever it can say what you mean: it covers comparisons, lists and text matching on any column. Switch a view's row filter to SQL when it can't, for example rows within a distance of a point, a value inside a JSON column, or one column compared with another (amount > cost). A SQL filter is one condition over the entity's own columns. It's checked when you save, so a mistake is caught then, and Preview shows the rows it selects first. Describe the rows you want and Suggest writes one for you to review. SQL filters need a plan that includes advanced filters.",

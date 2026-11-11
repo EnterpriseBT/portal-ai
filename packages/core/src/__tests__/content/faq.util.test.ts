@@ -59,12 +59,13 @@ describe("FAQ_ENTRIES", () => {
     "Who can manage billing?",
     "My plan says it's managed — what does that mean?",
     "Why is a toolpack marked “Inactive on your plan”?",
-    // Working with Data (5)
+    // Working with Data (6 — #1009 added 1)
     "What's the difference between a connector and an entity?",
     "What are column definitions and why do they matter?",
     "What are field mappings?",
     "How do I validate my data?",
     "What happens when I sync an entity?",
+    "What happens when a synced sheet gets smaller or is deleted?",
     // Organization & Grouping (3)
     "What are entity groups and when should I use them?",
     'What is a "link field" in an entity group?',
@@ -87,8 +88,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (31 total)", () => {
-    expect(expectedQuestions).toHaveLength(31);
+  it("includes every question listed in the audit doc (32 total)", () => {
+    expect(expectedQuestions).toHaveLength(32);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();
