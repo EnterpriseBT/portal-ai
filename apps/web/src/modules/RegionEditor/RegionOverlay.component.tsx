@@ -9,6 +9,7 @@ import {
   orientationArrowLabel,
   orientationFromDraft,
 } from "./utils/region-orientation.util";
+import { SHEET_LAYER } from "./utils/sheet-layers.util";
 
 function hasDynamicTailPivot(
   region: RegionDraft,
@@ -189,7 +190,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           borderColor: color,
           backgroundColor: `${color}1A`,
           cursor: movable && selected ? "move" : "pointer",
-          zIndex: selected ? 6 : 5,
+          zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           boxShadow: selected ? `0 0 0 2px ${color}80` : undefined,
           borderBottomStyle: extendsDown ? "dashed" : "solid",
           borderRightStyle: extendsRight ? "dashed" : "solid",
@@ -276,7 +277,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
                 width: HANDLE_HIT_SIZE,
                 height: HANDLE_HIT_SIZE,
                 cursor: h.cursor,
-                zIndex: 7,
+                zIndex: SHEET_LAYER.handle,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -315,7 +316,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             borderLeft: "2px dashed",
             borderRight: "2px dashed",
             borderColor: color,
-            zIndex: selected ? 6 : 5,
+            zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           }}
         />
       )}
@@ -332,7 +333,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             borderTop: "2px dashed",
             borderBottom: "2px dashed",
             borderColor: color,
-            zIndex: selected ? 6 : 5,
+            zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           }}
         />
       )}
