@@ -154,3 +154,58 @@ describe("useConnectorInstanceSync — re-latch onto a running sync", () => {
     expect(streamCalls[streamCalls.length - 1]).toBe("job-mut");
   });
 });
+
+// #1009: a completed sync's replay warnings ride the hook's state.
+describe("useConnectorInstanceSync — replay warnings", () => {
+  const counts = { created: 1, updated: 0, unchanged: 0, deleted: 0 };
+  const warning = {
+    kind: "sheet-missing",
+    regionId: "r1",
+    sheet: "Q3",
+    targetEntityDefinitionId: "contacts",
+    bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+  };
+
+  it("keeps the warnings and the omitted count from a completed stream", () => {
+    currentStream = {
+      ...idleStream(),
+      status: "completed",
+      result: {
+        recordCounts: counts,
+        replayWarnings: [warning],
+        replayWarningsOmitted: 4,
+      },
+    };
+    const { result } = renderHook(() => useConnectorInstanceSync("ci-1"), {
+      wrapper,
+    });
+    expect(result.current.replayWarnings).toEqual([warning]);
+    expect(result.current.replayWarningsOmitted).toBe(4);
+  });
+
+  it("is null and 0 when the result carries none", () => {
+    currentStream = {
+      ...idleStream(),
+      status: "completed",
+      result: { recordCounts: counts },
+    };
+    const { result } = renderHook(() => useConnectorInstanceSync("ci-1"), {
+      wrapper,
+    });
+    expect(result.current.replayWarnings).toBeNull();
+    expect(result.current.replayWarningsOmitted).toBe(0);
+  });
+
+  it("is null, not a crash, when the warnings are malformed", () => {
+    currentStream = {
+      ...idleStream(),
+      status: "completed",
+      result: { recordCounts: counts, replayWarnings: [{ kind: "nonsense" }] },
+    };
+    const { result } = renderHook(() => useConnectorInstanceSync("ci-1"), {
+      wrapper,
+    });
+    expect(result.current.replayWarnings).toBeNull();
+    expect(result.current.recordCounts).toEqual(counts);
+  });
+});

@@ -211,8 +211,9 @@ None.
   - warning severity with the copy for each kind;
   - "+N more" counts the omitted ones;
   - the link appears only with `editLayoutPlanLink`;
-  - no warnings → today's success;
-  - axe clean.
+  - no warnings → today's success.
+
+  Axe isn't on `main` yet (it arrives with epic #791), so the link's accessible name and target are asserted directly.
 
   ≈ 6 cases.
 - `src/__tests__/replay-warning.util.test.ts` (new): the `formatReplayWarning` copy for rows, columns, both, and a missing sheet. ≈ 4 cases.
@@ -220,7 +221,7 @@ None.
 - `src/modules/RegionEditor/__tests__/RegionConfigurationPanel.test.tsx`: the overhang box and its copy; Fit to sheet calls `onFitToSheet`; no box when `overhang` is null. ≈ 3 cases.
 - `src/modules/RegionEditor/__tests__/RegionDrawingStep.test.tsx`: Fit to sheet updates the bounds through `onRegionUpdate`, with re-aligned segments; Interpret with an overhanging region shows the validation alert naming it and doesn't call `onInterpret`; after Fit to sheet it does. ≈ 3 cases.
 - `src/workflows/FileUploadConnector/__tests__/layout-plan-mapping.util.test.ts`: `splitPlanRegionsBySheet` separates orphans; `orphanToDraft` keeps settings on the new sheet; `planRegionsToDrafts` still throws. ≈ 4 cases.
-- `src/__tests__/OrphanedRegionsNotice.test.tsx` (new): it renders each orphan; Move calls `onMove` with the chosen sheet; Delete calls `onDelete`; axe clean. ≈ 4 cases.
+- `src/__tests__/OrphanedRegionsNotice.test.tsx` (new): it renders each orphan; Move calls `onMove` with the chosen sheet; Delete calls `onDelete`; the controls are named per region. ≈ 4 cases.
 - `src/__tests__/EditLayoutPlanView.test.tsx`:
   - a plan with a missing-sheet region opens (no crash) and shows the notice;
   - Move and Delete resolve it and unblock Interpret;

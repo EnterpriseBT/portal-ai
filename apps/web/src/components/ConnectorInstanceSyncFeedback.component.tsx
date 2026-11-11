@@ -1,7 +1,9 @@
 import type React from "react";
 
+import { Link } from "@tanstack/react-router";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import MuiLink from "@mui/material/Link";
 import Snackbar from "@mui/material/Snackbar";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
 
@@ -9,8 +11,14 @@ import { Box, Progress, Stack, Typography } from "@portalai/core/ui";
 import { JobModel } from "@portalai/core/models";
 import type { JobProgressDetail, JobStatus } from "@portalai/core/models";
 
+import type { ReplayWarning } from "@portalai/core/contracts";
+
 import type { SyncRecordCounts } from "../utils/use-connector-instance-sync.util";
 import { formatJobProgress } from "../utils/job-progress.util";
+import { formatReplayWarning } from "../utils/replay-warning.util";
+
+/** #1009: how many regions the warning names before "+N more". */
+const SHOWN_REPLAY_WARNINGS = 3;
 
 export interface ConnectorInstanceSyncFeedbackUIProps {
   /** Live job status from the SSE stream. */
@@ -38,6 +46,14 @@ export interface ConnectorInstanceSyncFeedbackUIProps {
   onReconnect?: () => void;
   /** Reconnect popup in flight. */
   isReconnecting?: boolean;
+  /** #1009: regions the sync read past their sheet or skipped (a missing
+   *  sheet). When present, the success renders as a warning naming them. */
+  replayWarnings?: ReplayWarning[] | null;
+  /** #1009: warnings past the result's cap, counted into "+N more". */
+  replayWarningsOmitted?: number;
+  /** #1009: the instance whose layout editor the warning links to; null or
+   *  absent when the caller can't edit the plan, so no link renders. */
+  editLayoutPlanLink?: { connectorInstanceId: string } | null;
 }
 
 /**
@@ -76,6 +92,9 @@ export const ConnectorInstanceSyncFeedbackUI = ({
   showReconnect,
   onReconnect,
   isReconnecting,
+  replayWarnings,
+  replayWarningsOmitted = 0,
+  editLayoutPlanLink,
 }: ConnectorInstanceSyncFeedbackUIProps) => {
   const isLive = jobStatus !== null && !JobModel.isTerminalStatus(jobStatus);
   const open = isLive || recordCounts !== null || errorMessage !== null;
@@ -115,6 +134,49 @@ export const ConnectorInstanceSyncFeedbackUI = ({
               animated
             />
           </Box>
+        </Stack>
+      </Alert>
+    );
+  } else if (recordCounts && replayWarnings && replayWarnings.length > 0) {
+    const shown = replayWarnings.slice(0, SHOWN_REPLAY_WARNINGS);
+    const more =
+      replayWarnings.length - shown.length + Math.max(0, replayWarningsOmitted);
+    body = (
+      <Alert
+        severity="warning"
+        variant="filled"
+        onClose={onDismissResult}
+        sx={{ maxWidth: 480 }}
+        action={
+          editLayoutPlanLink ? (
+            <Link
+              to="/connectors/$connectorInstanceId/layout-plan/edit"
+              params={{
+                connectorInstanceId: editLayoutPlanLink.connectorInstanceId,
+              }}
+              style={{ color: "inherit", alignSelf: "center" }}
+            >
+              <MuiLink component="span" color="inherit" sx={{ mr: 1 }}>
+                Modify layout plan
+              </MuiLink>
+            </Link>
+          ) : undefined
+        }
+      >
+        <Stack spacing={0.5}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Synced, but part of the layout plan no longer fits the source
+          </Typography>
+          {shown.map((w) => (
+            <Typography key={w.regionId} variant="body2">
+              {formatReplayWarning(w)}
+            </Typography>
+          ))}
+          {more > 0 && <Typography variant="body2">+{more} more</Typography>}
+          <Typography variant="body2">
+            {recordCounts.created} added, {recordCounts.updated} updated,{" "}
+            {recordCounts.unchanged} unchanged, {recordCounts.deleted} removed
+          </Typography>
         </Stack>
       </Alert>
     );
