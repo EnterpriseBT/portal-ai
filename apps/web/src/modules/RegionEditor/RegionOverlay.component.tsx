@@ -264,10 +264,29 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           {selected && <span style={tabBadgeStyle(color)}>Selected</span>}
           {invalid && <span style={tabBadgeStyle(color)}>Needs attention</span>}
         </Box>
-
-        {selected &&
-          resizable &&
-          HANDLE_DEFS.map((h) => (
+      </Box>
+      {selected && resizable && (
+        // The handles sit beside the overlay, not inside it (#1005): the
+        // overlay's z-index makes it a stacking context, so a handle inside
+        // it could never rise above an editable intersection block. This
+        // frame repeats the overlay's box (the transparent border keeps the
+        // handles' offsets where the overlay's border put them) and passes
+        // the pointer through everywhere but the handles.
+        <Box
+          data-testid={`region-handles-${region.id}`}
+          aria-hidden
+          sx={{
+            position: "absolute",
+            left,
+            top,
+            width,
+            height,
+            border: "2px solid transparent",
+            pointerEvents: "none",
+            zIndex: SHEET_LAYER.handle,
+          }}
+        >
+          {HANDLE_DEFS.map((h) => (
             <Box
               key={h.kind}
               data-testid={`region-resize-${h.kind}`}
@@ -277,7 +296,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
                 width: HANDLE_HIT_SIZE,
                 height: HANDLE_HIT_SIZE,
                 cursor: h.cursor,
-                zIndex: SHEET_LAYER.handle,
+                pointerEvents: "auto",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -302,7 +321,8 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               />
             </Box>
           ))}
-      </Box>
+        </Box>
+      )}
       {extendsDown && (
         <Box
           sx={{

@@ -1,5 +1,8 @@
 import { SHEET_LAYER } from "../utils/sheet-layers.util";
 
+/** The layers that share the canvas's one stacking context. */
+const { corner: _corner, ...SIBLING_LAYERS } = SHEET_LAYER;
+
 describe("SHEET_LAYER (#1005)", () => {
   test("every layer is an integer, the only z-index CSS accepts", () => {
     // A fractional z-index computes to `auto`, which is how an editable
@@ -12,28 +15,39 @@ describe("SHEET_LAYER (#1005)", () => {
     }
   });
 
-  test("the sticky headers stack row header < header row < corner", () => {
-    expect(SHEET_LAYER.rowHeader).toBeLessThan(SHEET_LAYER.headerRow);
-    expect(SHEET_LAYER.headerRow).toBeLessThan(SHEET_LAYER.corner);
+  test("no two sibling layers tie, so no order falls back to the DOM", () => {
+    const values = Object.values(SIBLING_LAYERS);
+    expect(new Set(values).size).toBe(values.length);
   });
 
-  test("tints stack decoration < intersection < segment, under the region", () => {
-    expect(SHEET_LAYER.decoration).toBeLessThan(SHEET_LAYER.intersection);
-    expect(SHEET_LAYER.intersection).toBeLessThan(SHEET_LAYER.segment);
-    expect(SHEET_LAYER.segment).toBeLessThan(SHEET_LAYER.region);
-    expect(SHEET_LAYER.region).toBeLessThan(SHEET_LAYER.regionSelected);
+  test("the layers stack in the intended order, lowest first", () => {
+    const order = [
+      "decoration",
+      "intersection",
+      "segment",
+      "marquee",
+      "region",
+      "regionSelected",
+      "editableIntersection",
+      "handle",
+      "divider",
+      "rowHeader",
+      "headerRow",
+    ] as const;
+    expect(Object.keys(SIBLING_LAYERS).sort()).toEqual([...order].sort());
+    const values = order.map((layer) => SHEET_LAYER[layer]);
+    expect(values).toEqual([...values].sort((a, b) => a - b));
   });
 
-  test("an editable intersection sits above the selected region", () => {
-    expect(SHEET_LAYER.editableIntersection).toBeGreaterThan(
-      SHEET_LAYER.regionSelected
-    );
+  test("the sticky headers sit above every overlay", () => {
+    const { rowHeader, headerRow, ...overlays } = SIBLING_LAYERS;
+    for (const value of Object.values(overlays)) {
+      expect(value).toBeLessThan(rowHeader);
+      expect(value).toBeLessThan(headerRow);
+    }
   });
 
-  test("resize handles and axis dividers stay on top", () => {
-    expect(SHEET_LAYER.handle).toBeGreaterThan(
-      SHEET_LAYER.editableIntersection
-    );
-    expect(SHEET_LAYER.divider).toBeGreaterThan(SHEET_LAYER.handle);
+  test("the corner sits above the column headers inside its row", () => {
+    expect(SHEET_LAYER.corner).toBeGreaterThan(0);
   });
 });

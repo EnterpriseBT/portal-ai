@@ -225,6 +225,36 @@ describe("SheetCanvasUI", () => {
     expect(screen.getAllByTestId(/^region-resize-/).length).toBeGreaterThan(0);
   });
 
+  test("resize handles render beside the region overlay, not inside it (#1005)", () => {
+    // The overlay's z-index makes it a stacking context, so a handle inside
+    // it is ordered only within the overlay and an editable intersection
+    // block (a sibling of the overlay) would cover it.
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+      targetEntityDefinitionId: "ent_a",
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={jest.fn()}
+      />
+    );
+    const overlay = screen.getByTestId("region-overlay-r1");
+    const handles = screen.getByTestId("region-handles-r1");
+    expect(overlay.contains(handles)).toBe(false);
+    expect(handles.parentElement).toBe(overlay.parentElement);
+    for (const handle of screen.getAllByTestId(/^region-resize-/)) {
+      expect(overlay.contains(handle)).toBe(false);
+    }
+  });
+
   test("dragging a segment divider fires onSegmentResize with redistributed counts", () => {
     const region: RegionDraft = {
       id: "r1",
