@@ -357,6 +357,26 @@ describe("detectHeaders", () => {
       }
     });
 
+    it("caps the error at 20 regions and counts the rest", async () => {
+      const hints = Array.from({ length: 22 }, (_, i) => ({
+        sheet: "Sheet1",
+        bounds: { startRow: 30 + i, startCol: 1, endRow: 30 + i, endCol: 3 },
+        targetEntityDefinitionId: `blank-${i}`,
+        headerAxes: ["row" as const],
+      }));
+      let message = "";
+      try {
+        await runWith({
+          workbook: oneSheet([], { rows: 60, cols: 3 }),
+          regionHints: hints,
+        });
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message.match(/Region A\d+:C\d+/g)).toHaveLength(20);
+      expect(message.endsWith(" And 2 more not shown.")).toBe(true);
+    });
+
     it("names every region and axis without a header in one error", async () => {
       const input: InterpretInput = {
         workbook: oneSheet(
