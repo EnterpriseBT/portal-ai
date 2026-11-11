@@ -9,6 +9,9 @@ import {
   type ThemeOptions,
 } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
+// The palette and typography augmentations (`palette.sheet`, #996). A module,
+// not a bare .d.ts, so the build emits it and consumers of the theme see it.
+import "../types/theme.js";
 import brandTheme from "../assets/themes/brand-theme.json" with { type: "json" };
 import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type: "json" };
 
@@ -104,6 +107,16 @@ export function sheetCanvasRules(palette: Palette): Record<string, object> {
     [part("anchor-icon")]: { color: s.anchorIcon },
     [part("decoration", "skipped")]: {
       backgroundImage: stripes(s.decoration.skippedStripe, 6),
+    },
+    // The configuration panel's legend swatch: the same tint, finer stripes.
+    [`${part("decoration", "skipped")}[data-swatch]`]: {
+      backgroundImage: stripes(s.decoration.skippedStripe, 3),
+    },
+    // The panel's per-intersection notes mirror the canvas's pivot × pivot
+    // block: its tint, its outline.
+    [part("intersection-note")]: {
+      backgroundColor: s.intersection.pivotPivot.fill,
+      borderColor: s.intersection.pivotPivot.border,
     },
     [part("segment", "skip")]: {
       backgroundImage: stripes(s.segment.skipStripe, 5),

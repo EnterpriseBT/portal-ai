@@ -127,6 +127,15 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
       ).toBeGreaterThanOrEqual(TEXT);
     });
 
+    it("secondary text stays readable on an intersection note", () => {
+      expect(
+        getContrastRatio(
+          palette.text.secondary,
+          composite(sheet.intersection.pivotPivot.fill, surface)
+        )
+      ).toBeGreaterThanOrEqual(TEXT);
+    });
+
     it("the axis-name anchor icon stands out on its label", () => {
       expect(
         getContrastRatio(sheet.anchorIcon, sheet.labelBackground)

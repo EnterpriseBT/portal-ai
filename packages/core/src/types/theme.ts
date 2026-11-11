@@ -1,8 +1,10 @@
-import "@mui/material/styles";
+import type { CSSProperties } from "react";
+import type {} from "@mui/material/styles";
+import type {} from "@mui/material/Typography";
 
 /** One overlay kind on the sheet canvas: its tint, its outline, and the
  *  opaque fill its chip's text sits on (#996). */
-interface SheetOverlayColors {
+export interface SheetOverlayColors {
   fill: string;
   border: string;
   chip: string;
@@ -13,7 +15,7 @@ interface SheetOverlayColors {
  * `MuiCssBaseline` rules keyed by `data-sheet-part` (see `a11yComponents`),
  * so every colour on it lives here, in both theme JSONs.
  */
-interface SheetPalette {
+export interface SheetPalette {
   gridLine: string;
   headerBackground: string;
   headerText: string;
@@ -60,12 +62,12 @@ declare module "@mui/material/styles" {
   }
 
   interface TypographyVariants {
-    monospace: React.CSSProperties;
+    monospace: CSSProperties;
   }
 
   // Allow configuration using `createTheme`
   interface TypographyVariantsOptions {
-    monospace?: React.CSSProperties;
+    monospace?: CSSProperties;
   }
 }
 

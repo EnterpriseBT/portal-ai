@@ -87,14 +87,13 @@ function anchorOffset(
   return { left: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
 }
 
-const tabBadgeStyle = (color: string): React.CSSProperties => ({
-  backgroundColor: "#fff",
-  color,
+/** A tab badge's shape; the theme colours it from `--region-color` (#996). */
+const TAB_BADGE_STYLE: React.CSSProperties = {
   borderRadius: 4,
   padding: "0 4px",
   fontSize: 10,
   fontWeight: 700,
-});
+};
 
 export interface RegionOverlayUIProps {
   region: RegionDraft;
@@ -177,6 +176,8 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           here has a keyboard path there. */}
       <Box
         data-testid={`region-overlay-${region.id}`}
+        data-sheet-part="region"
+        data-selected={selected || undefined}
         aria-hidden
         onPointerDown={onBodyPointerDown(region.id, bounds)}
         sx={{
@@ -185,12 +186,13 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           top,
           width,
           height,
-          border: "2px solid",
-          borderColor: color,
-          backgroundColor: `${color}1A`,
+          // The entity colour, the one runtime value: the theme paints the
+          // border, fill, tab, badges and handles from it (#996).
+          "--region-color": color,
+          borderWidth: 2,
+          borderStyle: "solid",
           cursor: movable && selected ? "move" : "pointer",
           zIndex: selected ? 6 : 5,
-          boxShadow: selected ? `0 0 0 2px ${color}80` : undefined,
           borderBottomStyle: extendsDown ? "dashed" : "solid",
           borderRightStyle: extendsRight ? "dashed" : "solid",
           // The scroll container uses `pan-x pan-y` so empty cells pan
@@ -200,6 +202,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
         }}
       >
         <Box
+          data-sheet-part="region-tab"
           sx={{
             position: "absolute",
             top: -22,
@@ -207,8 +210,6 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             display: "flex",
             alignItems: "center",
             gap: 0.5,
-            backgroundColor: color,
-            color: "#fff",
             px: 0.75,
             py: 0.25,
             borderRadius: "4px 4px 0 0",
@@ -230,38 +231,27 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               formatBounds(bounds)}
           </span>
           {extentBadge && (
-            <span
-              style={{
-                backgroundColor: "#fff",
-                color,
-                borderRadius: 4,
-                padding: "0 4px",
-                fontSize: 10,
-                fontWeight: 700,
-              }}
-            >
+            <span data-sheet-part="region-badge" style={TAB_BADGE_STYLE}>
               {extentBadge}
             </span>
           )}
           {driftFlagged && (
-            <span
-              style={{
-                backgroundColor: "#fff",
-                color,
-                borderRadius: 4,
-                padding: "0 4px",
-                fontSize: 10,
-                fontWeight: 700,
-              }}
-            >
+            <span data-sheet-part="region-badge" style={TAB_BADGE_STYLE}>
               DRIFT
             </span>
           )}
           {/* State in words, not only in colour and weight (#795, 1.4.1).
-              Same badge as the others: it takes the entity's colour, which
-              only exists at runtime. */}
-          {selected && <span style={tabBadgeStyle(color)}>Selected</span>}
-          {invalid && <span style={tabBadgeStyle(color)}>Needs attention</span>}
+              Same badge as the others. */}
+          {selected && (
+            <span data-sheet-part="region-badge" style={TAB_BADGE_STYLE}>
+              Selected
+            </span>
+          )}
+          {invalid && (
+            <span data-sheet-part="region-badge" style={TAB_BADGE_STYLE}>
+              Needs attention
+            </span>
+          )}
         </Box>
 
         {selected &&
@@ -289,12 +279,12 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             >
               <Box
                 aria-hidden
+                data-sheet-part="handle"
                 sx={{
                   width: HANDLE_SIZE,
                   height: HANDLE_SIZE,
-                  backgroundColor: "#fff",
-                  border: "2px solid",
-                  borderColor: color,
+                  borderWidth: 2,
+                  borderStyle: "solid",
                   borderRadius: "2px",
                   pointerEvents: "none",
                 }}

@@ -1,3 +1,7 @@
+import { getContrastRatio } from "@mui/material/styles";
+
+import { THEME_MAP } from "@portalai/core/ui";
+
 import {
   CONFIDENCE_BAND_COLOR,
   ENTITY_COLOR_PALETTE,
@@ -61,4 +65,29 @@ describe("CONFIDENCE_BAND_COLOR", () => {
     expect(CONFIDENCE_BAND_COLOR.red).toBeTruthy();
     expect(CONFIDENCE_BAND_COLOR.none).toBeTruthy();
   });
+});
+
+describe("entity colours on the sheet canvas (#996)", () => {
+  // A region's tab is white text on its entity colour, and its badges are
+  // that colour on the badge background. Both are text, so AA's 4.5:1.
+  const colours = [...ENTITY_COLOR_PALETTE, colorForEntity(null, [])];
+
+  describe.each(Object.keys(THEME_MAP) as (keyof typeof THEME_MAP)[])(
+    "%s",
+    (name) => {
+      const { sheet } = THEME_MAP[name].palette;
+
+      it.each(colours)("tab text is readable on %s", (colour) => {
+        expect(getContrastRatio(sheet.tabText, colour)).toBeGreaterThanOrEqual(
+          4.5
+        );
+      });
+
+      it.each(colours)("%s is readable on a badge", (colour) => {
+        expect(
+          getContrastRatio(colour, sheet.badgeBackground)
+        ).toBeGreaterThanOrEqual(4.5);
+      });
+    }
+  );
 });

@@ -88,9 +88,7 @@ export type {
 } from "./utils/region-editor-validation.util";
 
 export {
-  DECORATION_COLOR,
   DECORATION_LABEL,
-  DECORATION_BACKGROUND_IMAGE,
   computeRegionDecorations,
   activeDecorationKinds,
 } from "./utils/region-editor-decorations.util";

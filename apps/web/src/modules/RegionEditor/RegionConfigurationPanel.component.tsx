@@ -38,7 +38,6 @@ import {
   CONFIDENCE_BAND_COLOR,
 } from "./utils/region-editor-colors.util";
 import {
-  DECORATION_COLOR,
   DECORATION_LABEL,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
@@ -718,18 +717,16 @@ export const RegionConfigurationPanelUI: React.FC<
                 sx={{ minWidth: 0 }}
               >
                 <Box
+                  data-sheet-part="decoration"
+                  data-kind={kind}
+                  data-swatch=""
                   sx={{
                     width: 12,
                     height: 12,
-                    backgroundColor: DECORATION_COLOR[kind],
                     borderRadius: 0.5,
                     border: "1px solid",
                     borderColor: "divider",
                     flexShrink: 0,
-                    backgroundImage:
-                      kind === "skipped"
-                        ? "repeating-linear-gradient(45deg, rgba(100,116,139,0.45) 0 3px, transparent 3px 6px)"
-                        : undefined,
                   }}
                 />
                 <Typography variant="caption" color="text.secondary">
@@ -1073,12 +1070,12 @@ export const RegionConfigurationPanelUI: React.FC<
             if (rowPivots.length === 0 || colPivots.length === 0) {
               return (
                 <Box
+                  data-sheet-part="intersection-note"
                   sx={{
                     p: 1.5,
                     borderRadius: 1,
-                    backgroundColor: "rgba(217, 119, 6, 0.08)",
-                    border: "1px dashed",
-                    borderColor: "rgba(180, 83, 9, 0.55)",
+                    borderWidth: 1,
+                    borderStyle: "dashed",
                   }}
                 >
                   <Typography
@@ -1124,22 +1121,20 @@ export const RegionConfigurationPanelUI: React.FC<
                         direction="row"
                         spacing={1}
                         alignItems="center"
+                        data-sheet-part="intersection-note"
                         sx={{
                           p: 1,
                           borderRadius: 1,
-                          backgroundColor: "rgba(217, 119, 6, 0.06)",
-                          border: "1px dashed",
-                          borderColor: "rgba(180, 83, 9, 0.45)",
+                          borderWidth: 1,
+                          borderStyle: "dashed",
                         }}
                       >
                         <MuiChip
                           size="small"
                           label={`${rowName} × ${colName}`}
-                          sx={{
-                            backgroundColor: "rgba(180, 83, 9, 0.85)",
-                            color: "#fff",
-                            fontWeight: 700,
-                          }}
+                          data-sheet-part="intersection-chip"
+                          data-kind="pivot-pivot"
+                          sx={{ fontWeight: 700 }}
                         />
                         <TextInput
                           size="small"

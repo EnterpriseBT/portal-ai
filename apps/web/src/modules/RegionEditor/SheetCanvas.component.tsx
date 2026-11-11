@@ -28,14 +28,6 @@ import {
   normalizeBounds,
 } from "./utils/a1-notation.util";
 import {
-  DECORATION_BACKGROUND_IMAGE,
-  DECORATION_COLOR,
-  INTERSECTION_OVERLAY_BACKGROUND_IMAGE,
-  INTERSECTION_OVERLAY_BORDER,
-  INTERSECTION_OVERLAY_COLOR,
-  SEGMENT_OVERLAY_BACKGROUND_IMAGE,
-  SEGMENT_OVERLAY_BORDER,
-  SEGMENT_OVERLAY_COLOR,
   computeIntersectionOverlays,
   computeRegionDecorations,
   computeSegmentOverlays,
@@ -1085,15 +1077,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({
       width: cellWidth,
       height: COL_HEADER_HEIGHT,
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       flex: "0 0 auto",
       fontSize: 11,
       fontWeight: 600,
-      color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
       // Headers are deliberate draw-this-band targets; the local override
@@ -1110,16 +1099,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       position: "sticky",
       left: 0,
       zIndex: 2,
-      background: "#f3f4f6",
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       flex: "0 0 auto",
       fontSize: 11,
       fontWeight: 600,
-      color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
       // See colHeaderStyle — draw-row-band engages immediately on touch.
@@ -1131,8 +1116,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({
       width: cellWidth,
       height: cellHeight,
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       paddingLeft: 6,
@@ -1158,6 +1141,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           role="columnheader"
           aria-colindex={col + 2}
           data-col-header={col}
+          data-sheet-part="col-header"
           style={colHeaderStyle}
         >
           {colIndexToLetter(col)}
@@ -1168,13 +1152,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       <div
         role="row"
         aria-rowindex={1}
+        data-sheet-part="header-row"
         style={{
           display: "flex",
           flexDirection: "row",
           position: "sticky",
           top: 0,
           zIndex: 3,
-          background: "#f3f4f6",
           width: gridWidth,
         }}
       >
@@ -1182,18 +1166,16 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           role="columnheader"
           aria-colindex={1}
           data-corner-header=""
+          data-sheet-part="corner"
           style={{
             width: ROW_HEADER_WIDTH,
             height: COL_HEADER_HEIGHT,
-            borderRight: "1px solid #e5e7eb",
-            borderBottom: "1px solid #e5e7eb",
             flex: "0 0 auto",
             boxSizing: "border-box",
             cursor: headerCursor,
             position: "sticky",
             left: 0,
             zIndex: 4,
-            background: "#f3f4f6",
             // Same rationale as col/row headers — engage the
             // whole-sheet selection immediately on touch.
             touchAction: "none",
@@ -1228,11 +1210,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       </div>
     );
   }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor, readOnly]);
-
-  const placeholderCellStyle: React.CSSProperties = useMemo(
-    () => ({ ...cellStyle, color: "rgba(0,0,0,0.25)" }),
-    [cellStyle]
-  );
 
   const { cellProps } = keyboard;
   // Each region's description renders once, hidden; its cells point at it.
@@ -1285,7 +1262,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             data-testid={`cell-${rowIndex}-${col}`}
             {...cellProps({ row: rowIndex, col })}
             aria-describedby={describedBy(col)}
-            style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
+            data-sheet-part="cell"
+            style={cellStyle}
             aria-busy={rowIsUnloaded || undefined}
           >
             {rowIsUnloaded ? (
@@ -1318,6 +1296,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             role="rowheader"
             aria-colindex={1}
             data-row-header={rowIndex}
+            data-sheet-part="row-header"
             style={rowHeaderStyle}
           >
             {rowIndex + 1}
@@ -1330,7 +1309,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       sheet.cells,
       sheet.colCount,
       cellStyle,
-      placeholderCellStyle,
       rowHeaderStyle,
       gridWidth,
       sliceCache,
@@ -1481,14 +1459,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`deco-${i}`}
                   title={d.label}
+                  data-sheet-part="decoration"
+                  data-kind={d.kind}
                   sx={{
                     position: "absolute",
                     left: dLeft,
                     top: dTop,
                     width: dWidth,
                     height: dHeight,
-                    backgroundColor: DECORATION_COLOR[d.kind],
-                    backgroundImage: DECORATION_BACKGROUND_IMAGE[d.kind],
                     pointerEvents: "none",
                     zIndex: 4,
                     display: showInlineLabel ? "flex" : "block",
@@ -1505,6 +1483,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   {showInlineLabel && (
                     <Box
                       component="span"
+                      data-sheet-part="deco-chip"
                       sx={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -1515,8 +1494,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                         px: 0.5,
                         py: 0.25,
                         borderRadius: 0.5,
-                        backgroundColor: "rgba(255,255,255,0.85)",
-                        color: "text.primary",
                         whiteSpace: "nowrap",
                         textOverflow: "ellipsis",
                         overflow: "hidden",
@@ -1527,7 +1504,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     >
                       {d.kind === "axisNameAnchor" && (
                         <AnchorIcon
-                          sx={{ fontSize: 11, color: "rgba(194, 65, 12, 1)" }}
+                          data-sheet-part="anchor-icon"
+                          sx={{ fontSize: 11 }}
                         />
                       )}
                       {d.label}
@@ -1566,6 +1544,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`seg-${o.axis}-${o.segmentIndex}`}
                   data-testid={`segment-overlay-${o.axis}-${o.segmentIndex}`}
+                  data-sheet-part="segment"
+                  data-kind={o.kind}
                   title={titleParts.join(" — ")}
                   aria-hidden
                   sx={{
@@ -1574,10 +1554,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     top: sTop,
                     width: sWidth,
                     height: sHeight,
-                    backgroundColor: SEGMENT_OVERLAY_COLOR[o.kind],
-                    backgroundImage: SEGMENT_OVERLAY_BACKGROUND_IMAGE[o.kind],
                     border: "1.5px solid",
-                    borderColor: SEGMENT_OVERLAY_BORDER[o.kind],
                     pointerEvents: "none",
                     // Sit above the generic header decorations (z=4) so the
                     // per-segment colour wins visually, but below the region
@@ -1591,6 +1568,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 >
                   <Box
                     component="span"
+                    data-sheet-part="segment-chip"
+                    data-kind={o.kind}
                     sx={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -1605,8 +1584,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       ml: isRow ? 0 : "2px",
                       px: "4px",
                       borderRadius: "3px",
-                      backgroundColor: SEGMENT_OVERLAY_BORDER[o.kind],
-                      color: "#fff",
                       fontSize: 10,
                       fontWeight: 700,
                       lineHeight: 1,
@@ -1691,6 +1668,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`intersection-${o.id}`}
                   data-testid={`intersection-overlay-${previewRegion.id}-${o.id}`}
+                  data-sheet-part="intersection"
+                  data-kind={o.kind}
+                  data-editable={isEditable || undefined}
                   role={isEditable ? "button" : undefined}
                   tabIndex={isEditable ? 0 : undefined}
                   // Drive editing from pointer-down rather than click — the
@@ -1757,11 +1737,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     top: iTop,
                     width: iWidth,
                     height: iHeight,
-                    backgroundColor: INTERSECTION_OVERLAY_COLOR[o.kind],
-                    backgroundImage:
-                      INTERSECTION_OVERLAY_BACKGROUND_IMAGE[o.kind],
                     border: "1.5px dashed",
-                    borderColor: INTERSECTION_OVERLAY_BORDER[o.kind],
                     pointerEvents: isEditable ? "auto" : "none",
                     cursor: isEditable ? "pointer" : "default",
                     // Editable intersection blocks must sit above the
@@ -1780,17 +1756,18 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     // pointerEvents: "none" already, so the value is
                     // moot for them.
                     touchAction: isEditable ? "none" : undefined,
-                    "&:hover, &:focus-visible": isEditable
-                      ? {
-                          backgroundColor: "rgba(217, 119, 6, 0.32)",
-                          outline: "none",
-                        }
+                    // The theme tints an editable block on hover and focus
+                    // (#996); the focus ring is the tint, not an outline.
+                    "&:focus-visible": isEditable
+                      ? { outline: "none" }
                       : undefined,
                   }}
                 >
                   {o.kind === "pivot-pivot" && o.label && (
                     <Box
                       component="span"
+                      data-sheet-part="intersection-chip"
+                      data-kind={o.kind}
                       sx={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -1799,8 +1776,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                         px: "5px",
                         py: "1px",
                         borderRadius: "3px",
-                        backgroundColor: INTERSECTION_OVERLAY_BORDER[o.kind],
-                        color: "#fff",
                         fontSize: 10,
                         fontWeight: 700,
                         lineHeight: 1.1,
@@ -1817,10 +1792,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                           component="span"
                           sx={{
                             fontWeight: 600,
+                            // Italic marks an inherited name; no fade, which
+                            // took the chip's text under AA (#996).
                             fontStyle: o.cellValueOverridden
                               ? "normal"
                               : "italic",
-                            opacity: o.cellValueOverridden ? 1 : 0.85,
                           }}
                         >
                           : {o.cellValueName}
@@ -1897,6 +1873,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   <Box
                     key={`divider-${axis}-${i}`}
                     data-testid={`segment-divider-${axis}-${i}`}
+                    data-sheet-part="divider"
                     aria-hidden
                     onPointerDown={handleSegmentDividerPointerDown({
                       regionId: previewRegion.id,
@@ -1922,17 +1899,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       // as a pan even though the surrounding scroll surface uses
                       // `pan-x pan-y`.
                       touchAction: "none",
-                      "& > .divider-tint": {
-                        backgroundColor: "rgba(37, 99, 235, 0.28)",
-                      },
-                      "&:hover > .divider-tint, &:focus-visible > .divider-tint":
-                        {
-                          backgroundColor: "rgba(37, 99, 235, 0.75)",
-                        },
                     }}
                   >
                     <Box
                       className="divider-tint"
+                      data-sheet-part="divider-tint"
                       aria-hidden
                       sx={{ ...tintStyle, pointerEvents: "none" }}
                     />
@@ -2003,6 +1974,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           {marqueeBounds && (
             <Box
               data-testid="selection-marquee"
+              data-sheet-part="marquee"
               aria-hidden
               sx={{
                 position: "absolute",
@@ -2016,7 +1988,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   cellHeight,
                 border: "2px dashed",
                 borderColor: "primary.main",
-                backgroundColor: "rgba(37,99,235,0.08)",
                 pointerEvents: "none",
                 zIndex: 4,
               }}
