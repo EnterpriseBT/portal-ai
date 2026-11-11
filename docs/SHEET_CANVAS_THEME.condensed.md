@@ -69,6 +69,10 @@ This change moves every canvas colour into the theme, adds dark values, and fixe
      - `utils/region-editor-decorations.util.ts`: the colour maps go, kinds and labels stay;
      - `utils/region-editor-colors.util.ts`: 700 tones;
      - `index.ts`: drop the removed exports.
+     - `RegionConfigurationPanel.component.tsx`, added in implementation: its legend swatches and its pivot × pivot notes and chip used the same colours, and that chip put white on 85% amber (about 4.4:1);
+     - the intersection chip's inherited name no longer fades to 85%, which took it under AA;
+     - core's `types/theme.d.ts` becomes `theme.ts`, imported by `ThemeProvider`, so the build emits the augmentation and web can see `palette.sheet`;
+     - `apps/site/scripts/generate-tokens.mjs` skips the app-only `sheet` group.
    - **Tests:**
      - `modules/RegionEditor/__tests__/region-editor-colors.util.test.ts`: entity AA in both themes;
      - new `__tests__/sheet-canvas-colors.guard.test.ts` (on `guard-source.util.ts`): no hex/rgba literal in the three canvas files;
