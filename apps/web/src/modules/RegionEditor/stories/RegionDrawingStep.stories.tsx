@@ -220,3 +220,53 @@ export const Interactive: Story = {
   },
   render: () => <InteractiveContent />,
 };
+
+// #1009: a stored region that outlived its sheet (rows deleted at the
+// source). The panel names what's past the sheet, the tab says PAST SHEET,
+// and Fit to sheet trims it back; Interpret refuses it until it fits.
+const OverhangContent: React.FC = () => {
+  const sheet = DEMO_WORKBOOK.sheets[0];
+  const [regions, setRegions] = useState<RegionDraft[]>([
+    {
+      id: "region_overhang",
+      sheetId: sheet.id,
+      bounds: {
+        startRow: 2,
+        startCol: 0,
+        endRow: sheet.rowCount + 4,
+        endCol: sheet.colCount - 1,
+      },
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: sheet.colCount }],
+      },
+      targetEntityDefinitionId: ENTITY_OPTIONS[0].value,
+      targetEntityLabel: ENTITY_OPTIONS[0].label,
+    },
+  ]);
+  return (
+    <RegionDrawingStepUI
+      workbook={DEMO_WORKBOOK}
+      regions={regions}
+      activeSheetId={sheet.id}
+      onActiveSheetChange={fn()}
+      selectedRegionId="region_overhang"
+      onSelectRegion={fn()}
+      onRegionDraft={fn()}
+      onRegionUpdate={(id, updates) =>
+        setRegions((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+        )
+      }
+      onRegionDelete={fn()}
+      entityOptions={ENTITY_OPTIONS}
+      onInterpret={fn()}
+    />
+  );
+};
+
+export const RegionPastItsSheet: Story = {
+  name: "Region past its sheet — Fit to sheet (#1009)",
+  args: {} as never,
+  render: () => <OverhangContent />,
+};
