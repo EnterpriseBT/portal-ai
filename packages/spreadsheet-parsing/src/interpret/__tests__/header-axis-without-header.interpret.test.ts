@@ -77,7 +77,7 @@ describe("interpret — a header axis with no two-label row (#1002)", () => {
         axisNameRecommender,
       })
     ).rejects.toThrow(
-      /^UNSUPPORTED_LAYOUT_SHAPE: region B6:E8 on "Pivot" has no header row/
+      /^UNSUPPORTED_LAYOUT_SHAPE: Region B6:E8 on "Pivot" has no header row/
     );
     expect(classifier).not.toHaveBeenCalled();
     expect(axisNameRecommender).not.toHaveBeenCalled();

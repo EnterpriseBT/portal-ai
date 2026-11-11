@@ -11,5 +11,6 @@ export {
 } from "./helpers.js";
 export type { LazySheetMeta, LazySheetRowFetcher } from "./helpers.js";
 export { computeWorkbookFingerprint } from "./fingerprint.js";
+export { columnLetters, formatA1Range } from "./a1.js";
 export { WorkbookFingerprintSchema } from "../plan/workbook-fingerprint.schema.js";
 export type { WorkbookFingerprint } from "../plan/workbook-fingerprint.schema.js";

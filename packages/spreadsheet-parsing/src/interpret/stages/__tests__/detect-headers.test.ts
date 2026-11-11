@@ -301,7 +301,7 @@ describe("detectHeaders", () => {
         ],
       };
       await expect(runWith(input)).rejects.toThrow(
-        'UNSUPPORTED_LAYOUT_SHAPE: region B72:G75 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.'
+        'UNSUPPORTED_LAYOUT_SHAPE: Region B72:G75 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.'
       );
     });
 
@@ -321,39 +321,77 @@ describe("detectHeaders", () => {
         ],
       };
       await expect(runWith(input)).rejects.toThrow(
-        'UNSUPPORTED_LAYOUT_SHAPE: region AA1:AB3 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
+        'UNSUPPORTED_LAYOUT_SHAPE: Region AA1:AB3 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
       );
     });
 
-    it("doesn't reject an axis whose region already carries a header strategy", async () => {
+    it("doesn't take a number as the header of a one-column region", async () => {
+      // All numbers, or a blank top cell over numbers: there's no label to
+      // name the field, and a data value mustn't become one.
+      for (const cells of [
+        [
+          { row: 3, col: 2, value: 100 },
+          { row: 4, col: 2, value: 150 },
+          { row: 5, col: 2, value: 200 },
+        ],
+        [
+          { row: 4, col: 2, value: 150 },
+          { row: 5, col: 2, value: 200 },
+        ],
+      ]) {
+        await expect(
+          runWith({
+            workbook: oneSheet(cells, { rows: 5, cols: 3 }),
+            regionHints: [
+              {
+                sheet: "Sheet1",
+                bounds: { startRow: 3, startCol: 2, endRow: 5, endCol: 2 },
+                targetEntityDefinitionId: "amounts",
+                headerAxes: ["row"],
+              },
+            ],
+          })
+        ).rejects.toThrow(
+          'UNSUPPORTED_LAYOUT_SHAPE: Region B3:B5 on "Sheet1" has no header row (no row in it has a text label). Redraw it to include its header row, or remove its row header axis.'
+        );
+      }
+    });
+
+    it("names every region and axis without a header in one error", async () => {
       const input: InterpretInput = {
-        workbook: oneSheet([], { rows: 3, cols: 3 }),
+        workbook: oneSheet(
+          [
+            { row: 1, col: 1, value: "name" },
+            { row: 1, col: 2, value: "age" },
+            { row: 2, col: 1, value: "alice" },
+            { row: 2, col: 2, value: 30 },
+          ],
+          { rows: 20, cols: 10 }
+        ),
         regionHints: [
           {
             sheet: "Sheet1",
-            bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
-            targetEntityDefinitionId: "blank",
+            bounds: { startRow: 5, startCol: 1, endRow: 7, endCol: 3 },
+            targetEntityDefinitionId: "first",
             headerAxes: ["row"],
+          },
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "fine",
+            headerAxes: ["row"],
+          },
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 10, startCol: 5, endRow: 12, endCol: 6 },
+            targetEntityDefinitionId: "second",
+            headerAxes: ["column"],
           },
         ],
       };
-      const detected = detectRegions(createInitialState(input));
-      const withStrategy: InterpretState = {
-        ...detected,
-        detectedRegions: detected.detectedRegions.map((region) => ({
-          ...region,
-          headerStrategyByAxis: {
-            row: {
-              kind: "row",
-              locator: { kind: "row", sheet: "Sheet1", row: 1 },
-              confidence: 1,
-            },
-          },
-        })),
-      };
-      const state = await detectHeaders(withStrategy);
-      expect(state.headerCandidates.get(state.detectedRegions[0].id)).toEqual(
-        []
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A5:C7 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis. ' +
+          'Region E10:F12 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
       );
     });
   });

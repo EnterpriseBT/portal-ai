@@ -22,13 +22,13 @@ The 500 itself is real and wider than the repro: a **one-column region with a he
 ## Decision 1 — a one-cell-wide header axis can score
 
 - **The problem:** the two-label minimum separates a header from a title in a *wide* region. In a region one cell wide on that axis, a single label is the whole header.
-- **Chosen:** the minimum is `min(2, width)`, where width is the region's extent along the header (columns for a row header, rows for a column header). A one-column region's top cell then scores, and the existing ranking picks it as usual.
+- **Chosen:** where the region is one cell wide along the header (columns for a row header, rows for a column header), one **text** label scores. A number alone is a data value and never a header (code review). A one-column region's top text cell then scores, and the existing ranking picks it as usual.
 - **Rejected:** always falling back to the first row. In a wide region whose top row is a lone title, that would silently bind a title as the only header and leave blank field names.
 
 ## Decision 2 — no header on a declared axis is the user's input error (400), raised before any model call
 
-- **Chosen:** at the end of `detectHeaders`, a declared header axis with no candidate, and no strategy already on the region (a hint or prior plan can carry one), throws `UNSUPPORTED_LAYOUT_SHAPE: …`.
-- **The message** names the region and what to change, e.g. `UNSUPPORTED_LAYOUT_SHAPE: region B72:G75 on "supported_layouts" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.` Column axis: "header column" / "column header axis".
+- **Chosen:** at the end of `detectHeaders`, every declared header axis with no candidate, across all regions, goes into one `UNSUPPORTED_LAYOUT_SHAPE: …` error, so one round trip names them all (code review).
+- **The message** gives one sentence per region and axis, naming the region and what to change, e.g. `UNSUPPORTED_LAYOUT_SHAPE: Region B72:G75 on "supported_layouts" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.` For a column axis it says "header column" / "column header axis". A one-cell-wide region's reason reads "has a text label". The range comes from a shared `formatA1Range` (`workbook/a1.ts`).
 - **How it reaches the user:** `interpretFailure` already maps that prefix to a 400 carrying the message, and the wizard shows the server message.
 - **Why in detect-headers:** it fails before the classifier and axis-name recommender, so a region that can't produce a plan costs no model call.
 - **Rejected:**
@@ -37,9 +37,14 @@ The 500 itself is real and wider than the repro: a **one-column region with a he
 
 ## Plan — 1 slice
 
-- **Files:** `interpret/stages/detect-headers.ts` (the width-aware minimum and the input error, plus a small A1 formatter for the message).
+- **Files:** `interpret/stages/detect-headers.ts` (the one-cell-wide rule and the input error); new `workbook/a1.ts` (`columnLetters`, `formatA1Range`, exported from `workbook/index.ts`).
 - **Tests (first, red):**
-  - `interpret/stages/__tests__/detect-headers.test.ts`: a one-column region scores its top cell; a one-row region with a column header does the same; a wide region with no two-label row throws the `UNSUPPORTED_LAYOUT_SHAPE` message naming its A1 range and axis; a region whose hint already carries a strategy doesn't throw;
+  - `interpret/stages/__tests__/detect-headers.test.ts`:
+    - a one-column region scores its top cell, and a one-row region with a column header does the same;
+    - a one-column region of numbers (or a blank over numbers) throws, with the text-label reason;
+    - a wide region with no two-label row throws the message naming its A1 range and axis;
+    - two failing regions are named in one error;
+  - `workbook/__tests__/a1.test.ts`: column letters to `AAA`, and a single cell collapsing;
   - `interpret/__tests__/` (beside `cell-value-fields.interpret.test.ts`): end to end, the one-column region interprets to a valid plan, and the no-header region rejects with the input error rather than a schema error, with a mock classifier and axis-name recommender that are never called;
   - `apps/api` `interpret-error.util` test (existing): the message maps to 400 (already covered by the prefix).
   - `npm run test:unit -- --testPathPattern "detect-headers|interpret"` in `packages/spreadsheet-parsing`; build it before the API picks it up.
@@ -49,7 +54,7 @@ The 500 itself is real and wider than the repro: a **one-column region with a he
 
 1. Connectors → File Upload → `supported_layouts.csv`. Draw `B67:G71` (the "Account, Product, 2020…2023" table), bind it, add a row axis, Interpret. Review loads with `field × 2` and a `year` pivot × 4 (unchanged; it already worked).
 2. Draw `B67:B71` (the Account column alone), bind it, add a row axis, Interpret. Review loads with one field named from "Account".
-3. Draw `B72:G75` (the note and blanks under the table), bind it, add a row axis, Interpret. The wizard stays on Draw regions and shows "region B72:G75 on "supported_layouts" has no header row …". It doesn't show "Something went wrong", and the network response is a 400.
+3. Draw `B72:G75` (the note and blanks under the table), bind it, add a row axis, Interpret. The wizard stays on Draw regions and shows "Region B72:G75 on "supported_layouts" has no header row …". It doesn't show "Something went wrong", and the network response is a 400.
 
 ## Out of scope
 

@@ -1,4 +1,5 @@
 import type { AxisMember, Region } from "../../plan/index.js";
+import { formatA1Range } from "../../workbook/index.js";
 import type { Sheet, WorkbookCell } from "../../workbook/index.js";
 import type { HeaderCandidate, InterpretState } from "../types.js";
 
@@ -19,12 +20,17 @@ function cellLabel(cell: WorkbookCell | undefined): string {
  *   3. Distinct values — a header row rarely repeats a label.
  *   4. At least two cells — a single-cell row is more likely a title. In a
  *      region one cell wide on this axis, though, one label is the whole
- *      header (#1002), so the minimum is never more than the width.
+ *      header (#1002), so there it takes one text label. A number alone is
+ *      a data value, never a header.
  */
 function scoreHeaderRow(labels: string[]): number {
   if (labels.length === 0) return 0;
   const nonEmpty = labels.filter((l) => l.trim() !== "");
-  if (nonEmpty.length < Math.min(2, labels.length)) return 0;
+  if (labels.length === 1) {
+    if (nonEmpty.length === 0 || NUMERIC_RE.test(nonEmpty[0].trim())) return 0;
+  } else if (nonEmpty.length < 2) {
+    return 0;
+  }
 
   const nonEmptyFraction = nonEmpty.length / labels.length;
   const nonNumericFraction =
@@ -113,30 +119,23 @@ function candidatesForAxis(
   return out;
 }
 
-/** 1-based column index → letters (1 → A, 27 → AA). */
-function columnLetters(col: number): string {
-  let out = "";
-  for (let n = col; n > 0; n = Math.floor((n - 1) / 26)) {
-    out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
-  }
-  return out;
-}
-
 /**
- * #1002: a declared header axis with nothing to name its fields. Without a
- * header strategy the plan fails its final parse, which reached the user as
- * a scrubbed 500. This is the caller's input to change, so it carries the
- * `UNSUPPORTED_LAYOUT_SHAPE` prefix the API answers as a 400 with this
- * message.
+ * #1002: one sentence of the stage's error, for a declared header axis with
+ * nothing to name its fields. Without a header strategy the plan failed its
+ * final parse, which reached the user as a scrubbed 500. It's the caller's
+ * input to change, so the error carries the `UNSUPPORTED_LAYOUT_SHAPE`
+ * prefix the API answers as a 400 with its message.
  */
-function noHeaderError(region: Region, axis: AxisMember): Error {
+function noHeaderProblem(region: Region, axis: AxisMember): string {
   const { startRow, startCol, endRow, endCol } = region.bounds;
-  const range = `${columnLetters(startCol)}${startRow}:${columnLetters(endCol)}${endRow}`;
   const line = axis === "row" ? "row" : "column";
-  return new Error(
-    `UNSUPPORTED_LAYOUT_SHAPE: region ${range} on "${region.sheet}" has no header ${line} ` +
-      `(no ${line} in it has two or more labels). Redraw it to include its header ${line}, ` +
-      `or remove its ${line} header axis.`
+  // A header row runs across the columns; a header column down the rows.
+  const width = axis === "row" ? endCol - startCol + 1 : endRow - startRow + 1;
+  const reason = width === 1 ? "has a text label" : "has two or more labels";
+  return (
+    `Region ${formatA1Range(region.bounds)} on "${region.sheet}" has no header ${line} ` +
+    `(no ${line} in it ${reason}). Redraw it to include its header ${line}, ` +
+    `or remove its ${line} header axis.`
   );
 }
 
@@ -154,6 +153,7 @@ export async function detectHeaders(
   state: InterpretState
 ): Promise<InterpretState> {
   const next = new Map(state.headerCandidates);
+  const problems: string[] = [];
   for (const region of state.detectedRegions) {
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) {
@@ -168,14 +168,16 @@ export async function detectHeaders(
     const merged: HeaderCandidate[] = [];
     for (const axis of region.headerAxes) {
       const candidates = candidatesForAxis(region, sheet, axis);
-      // Thrown here, before the classifier and axis-name recommender, so a
-      // region that can't produce a plan costs no model call.
-      if (candidates.length === 0 && !region.headerStrategyByAxis?.[axis]) {
-        throw noHeaderError(region, axis);
-      }
+      if (candidates.length === 0) problems.push(noHeaderProblem(region, axis));
       merged.push(...candidates);
     }
     next.set(region.id, merged);
+  }
+  // Every region and axis at once, so one round trip names them all. Thrown
+  // before the classifier and axis-name recommender, so a plan that can't be
+  // built costs no model call.
+  if (problems.length > 0) {
+    throw new Error(`UNSUPPORTED_LAYOUT_SHAPE: ${problems.join(" ")}`);
   }
   return { ...state, headerCandidates: next };
 }
