@@ -1,7 +1,10 @@
-import type { Region, RegionHint } from "../../plan/index.js";
+import { RegionSchema } from "../../plan/index.js";
 import { columnLetters, formatA1Range } from "../../workbook/index.js";
-import type { SheetDimensions } from "../../workbook/index.js";
 import { inputError } from "../input-error.js";
+import { segmentsAreUserAuthored } from "./pivoted.util.js";
+
+import type { Region, RegionHint } from "../../plan/index.js";
+import type { SheetDimensions } from "../../workbook/index.js";
 import type { InterpretState } from "../types.js";
 
 function regionIdFromHint(hint: RegionHint, index: number): string {
@@ -110,6 +113,45 @@ function boundsProblems(
 }
 
 /**
+ * #1011: hint fields interpret copies onto the region unrepaired. A region
+ * rule failing on one of these used to surface only at the final plan parse,
+ * as a scrubbed 500 after the model stages ran.
+ */
+const PASSED_THROUGH = new Set([
+  "axisAnchorCell",
+  "headerAxes",
+  "recordsAxis",
+  "recordAxisTerminator",
+]);
+
+/**
+ * #1011: the region rules (`RegionSchema`) run on the hint's skeleton, so a
+ * rule added there is enforced at the input too. Only issues on fields
+ * interpret passes through unrepaired are the caller's: segments count only
+ * when they're user-authored (interpret keeps them, the same rule
+ * `resolveEffectiveSegments` applies; otherwise they're re-detected), and
+ * cell-value / intersection fields are reconciled later (#998). The
+ * "header strategy required" rule fails on every skeleton (interpret fills
+ * strategies in later, #1002); its path isn't passed through, so it drops out.
+ */
+function hintRuleProblems(hint: RegionHint, skeleton: Region): string[] {
+  const parsed = RegionSchema.safeParse(skeleton);
+  if (parsed.success) return [];
+  const keepSegments = segmentsAreUserAuthored(hint.segmentsByAxis);
+  const region = `Region ${formatA1Range(hint.bounds)} on "${hint.sheet}"`;
+  const messages = parsed.error.issues
+    .filter((issue) => {
+      const field = String(issue.path[0] ?? "");
+      return (
+        PASSED_THROUGH.has(field) ||
+        (field === "segmentsByAxis" && keepSegments)
+      );
+    })
+    .map((issue) => `${region}: ${issue.message}.`);
+  return [...new Set(messages)];
+}
+
+/**
  * Stage 1 — populate `detectedRegions` from hints. Auto-detect without hints
  * is a later-phase feature; absence of hints raises `UNSUPPORTED_LAYOUT_SHAPE`.
  */
@@ -133,7 +175,14 @@ export function detectRegions(state: InterpretState): InterpretState {
       );
     }
     problems.push(...boundsProblems(hint, dimensions));
-    return skeletonRegionFromHint(hint, i);
+    const skeleton = skeletonRegionFromHint(hint, i);
+    // Inverted bounds have a negative span, so the span rules (anchor inside
+    // the bounds, segment sums) would only add false problems to #1008's.
+    const { startRow, endRow, startCol, endCol } = hint.bounds;
+    if (startRow <= endRow && startCol <= endCol) {
+      problems.push(...hintRuleProblems(hint, skeleton));
+    }
+    return skeleton;
   });
   // Every bad hint at once, as #1002's header check does, and before header
   // detection and the model stages, so an inverted region isn't misreported
