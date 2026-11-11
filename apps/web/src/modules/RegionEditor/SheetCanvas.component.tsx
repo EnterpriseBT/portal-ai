@@ -33,6 +33,7 @@ import {
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
 import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
+import { SHEET_LAYER } from "./utils/sheet-layers.util";
 import { useSheetKeyboard } from "./utils/use-sheet-keyboard.util";
 import type {
   CellBounds,
@@ -1098,7 +1099,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       height: cellHeight,
       position: "sticky",
       left: 0,
-      zIndex: 2,
+      zIndex: SHEET_LAYER.rowHeader,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -1158,7 +1159,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           flexDirection: "row",
           position: "sticky",
           top: 0,
-          zIndex: 3,
+          zIndex: SHEET_LAYER.headerRow,
           width: gridWidth,
         }}
       >
@@ -1175,7 +1176,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             cursor: headerCursor,
             position: "sticky",
             left: 0,
-            zIndex: 4,
+            zIndex: SHEET_LAYER.corner,
             // Same rationale as col/row headers — engage the
             // whole-sheet selection immediately on touch.
             touchAction: "none",
@@ -1468,7 +1469,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     width: dWidth,
                     height: dHeight,
                     pointerEvents: "none",
-                    zIndex: 4,
+                    zIndex: SHEET_LAYER.decoration,
                     display: showInlineLabel ? "flex" : "block",
                     // Anchor the chip to the top-left of its band so that on large
                     // regions all overlay labels cluster near the region's corner
@@ -1556,10 +1557,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     height: sHeight,
                     border: "1.5px solid",
                     pointerEvents: "none",
-                    // Sit above the generic header decorations (z=4) so the
-                    // per-segment colour wins visually, but below the region
-                    // overlay/chrome (z=5+).
-                    zIndex: 4.5 as unknown as number,
+                    // Above the generic header decorations so the
+                    // per-segment colour wins, below the region overlay.
+                    zIndex: SHEET_LAYER.segment,
                     display: "flex",
                     alignItems: isRow ? "flex-start" : "flex-end",
                     justifyContent: isRow ? "flex-end" : "flex-start",
@@ -1740,13 +1740,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     border: "1.5px dashed",
                     pointerEvents: isEditable ? "auto" : "none",
                     cursor: isEditable ? "pointer" : "default",
-                    // Editable intersection blocks must sit above the
-                    // region overlay (z=5 unselected, 6 selected) so their
-                    // pointer-down/click reaches the popover handler
-                    // instead of triggering a region drag. Non-editable
-                    // tints stay below the segment chrome (z=4.5) and
-                    // above generic decorations (z=4).
-                    zIndex: (isEditable ? 6.5 : 4.4) as unknown as number,
+                    // Editable blocks sit above the region overlay, selected
+                    // or not, so their click reaches the popover handler
+                    // instead of starting a region drag. Non-editable tints
+                    // sit between the decorations and the segment chrome.
+                    zIndex: isEditable
+                      ? SHEET_LAYER.editableIntersection
+                      : SHEET_LAYER.intersection,
                     display: "flex",
                     alignItems: "flex-start",
                     justifyContent: "center",
@@ -1886,10 +1886,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       width: hitWidth,
                       height: hitHeight,
                       cursor: axis === "row" ? "ew-resize" : "ns-resize",
-                      // Must sit above the selected-region overlay (z=6) so
+                      // Must sit above the selected-region overlay so
                       // hover cursor and pointerdown land on the divider
                       // instead of the overlay that covers the header band.
-                      zIndex: 8,
+                      zIndex: SHEET_LAYER.divider,
                       // Local "none" so an in-flight drag is never reinterpreted
                       // as a pan even though the surrounding scroll surface uses
                       // `pan-x pan-y`.
@@ -1983,7 +1983,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 border: "2px dashed",
                 borderColor: "primary.main",
                 pointerEvents: "none",
-                zIndex: 4,
+                zIndex: SHEET_LAYER.marquee,
               }}
             />
           )}

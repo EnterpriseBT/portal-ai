@@ -9,6 +9,7 @@ import {
   orientationArrowLabel,
   orientationFromDraft,
 } from "./utils/region-orientation.util";
+import { SHEET_LAYER } from "./utils/sheet-layers.util";
 
 function hasDynamicTailPivot(
   region: RegionDraft,
@@ -190,7 +191,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           borderWidth: 2,
           borderStyle: "solid",
           cursor: movable && selected ? "move" : "pointer",
-          zIndex: selected ? 6 : 5,
+          zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           borderBottomStyle: extendsDown ? "dashed" : "solid",
           borderRightStyle: extendsRight ? "dashed" : "solid",
           // The scroll container uses `pan-x pan-y` so empty cells pan
@@ -251,10 +252,31 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             </span>
           )}
         </Box>
-
-        {selected &&
-          resizable &&
-          HANDLE_DEFS.map((h) => (
+      </Box>
+      {selected && resizable && (
+        // The handles sit beside the overlay, not inside it (#1005): the
+        // overlay's z-index makes it a stacking context, so a handle inside
+        // it could never rise above an editable intersection block. This
+        // frame repeats the overlay's box (the transparent border keeps the
+        // handles' offsets where the overlay's border put them), carries the
+        // entity slot the handles' colour reads, and passes the pointer
+        // through everywhere but the handles.
+        <Box
+          data-testid={`region-handles-${region.id}`}
+          data-entity={slot}
+          aria-hidden
+          sx={{
+            position: "absolute",
+            left,
+            top,
+            width,
+            height,
+            border: "2px solid transparent",
+            pointerEvents: "none",
+            zIndex: SHEET_LAYER.handle,
+          }}
+        >
+          {HANDLE_DEFS.map((h) => (
             <Box
               key={h.kind}
               data-testid={`region-resize-${h.kind}`}
@@ -264,7 +286,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
                 width: HANDLE_HIT_SIZE,
                 height: HANDLE_HIT_SIZE,
                 cursor: h.cursor,
-                zIndex: 7,
+                pointerEvents: "auto",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -289,7 +311,8 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               />
             </Box>
           ))}
-      </Box>
+        </Box>
+      )}
       {extendsDown && (
         <Box
           data-sheet-part="region-extension"
@@ -304,7 +327,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             pointerEvents: "none",
             borderLeft: "2px dashed",
             borderRight: "2px dashed",
-            zIndex: selected ? 6 : 5,
+            zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           }}
         />
       )}
@@ -322,7 +345,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
             pointerEvents: "none",
             borderTop: "2px dashed",
             borderBottom: "2px dashed",
-            zIndex: selected ? 6 : 5,
+            zIndex: selected ? SHEET_LAYER.regionSelected : SHEET_LAYER.region,
           }}
         />
       )}
