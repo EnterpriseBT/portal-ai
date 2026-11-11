@@ -651,6 +651,117 @@ describe("detectRegionDrift — header normalization", () => {
   });
 });
 
+// #1009: a stored region past its sheet's last row or column replays the
+// overhang as blank. Drift names it, at info, so nothing halts on it.
+describe("detectRegionDrift — bounds-overflow", () => {
+  function shrunk(rows: number, cols: number) {
+    return makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows, cols },
+          cells: [
+            { row: 1, col: 1, value: "email" },
+            { row: 1, col: 2, value: "name" },
+            { row: 1, col: 3, value: "age" },
+            { row: 2, col: 1, value: "a@x.com" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: 30 },
+          ].filter((c) => c.row <= rows && c.col <= cols),
+        },
+      ],
+    });
+  }
+
+  it("emits bounds-overflow when the region runs past the sheet's last row", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion(),
+      shrunk(2, 3).sheets[0]
+    );
+    expect(drift.kinds).toContain("bounds-overflow");
+    expect(drift.details).toMatchObject({
+      boundsOverflow: {
+        sheetLastRow: 2,
+        sheetLastCol: 3,
+        rowsPast: 2,
+        colsPast: 0,
+      },
+    });
+  });
+
+  it("emits bounds-overflow when the region runs past the sheet's last column", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion({
+        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 5 },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
+      }),
+      shrunk(2, 3).sheets[0]
+    );
+    expect(drift.details).toMatchObject({
+      boundsOverflow: {
+        sheetLastRow: 2,
+        sheetLastCol: 3,
+        rowsPast: 0,
+        colsPast: 2,
+      },
+    });
+  });
+
+  it("counts both axes when the region runs past both", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion({
+        bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 5 },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
+      }),
+      shrunk(2, 3).sheets[0]
+    );
+    expect(drift.details).toMatchObject({
+      boundsOverflow: { rowsPast: 2, colsPast: 2 },
+    });
+  });
+
+  it("emits no bounds-overflow for a region inside its sheet", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion(),
+      baselineWorkbook().sheets[0]
+    );
+    expect(drift.kinds).not.toContain("bounds-overflow");
+    expect(
+      (drift.details as { boundsOverflow?: unknown }).boundsOverflow
+    ).toBeUndefined();
+  });
+
+  it("reports only bounds-overflow for a region wholly past the sheet", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion({
+        bounds: { startRow: 5, startCol: 1, endRow: 8, endCol: 3 },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row",
+            locator: { kind: "row", sheet: "Sheet1", row: 5 },
+            confidence: 0.9,
+          },
+        },
+      }),
+      shrunk(2, 3).sheets[0]
+    );
+    expect(drift.kinds).toEqual(["bounds-overflow"]);
+    expect(rollUpDrift([drift]).severity).toBe("info");
+  });
+
+  it("is info, not identity-changing, and leaves tolerance alone", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion(),
+      shrunk(2, 3).sheets[0]
+    );
+    const report = rollUpDrift([drift]);
+    expect(drift.kinds).toEqual(["bounds-overflow"]);
+    expect(drift.withinTolerance).toBe(true);
+    expect(report.severity).toBe("info");
+    expect(report.identityChanging).toBe(false);
+  });
+});
+
 describe("rollUpDrift", () => {
   it("returns severity 'none' when no drift kinds are reported", async () => {
     const wb = baselineWorkbook();

@@ -38,7 +38,7 @@ Replay emits `bounds-overflow` and `sheet-missing` at `info`, and the parser exp
 **Files**
 
 - Edit: `src/plan/drift.schema.ts` (`"sheet-missing"` appended to `DRIFT_KINDS`); `src/plan/region.schema.ts` (export `BoundsSchema`); `src/replay/drift.ts` (`DriftDetail.boundsOverflow` / `sheetMissing`, the overflow check in `detectRegionDrift`, `info` in `kindSeverity`, `missingSheetDrift`); `src/replay/index.ts` (push `missingSheetDrift` instead of a bare `continue`); `src/warnings/codes.ts` (`BOUNDS_OVERFLOW: "info"`); `src/index.ts` (exports).
-- New: `src/replay/warnings.ts` (`REPLAY_WARNINGS_MAX`, `ReplayWarningSchema`, `summarizeReplayWarnings`).
+- New: `src/warnings/replay-warnings.ts` (`REPLAY_WARNINGS_MAX`, `ReplayWarningSchema`, `summarizeReplayWarnings`).
 
 **Steps**
 

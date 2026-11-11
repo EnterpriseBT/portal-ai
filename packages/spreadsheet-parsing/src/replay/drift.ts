@@ -35,6 +35,15 @@ interface DriftDetail {
   identityBlanks: number;
   duplicateIdentityValues: number;
   renamedAnchor?: { prior: string; current: string };
+  /** #1009: the stored bounds run past the sheet; the overhang reads blank. */
+  boundsOverflow?: {
+    sheetLastRow: number;
+    sheetLastCol: number;
+    rowsPast: number;
+    colsPast: number;
+  };
+  /** #1009: the region's sheet is gone from the workbook. */
+  sheetMissing?: { sheet: string };
 }
 
 function firstHeaderLayout(
@@ -130,8 +139,17 @@ export async function detectRegionDrift(
   // terminator-extension scan inside `resolveRegionBounds` loads
   // its own windows past the bounds.
   await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
-  const bounds = await resolveRegionBounds(region, sheet);
-  const header = firstHeaderLayout(region, sheet, bounds);
+  const resolved = await resolveRegionBounds(region, sheet);
+  // #1009: the remaining checks read only the part inside the sheet. The
+  // overhang is blank by definition, and is reported as bounds-overflow
+  // alone; read as data, its blank identity cells would have counted as
+  // identity-column-has-blanks, which is identity-changing and halts sync.
+  const { rows: sheetLastRow, cols: sheetLastCol } = sheet.dimensions;
+  const bounds = {
+    ...resolved,
+    endRow: Math.min(resolved.endRow, sheetLastRow),
+    endCol: Math.min(resolved.endCol, sheetLastCol),
+  };
   const kinds: DriftKind[] = [];
   const detail: DriftDetail = {
     severity: "none",
@@ -141,6 +159,27 @@ export async function detectRegionDrift(
     identityBlanks: 0,
     duplicateIdentityValues: 0,
   };
+
+  // ── Bounds overflow (#1009) ────────────────────────────────────────────
+  // Against the stored bounds, not the terminator-extended ones: the sheet
+  // shrank under a region the user drew, so the overhang reads blank.
+  const rowsPast = Math.max(0, region.bounds.endRow - sheetLastRow);
+  const colsPast = Math.max(0, region.bounds.endCol - sheetLastCol);
+  if (rowsPast > 0 || colsPast > 0) {
+    kinds.push("bounds-overflow");
+    detail.boundsOverflow = { sheetLastRow, sheetLastCol, rowsPast, colsPast };
+  }
+  // A region wholly past the sheet has no cells left to check.
+  if (bounds.startRow > bounds.endRow || bounds.startCol > bounds.endCol) {
+    detail.severity = kindSeverity("bounds-overflow", region, detail);
+    return {
+      regionId: region.id,
+      kinds,
+      details: detail,
+      withinTolerance: true,
+    };
+  }
+  const header = firstHeaderLayout(region, sheet, bounds);
 
   // ── Removed columns ────────────────────────────────────────────────────
   for (const binding of region.columnBindings) {
@@ -323,7 +362,9 @@ function kindSeverity(
     return knob?.removedColumns.action === "auto-apply" ? "info" : "warn";
   }
   if (kind === "header-shifted") return "info";
-  if (kind === "bounds-overflow") return "warn";
+  // #1009: advisory, so commit, recommit and sync never halt on either.
+  if (kind === "bounds-overflow") return "info";
+  if (kind === "sheet-missing") return "info";
   if (kind === "records-axis-value-renamed") return "warn";
   if (kind === "identity-column-has-blanks") return "warn";
   if (kind === "duplicate-identity-values") return "blocker";
@@ -354,5 +395,28 @@ export function rollUpDrift(regionDrifts: RegionDrift[]): DriftReport {
     regionDrifts,
     severity,
     identityChanging,
+  };
+}
+
+/**
+ * #1009: the drift for a region whose sheet is gone from the workbook. Replay
+ * skips the region (it has no cells to read); this records that it did, at
+ * info, so the summary can tell the user rather than leave no trace.
+ */
+export function missingSheetDrift(region: Region): RegionDrift {
+  const detail: DriftDetail = {
+    severity: "info",
+    identityChanging: false,
+    addedColumns: [],
+    removedColumns: [],
+    identityBlanks: 0,
+    duplicateIdentityValues: 0,
+    sheetMissing: { sheet: region.sheet },
+  };
+  return {
+    regionId: region.id,
+    kinds: ["sheet-missing"],
+    details: detail,
+    withinTolerance: true,
   };
 }

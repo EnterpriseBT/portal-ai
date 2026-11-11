@@ -60,13 +60,15 @@ sheetMissing?: { sheet: string };
 ```
 
 - **`detectRegionDrift(region, sheet)`** pushes `"bounds-overflow"` and sets `detail.boundsOverflow` when `region.bounds.endRow > sheet.dimensions.rows` or `region.bounds.endCol > sheet.dimensions.cols`. It uses the stored bounds, not the terminator-extended ones. `withinTolerance` is unaffected.
+- **The other drift checks read only the part inside the sheet** (found in slice 1). They run on the resolved bounds clamped to `sheet.dimensions`. Read as data, the overhang's blank identity cells counted as `identity-column-has-blanks`, which is identity-changing, so the identity gate would have halted every sync of a shrunken sheet with a 409. A region wholly past the sheet reports `bounds-overflow` alone.
+- **The module lives in `src/warnings/`, not `src/replay/`** (found in slice 1). The package's forbidden-deps guard keeps main-entry code from importing the `replay/` subtree (it pulls in `node:crypto`), and core and web need the schema from the main entry.
 - **`kindSeverity`:** `"bounds-overflow"` and `"sheet-missing"` → `"info"`. `kindIsIdentityChanging` is false for both.
 - **New `missingSheetDrift(region: Region): RegionDrift`** returns `{ regionId: region.id, kinds: ["sheet-missing"], details: { severity: "info", identityChanging: false, addedColumns: [], removedColumns: [], identityBlanks: 0, duplicateIdentityValues: 0, sheetMissing: { sheet: region.sheet } }, withinTolerance: true }`.
 - **`replay()`** (`replay/index.ts:44-54`): `if (!sheet) { regionDrifts.push(missingSheetDrift(region)); continue; }`. The region still contributes no records.
 
 `src/warnings/codes.ts:57`: `BOUNDS_OVERFLOW: "info"`.
 
-### Parser — `ReplayWarning` (`packages/spreadsheet-parsing/src/replay/warnings.ts`, new; exported from `src/index.ts`)
+### Parser — `ReplayWarning` (`packages/spreadsheet-parsing/src/warnings/replay-warnings.ts`, new; exported from `src/index.ts`)
 
 ```ts
 export const REPLAY_WARNINGS_MAX = 20;
@@ -244,7 +246,7 @@ None.
 
 ## Files touched
 - **New:**
-  - parser: `src/replay/warnings.ts`, `src/replay/__tests__/warnings.test.ts`;
+  - parser: `src/warnings/replay-warnings.ts`, `src/replay/__tests__/warnings.test.ts`;
   - web: `utils/replay-warning.util.ts`, `modules/RegionEditor/utils/region-overhang.util.ts`, `components/OrphanedRegionsNotice.component.tsx`, plus their tests.
 - **Edited:**
   - parser: `plan/drift.schema.ts`, `plan/region.schema.ts` (export `BoundsSchema`), `replay/drift.ts`, `replay/index.ts`, `warnings/codes.ts`, `index.ts`;

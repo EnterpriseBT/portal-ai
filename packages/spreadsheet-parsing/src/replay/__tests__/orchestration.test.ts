@@ -155,6 +155,27 @@ describe("replay() — orchestration", () => {
     expect(result.records).toHaveLength(3);
   });
 
+  // #1009: the skip used to leave no trace; it now reports sheet-missing.
+  it("reports a region whose sheet is missing as sheet-missing drift, at info", async () => {
+    const plan = contactsPlan();
+    plan.regions.push({
+      ...plan.regions[0],
+      id: "ghost",
+      sheet: "DoesNotExist",
+    });
+    plan.confidence.perRegion["ghost"] = 0;
+    const result = await replay(plan, contactsWorkbookData);
+    const ghost = result.drift.regionDrifts.find((d) => d.regionId === "ghost");
+    expect(ghost).toMatchObject({
+      kinds: ["sheet-missing"],
+      withinTolerance: true,
+      details: { sheetMissing: { sheet: "DoesNotExist" } },
+    });
+    expect(result.records.every((r) => r.regionId !== "ghost")).toBe(true);
+    expect(result.drift.severity).toBe("info");
+    expect(result.drift.identityChanging).toBe(false);
+  });
+
   it("rejects malformed plans via LayoutPlanSchema.parse()", async () => {
     const plan = contactsPlan() as unknown as Record<string, unknown>;
     delete plan.planVersion;
