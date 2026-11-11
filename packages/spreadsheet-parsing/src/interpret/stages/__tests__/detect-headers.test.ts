@@ -218,4 +218,181 @@ describe("detectHeaders", () => {
       second.headerCandidates.get(id)
     );
   });
+
+  // #1002: a declared header axis with no qualifying row or column used to
+  // leave the region without a header strategy, and the final plan parse
+  // failed as a 500.
+  describe("a header axis with no two-label row (#1002)", () => {
+    function oneSheet(
+      cells: { row: number; col: number; value: string | number }[],
+      dimensions: { rows: number; cols: number }
+    ) {
+      return { sheets: [{ name: "Sheet1", dimensions, cells }] };
+    }
+
+    it("scores the top cell of a one-column region with a row header", async () => {
+      const state = await runWith({
+        workbook: oneSheet(
+          [
+            { row: 2, col: 2, value: "Account" },
+            { row: 3, col: 2, value: "Google" },
+            { row: 4, col: 2, value: "Microsoft" },
+          ],
+          { rows: 4, cols: 3 }
+        ),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 2, startCol: 2, endRow: 4, endCol: 2 },
+            targetEntityDefinitionId: "accounts",
+            headerAxes: ["row"],
+          },
+        ],
+      });
+      const best = state.headerCandidates.get(state.detectedRegions[0].id)![0];
+      expect(best).toMatchObject({
+        axis: "row",
+        index: 2,
+        labels: ["Account"],
+      });
+    });
+
+    it("scores the left cell of a one-row region with a column header", async () => {
+      const state = await runWith({
+        workbook: oneSheet(
+          [
+            { row: 2, col: 1, value: "Account" },
+            { row: 2, col: 2, value: "Google" },
+            { row: 2, col: 3, value: "Microsoft" },
+          ],
+          { rows: 3, cols: 3 }
+        ),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 2, startCol: 1, endRow: 2, endCol: 3 },
+            targetEntityDefinitionId: "accounts",
+            headerAxes: ["column"],
+          },
+        ],
+      });
+      const best = state.headerCandidates.get(state.detectedRegions[0].id)![0];
+      expect(best).toMatchObject({
+        axis: "column",
+        index: 1,
+        labels: ["Account"],
+      });
+    });
+
+    it("rejects a wide region with no header row as the caller's input error", async () => {
+      // A blank row, a one-cell note, a blank: nothing to name the fields.
+      const input: InterpretInput = {
+        workbook: oneSheet([{ row: 73, col: 2, value: "a note" }], {
+          rows: 75,
+          cols: 7,
+        }),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 72, startCol: 2, endRow: 75, endCol: 7 },
+            targetEntityDefinitionId: "pivot",
+            headerAxes: ["row"],
+          },
+        ],
+      };
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region B72:G75 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis.'
+      );
+    });
+
+    it("names the header column when the column axis has none", async () => {
+      const input: InterpretInput = {
+        workbook: oneSheet([{ row: 1, col: 27, value: "only" }], {
+          rows: 3,
+          cols: 28,
+        }),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 27, endRow: 3, endCol: 28 },
+            targetEntityDefinitionId: "wide",
+            headerAxes: ["column"],
+          },
+        ],
+      };
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region AA1:AB3 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
+      );
+    });
+
+    it("doesn't take a number as the header of a one-column region", async () => {
+      // All numbers, or a blank top cell over numbers: there's no label to
+      // name the field, and a data value mustn't become one.
+      for (const cells of [
+        [
+          { row: 3, col: 2, value: 100 },
+          { row: 4, col: 2, value: 150 },
+          { row: 5, col: 2, value: 200 },
+        ],
+        [
+          { row: 4, col: 2, value: 150 },
+          { row: 5, col: 2, value: 200 },
+        ],
+      ]) {
+        await expect(
+          runWith({
+            workbook: oneSheet(cells, { rows: 5, cols: 3 }),
+            regionHints: [
+              {
+                sheet: "Sheet1",
+                bounds: { startRow: 3, startCol: 2, endRow: 5, endCol: 2 },
+                targetEntityDefinitionId: "amounts",
+                headerAxes: ["row"],
+              },
+            ],
+          })
+        ).rejects.toThrow(
+          'UNSUPPORTED_LAYOUT_SHAPE: Region B3:B5 on "Sheet1" has no header row (no row in it has a text label). Redraw it to include its header row, or remove its row header axis.'
+        );
+      }
+    });
+
+    it("names every region and axis without a header in one error", async () => {
+      const input: InterpretInput = {
+        workbook: oneSheet(
+          [
+            { row: 1, col: 1, value: "name" },
+            { row: 1, col: 2, value: "age" },
+            { row: 2, col: 1, value: "alice" },
+            { row: 2, col: 2, value: 30 },
+          ],
+          { rows: 20, cols: 10 }
+        ),
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 5, startCol: 1, endRow: 7, endCol: 3 },
+            targetEntityDefinitionId: "first",
+            headerAxes: ["row"],
+          },
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "fine",
+            headerAxes: ["row"],
+          },
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 10, startCol: 5, endRow: 12, endCol: 6 },
+            targetEntityDefinitionId: "second",
+            headerAxes: ["column"],
+          },
+        ],
+      };
+      await expect(runWith(input)).rejects.toThrow(
+        'UNSUPPORTED_LAYOUT_SHAPE: Region A5:C7 on "Sheet1" has no header row (no row in it has two or more labels). Redraw it to include its header row, or remove its row header axis. ' +
+          'Region E10:F12 on "Sheet1" has no header column (no column in it has two or more labels). Redraw it to include its header column, or remove its column header axis.'
+      );
+    });
+  });
 });
