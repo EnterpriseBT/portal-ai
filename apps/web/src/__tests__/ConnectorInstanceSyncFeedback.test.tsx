@@ -243,6 +243,7 @@ describe("ConnectorInstanceSyncFeedbackUI — replay warnings", () => {
     sheet: `S${i}`,
     targetEntityDefinitionId: "contacts",
     bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+    recordsAxis: "row" as const,
   });
 
   it("renders a warning naming each region, and the tally", () => {

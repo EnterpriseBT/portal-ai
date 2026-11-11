@@ -8,7 +8,7 @@ import {
 } from "../plan/index.js";
 import type { Sheet, WorkbookCell } from "../workbook/types.js";
 import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
-import { resolveRegionBounds } from "./resolve-bounds.js";
+import { isEmptyBounds, resolveRegionBounds } from "./resolve-bounds.js";
 
 type Severity = "none" | "info" | "warn" | "blocker";
 
@@ -139,17 +139,12 @@ export async function detectRegionDrift(
   // terminator-extension scan inside `resolveRegionBounds` loads
   // its own windows past the bounds.
   await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
-  const resolved = await resolveRegionBounds(region, sheet);
-  // #1009: the remaining checks read only the part inside the sheet. The
-  // overhang is blank by definition, and is reported as bounds-overflow
-  // alone; read as data, its blank identity cells would have counted as
+  // #1009: clipped to the sheet, so the remaining checks read only the part
+  // inside it. The overhang is reported as bounds-overflow alone; read as
+  // data, its blank identity cells would have counted as
   // identity-column-has-blanks, which is identity-changing and halts sync.
+  const bounds = await resolveRegionBounds(region, sheet);
   const { rows: sheetLastRow, cols: sheetLastCol } = sheet.dimensions;
-  const bounds = {
-    ...resolved,
-    endRow: Math.min(resolved.endRow, sheetLastRow),
-    endCol: Math.min(resolved.endCol, sheetLastCol),
-  };
   const kinds: DriftKind[] = [];
   const detail: DriftDetail = {
     severity: "none",
@@ -170,7 +165,7 @@ export async function detectRegionDrift(
     detail.boundsOverflow = { sheetLastRow, sheetLastCol, rowsPast, colsPast };
   }
   // A region wholly past the sheet has no cells left to check.
-  if (bounds.startRow > bounds.endRow || bounds.startCol > bounds.endCol) {
+  if (isEmptyBounds(bounds)) {
     detail.severity = kindSeverity("bounds-overflow", region, detail);
     return {
       regionId: region.id,

@@ -14,7 +14,11 @@ import type { CellValue, Sheet, WorkbookCell } from "../workbook/types.js";
 import { computeChecksum } from "./checksum.js";
 import { deriveSourceId, type IdentityContext } from "./identity.js";
 import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
-import { resolveRegionBounds, type ResolvedBounds } from "./resolve-bounds.js";
+import {
+  isEmptyBounds,
+  resolveRegionBounds,
+  type ResolvedBounds,
+} from "./resolve-bounds.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -712,22 +716,11 @@ export async function extractRecords(
   // synchronous.
   await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
 
-  const resolved = await resolveRegionBounds(region, sheet);
-  // #1009: a stored region can outlast its sheet (rows or columns deleted at
-  // the source). The part past the sheet doesn't exist, so it yields no
-  // records; read as cells, it came back as records of blanks, all sharing
-  // the empty sourceId.
-  const baseBounds = {
-    ...resolved,
-    endRow: Math.min(resolved.endRow, sheet.dimensions.rows),
-    endCol: Math.min(resolved.endCol, sheet.dimensions.cols),
-  };
-  if (
-    baseBounds.startRow > baseBounds.endRow ||
-    baseBounds.startCol > baseBounds.endCol
-  ) {
-    return [];
-  }
+  // #1009: clipped to the sheet. The part past it doesn't exist, so it
+  // yields no records; read as cells, it came back as records of blanks, all
+  // sharing the empty sourceId.
+  const baseBounds = await resolveRegionBounds(region, sheet);
+  if (isEmptyBounds(baseBounds)) return [];
   const numAxes = region.headerAxes.length;
 
   if (numAxes === 0) return extractHeaderless(region, sheet, baseBounds);

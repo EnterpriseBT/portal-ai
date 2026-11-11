@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Alert from "@mui/material/Alert";
 import MuiChip from "@mui/material/Chip";
 import {
   Box,
@@ -187,6 +188,18 @@ function readFieldHeaderCells(
 }
 
 // ── Component ────────────────────────────────────────────────────────────
+
+/** #1009: "Rows 50–60 are" / "Row 50 is" (0-based indexes, display labels). */
+function lineRange(
+  noun: "Row" | "Column",
+  start: number,
+  end: number,
+  label: (index: number) => string
+): string {
+  return start === end
+    ? `${noun} ${label(end)} is`
+    : `${noun}s ${label(start)}–${label(end)} are`;
+}
 
 export const RegionConfigurationPanelUI: React.FC<
   RegionConfigurationPanelUIProps
@@ -692,62 +705,61 @@ export const RegionConfigurationPanelUI: React.FC<
           </Stack>
         )}
 
-        {overhang && (
-          <Box
-            component="section"
-            aria-label="Past the sheet"
-            sx={{
-              p: 1.5,
-              borderRadius: 1,
-              backgroundColor: "warning.lighter",
-              border: "1px solid",
-              borderColor: "warning.main",
-            }}
-          >
-            <Typography
-              variant="subtitle2"
-              color="warning.dark"
-              sx={{ mb: 0.5 }}
-            >
-              {[
-                overhang.rowsPast > 0 &&
-                  (overhang.rowsPast > 1
-                    ? `Rows ${overhang.lastRow + 2}–${region.bounds.endRow + 1} are`
-                    : `Row ${region.bounds.endRow + 1} is`) +
-                    ` past the sheet's last row (${overhang.lastRow + 1}).`,
-                overhang.colsPast > 0 &&
-                  (overhang.colsPast > 1
-                    ? `Columns ${colIndexToLetter(overhang.lastCol + 1)}–${colIndexToLetter(region.bounds.endCol)} are`
-                    : `Column ${colIndexToLetter(region.bounds.endCol)} is`) +
-                    ` past the sheet's last column (${colIndexToLetter(overhang.lastCol)}).`,
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            </Typography>
-            <Typography variant="caption" sx={{ display: "block" }}>
-              {`They're gone from the sheet, and Interpret refuses a region outside its sheet.`}
-            </Typography>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ mt: 1 }}
-            >
-              {onFitToSheet && (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="contained"
-                  onClick={onFitToSheet}
-                >
-                  Fit to sheet
-                </Button>
-              )}
-              <Typography variant="caption">
-                {`Or drag its ${overhang.rowsPast > 0 && overhang.colsPast > 0 ? "bottom and right edges" : overhang.rowsPast > 0 ? "bottom edge" : "right edge"} back inside the sheet.`}
+        {overhang && regionSheet && (
+          // #1009: themed (an Alert), and a labelled region rather than an
+          // alert role, since it describes the region instead of announcing.
+          <Alert severity="warning" role="region" aria-label="Past the sheet">
+            {regionSheet.rowCount === 0 || regionSheet.colCount === 0 ? (
+              <Typography variant="body2">
+                This sheet is now empty, so there&apos;s nothing to fit the
+                region to. Delete the region, or draw it on another sheet.
               </Typography>
-            </Stack>
-          </Box>
+            ) : (
+              <Stack spacing={1}>
+                <Typography variant="subtitle2" component="p">
+                  {[
+                    overhang.rowsPast > 0 &&
+                      lineRange(
+                        "Row",
+                        Math.max(overhang.lastRow + 1, region.bounds.startRow),
+                        region.bounds.endRow,
+                        (i) => String(i + 1)
+                      ) +
+                        ` past the sheet's last row (${overhang.lastRow + 1}).`,
+                    overhang.colsPast > 0 &&
+                      lineRange(
+                        "Column",
+                        Math.max(overhang.lastCol + 1, region.bounds.startCol),
+                        region.bounds.endCol,
+                        colIndexToLetter
+                      ) +
+                        ` past the sheet's last column (${colIndexToLetter(overhang.lastCol)}).`,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                </Typography>
+                <Typography variant="body2">
+                  They&apos;re gone from the sheet, and Interpret refuses a
+                  region outside its sheet.
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {onFitToSheet && (
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="contained"
+                      onClick={onFitToSheet}
+                    >
+                      Fit to sheet
+                    </Button>
+                  )}
+                  <Typography variant="body2">
+                    {`Or drag its ${overhang.rowsPast > 0 && overhang.colsPast > 0 ? "bottom and right edges" : overhang.rowsPast > 0 ? "bottom edge" : "right edge"} back inside the sheet.`}
+                  </Typography>
+                </Stack>
+              </Stack>
+            )}
+          </Alert>
         )}
 
         {driftFlagged && (

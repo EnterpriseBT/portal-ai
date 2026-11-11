@@ -749,6 +749,25 @@ describe("detectRegionDrift — bounds-overflow", () => {
     expect(rollUpDrift([drift]).severity).toBe("info");
   });
 
+  // A deleted identity column can't yield source ids: every record would
+  // share an empty one and collapse together. That's real identity drift, so
+  // it still halts the sync for the user to reconfirm the layout.
+  it("still flags identity drift when the identity column itself is gone", async () => {
+    const drift = await detectRegionDrift(
+      contactsRegion({
+        bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+        identityStrategy: {
+          kind: "column",
+          sourceLocator: { kind: "column", sheet: "Sheet1", col: 3 },
+          confidence: 0.9,
+        },
+      }),
+      shrunk(4, 2).sheets[0]
+    );
+    expect(drift.kinds).toContain("bounds-overflow");
+    expect(rollUpDrift([drift]).identityChanging).toBe(true);
+  });
+
   it("is info, not identity-changing, and leaves tolerance alone", async () => {
     const drift = await detectRegionDrift(
       contactsRegion(),

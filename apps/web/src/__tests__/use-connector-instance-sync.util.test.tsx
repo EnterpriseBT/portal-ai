@@ -164,6 +164,7 @@ describe("useConnectorInstanceSync — replay warnings", () => {
     sheet: "Q3",
     targetEntityDefinitionId: "contacts",
     bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+    recordsAxis: "row",
   };
 
   it("keeps the warnings and the omitted count from a completed stream", () => {

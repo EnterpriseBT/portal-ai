@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { BoundsSchema } from "../plan/region.schema.js";
+import { recordsAxisOf } from "../plan/index.js";
 import type { DriftReport, LayoutPlan } from "../plan/index.js";
 
 /**
@@ -10,22 +11,32 @@ import type { DriftReport, LayoutPlan } from "../plan/index.js";
  */
 export const REPLAY_WARNINGS_MAX = 20;
 
+/**
+ * Fields both kinds carry. `recordsAxis` is the axis that holds the records
+ * ("row" for records-are-rows, "column" for a transposed region, null for a
+ * crosstab whose records are cells), so a message can say which lost lines
+ * were records and which were fields. `targetEntityLabel` is the entity's
+ * name, filled by the caller that knows it (commit), not by replay.
+ */
+const replayWarningBase = {
+  regionId: z.string().min(1),
+  sheet: z.string().min(1),
+  targetEntityDefinitionId: z.string().min(1),
+  targetEntityLabel: z.string().min(1).optional(),
+  bounds: BoundsSchema,
+  recordsAxis: z.enum(["row", "column"]).nullable(),
+};
+
 export const ReplayWarningSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("bounds-overflow"),
-    regionId: z.string().min(1),
-    sheet: z.string().min(1),
-    targetEntityDefinitionId: z.string().min(1),
-    bounds: BoundsSchema,
+    ...replayWarningBase,
     sheetLastRow: z.number().int().min(0),
     sheetLastCol: z.number().int().min(0),
   }),
   z.object({
     kind: z.literal("sheet-missing"),
-    regionId: z.string().min(1),
-    sheet: z.string().min(1),
-    targetEntityDefinitionId: z.string().min(1),
-    bounds: BoundsSchema,
+    ...replayWarningBase,
   }),
 ]);
 export type ReplayWarning = z.infer<typeof ReplayWarningSchema>;
@@ -53,6 +64,7 @@ export function summarizeReplayWarnings(
       sheet: region.sheet,
       targetEntityDefinitionId: region.targetEntityDefinitionId,
       bounds: { ...region.bounds },
+      recordsAxis: recordsAxisOf(region) ?? null,
     };
     if (regionDrift.kinds.includes("sheet-missing")) {
       all.push({ kind: "sheet-missing", ...base });

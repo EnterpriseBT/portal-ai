@@ -168,7 +168,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What happens when a synced sheet gets smaller or is deleted?",
     answer:
-      "A layout plan remembers where each region sits in the source sheet. If rows or columns are deleted from the sheet, the part of a region past its new last row or column is skipped, and records from rows that are gone are removed. If a region's whole sheet is deleted or renamed, that region is skipped and its records aren't refreshed. Either way the sync still completes, and its message names the affected regions. Open Modify Layout Plan to fix them: Fit to sheet trims a region back inside its sheet, and a region whose sheet is gone can be moved to another sheet or deleted.",
+      "A layout plan remembers where each region sits in the source sheet. If rows or columns are deleted from the sheet, the part of a region past its new last row or column is skipped: records that came from the deleted lines are removed, and deleted field lines are left out. If a whole region, or a region's whole sheet, is gone, that region replays nothing and its records aren't refreshed. The sync still completes and its message names the affected regions, unless the column that identifies a region's records was deleted: then the sync stops until you fix the layout, so records aren't merged together. Open Modify Layout Plan to fix them: Fit to sheet trims a region back inside its sheet, and a region whose sheet is gone can be moved to another sheet or deleted.",
     category: FAQCategory.Data,
     relatedGlossaryTerms: ["Sync", "Connector Entity"],
   },

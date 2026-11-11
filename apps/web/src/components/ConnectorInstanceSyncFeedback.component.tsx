@@ -146,7 +146,8 @@ export const ConnectorInstanceSyncFeedbackUI = ({
         severity="warning"
         variant="filled"
         onClose={onDismissResult}
-        sx={{ maxWidth: 480 }}
+        // Width as the sibling phases set it; capped so long region lines wrap.
+        sx={{ minWidth: 320, maxWidth: 480 }}
         action={
           editLayoutPlanLink ? (
             <Link
@@ -164,7 +165,7 @@ export const ConnectorInstanceSyncFeedbackUI = ({
         }
       >
         <Stack spacing={0.5}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          <Typography variant="subtitle2" component="p">
             Synced, but part of the layout plan no longer fits the source
           </Typography>
           {shown.map((w) => (

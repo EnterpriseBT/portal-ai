@@ -860,6 +860,7 @@ describe("replayWarnings on connector sync results (#1009)", () => {
     bounds: { startRow: 2, startCol: 2, endRow: 100, endCol: 6 },
     sheetLastRow: 80,
     sheetLastCol: 8,
+    recordsAxis: "row" as const,
   };
   const missing = {
     kind: "sheet-missing" as const,
@@ -867,6 +868,8 @@ describe("replayWarnings on connector sync results (#1009)", () => {
     sheet: "Q4",
     targetEntityDefinitionId: "contacts",
     bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+    recordsAxis: null,
+    targetEntityLabel: "Contacts",
   };
 
   it("accepts both warning kinds, and a count of the rest", () => {

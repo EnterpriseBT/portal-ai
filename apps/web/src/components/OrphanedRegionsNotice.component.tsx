@@ -66,7 +66,6 @@ export const OrphanedRegionsNoticeUI: React.FC<
                   placeholder="Move to sheet…"
                   options={sheets.map((s) => ({ value: s.id, label: s.name }))}
                   onChange={(e) => onMove(orphan.region.id, e.target.value)}
-                  sx={{ minWidth: 200 }}
                 />
                 <Button
                   type="button"
@@ -83,7 +82,7 @@ export const OrphanedRegionsNoticeUI: React.FC<
           );
         })}
         {attempted && (
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          <Typography variant="subtitle2" component="p">
             Resolve these before interpreting.
           </Typography>
         )}

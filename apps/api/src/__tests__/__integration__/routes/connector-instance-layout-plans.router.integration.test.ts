@@ -1840,6 +1840,8 @@ describe("Connector Instance Layout Plans Router", () => {
           bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
           sheetLastRow: 2,
           sheetLastCol: 2,
+          recordsAxis: "row",
+          targetEntityLabel: "contacts",
         },
         {
           kind: "sheet-missing",
@@ -1847,6 +1849,7 @@ describe("Connector Instance Layout Plans Router", () => {
           sheet: "Gone",
           targetEntityDefinitionId: "leads",
           bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
+          recordsAxis: "row",
         },
       ]);
     });

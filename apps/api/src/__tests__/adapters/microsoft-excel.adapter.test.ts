@@ -367,6 +367,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       sheet: "Q3",
       targetEntityDefinitionId: "contacts",
       bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 2 },
+      recordsAxis: "row",
     };
     commitMock.mockResolvedValueOnce({
       recordCounts: { created: 1, updated: 0, unchanged: 0 },

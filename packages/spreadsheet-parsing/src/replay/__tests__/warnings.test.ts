@@ -91,6 +91,7 @@ describe("summarizeReplayWarnings (#1009)", () => {
         bounds: { startRow: 1, startCol: 1, endRow: 10, endCol: 2 },
         sheetLastRow: 3,
         sheetLastCol: 2,
+        recordsAxis: "row",
       },
       {
         kind: "sheet-missing",
@@ -98,6 +99,7 @@ describe("summarizeReplayWarnings (#1009)", () => {
         sheet: "Q3",
         targetEntityDefinitionId: "entity-gone",
         bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 2 },
+        recordsAxis: "row",
       },
     ]);
   });
@@ -142,5 +144,29 @@ describe("summarizeReplayWarnings (#1009)", () => {
       ReplayWarningSchema.safeParse({ kind: "bounds-overflow", regionId: "x" })
         .success
     ).toBe(false);
+  });
+
+  it("says which axis holds the records: column for a transposed region, null for a crosstab", async () => {
+    const transposed: Region = {
+      ...region("t", "Data", 10),
+      headerAxes: ["column"],
+    };
+    const crosstab: Region = {
+      ...region("x", "Data", 10),
+      headerAxes: ["row", "column"],
+    };
+    const p = plan([transposed, crosstab]);
+    const drift: DriftReport = {
+      regionDrifts: [transposed, crosstab].map((r) => ({
+        regionId: r.id,
+        kinds: ["sheet-missing"],
+        details: {},
+        withinTolerance: true,
+      })),
+      severity: "info",
+      identityChanging: false,
+    };
+    const { warnings } = summarizeReplayWarnings(p, drift);
+    expect(warnings.map((w) => w.recordsAxis)).toEqual(["column", null]);
   });
 });

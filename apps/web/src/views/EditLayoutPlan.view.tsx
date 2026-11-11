@@ -58,12 +58,6 @@ const STEP_CONFIGS: StepConfig[] = [
 ];
 
 /**
- * Convert the backend's preview envelope (`{ id, name, dimensions, cells }`)
- * into the editor's `Workbook` shape (`{ sheets: [{ id, name, rowCount,
- * colCount, cells }] }`). The dimensions key flattening is the only
- * meaningful translation; cell values come through unchanged.
- */
-/**
  * The persisted region carries no display labels, so hydration backfills the
  * picker chip and heading from the entity catalog, falling back to the
  * region's entity key (a commit that failed before entities were created).
@@ -82,6 +76,12 @@ function withEntityLabel(
   };
 }
 
+/**
+ * Convert the backend's preview envelope (`{ id, name, dimensions, cells }`)
+ * into the editor's `Workbook` shape (`{ sheets: [{ id, name, rowCount,
+ * colCount, cells }] }`). The dimensions key flattening is the only
+ * meaningful translation; cell values come through unchanged.
+ */
 function previewToEditorWorkbook(
   preview: LayoutPlanEditContextWorkbookPreview
 ): Workbook {
@@ -524,6 +524,21 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const [regions, setRegions] = useState<RegionDraft[]>([]);
   // #1009: plan regions whose sheet is gone from the workbook.
   const [orphans, setOrphans] = useState<OrphanedRegion[]>([]);
+  // The editor-shaped workbook and entity labels, built once per edit
+  // context rather than on each orphan move.
+  const workbookPreview = editContext?.workbookPreview;
+  const editorWorkbook = useMemo(
+    () => (workbookPreview ? previewToEditorWorkbook(workbookPreview) : null),
+    [workbookPreview]
+  );
+  const entityCatalog = editContext?.entityCatalog;
+  const entityLabelById = useMemo(
+    () =>
+      new Map<string, string>(
+        (entityCatalog ?? []).map((e) => [e.id, e.label] as const)
+      ),
+    [entityCatalog]
+  );
   const [activeSheetId, setActiveSheetId] = useState<string>("");
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [step, setStep] = useState<0 | 1>(0);
@@ -643,22 +658,19 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   // If it overhangs the new sheet, the editor's overhang warning takes over.
   const handleMoveOrphan = useCallback(
     (regionId: string, sheetId: string) => {
-      if (!editContext?.workbookPreview) return;
       const orphan = orphans.find((o) => o.region.id === regionId);
-      const sheet = previewToEditorWorkbook(
-        editContext.workbookPreview
-      ).sheets.find((s) => s.id === sheetId);
+      const sheet = editorWorkbook?.sheets.find((s) => s.id === sheetId);
       if (!orphan || !sheet) return;
-      const catalogById = new Map<string, string>(
-        editContext.entityCatalog.map((e) => [e.id, e.label] as const)
+      const draft = withEntityLabel(
+        orphanToDraft(orphan, sheet),
+        entityLabelById
       );
-      const draft = withEntityLabel(orphanToDraft(orphan, sheet), catalogById);
       setRegions((prev) => [...prev, draft]);
       setOrphans((prev) => prev.filter((o) => o.region.id !== regionId));
       setActiveSheetId(sheetId);
       setSelectedRegionId(regionId);
     },
-    [editContext, orphans]
+    [editorWorkbook, entityLabelById, orphans]
   );
 
   const handleRegionDraft = useCallback(

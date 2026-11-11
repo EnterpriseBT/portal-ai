@@ -523,6 +523,8 @@ describe("googleSheetsAdapter.syncInstance", () => {
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
         sheetLastRow: 2,
         sheetLastCol: 2,
+        recordsAxis: "row",
+        targetEntityLabel: "people",
       },
     ]);
     expect(result).not.toHaveProperty("replayWarningsOmitted");

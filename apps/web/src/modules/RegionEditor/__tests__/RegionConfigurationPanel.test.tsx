@@ -920,6 +920,40 @@ describe("RegionConfigurationPanelUI", () => {
       expect(onFit).toHaveBeenCalledTimes(1);
     });
 
+    test("names only the region's own rows when it starts past the sheet", () => {
+      renderPanel(
+        baseRegion({
+          bounds: { startRow: 49, endRow: 59, startCol: 0, endCol: 1 },
+        })
+      );
+      expect(
+        screen.getByRole("region", { name: "Past the sheet" })
+      ).toHaveTextContent("Rows 50–60 are past the sheet's last row (3).");
+    });
+
+    test("on an emptied sheet, says so and offers no Fit to sheet", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({
+            bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          regionSheet={{ ...sheet, rowCount: 0, colCount: 0, cells: [] }}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+          onFitToSheet={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("region", { name: "Past the sheet" })
+      ).toHaveTextContent(
+        "This sheet is now empty, so there's nothing to fit the region to. Delete the region, or draw it on another sheet."
+      );
+      expect(screen.queryByRole("button", { name: "Fit to sheet" })).toBeNull();
+    });
+
     test("shows nothing for a region inside its sheet", () => {
       renderPanel(
         baseRegion({
