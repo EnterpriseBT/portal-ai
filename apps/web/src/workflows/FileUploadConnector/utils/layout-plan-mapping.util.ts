@@ -189,6 +189,21 @@ function segmentsOnHeaderAxes(
 }
 
 /**
+ * The drafts interpret receives, in the order it receives them: every draft
+ * with a target entity. Interpret answers with one region per hint in hint
+ * order, so this list pairs with the returned regions by index. The hints,
+ * the config merge and the selection remap all pair through it.
+ */
+export function draftsSentToInterpret<
+  T extends Pick<RegionDraft, "targetEntityDefinitionId">,
+>(drafts: T[]): (T & { targetEntityDefinitionId: string })[] {
+  return drafts.filter(
+    (d): d is T & { targetEntityDefinitionId: string } =>
+      d.targetEntityDefinitionId !== null
+  );
+}
+
+/**
  * Merge user-configured knobs from the prior draft list into a plan freshly
  * returned from `interpret()`. Preserves the user's segment edits
  * (headerAxes, segmentsByAxis, cellValueField, recordAxisTerminator) as well
@@ -202,9 +217,7 @@ export function preserveUserRegionConfig(
   plan: LayoutPlan,
   priorDrafts: RegionDraft[]
 ): LayoutPlan {
-  const considered = priorDrafts.filter(
-    (d) => d.targetEntityDefinitionId !== null
-  );
+  const considered = draftsSentToInterpret(priorDrafts);
   if (considered.length === 0) return plan;
 
   return {
@@ -311,6 +324,28 @@ export function preserveUserRegionConfig(
   };
 }
 
+/**
+ * The selected region's id after interpret replaced the drafts (#999).
+ * Interpret returns regions with new ids, pairing them with the drafts the
+ * way `regionDraftsToHints` / `preserveUserRegionConfig` do: drafts without a
+ * target entity aren't sent, and the rest line up with the returned regions
+ * by index. An id interpret kept stays selected; a draft that wasn't sent,
+ * or a pairing whose counts don't match, clears the selection rather than
+ * selecting the wrong region.
+ */
+export function remapSelectedRegionId(
+  selectedId: string | null,
+  priorDrafts: Pick<RegionDraft, "id" | "targetEntityDefinitionId">[],
+  nextRegions: Pick<RegionDraft, "id">[]
+): string | null {
+  if (selectedId === null) return null;
+  if (nextRegions.some((r) => r.id === selectedId)) return selectedId;
+  const sent = draftsSentToInterpret(priorDrafts);
+  if (sent.length !== nextRegions.length) return null;
+  const index = sent.findIndex((d) => d.id === selectedId);
+  return index === -1 ? null : nextRegions[index].id;
+}
+
 type BackendAxis = "row" | "column";
 
 export function regionDraftsToHints(
@@ -321,8 +356,7 @@ export function regionDraftsToHints(
   const { byId } = indexSheets(workbook);
 
   const hints: RegionHint[] = [];
-  for (const draft of drafts) {
-    if (draft.targetEntityDefinitionId === null) continue;
+  for (const draft of draftsSentToInterpret(drafts)) {
     const sheet = byId.get(draft.sheetId);
     if (!sheet) {
       throw new Error(

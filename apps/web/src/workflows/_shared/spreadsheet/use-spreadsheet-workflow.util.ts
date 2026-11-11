@@ -35,7 +35,10 @@ import type {
 } from "../../../modules/RegionEditor";
 import { ApiError } from "../../../utils/api.util";
 import type { ServerError } from "../../../utils/api.util";
-import { serializeLocator } from "../../FileUploadConnector/utils/layout-plan-mapping.util";
+import {
+  remapSelectedRegionId,
+  serializeLocator,
+} from "../../FileUploadConnector/utils/layout-plan-mapping.util";
 import { useSingleFlight } from "../../../utils/use-single-flight.util";
 
 // ── Shared types ────────────────────────────────────────────────────
@@ -666,6 +669,7 @@ export function useSpreadsheetWorkflow(
 
   const runInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
+    const sentRegions = state.regions;
     const token = ++runTokenRef.current;
     setState((prev) => ({
       ...prev,
@@ -677,11 +681,17 @@ export function useSpreadsheetWorkflow(
         regions: nextRegions,
         plan,
         overallConfidence,
-      } = await callbacks.runInterpret(state.regions);
+      } = await callbacks.runInterpret(sentRegions);
       if (token !== runTokenRef.current) return;
       setState((prev) => ({
         ...prev,
         regions: nextRegions,
+        // Interpret renames the regions; keep the same one selected (#999).
+        selectedRegionId: remapSelectedRegionId(
+          prev.selectedRegionId,
+          sentRegions,
+          nextRegions
+        ),
         plan,
         overallConfidence,
         isInterpreting: false,
