@@ -35,12 +35,20 @@ const { current } = Astro.props as { current?: string };
     </nav>
 
     <div class="site-header__actions">
+      {
+        /* An APG toggle button (#798): a stable name and aria-pressed, which
+          the theme script keeps in step with the resolved theme. Hidden until
+          that script runs: with JS off it can't switch anything, so it stays
+          out of the tab order. */
+      }
       <button
         type="button"
         class="theme-toggle"
         data-theme-toggle
-        aria-label="Toggle colour theme"
-        title="Toggle colour theme"
+        aria-label="Dark theme"
+        aria-pressed="false"
+        title="Dark theme"
+        hidden
       >
         {
           /* Both icons ship; CSS shows the one matching the resolved theme —
@@ -135,6 +143,11 @@ const { current } = Astro.props as { current?: string };
     border-radius: var(--radius-base);
     padding: calc(var(--space-unit) * 0.5);
     line-height: 0;
+  }
+
+  /* The class's display would otherwise override the hidden attribute. */
+  .theme-toggle[hidden] {
+    display: none;
   }
 
   .theme-toggle:hover {
