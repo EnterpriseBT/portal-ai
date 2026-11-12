@@ -76,6 +76,15 @@ describe("collectRenderedFeatures", () => {
     expect(items[0].label).toBe("12 Main St — R2");
   });
 
+  // #796 adversarial F2: a hostile template left its script's body behind.
+  it("drops script and style contents along with their tags", () => {
+    const { items } = collectRenderedFeatures([point({ name: "Seattle" })], {
+      cap: 200,
+      template: "<script>alert(1)</script><style>b{}</style>{{name}}",
+    });
+    expect(items[0].label).toBe("Seattle");
+  });
+
   it("falls back to the first three plain properties", () => {
     const { items } = collectRenderedFeatures(
       [

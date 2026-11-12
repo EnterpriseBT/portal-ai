@@ -129,6 +129,10 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
       rowsPerPage={paging ? paging.rowsPerPage : rowsPerPage}
       onRowsPerPageChange={handleChangeRowsPerPage}
       rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+      // A server-paged result can run to 100,000 rows: its ends are a click
+      // away, not a thousand (#796).
+      showFirstButton={paging != null}
+      showLastButton={paging != null}
       // A server total runs to six figures; group its digits.
       labelDisplayedRows={
         paging

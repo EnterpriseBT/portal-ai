@@ -284,6 +284,19 @@ describe("DataTableBlock paging mode (#796)", () => {
     expect(p.onRowsPerPageChange).toHaveBeenCalledWith(25);
   });
 
+  // #796 adversarial F1: the end of a 100,001-row result was ~1,000 Next
+  // clicks away; paged mode offers first and last page.
+  it("offers first and last page, and jumps to the last", async () => {
+    const user = userEvent.setup();
+    const p = paging({ total: 100_001, page: 0, rowsPerPage: 10 });
+    render(
+      <DataTableBlock label="Data" columns={columns} rows={page} paging={p} />
+    );
+    expect(screen.getByRole("button", { name: /first page/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /last page/i }));
+    expect(p.onPageChange).toHaveBeenCalledWith(10_000);
+  });
+
   it("renders no search box and no sort controls", () => {
     render(
       <DataTableBlock

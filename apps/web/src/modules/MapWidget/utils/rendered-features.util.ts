@@ -54,6 +54,8 @@ function stableHash(props: Record<string, unknown>): string {
 
 const stripTags = (html: string) =>
   html
+    // A script or style body is code, not label text (#796 adversarial F2).
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

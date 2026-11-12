@@ -70,6 +70,27 @@ describe("VisualFigureUI", () => {
     expect(screen.queryByText("the table")).not.toBeInTheDocument();
   });
 
+  // #796 adversarial F3: the chart below resizes as it renders, so a toggle
+  // under it jumped ~100px and an early click missed. It sits above the body.
+  it("puts the data toggle and region above the visual", async () => {
+    const user = userEvent.setup();
+    render(
+      <VisualFigureUI {...base} title="Revenue" data={<p>the table</p>}>
+        <div data-testid="body">chart body</div>
+      </VisualFigureUI>
+    );
+    const body = screen.getByTestId("body");
+    const button = screen.getByRole("button", { name: "Show data" });
+    expect(
+      button.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    await user.click(button);
+    const region = screen.getByRole("region", { name: "Data for Revenue" });
+    expect(
+      region.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("has no axe violations, closed and open", async () => {
     const user = userEvent.setup();
     const { container } = render(

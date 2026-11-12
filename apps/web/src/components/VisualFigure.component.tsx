@@ -58,7 +58,9 @@ export const VisualFigureUI: React.FC<VisualFigureUIProps> = ({
       >
         {summary}
       </Typography>
-      {children}
+      {/* The data toggle sits above the visual (#796 adversarial F3): a chart
+          resizes as it renders, and a toggle below it moved under the
+          pointer. */}
       {data ? (
         <Box>
           <Button
@@ -76,6 +78,7 @@ export const VisualFigureUI: React.FC<VisualFigureUIProps> = ({
           ) : null}
         </Box>
       ) : null}
+      {children}
     </Paper>
   );
 };
