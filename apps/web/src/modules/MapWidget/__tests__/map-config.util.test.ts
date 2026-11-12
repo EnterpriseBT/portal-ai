@@ -984,3 +984,50 @@ describe("isTileBoundGeo (#371 — tile-on-mount decision)", () => {
     expect(isTileBoundGeo(fresh, tiledPin, true)).toBe(false);
   });
 });
+
+// #796: the feature picked from "Features in view" is highlighted on the map.
+describe("selected feature paint (#796)", () => {
+  const SELECTED = ["boolean", ["feature-state", "selected"], false];
+
+  it("strokes a selected point, outlines a selected polygon and widens a selected line", () => {
+    const paintFor = (layer: MapLayer, type: string) =>
+      layerToMapLibre(layer, 0, []).layers.find((l) => l.type === type)!.paint;
+
+    expect(
+      paintFor(
+        {
+          kind: "points",
+          source: { latColumn: "lat", lngColumn: "lng" },
+        } as MapLayer,
+        "circle"
+      )["circle-stroke-width"]
+    ).toEqual(["case", SELECTED, 3, 0]);
+    expect(
+      paintFor(
+        { kind: "polygons", source: { geometryColumn: "geom" } } as MapLayer,
+        "line"
+      )["line-width"]
+    ).toEqual(["case", SELECTED, 3, 1]);
+    expect(
+      paintFor(
+        {
+          kind: "lines",
+          source: { geometryColumn: "geom" },
+          style: { width: 2 },
+        } as MapLayer,
+        "line"
+      )["line-width"]
+    ).toEqual(["case", SELECTED, ["+", 2, 2], 2]);
+  });
+
+  it("keeps an author's own stroke and outline when not selected", () => {
+    const layer = {
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
+      style: { outlineWidth: 1.5 },
+    } as MapLayer;
+    expect(
+      layerToMapLibre(layer, 0, []).layers[0].paint["circle-stroke-width"]
+    ).toEqual(["case", SELECTED, 3, 1.5]);
+  });
+});

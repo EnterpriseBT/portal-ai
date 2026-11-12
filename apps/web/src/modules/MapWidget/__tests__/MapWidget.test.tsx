@@ -65,28 +65,61 @@ jest.unstable_mockModule("maplibre-gl", () => {
     }
     fitBounds() {}
     jumpTo() {}
+    // #796: the canvas the widget describes, the features it lists and the
+    // feature state it highlights.
+    canvas = { style: {}, setAttribute: jest.fn() };
     getCanvas() {
-      return { style: {} };
+      return this.canvas;
     }
+    queryRenderedFeatures = jest.fn((): unknown[] => []);
+    setFeatureState = jest.fn();
+    removeFeatureState = jest.fn();
     remove() {}
   }
   // maplibre-gl v6 is ESM-only with named exports (the widget uses
   // `import * as maplibregl`), so the mock exposes named exports rather than a
   // default object.
+  const popups: MockPopup[] = [];
   class MockPopup {
-    setLngLat() {
+    lngLat: unknown;
+    html: string | null = null;
+    text: string | null = null;
+    closeHandlers: Handler[] = [];
+    element = document.createElement("div");
+    constructor() {
+      popups.push(this);
+    }
+    setLngLat(lngLat: unknown) {
+      this.lngLat = lngLat;
       return this;
     }
-    setHTML() {
+    setHTML(html: string) {
+      this.html = html;
+      return this;
+    }
+    setText(text: string) {
+      this.text = text;
       return this;
     }
     addTo() {
+      return this;
+    }
+    on(event: string, fn: Handler) {
+      if (event === "close") this.closeHandlers.push(fn);
+      return this;
+    }
+    getElement() {
+      return this.element;
+    }
+    remove() {
+      this.closeHandlers.forEach((fn) => fn(undefined));
       return this;
     }
   }
   return {
     __esModule: true,
     __instances: instances,
+    __popups: popups,
     Map: MockMap,
     addProtocol: () => {},
     removeProtocol: () => {},
@@ -109,7 +142,18 @@ const { expectNoAxeViolations, render: renderThemed } =
 const { BASEMAP_LOAD_TIMEOUT_MS, emptyBasemapStyle } =
   await import("../utils/map-config.util");
 const maplibreMock = (await import("maplibre-gl")) as unknown as {
+  __popups: {
+    lngLat: unknown;
+    html: string | null;
+    text: string | null;
+    element: HTMLElement;
+    remove: () => void;
+  }[];
   __instances: {
+    canvas: { setAttribute: jest.Mock };
+    queryRenderedFeatures: jest.Mock;
+    setFeatureState: jest.Mock;
+    removeFeatureState: jest.Mock;
     options: Record<string, unknown>;
     setStyle: jest.Mock;
     addLayer: jest.Mock;
@@ -1077,6 +1121,139 @@ describe("MapWidget data alternative (#796)", () => {
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796: a keyboard user can read how the map's keys work, walk the features in
+// view, and open any of them.
+describe("MapWidget keyboard inspection (#796)", () => {
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const parcel = (id: number, klass: string) => ({
+    id,
+    layer: { id: "layer-0-fill" },
+    source: "layer-0",
+    properties: { name: `Parcel ${id}`, klass },
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [2, 0],
+          [2, 2],
+          [0, 0],
+        ],
+      ],
+    },
+  });
+  const renderMap = () =>
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a"), poly("b")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+  const showFeatures = (features: unknown[]) => {
+    lastMap().queryRenderedFeatures.mockReturnValue(features);
+    act(() => lastMap().emit("style.load"));
+    act(() => lastMap().emit("idle"));
+  };
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+    maplibreMock.__popups.length = 0;
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("names the canvas after the map and describes its keys", () => {
+    renderMap();
+    expect(lastMap().options.locale).toEqual({ "Map.Title": "Map: Parcels" });
+    const hint = screen.getByText(
+      "Arrow keys pan, + and − zoom, when the map has focus."
+    );
+    expect(lastMap().canvas.setAttribute).toHaveBeenCalledWith(
+      "aria-describedby",
+      hint.id
+    );
+  });
+
+  it("lists the features in view once the map settles, with the colour's value", () => {
+    renderMap();
+    showFeatures([parcel(1, "a"), parcel(2, "b")]);
+    expect(
+      screen.getByRole("heading", { name: "Features in view (2)" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "name: Parcel 2, klass: b" })
+    ).toBeInTheDocument();
+  });
+
+  it("opens a selected feature's details and highlights it", () => {
+    renderMap();
+    showFeatures([parcel(1, "a"), parcel(2, "b")]);
+    fireEvent.click(screen.getByRole("button", { name: /Parcel 1/ }));
+    expect(lastMap().setFeatureState).toHaveBeenCalledWith(
+      { source: "layer-0", id: 1 },
+      { selected: true }
+    );
+    expect(maplibreMock.__popups.at(-1)?.lngLat).toEqual([1, 1]);
+    expect(screen.getByRole("button", { name: /Parcel 1/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Parcel 2/ }));
+    expect(lastMap().setFeatureState).toHaveBeenLastCalledWith(
+      { source: "layer-0", id: 2 },
+      { selected: true }
+    );
+    expect(lastMap().removeFeatureState).toHaveBeenCalledWith(
+      { source: "layer-0", id: 1 },
+      "selected"
+    );
+  });
+
+  it("closes the details on Escape and returns focus to the list", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const popup = maplibreMock.__popups.at(-1)!;
+    fireEvent.keyDown(popup.element, { key: "Escape" });
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("announces the count after the view moves", () => {
+    jest.useFakeTimers();
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    act(() => lastMap().emit("moveend"));
+    lastMap().queryRenderedFeatures.mockReturnValue([
+      parcel(1, "a"),
+      parcel(2, "b"),
+    ]);
+    act(() => lastMap().emit("idle"));
+    expect(screen.queryByText("2 features in view")).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(500));
+    expect(screen.getByRole("status")).toHaveTextContent("2 features in view");
+  });
+
+  it("has no axe violations with the list showing", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    showFeatures([parcel(1, "a")]);
     await expectNoAxeViolations(container);
   });
 });

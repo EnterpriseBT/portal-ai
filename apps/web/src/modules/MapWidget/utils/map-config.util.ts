@@ -390,6 +390,14 @@ interface MapLibreLayer {
   filter?: unknown[];
 }
 
+/** True for the feature picked from "Features in view" (#796), which the
+ *  widget marks with `setFeatureState(…, { selected: true })`. */
+const SELECTED = ["boolean", ["feature-state", "selected"], false];
+/** Stroke/outline width of a selected point or polygon. */
+const SELECTED_STROKE = 3;
+/** Extra width of a selected line. */
+const SELECTED_LINE_EXTRA = 2;
+
 /**
  * Translate one MapSpec layer into the MapLibre layer(s) it renders as. A
  * `colorBy` compiles to a `match` expression for the primary colour; every
@@ -429,9 +437,12 @@ export function layerToMapLibre(
           ...(style.outlineColor != null
             ? { "circle-stroke-color": style.outlineColor }
             : {}),
-          ...(style.outlineWidth != null
-            ? { "circle-stroke-width": style.outlineWidth }
-            : {}),
+          "circle-stroke-width": [
+            "case",
+            SELECTED,
+            SELECTED_STROKE,
+            style.outlineWidth ?? 0,
+          ],
         },
       });
       break;
@@ -455,7 +466,12 @@ export function layerToMapLibre(
         source,
         paint: {
           "line-color": style.outlineColor ?? color,
-          "line-width": style.outlineWidth ?? 1,
+          "line-width": [
+            "case",
+            SELECTED,
+            SELECTED_STROKE,
+            style.outlineWidth ?? 1,
+          ],
         },
       });
       break;
@@ -467,7 +483,12 @@ export function layerToMapLibre(
         source,
         paint: {
           "line-color": color,
-          "line-width": style.width ?? 2,
+          "line-width": [
+            "case",
+            SELECTED,
+            ["+", style.width ?? 2, SELECTED_LINE_EXTRA],
+            style.width ?? 2,
+          ],
           ...(style.opacity != null ? { "line-opacity": style.opacity } : {}),
         },
       });
