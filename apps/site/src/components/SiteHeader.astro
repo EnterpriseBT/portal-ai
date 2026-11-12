@@ -118,6 +118,11 @@ const { current } = Astro.props as { current?: string };
   .site-header__nav a {
     color: var(--color-text-secondary);
     text-decoration: none;
+    /* WCAG 2.5.8 (#798, KB-10): a text link is ~17px tall; every nav target
+      is at least 24px, including the rows the nav wraps into. */
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 24px;
   }
 
   .site-header__nav a:hover,
