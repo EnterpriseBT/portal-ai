@@ -30,7 +30,12 @@ const { title, description, path, jsonLd = [], noindex = false } = Astro.props;
 >
   <a class="skip-link" href="#main">Skip to content</a>
   <SiteHeader current={path} />
-  <main id="main" class="container section">
+  {
+    /* tabindex="-1" (#798): the skip link's target takes focus, so "Skip to
+      content" moves focus into main rather than leaving it on <body>. It
+      adds no Tab stop. */
+  }
+  <main id="main" class="container section" tabindex="-1">
     <slot />
   </main>
   <SiteFooter />
