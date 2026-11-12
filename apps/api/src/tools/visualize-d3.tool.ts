@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { NAME_MAX_LENGTH, tooLongMessage } from "@portalai/core/contracts";
+import {
+  NAME_MAX_LENGTH,
+  descriptionField,
+  tooLongMessage,
+} from "@portalai/core/contracts";
 
 import { Tool } from "../types/tools.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
@@ -30,6 +34,12 @@ const InputSchema = z.object({
     .string()
     .max(NAME_MAX_LENGTH, tooLongMessage("Title", NAME_MAX_LENGTH))
     .optional(),
+  summary: descriptionField("Summary")
+    .trim()
+    .min(1, "Summary is required")
+    .describe(
+      "One to three sentences for someone who can't see the chart: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+    ),
 });
 
 /** Total codegen attempts = 1 + MAX_CODEGEN_RETRIES. */
@@ -119,7 +129,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { sql, instruction, title } = this.validate(input);
+        const { sql, instruction, title, summary } = this.validate(input);
 
         const delivery = await resolveSqlDelivery(
           { sql },
@@ -127,6 +137,9 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
         );
         const { schema, samplePeek, rows } = deriveShape(delivery);
         const titleField = title ? { title } : {};
+        // #796: the text alternative rides the chart, never the table
+        // fallback below (a table is its own alternative).
+        const summaryField = { summary };
         // #270: the durable, re-executable pipeline, so the widget can re-run
         // its SQL for live data after the Redis handle expires. Hoisted above
         // the codegen loop in #349 — the data-table fallback below needs it
@@ -168,6 +181,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
                 type: "d3",
                 program,
                 ...titleField,
+                ...summaryField,
                 pipeline,
                 ...delivery.envelope,
               };
@@ -176,6 +190,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
               type: "d3",
               program,
               ...titleField,
+              ...summaryField,
               pipeline,
               rows: rows ?? [],
             };

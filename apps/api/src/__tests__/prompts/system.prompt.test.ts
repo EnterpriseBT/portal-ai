@@ -196,6 +196,29 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
   });
 });
 
+// #796: every chart and map carries a summary for a reader who can't see it.
+describe("buildSystemPrompt — visualization summaries (#796)", () => {
+  const section = (prompt: string, heading: string) => {
+    const start = prompt.indexOf(heading);
+    const next = prompt.indexOf("\n### ", start + heading.length);
+    return prompt.slice(start, next === -1 ? undefined : next);
+  };
+
+  it.each([
+    ["visualize", "### Charting", "visualize_d3"],
+    ["gis", "### Mapping", "visualize_map"],
+  ])("the %s guidance asks for a summary", (pack, heading, tool) => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", pack] })
+    );
+    const text = section(prompt, heading);
+    expect(text).toContain(tool);
+    expect(text).toContain("`summary`");
+    expect(text).toMatch(/can't see it/);
+    expect(text).toMatch(/not the colou?rs/i);
+  });
+});
+
 describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
   it("teaches the agent that line layers stay raw + how treatment overrides it", () => {
     const prompt = buildSystemPrompt(

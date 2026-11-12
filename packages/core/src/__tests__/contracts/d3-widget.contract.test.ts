@@ -169,6 +169,21 @@ describe("pipeline field on d3 block content (#270)", () => {
   });
 });
 
+// #796: the agent-written text alternative rides the block.
+describe("summary (#796)", () => {
+  it("keeps a summary on the inline and handle branches", () => {
+    const summary = "Revenue peaks in February.";
+    const inline = D3BlockContentSchema.parse({ ...inlineContent, summary });
+    const handle = D3BlockContentSchema.parse({ ...handleContent, summary });
+    expect(inline.summary).toBe(summary);
+    expect(handle.summary).toBe(summary);
+  });
+
+  it("is optional, so a pre-#796 block still parses", () => {
+    expect(D3InlineContentSchema.safeParse(inlineContent).success).toBe(true);
+  });
+});
+
 // ── Barrel exports (contracts/index.ts) ──────────────────────────────
 
 describe("contracts barrel", () => {

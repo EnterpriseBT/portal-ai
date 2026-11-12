@@ -33,7 +33,14 @@ const handleEnvelope = {
 };
 const handleDelivery = { kind: "handle" as const, envelope: handleEnvelope };
 
-type ExecArgs = { sql: string; instruction: string; title?: string };
+type ExecArgs = {
+  sql: string;
+  instruction: string;
+  title?: string;
+  summary?: string;
+};
+
+const SUMMARY = "Revenue by month; it peaks in February.";
 
 type CodegenArgs = { system: string; prompt: string };
 
@@ -51,7 +58,7 @@ function buildTool(
       built as unknown as {
         execute: (a: ExecArgs) => Promise<Record<string, unknown>>;
       }
-    ).execute(args);
+    ).execute({ summary: SUMMARY, ...args });
 }
 
 describe("VisualizeD3Tool.execute (#269)", () => {
@@ -255,6 +262,7 @@ describe("VisualizeD3Tool input limits", () => {
       new VisualizeD3Tool().schema.safeParse({
         sql: "SELECT 1",
         instruction: "bar chart",
+        summary: SUMMARY,
         title,
       }).error?.issues ?? []
     ).map((i) => i.message);
@@ -264,5 +272,53 @@ describe("VisualizeD3Tool input limits", () => {
     expect(titleIssues("t".repeat(121))).toEqual([
       "Title must be 120 characters or fewer",
     ]);
+  });
+});
+
+// #796: every chart carries an agent-written text alternative.
+describe("VisualizeD3Tool summary (#796)", () => {
+  const summaryIssues = (input: Record<string, unknown>) =>
+    (
+      new VisualizeD3Tool().schema.safeParse({
+        sql: "SELECT 1",
+        instruction: "bar chart",
+        ...input,
+      }).error?.issues ?? []
+    )
+      .filter((i) => i.path[0] === "summary")
+      .map((i) => i.message);
+
+  it("refuses a missing or blank summary", () => {
+    expect(summaryIssues({})).toHaveLength(1);
+    expect(summaryIssues({ summary: "   " })).toEqual(["Summary is required"]);
+  });
+
+  it("accepts 2000 characters and refuses 2001", () => {
+    expect(summaryIssues({ summary: "s".repeat(2000) })).toEqual([]);
+    expect(summaryIssues({ summary: "s".repeat(2001) })).toEqual([
+      "Summary must be 2000 characters or fewer",
+    ]);
+  });
+
+  it("puts the summary on the inline and handle blocks", async () => {
+    const generateCode = jest.fn(async () => PROGRAM);
+    for (const delivery of [inlineDelivery, handleDelivery]) {
+      const exec = buildTool({
+        generateCode: generateCode as never,
+        resolveSqlDelivery: jest.fn(async () => delivery) as never,
+      });
+      const out = await exec({ sql: "s", instruction: "bar chart" });
+      expect(out).toMatchObject({ type: "d3", summary: SUMMARY });
+    }
+  });
+
+  it("leaves the summary off the data-table fallback", async () => {
+    const exec = buildTool({
+      generateCode: jest.fn(async () => "not a program(") as never,
+      resolveSqlDelivery: jest.fn(async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "s", instruction: "bar chart" });
+    expect(out.type).toBe("data-table");
+    expect(out.summary).toBeUndefined();
   });
 });

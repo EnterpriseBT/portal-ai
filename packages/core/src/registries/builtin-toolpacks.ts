@@ -245,8 +245,11 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
             "A natural-language description of the visualization to render: chart type, which columns (from the `sql` results) map to which encodings, and any emphasis."
           ),
           title: stringField("Optional display title for the widget"),
+          summary: stringField(
+            "One to three sentences for someone who can't see the chart: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+          ),
         },
-        ["sql", "instruction"]
+        ["sql", "instruction", "summary"]
       ),
       examples: [
         {
@@ -255,6 +258,8 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
             sql: "SELECT month, SUM(revenue) AS revenue FROM sales GROUP BY month ORDER BY month",
             instruction:
               "Vertical bar chart: month on the x-axis, total revenue on the y-axis.",
+            summary:
+              "Monthly revenue as bars. Revenue rises through spring and peaks in June.",
           },
           output: { type: "d3" },
         },
@@ -285,8 +290,11 @@ const GIS_PACK: BuiltinToolpackSpec = {
               "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend — set `colorBy.scale` ('categorical' | 'step' | 'interpolate') to pick the colour scale, where 'interpolate' is a smooth continuous gradient for a numeric column (absent ⇒ inferred: numeric → banded step, else categorical). Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
           },
           title: stringField("Optional display title for the map widget"),
+          summary: stringField(
+            "One to three sentences for someone who can't see the map: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+          ),
         },
-        ["sql", "spec"]
+        ["sql", "spec", "summary"]
       ),
       examples: [
         {
@@ -305,6 +313,8 @@ const GIS_PACK: BuiltinToolpackSpec = {
               ],
               popup: { template: "{{c_address}} — {{c_prop_class}}" },
             },
+            summary:
+              "Vacant parcels by zoning class. Most are residential, clustered on the east side.",
           },
           output: { type: "geo" },
         },

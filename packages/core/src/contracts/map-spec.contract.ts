@@ -196,6 +196,10 @@ export type MapSpec = z.infer<typeof MapSpecSchema>;
 export const GeoBaseContentSchema = z.object({
   spec: MapSpecSchema,
   title: z.string().optional(),
+  /** Agent-written text alternative (#796): what it shows and the takeaway.
+   *  Optional so pre-#796 blocks and pins parse; the widget derives one when
+   *  absent. No length limit here: limits live on request contracts only. */
+  summary: z.string().optional(),
   /** Durable re-executable pipeline (shared with d3). */
   pipeline: VizPipelineSchema.optional(),
   /**

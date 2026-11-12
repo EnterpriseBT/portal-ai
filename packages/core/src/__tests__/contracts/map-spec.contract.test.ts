@@ -332,6 +332,19 @@ describe("Geo block content", () => {
     });
     expect(res.success).toBe(true);
   });
+
+  it("keeps the #796 summary and still parses without one", () => {
+    const summary = "Most parcels are residential.";
+    expect(
+      GeoBlockContentSchema.parse({ spec, rows: [], summary }).summary
+    ).toBe(summary);
+    expect(
+      GeoBlockContentSchema.parse({ spec, ...handleEnvelope, summary }).summary
+    ).toBe(summary);
+    expect(GeoInlineContentSchema.safeParse({ spec, rows: [] }).success).toBe(
+      true
+    );
+  });
 });
 
 describe("MAP_LAYER_FEATURE_CAP", () => {
