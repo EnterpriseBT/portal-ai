@@ -1,4 +1,4 @@
-import { renderPopupTemplate } from "./tile-source.util";
+import { popupText } from "./tile-source.util";
 
 /** The parts of a `queryRenderedFeatures` result this list reads. */
 export interface QueriedFeature {
@@ -51,14 +51,6 @@ function stableHash(props: Record<string, unknown>): string {
   }
   return (hash >>> 0).toString(36);
 }
-
-const stripTags = (html: string) =>
-  html
-    // A script or style body is code, not label text (#796 adversarial F2).
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 
 const isPlain = (v: unknown) =>
   v != null && (typeof v !== "object" || v instanceof Date);
@@ -128,7 +120,7 @@ export function collectRenderedFeatures(
     if (!lngLat) continue;
 
     let label = opts.template
-      ? stripTags(renderPopupTemplate(opts.template, props))
+      ? popupText(opts.template, props)
       : fallbackLabel(props);
     // What the colour encodes, unless the label already shows that value
     // (a template like "Segment: {{segment}}" does, #796 smoke).

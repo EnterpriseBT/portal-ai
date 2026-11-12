@@ -1220,6 +1220,52 @@ describe("MapWidget keyboard inspection (#796)", () => {
     );
   });
 
+  // #1016: a record value is never parsed as HTML in the details popup.
+  it("shows a hostile value in the details as text, never HTML", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={
+          { ...polySpec, popup: { template: "<b>{{name}}</b>" } } as MapSpec
+        }
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    const evil = {
+      ...parcel(1, "a"),
+      properties: { name: "<img src=x onerror=alert(1)>Evil", klass: "a" },
+    };
+    showFeatures([evil]);
+    fireEvent.click(screen.getByRole("button", { name: /Evil/ }));
+    const popup = maplibreMock.__popups.at(-1)!;
+    expect(popup.html).toBeNull();
+    expect(popup.text).toBe("<img src=x onerror=alert(1)>Evil");
+  });
+
+  it("shows a clicked feature's details as text, never HTML", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={{ ...polySpec, popup: { template: "{{klass}}" } } as MapSpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    act(() =>
+      lastMap().emit("click:layer-0-fill", {
+        lngLat: { lng: 1, lat: 1 },
+        features: [{ properties: { klass: "<img src=x onerror=alert(1)>" } }],
+      })
+    );
+    const popup = maplibreMock.__popups.at(-1)!;
+    expect(popup.html).toBeNull();
+    expect(popup.text).toBe("<img src=x onerror=alert(1)>");
+  });
+
   it("closes the details on Escape and returns focus to the list", () => {
     renderMap();
     showFeatures([parcel(1, "a")]);

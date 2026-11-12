@@ -27,6 +27,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { DbService } from "../services/db.service.js";
+import { HANDLE_EXPIRED_MESSAGE } from "../constants/query-handle.constants.js";
 
 const logger = createLogger({ module: "portal-sql-handle-router" });
 
@@ -111,7 +112,7 @@ portalSqlHandleRouter.get(
         throw new ApiError(
           404,
           ApiCode.READ_HANDLE_EXPIRED,
-          "Query handle not found or expired"
+          HANDLE_EXPIRED_MESSAGE
         );
       }
       if (meta._portalResultId) {
@@ -125,7 +126,7 @@ portalSqlHandleRouter.get(
         throw new ApiError(
           404,
           ApiCode.READ_HANDLE_EXPIRED,
-          "Query handle not found or expired"
+          HANDLE_EXPIRED_MESSAGE
         );
       }
 

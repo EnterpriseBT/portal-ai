@@ -52,7 +52,7 @@ import {
 } from "./utils/map-config.util";
 import {
   EMPTY_TILE_STATUS,
-  renderPopupTemplate,
+  popupText,
   tilePath,
   TILE_SOURCE_LAYER,
   type TileStatus,
@@ -505,7 +505,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
               if (!f) return;
               new maplibregl.Popup()
                 .setLngLat(e.lngLat)
-                .setHTML(renderPopupTemplate(template, f.properties ?? {}))
+                // #1016: text, never HTML (record values are untrusted).
+                .setText(popupText(template, f.properties ?? {}))
                 .addTo(m);
             });
           }
@@ -586,8 +587,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     }
     const template = spec.popup?.template;
     const popup = new maplibregl.Popup().setLngLat(item.lngLat);
-    if (template) popup.setHTML(renderPopupTemplate(template, item.properties));
-    else popup.setText(item.label);
+    // #1016: text, never HTML (record values are untrusted).
+    popup.setText(template ? popupText(template, item.properties) : item.label);
     popup.addTo(m);
     // Focus returns to the list only when the details were closed from the
     // keyboard (Escape, or the popup's own close button while focused). A
