@@ -1,10 +1,20 @@
 import { describe, it, expect } from "@jest/globals";
 
+import { runInNewContext } from "node:vm";
+
+import {
+  DARK_THEME_NAME,
+  LIGHT_THEME_NAME,
+  THEME_STORAGE_KEY as CORE_KEY,
+} from "@portalai/core/constants";
+
 import {
   THEME_STORAGE_KEY,
   nextTheme,
   pressedFor,
   resolveTheme,
+  themeHeadScript,
+  titleFor,
   toThemeName,
 } from "../theme-toggle.js";
 
@@ -13,10 +23,15 @@ import {
 // the theme before first paint must agree with `resolveTheme`.
 
 describe("theme toggle", () => {
-  it("shares the app's storage key and encoding", () => {
-    expect(THEME_STORAGE_KEY).toBe("portalai-theme");
-    expect(toThemeName("light")).toBe("brand");
-    expect(toThemeName("dark")).toBe("brand.dark");
+  it("shares the app's storage key and encoding, from core", () => {
+    expect(THEME_STORAGE_KEY).toBe(CORE_KEY);
+    expect(toThemeName("light")).toBe(LIGHT_THEME_NAME);
+    expect(toThemeName("dark")).toBe(DARK_THEME_NAME);
+  });
+
+  it("titles the toggle with the action a click takes", () => {
+    expect(titleFor("light")).toBe("Switch to dark theme");
+    expect(titleFor("dark")).toBe("Switch to light theme");
   });
 
   it("flips between light and dark", () => {
@@ -50,5 +65,55 @@ describe("theme toggle", () => {
         theme
       );
     }
+  });
+});
+
+// #798 review: the head script that resolves the theme before first paint is
+// generated from resolveTheme, so the two can't drift. Run it as the browser
+// would and compare.
+describe("theme head script", () => {
+  const run = (stored: string | null, prefersDark: boolean, throws = false) => {
+    const attrs: Record<string, string> = {};
+    const reads: string[] = [];
+    runInNewContext(themeHeadScript(), {
+      document: {
+        documentElement: {
+          setAttribute: (k: string, v: string) => (attrs[k] = v),
+        },
+      },
+      localStorage: {
+        getItem: (k: string) => {
+          reads.push(k);
+          if (throws) throw new Error("blocked");
+          return stored;
+        },
+      },
+      window: { matchMedia: () => ({ matches: prefersDark }) },
+    });
+    return { attrs, reads };
+  };
+
+  it.each([
+    [JSON.stringify("brand.dark"), false],
+    [JSON.stringify("brand"), true],
+    [null, true],
+    [null, false],
+    [JSON.stringify("sepia"), true],
+    ["{not json", true],
+  ])(
+    "sets data-theme as resolveTheme does (stored %s, prefers dark %s)",
+    (stored, dark) => {
+      const { attrs, reads } = run(stored, dark);
+      expect(attrs["data-theme"]).toBe(resolveTheme(stored, dark));
+      expect(reads).toEqual([CORE_KEY]);
+    }
+  );
+
+  it("marks the page as scripted before paint, so the toggle shows without reflow", () => {
+    expect(run(null, false).attrs["data-js"]).toBe("");
+  });
+
+  it("falls back to light when storage throws (private mode)", () => {
+    expect(run(null, true, true).attrs["data-theme"]).toBe("light");
   });
 });

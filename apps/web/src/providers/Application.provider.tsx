@@ -1,5 +1,6 @@
 import React, { StrictMode, useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { THEME_STORAGE_KEY } from "@portalai/core/constants";
 import { ThemeName, ThemeProvider } from "@portalai/core/ui";
 
 import "@portalai/core/styles";
@@ -41,7 +42,7 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
   onLoginReturn,
 }) => {
   const { value: theme } = useStorage<ThemeName>({
-    key: "portalai-theme",
+    key: THEME_STORAGE_KEY,
     defaultValue: defaultTheme,
     storageType: "local",
   });

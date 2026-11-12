@@ -23,17 +23,19 @@
 ## Decision — target size (KB-10)
 
 - **Options:** (a) record that the 2.5.8 spacing exception holds (single-row links with 16px gaps, and axe's `target-size` passed); or (b) give every nav link a 24px minimum target.
-- **Chosen: (b).** `padding-block` on the header and footer nav links so each is at least 24px tall, which also covers the wrapped rows on narrow screens. It's no harder than verifying the exception, and it stays true when the nav changes. There's no visual change beyond the slightly larger hit area.
+- **Chosen: (b).** Header and footer nav links become `inline-flex` with `min-block-size: 24px` (measured 25.6px), which also covers the wrapped rows on narrow screens. It's no harder than verifying the exception, and it stays true when the nav changes. There's no visual change beyond the slightly larger hit area.
 
 ## Decision — the theme toggle's name and state
 
 - **Options:** (a) keep the fixed name; (b) a name that changes ("Switch to dark theme"); (c) an APG toggle button: a stable name, "Dark theme", plus `aria-pressed`.
 - **Chosen: (c).** A screen reader announces "Dark theme, toggle button, pressed / not pressed", which is the APG pattern and keeps the `title` tooltip stable.
 - **How it's built:**
-  - The click handler moves from `is:inline` into a bundled Astro `<script>` that imports a pure `src/lib/theme-toggle.ts`: `nextTheme(current)` and `toThemeName(theme)` (the `portalai-theme` encoding).
-  - On load and on every toggle, the script sets `aria-pressed` from the resolved `data-theme`.
-  - The head script stays inline: it has to run before first paint.
-- **With JS off:** the toggle can't work, so it renders `hidden` until the script un-hides it. A dead button isn't left in the tab order.
+  - The click handler moves from `is:inline` into a bundled Astro `<script>` that imports a pure `src/lib/theme-toggle.ts`: `nextTheme`, `toThemeName`, `pressedFor`, `titleFor`.
+  - The storage key and theme names come from `@portalai/core/constants` (`theme.constants.ts`), shared with `apps/web` (code review).
+  - On load, on every toggle, and on a change from another tab or the system preference, the script sets `aria-pressed` and an action tooltip ("Switch to light/dark theme") from the resolved `data-theme`.
+  - The head script stays inline (it has to run before first paint) but is generated from the module's own resolver (`themeHeadScript()`), so the two can't drift; a test runs it.
+- **With JS off:** the toggle can't work, so CSS hides it unless the head script has set `data-js` on `<html>` before first paint. A dead button isn't left in the tab order, and with JS on it's there from the first frame, so the header doesn't reflow.
+- **No-JS palette (code review):** tokens existed only under `:root[data-theme=…]`, so a no-JS page had no palette. `generate-tokens.mjs` also emits `:root:not([data-theme])` (light) and its `prefers-color-scheme: dark` variant.
 
 ## Plan — 2 slices
 
@@ -59,7 +61,7 @@
 2. **First Tab:** focus lands on "Skip to content". Enter moves focus into the main content.
 3. **Tab through the header:** the brand, Features, Use cases, Pricing, Contact, the theme toggle, then Sign in. Each shows the 2px focus ring.
 4. **Toggle with a screen reader** (VoiceOver + Safari or NVDA + Firefox): it reads "Dark theme, toggle button, not pressed". Space switches to dark and it then reads "pressed". Reload: the state persists and the button still reads pressed.
-5. **Toggle with JS disabled** (DevTools): it isn't shown and isn't in the tab order. The page renders in the resolved theme.
+5. **Toggle with JS disabled** (DevTools): it isn't shown and isn't in the tab order. The page renders in the system theme (switch the OS or DevTools' emulated `prefers-color-scheme` to check both).
 6. **Target size:** in DevTools, each header and footer nav link's box is ≥24px tall, at 1280px and at 400px (wrapped) widths.
 7. **Every page:** walk each page in `SITE_PAGES` with the keyboard only: every link is reachable, and focus is never lost or hidden behind the header.
 8. `npm run --workspace @portalai/e2e a11y:axe:site`, then `npm run a11y:inventory`: the #798 section stays empty, and KB-10 shows **Closed:** (the summary's #798 keyboard count is 0).
@@ -67,5 +69,5 @@
 ## Out of scope
 
 - Content rewrites (per the PRD).
-- The no-JS theme *choice*. With JS off, the site follows `prefers-color-scheme`, as today.
+- The no-JS theme *choice*. With JS off, the site follows `prefers-color-scheme` (the fallback added in this ticket).
 - Turning the walk into a CI gate (#799).
