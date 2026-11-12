@@ -33,7 +33,7 @@ describe("MapFeatureListUI", () => {
       />
     );
     expect(
-      screen.getByRole("heading", { level: 3, name: "Features in view (2)" })
+      screen.getByRole("heading", { level: 2, name: "Features in view (2)" })
     ).toBeInTheDocument();
   });
 
@@ -110,6 +110,20 @@ describe("MapFeatureListUI", () => {
     );
     await user.click(screen.getByRole("button", { name: "Parcel 1" }));
     expect(onSelect).toHaveBeenCalledWith(item(1));
+  });
+
+  // #796 smoke: both hosts (a portal session, a pin's detail page) put the
+  // map directly under the page's h1, so an h3 failed axe's heading-order.
+  it("is an h2 by default, directly under a page's h1", () => {
+    render(
+      <MapFeatureListUI
+        items={[]}
+        total={0}
+        selectedKey={null}
+        onSelect={() => {}}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument();
   });
 
   it("takes its heading level from the page", () => {

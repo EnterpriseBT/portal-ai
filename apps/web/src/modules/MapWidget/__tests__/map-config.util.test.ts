@@ -401,7 +401,13 @@ describe("layerToMapLibre", () => {
     expect(layers).toHaveLength(1);
     expect(layers[0].type).toBe("circle");
     expect(layers[0].paint["circle-color"]).toBe("#123456");
-    expect(layers[0].paint["circle-radius"]).toBe(8);
+    // #796: the radius grows while its feature is selected.
+    expect(layers[0].paint["circle-radius"]).toEqual([
+      "case",
+      ["boolean", ["feature-state", "selected"], false],
+      11,
+      8,
+    ]);
     expect(legend).toBeNull();
   });
 
@@ -988,47 +994,96 @@ describe("isTileBoundGeo (#371 — tile-on-mount decision)", () => {
 // #796: the feature picked from "Features in view" is highlighted on the map.
 describe("selected feature paint (#796)", () => {
   const SELECTED = ["boolean", ["feature-state", "selected"], false];
-
-  it("strokes a selected point, outlines a selected polygon and widens a selected line", () => {
-    const paintFor = (layer: MapLayer, type: string) =>
-      layerToMapLibre(layer, 0, []).layers.find((l) => l.type === type)!.paint;
-
-    expect(
-      paintFor(
-        {
-          kind: "points",
-          source: { latColumn: "lat", lngColumn: "lng" },
-        } as MapLayer,
-        "circle"
-      )["circle-stroke-width"]
-    ).toEqual(["case", SELECTED, 3, 0]);
-    expect(
-      paintFor(
-        { kind: "polygons", source: { geometryColumn: "geom" } } as MapLayer,
-        "line"
-      )["line-width"]
-    ).toEqual(["case", SELECTED, 3, 1]);
-    expect(
-      paintFor(
-        {
-          kind: "lines",
-          source: { geometryColumn: "geom" },
-          style: { width: 2 },
-        } as MapLayer,
-        "line"
-      )["line-width"]
-    ).toEqual(["case", SELECTED, 4, 2]);
-  });
-
-  it("keeps an author's own stroke and outline when not selected", () => {
-    const layer = {
+  const paintFor = (
+    layer: MapLayer,
+    type: string,
+    opts: { highlightColor?: string } = {}
+  ) =>
+    layerToMapLibre(layer, 0, [], opts).layers.find((l) => l.type === type)!
+      .paint;
+  const point = (style?: object) =>
+    ({
       kind: "points",
       source: { latColumn: "lat", lngColumn: "lng" },
-      style: { outlineWidth: 1.5 },
-    } as MapLayer;
-    expect(
-      layerToMapLibre(layer, 0, []).layers[0].paint["circle-stroke-width"]
-    ).toEqual(["case", SELECTED, 3, 1.5]);
+      style,
+    }) as MapLayer;
+
+  it("grows a selected point and rings it in the highlight colour", () => {
+    const paint = paintFor(point({ radius: 8 }), "circle", {
+      highlightColor: "#000000",
+    });
+    expect(paint["circle-radius"]).toEqual(["case", SELECTED, 11, 8]);
+    expect(paint["circle-stroke-width"]).toEqual(["case", SELECTED, 3, 0]);
+    expect(paint["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      "#000000",
+    ]);
+  });
+
+  // #796 smoke: a white 2px outline only went to 3px white on selection,
+  // invisible on a light basemap. The ring now takes the highlight colour.
+  it("rings in the highlight colour, not the author's outline colour", () => {
+    const paint = paintFor(
+      point({ outlineColor: "#ffffff", outlineWidth: 2 }),
+      "circle",
+      { highlightColor: "#000000" }
+    );
+    expect(paint["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      "#ffffff",
+    ]);
+    expect(paint["circle-stroke-width"]).toEqual(["case", SELECTED, 3, 2]);
+  });
+
+  it("outlines a selected polygon in the highlight colour", () => {
+    const paint = paintFor(
+      { kind: "polygons", source: { geometryColumn: "geom" } } as MapLayer,
+      "line",
+      { highlightColor: "#ffffff" }
+    );
+    expect(paint["line-width"]).toEqual(["case", SELECTED, 3, 1]);
+    expect(paint["line-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#ffffff",
+      expect.anything(),
+    ]);
+  });
+
+  it("widens a selected line and keeps its data colour", () => {
+    const paint = paintFor(
+      {
+        kind: "lines",
+        source: { geometryColumn: "geom" },
+        style: { width: 2, color: "#123456" },
+      } as MapLayer,
+      "line"
+    );
+    expect(paint["line-width"]).toEqual(["case", SELECTED, 4, 2]);
+    expect(paint["line-color"]).toBe("#123456");
+  });
+
+  it("grows a data-driven radius by expression", () => {
+    const radius = ["get", "size"];
+    expect(paintFor(point({ radius }), "circle")["circle-radius"]).toEqual([
+      "case",
+      SELECTED,
+      ["+", radius, 3],
+      radius,
+    ]);
+  });
+
+  it("defaults the highlight to black", () => {
+    expect(paintFor(point(), "circle")["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      "#000000",
+    ]);
   });
 });
 
@@ -1068,6 +1123,16 @@ describe("selected paint leaves an expression width alone (#796)", () => {
       },
       "circle",
       "circle-stroke-width",
+    ],
+    [
+      "point radius",
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { radius: zoomWidth },
+      },
+      "circle",
+      "circle-radius",
     ],
   ])("keeps a %s expression as authored", (_name, layer, type, prop) => {
     const paint = layerToMapLibre(layer as MapLayer, 0, []).layers.find(

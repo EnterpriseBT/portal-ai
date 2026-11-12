@@ -128,9 +128,16 @@ export function collectRenderedFeatures(
     let label = opts.template
       ? stripTags(renderPopupTemplate(opts.template, props))
       : fallbackLabel(props);
+    // What the colour encodes, unless the label already shows that value
+    // (a template like "Segment: {{segment}}" does, #796 smoke).
     const colorBy = opts.colorByForLayer?.[f.layer.id];
-    if (colorBy && props[colorBy] != null && !label.includes(`${colorBy}: `)) {
-      label += `${label ? " · " : ""}${colorBy}: ${String(props[colorBy])}`;
+    const shown = colorBy != null ? props[colorBy] : null;
+    if (
+      colorBy &&
+      shown != null &&
+      !label.toLowerCase().includes(String(shown).toLowerCase())
+    ) {
+      label += `${label ? " · " : ""}${colorBy}: ${String(shown)}`;
     }
     items.push({
       key,

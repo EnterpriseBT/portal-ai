@@ -105,6 +105,33 @@ describe("collectRenderedFeatures", () => {
     expect(items[0].label).toBe("Parcel 12 · zoning: R2");
   });
 
+  // #796 smoke: "Segment: enterprise · segment: enterprise" and
+  // "Lifetime Revenue: $1594810.69 · lifetime_revenue: 1594810.69".
+  it.each([
+    [
+      "Segment: {{segment}}",
+      { segment: "enterprise" },
+      "segment",
+      "Segment: enterprise",
+    ],
+    [
+      "Lifetime Revenue: ${{lifetime_revenue}}",
+      { lifetime_revenue: 1594810.69 },
+      "lifetime_revenue",
+      "Lifetime Revenue: $1594810.69",
+    ],
+  ])(
+    "doesn't repeat a colour value the label already shows (%s)",
+    (template, props, column, label) => {
+      const { items } = collectRenderedFeatures([point(props)], {
+        cap: 200,
+        template,
+        colorByForLayer: { "layer-0-circle": column },
+      });
+      expect(items[0].label).toBe(label);
+    }
+  );
+
   it("skips aggregate bins", () => {
     const { total } = collectRenderedFeatures(
       [point({ _agg: 1, _count: 40 }), point({ name: "A" })],

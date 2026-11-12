@@ -11,7 +11,10 @@ export interface MapFeatureListUIProps {
   total: number;
   selectedKey: string | null;
   onSelect: (item: RenderedFeature) => void;
-  /** Sits under a result's own heading; 3 by default. */
+  /** Every current host (a portal session, a pin's detail page) puts the
+   *  map directly under the page's h1, so 2 by default (#796 smoke: an h3
+   *  failed axe's heading-order). A host with its own result headings passes
+   *  one level below them. */
   headingLevel?: 2 | 3 | 4 | 5 | 6;
 }
 
@@ -25,7 +28,7 @@ export const MapFeatureListUI: React.FC<MapFeatureListUIProps> = ({
   total,
   selectedKey,
   onSelect,
-  headingLevel = 3,
+  headingLevel = 2,
 }) => {
   const headingId = useId();
   const more = total - items.length;

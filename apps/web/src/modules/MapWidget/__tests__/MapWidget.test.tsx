@@ -1315,3 +1315,50 @@ describe("MapWidget keyboard inspection (#796)", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+// #796 smoke: the selection ring contrasts with the basemap, whatever the
+// author's outline colour.
+describe("MapWidget selection ring colour (#796)", () => {
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const ringColour = () => {
+    const circle = lastMap()
+      .addLayer.mock.calls.map(
+        (c) => c[0] as { type: string; paint: Record<string, unknown> }
+      )
+      .find((l) => l.type === "circle");
+    return (circle?.paint["circle-stroke-color"] as unknown[])?.[2];
+  };
+  const spec = {
+    basemap: "carto-light",
+    initialView: "fit",
+    layers: [
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { outlineColor: "#ffffff", outlineWidth: 2 },
+      },
+    ],
+  } as unknown as MapSpec;
+  const rows = [{ lat: 40.7, lng: -111.9 }];
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+  });
+
+  it("rings in black on a light map", () => {
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={spec} rows={rows} mode="light" />
+    );
+    act(() => lastMap().emit("style.load"));
+    expect(ringColour()).toBe("#000000");
+  });
+
+  it("rings in white on a dark map", () => {
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={spec} rows={rows} mode="dark" />
+    );
+    act(() => lastMap().emit("style.load"));
+    expect(ringColour()).toBe("#ffffff");
+  });
+});

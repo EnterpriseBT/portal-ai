@@ -228,7 +228,11 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     const data = spec.layers.map((l, i) => featuresForLayer(l, i, rows));
     const perLayer = spec.layers.map((l, i) => ({
       colorBy: l.style?.colorBy?.column,
-      layers: layerToMapLibre(l, i, rows, { tiled: isTile }).layers,
+      layers: layerToMapLibre(l, i, rows, {
+        tiled: isTile,
+        // #796: the selection ring contrasts with the basemap.
+        highlightColor: mode === "dark" ? "#ffffff" : "#000000",
+      }).layers,
     }));
     const layers = perLayer.flatMap((p) => p.layers);
     // #796: what each MapLibre layer's colour encodes, for the list's labels.
@@ -253,7 +257,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       featureCapNotice: notice,
       hasFeatures: data.some((d) => d.collection.features.length > 0),
     };
-  }, [spec, rows, isTile]);
+  }, [spec, rows, isTile, mode]);
 
   const showMap = !error && (isTile || hasFeatures);
 
