@@ -14,6 +14,10 @@ const meta: Meta<typeof MapWidgetUI> = {
   title: "Modules/MapWidget",
   component: MapWidgetUI,
   parameters: { layout: "padded" },
+  args: {
+    summary:
+      "Parcels by land-use class. Most are residential, with commercial parcels along the main road.",
+  },
 };
 export default meta;
 

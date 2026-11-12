@@ -34,7 +34,7 @@ export function buildSandboxSrcdoc(parts: {
 }): string {
   return [
     "<!doctype html>",
-    "<html><head>",
+    '<html lang="en"><head>',
     `<meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">`,
     // #278: `#root svg{overflow:visible}` lets marks a program draws outside
     // its declared viewport actually paint, once the bootstrap has grown #root

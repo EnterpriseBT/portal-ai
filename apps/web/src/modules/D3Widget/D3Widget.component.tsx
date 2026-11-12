@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from "react";
-import { Box, CircularProgress, Paper, Typography } from "@mui/material";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { D3BlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
+import { visualSummary } from "@portalai/core/utils";
 
 import { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { buildSandboxTheme } from "./utils/sandbox-theme.util";
+import { VisualFigureUI } from "../../components/VisualFigure.component";
+import { toSummaryInput } from "../../utils/visual-summary-input.util";
 import type { BlockRef } from "@portalai/core";
 
 import type { D3BlockContent } from "@portalai/core/contracts";
@@ -39,6 +42,8 @@ const CHART_BOUNDS: React.CSSProperties = {
 export interface D3WidgetUIProps {
   program: string;
   title?: string;
+  /** Text alternative (#796), resolved through `visualSummary`. */
+  summary: string;
   params?: Record<string, unknown>;
   theme: D3SandboxTheme;
   batches: ProgressiveBatch[];
@@ -84,6 +89,7 @@ export interface D3WidgetUIProps {
 export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   program,
   title,
+  summary,
   params,
   theme,
   batches,
@@ -169,6 +175,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
           <D3SandboxFrameUI
             key={frameKey}
             program={program}
+            title={title}
             params={params}
             theme={theme}
             batches={batches}
@@ -186,11 +193,16 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   }
 
   return (
-    <Paper variant="outlined" data-testid="d3-widget" sx={{ p: 1.5 }}>
-      {header}
+    <VisualFigureUI
+      kind="chart"
+      title={title}
+      summary={summary}
+      header={header}
+      testId="d3-widget"
+    >
       {note}
       {body}
-    </Paper>
+    </VisualFigureUI>
   );
 };
 
@@ -271,6 +283,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     return (
       <D3WidgetUI
         program=""
+        summary="This chart couldn't be read."
         theme={sandboxTheme}
         batches={[]}
         totalRows={0}
@@ -328,6 +341,17 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       : (refreshError?.message ?? fetchError ?? frameError);
   const complete = isHandle ? progressive.complete : true;
 
+  // #796: the agent's summary, or one derived from the data the frame draws.
+  const summary = visualSummary(
+    parsedContent.summary,
+    toSummaryInput({
+      kind: "chart",
+      title: parsedContent.title,
+      rows: inlineRows,
+      handle: freshHandle ?? (fresh || isPin ? null : baseHandle),
+    })
+  );
+
   // Frame status (#271): refresh in flight > error > pre-first-batch load >
   // still-streaming rows > ready.
   const status: NonNullable<D3WidgetUIProps["status"]> = isRefreshing
@@ -344,6 +368,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     <D3WidgetUI
       program={parsedContent.program}
       title={parsedContent.title}
+      summary={summary}
       params={parsedContent.params}
       theme={sandboxTheme}
       batches={batches}

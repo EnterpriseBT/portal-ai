@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import * as maplibregl from "maplibre-gl";
 // maplibre v6 computes its worker URL as
@@ -20,11 +20,14 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
+import { visualSummary } from "@portalai/core/utils";
 
 import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { VisualFigureUI } from "../../components/VisualFigure.component";
+import { toSummaryInput } from "../../utils/visual-summary-input.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
 import { MapAttributionUI } from "./MapAttribution.component";
 import { toSafeAttributions } from "./utils/attribution.util";
@@ -81,6 +84,8 @@ export interface MapWidgetUIProps {
   rows: Record<string, unknown>[];
   mode: "light" | "dark";
   title?: string;
+  /** Text alternative (#796), resolved through `visualSummary`. */
+  summary: string;
   loading?: boolean;
   error?: string | null;
   /** Real API tile template (`…/{z}/{x}/{y}.mvt`) for a large/handle result;
@@ -116,6 +121,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   rows,
   mode,
   title,
+  summary,
   loading = false,
   error = null,
   tileTemplate = null,
@@ -655,10 +661,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   }
 
   return (
-    <Paper variant="outlined" data-testid="map-widget" sx={{ p: 1.5 }}>
-      {header}
+    <VisualFigureUI
+      kind="map"
+      title={title}
+      summary={summary}
+      header={header}
+      testId="map-widget"
+    >
       {body}
-    </Paper>
+    </VisualFigureUI>
   );
 };
 
@@ -715,6 +726,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
         spec={{ layers: [] } as unknown as MapSpec}
         rows={[]}
         mode={mode}
+        summary="This map couldn't be read."
         error="Invalid map block content."
         status="error"
       />
@@ -737,6 +749,29 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   // Large result → vector tiles keyed to the block's own persisted ref.
   const tileTemplate = isHandle ? tilePath(blockRef) : null;
 
+  // #796: the agent's summary, or one derived from the data the map draws.
+  // A tiled map with no envelope (a tiled pin) and a pin before its first
+  // delivery have no count to state.
+  const handle =
+    fresh?.kind === "handle"
+      ? fresh
+      : fresh == null && "queryHandle" in parsedContent
+        ? parsedContent
+        : null;
+  const countKnown =
+    handle != null ||
+    (!isHandle && (fresh != null || blockRef?.kind !== "pin"));
+  const summary = visualSummary(
+    parsedContent.summary,
+    toSummaryInput({
+      kind: "map",
+      title: parsedContent.title,
+      spec: parsedContent.spec,
+      handle,
+      rows: countKnown && !handle ? rows : null,
+    })
+  );
+
   const status: NonNullable<MapWidgetUIProps["status"]> = isRefreshing
     ? "refreshing"
     : refreshError
@@ -749,6 +784,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       rows={rows}
       mode={mode}
       title={parsedContent.title}
+      summary={summary}
       error={refreshError?.message ?? null}
       tileTemplate={tileTemplate}
       largeUnpersisted={isHandle && tileTemplate == null}

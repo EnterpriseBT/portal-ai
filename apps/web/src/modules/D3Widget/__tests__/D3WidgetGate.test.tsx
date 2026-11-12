@@ -84,6 +84,27 @@ describe("D3WidgetGate (#271)", () => {
     expect(pageMutate).not.toHaveBeenCalled();
   });
 
+  // #796: an offscreen chart still announces what it is.
+  it("keeps the placeholder a named, described figure", () => {
+    mockInView = false;
+    render(
+      <D3WidgetGate
+        content={{ ...handleContent, title: "Sales", summary: "Sales double." }}
+      />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Sales" })
+    ).toHaveAccessibleDescription("Sales double.");
+  });
+
+  it("derives the placeholder's description when the block has no summary", () => {
+    mockInView = false;
+    render(<D3WidgetGate content={{ ...handleContent, title: "Sales" }} />);
+    expect(
+      screen.getByRole("figure", { name: "Sales" })
+    ).toHaveAccessibleDescription("Chart: Sales. 5,000 rows; fields x.");
+  });
+
   it("swaps live → placeholder when it scrolls out of view", () => {
     const { rerender } = render(<D3WidgetGate content={handleContent} />);
     expect(screen.getByTestId("d3-widget")).toBeInTheDocument();

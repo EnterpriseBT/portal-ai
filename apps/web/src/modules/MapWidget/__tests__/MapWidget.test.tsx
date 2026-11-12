@@ -101,6 +101,11 @@ jest.unstable_mockModule("maplibre-gl", () => {
 });
 
 const { MapWidgetUI } = await import("../MapWidget.component");
+
+const SUMMARY = "Parcels by class; most are residential.";
+const { MapWidgetPlaceholderUI } = await import("../MapWidgetGate.component");
+const { expectNoAxeViolations, render: renderThemed } =
+  await import("../../../__tests__/test-utils");
 const { BASEMAP_LOAD_TIMEOUT_MS, emptyBasemapStyle } =
   await import("../utils/map-config.util");
 const maplibreMock = (await import("maplibre-gl")) as unknown as {
@@ -156,7 +161,9 @@ const poly = (klass: string) => ({
 
 describe("MapWidgetUI", () => {
   it("renders the empty state when no rows are mappable", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={[]} mode="light" />);
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={pointsSpec} rows={[]} mode="light" />
+    );
     expect(screen.getByTestId("map-widget-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("map-widget-canvas")).not.toBeInTheDocument();
   });
@@ -164,6 +171,7 @@ describe("MapWidgetUI", () => {
   it("renders the error state and no map when error is set", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[]}
         mode="light"
@@ -177,7 +185,13 @@ describe("MapWidgetUI", () => {
 
   it("explains a large result with no persisted ref (can't tile)", () => {
     render(
-      <MapWidgetUI spec={pointsSpec} rows={[]} mode="light" largeUnpersisted />
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        largeUnpersisted
+      />
     );
     expect(
       screen.getByTestId("map-widget-large-unpersisted")
@@ -187,6 +201,7 @@ describe("MapWidgetUI", () => {
   it("renders the map canvas and a colorBy legend when features are present", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={polySpec}
         rows={[poly("vacant"), poly("improved")]}
         mode="light"
@@ -221,6 +236,7 @@ describe("MapWidgetUI", () => {
     } as unknown as MapSpec;
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={gradientSpec}
         rows={[{ ...poly("a"), value: 250 }]}
         mode="light"
@@ -240,7 +256,14 @@ describe("MapWidgetUI", () => {
       lat: i % 80,
       lng: i % 170,
     }));
-    render(<MapWidgetUI spec={pointsSpec} rows={many} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={many}
+        mode="light"
+      />
+    );
     expect(screen.getByTestId("map-widget-cap-notice")).toHaveTextContent(
       /first .* of .* features/i
     );
@@ -256,6 +279,7 @@ describe("MapWidgetUI", () => {
     };
     const { rerender } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: true,
@@ -275,6 +299,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -292,6 +317,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -310,6 +336,7 @@ describe("MapWidgetUI", () => {
     // #698: a saturated tile gate reads as busy, not as a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -328,6 +355,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -346,6 +374,7 @@ describe("MapWidgetUI", () => {
     // #640: a pin whose definer lost access — explained, not a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -367,6 +396,7 @@ describe("MapWidgetUI", () => {
     // #705: over the per-user tile limit is a timed pause, never a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -412,12 +442,14 @@ describe("MapWidgetUI", () => {
       },
     };
     // Line layer → "most prominent" copy.
-    const { rerender } = render(<MapWidgetUI {...tileProps} spec={lineSpec} />);
+    const { rerender } = render(
+      <MapWidgetUI summary={SUMMARY} {...tileProps} spec={lineSpec} />
+    );
     expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
       /most prominent/i
     );
     // Polygon layer → the existing "partial / all features" copy (regression).
-    rerender(<MapWidgetUI {...tileProps} spec={polySpec} />);
+    rerender(<MapWidgetUI summary={SUMMARY} {...tileProps} spec={polySpec} />);
     expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
       /all features/i
     );
@@ -426,6 +458,7 @@ describe("MapWidgetUI", () => {
   it("renders the aggregated-overview notice, suppressing the truncated one (#330)", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[]}
         mode="light"
@@ -451,6 +484,7 @@ describe("MapWidgetUI", () => {
     const onRefresh = jest.fn();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[{ lat: 1, lng: 2 }]}
         mode="light"
@@ -482,26 +516,32 @@ describe("MapWidgetUI — status cues (#348, #352)", () => {
   };
 
   it("shows an 'Updated …' freshness cue when lastUpdatedAt is set (#348)", () => {
-    render(<MapWidgetUI {...tileProps} lastUpdatedAt={Date.now() - 60_000} />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        {...tileProps}
+        lastUpdatedAt={Date.now() - 60_000}
+      />
+    );
     expect(screen.getByTestId("widget-freshness-updated")).toHaveTextContent(
       /updated/i
     );
   });
 
   it("omits the freshness cue when lastUpdatedAt is absent", () => {
-    render(<MapWidgetUI {...tileProps} />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} />);
     expect(screen.queryByTestId("widget-freshness-updated")).toBeNull();
   });
 
   it("shows a tile-rendering cue while tilesLoading (#352)", () => {
-    render(<MapWidgetUI {...tileProps} tilesLoading />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} tilesLoading />);
     expect(screen.getByTestId("map-widget-tiles-loading")).toHaveTextContent(
       /rendering/i
     );
   });
 
   it("omits the tile-rendering cue when not loading", () => {
-    render(<MapWidgetUI {...tileProps} />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} />);
     expect(screen.queryByTestId("map-widget-tiles-loading")).toBeNull();
   });
 });
@@ -536,6 +576,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("constructs the map on the install's basemap, not the spec's", () => {
     const { unmount } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={specWithUrl}
         rows={rows}
         mode="light"
@@ -547,6 +588,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
 
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={specWithUrl}
         rows={rows}
         mode="light"
@@ -559,6 +601,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("an error before the style loads swaps to the empty style and shows the notice", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="dark"
@@ -577,6 +620,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("attaches the data layers once the fallback style loads", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -596,6 +640,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -613,6 +658,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -629,6 +675,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("shows no notice under `none`, which is a choice rather than a failure", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -644,6 +691,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     const { unmount } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -659,6 +707,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("shows the notice when the basemap's tiles fail after its style loads (XYZ)", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -680,6 +729,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("keeps quiet about a basemap tile error once a basemap tile has loaded", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -706,6 +756,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("a data-source error after load is no basemap failure, and logs as an error", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -726,14 +777,28 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
 
   it("`default` (SaaS CARTO) never times out a slow style", () => {
     jest.useFakeTimers();
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS * 3));
     expect(lastMap().setStyle).not.toHaveBeenCalled();
     expect(notice()).toBeNull();
   });
 
   it("`default` still falls back when its style actually errors", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => lastMap().emit("error", { error: new Error("blocked") }));
     expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
     expect(notice()).toBeInTheDocument();
@@ -764,12 +829,26 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("turns off MapLibre's HTML attribution control", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     expect(lastMap().options.attributionControl).toBe(false);
   });
 
   it("renders a hostile source attribution as text only", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() =>
       withSources({
         hostile:
@@ -784,7 +863,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("keeps CARTO's credits as links", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => withSources({ carto: CARTO }));
     expect(screen.getByRole("link", { name: "CARTO" })).toHaveAttribute(
       "href",
@@ -796,7 +882,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("credits only sources a visible layer draws from", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => {
       const map = lastMap();
       map.styleSources = {
@@ -817,6 +910,7 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   it("keeps an operator's https credit links under a custom basemap", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -841,7 +935,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("re-reads attribution on source metadata, not on every tile", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     const map = lastMap();
     map.getStyle.mockClear();
     act(() => {
@@ -858,8 +959,72 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("shows no attribution when no source credits anyone", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => withSources({ "layer-0": undefined }));
     expect(screen.queryByTestId("map-attribution")).toBeNull();
+  });
+});
+
+// #796: the map is a figure named by its title and described by its summary.
+describe("MapWidget as a figure (#796)", () => {
+  it("is named by its title, or 'Map' without one", () => {
+    const { rerender } = render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    expect(screen.getByRole("figure", { name: "Parcels" })).toBeInTheDocument();
+    rerender(
+      <MapWidgetUI summary={SUMMARY} spec={pointsSpec} rows={[]} mode="light" />
+    );
+    expect(screen.getByRole("figure", { name: "Map" })).toBeInTheDocument();
+  });
+
+  it("is described by its visible summary", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Parcels" })
+    ).toHaveAccessibleDescription(SUMMARY);
+  });
+
+  it("keeps an offscreen placeholder a named, described figure", () => {
+    render(
+      <MapWidgetPlaceholderUI height={400} title="Parcels" summary={SUMMARY} />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Parcels" })
+    ).toHaveAccessibleDescription(SUMMARY);
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

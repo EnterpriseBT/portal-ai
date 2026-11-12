@@ -59,6 +59,21 @@ beforeEach(() => {
 // ── Tests (spec case 20 + bridge lifecycle wiring) ───────────────────
 
 describe("D3SandboxFrameUI", () => {
+  // #796: the frame is named after the chart it draws.
+  it("names the iframe after the chart, or 'Chart' without a title", () => {
+    const { container, rerender } = render(
+      <D3SandboxFrameUI {...baseProps} title="Revenue" />
+    );
+    const iframe = () => container.querySelector("iframe") as HTMLIFrameElement;
+    expect(iframe().getAttribute("title")).toBe("Revenue (chart)");
+    rerender(<D3SandboxFrameUI {...baseProps} />);
+    expect(iframe().getAttribute("title")).toBe("Chart (chart)");
+  });
+
+  it("declares the srcdoc's language", () => {
+    expect(SANDBOX_SRCDOC).toContain('<html lang="en">');
+  });
+
   it("renders an iframe sandboxed to exactly allow-scripts with the shared srcdoc", () => {
     const { container } = render(<D3SandboxFrameUI {...baseProps} />);
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;

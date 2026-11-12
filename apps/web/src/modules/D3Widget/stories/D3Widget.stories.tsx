@@ -79,6 +79,8 @@ const meta: Meta<typeof D3WidgetUI> = {
   parameters: { layout: "padded" },
   args: {
     program: BAR_CHART_PROGRAM,
+    summary:
+      "Monthly totals as bars. The total climbs through spring and peaks in June.",
     theme: lightTheme,
     batches: [{ rows: MONTHLY_ROWS, seq: 0, done: true }],
     totalRows: MONTHLY_ROWS.length,
