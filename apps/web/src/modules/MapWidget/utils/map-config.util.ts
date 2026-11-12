@@ -399,6 +399,22 @@ const SELECTED_STROKE = 3;
 const SELECTED_LINE_EXTRA = 2;
 
 /**
+ * A width that widens while its feature is selected. Only a literal can be
+ * wrapped: MapLibre accepts a `["zoom"]` expression only as the input of a
+ * top-level step/interpolate, so nesting an author's expression in `case`
+ * fails `addLayer`. An expression width is left as authored, unhighlighted.
+ */
+function selectableWidth(
+  width: unknown,
+  fallback: number,
+  selected: (base: number) => number
+): unknown {
+  if (width != null && typeof width !== "number") return width;
+  const base = width ?? fallback;
+  return ["case", SELECTED, selected(base), base];
+}
+
+/**
  * Translate one MapSpec layer into the MapLibre layer(s) it renders as. A
  * `colorBy` compiles to a `match` expression for the primary colour; every
  * other style value is passed through verbatim, so a literal or an
@@ -437,12 +453,11 @@ export function layerToMapLibre(
           ...(style.outlineColor != null
             ? { "circle-stroke-color": style.outlineColor }
             : {}),
-          "circle-stroke-width": [
-            "case",
-            SELECTED,
-            SELECTED_STROKE,
-            style.outlineWidth ?? 0,
-          ],
+          "circle-stroke-width": selectableWidth(
+            style.outlineWidth,
+            0,
+            () => SELECTED_STROKE
+          ),
         },
       });
       break;
@@ -466,12 +481,11 @@ export function layerToMapLibre(
         source,
         paint: {
           "line-color": style.outlineColor ?? color,
-          "line-width": [
-            "case",
-            SELECTED,
-            SELECTED_STROKE,
-            style.outlineWidth ?? 1,
-          ],
+          "line-width": selectableWidth(
+            style.outlineWidth,
+            1,
+            () => SELECTED_STROKE
+          ),
         },
       });
       break;
@@ -483,12 +497,11 @@ export function layerToMapLibre(
         source,
         paint: {
           "line-color": color,
-          "line-width": [
-            "case",
-            SELECTED,
-            ["+", style.width ?? 2, SELECTED_LINE_EXTRA],
-            style.width ?? 2,
-          ],
+          "line-width": selectableWidth(
+            style.width,
+            2,
+            (base) => base + SELECTED_LINE_EXTRA
+          ),
           ...(style.opacity != null ? { "line-opacity": style.opacity } : {}),
         },
       });

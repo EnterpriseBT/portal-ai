@@ -72,6 +72,8 @@ jest.unstable_mockModule("maplibre-gl", () => {
       return this.canvas;
     }
     queryRenderedFeatures = jest.fn((): unknown[] => []);
+    // Every layer the widget adds exists unless a test says otherwise.
+    getLayer = jest.fn((id: string): unknown => ({ id }));
     setFeatureState = jest.fn();
     removeFeatureState = jest.fn();
     remove() {}
@@ -152,6 +154,7 @@ const maplibreMock = (await import("maplibre-gl")) as unknown as {
   __instances: {
     canvas: { setAttribute: jest.Mock };
     queryRenderedFeatures: jest.Mock;
+    getLayer: jest.Mock;
     setFeatureState: jest.Mock;
     removeFeatureState: jest.Mock;
     options: Record<string, unknown>;
@@ -1241,6 +1244,61 @@ describe("MapWidget keyboard inspection (#796)", () => {
     expect(screen.queryByText("2 features in view")).not.toBeInTheDocument();
     act(() => jest.advanceTimersByTime(500));
     expect(screen.getByRole("status")).toHaveTextContent("2 features in view");
+  });
+
+  // #796 review: only a keyboard close hands focus back to the list.
+  it("leaves focus alone when the details close by a click elsewhere", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const elsewhere = document.createElement("button");
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    act(() => maplibreMock.__popups.at(-1)!.remove()); // closeOnClick
+    expect(elsewhere).toHaveFocus();
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    elsewhere.remove();
+  });
+
+  it("returns focus to the list from the details' own close button", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const popup = maplibreMock.__popups.at(-1)!;
+    const close = document.createElement("button");
+    popup.element.appendChild(close);
+    document.body.appendChild(popup.element);
+    close.focus();
+    act(() => popup.remove());
+    expect(button).toHaveFocus();
+    popup.element.remove();
+  });
+
+  // #796 review: the map's own first fit isn't a move the user made.
+  it("doesn't announce the count when the map first fits its data", () => {
+    jest.useFakeTimers();
+    renderMap();
+    lastMap().queryRenderedFeatures.mockReturnValue([parcel(1, "a")]);
+    act(() => lastMap().emit("style.load"));
+    act(() => lastMap().emit("moveend")); // fitBounds on load
+    act(() => lastMap().emit("idle"));
+    act(() => jest.advanceTimersByTime(500));
+    expect(screen.getByRole("status")).not.toHaveTextContent(/in view/);
+  });
+
+  // #796 review: a layer MapLibre refused can't be queried.
+  it("queries only the layers the map actually has", () => {
+    renderMap();
+    lastMap().getLayer.mockImplementation(((id: string) =>
+      id.endsWith("-outline") ? undefined : { id }) as never);
+    showFeatures([parcel(1, "a")]);
+    const [{ layers }] = lastMap().queryRenderedFeatures.mock.calls.at(-1) as [
+      { layers: string[] },
+    ];
+    expect(layers.length).toBeGreaterThan(0);
+    expect(layers.some((id) => id.endsWith("-outline"))).toBe(false);
   });
 
   it("has no axe violations with the list showing", async () => {

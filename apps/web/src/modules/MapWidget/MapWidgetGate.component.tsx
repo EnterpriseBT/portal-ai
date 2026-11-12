@@ -2,7 +2,6 @@ import React, { Suspense, useId, useMemo, useRef, useState } from "react";
 import { Box } from "@mui/material";
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
-import { visuallyHidden } from "@portalai/core/ui";
 import { visualSummary } from "@portalai/core/utils";
 
 import { useInView } from "../../utils/use-in-view.util";
@@ -52,10 +51,11 @@ export const MapWidgetPlaceholderUI: React.FC<MapWidgetPlaceholderUIProps> = ({
       style={{ height }}
     >
       {figure ? (
-        // Visually hidden: the placeholder is offscreen by definition.
-        <Box component="span" id={summaryId} sx={visuallyHidden}>
+        // Hidden: the placeholder is offscreen by definition, and
+        // aria-describedby still reads hidden text.
+        <span id={summaryId} hidden>
           {summary}
-        </Box>
+        </span>
       ) : null}
     </Box>
   );

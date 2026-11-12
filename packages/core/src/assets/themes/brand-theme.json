@@ -291,6 +291,44 @@
       "styleOverrides": {
         "body": {
           "backgroundImage": "none"
+        },
+        "[data-visual-part][data-visual-part=\"figure\"]": {
+          "padding": 12
+        },
+        "[data-visual-part][data-visual-part=\"map-body\"]": {
+          "&[data-layout=\"side\"]": {
+            "@media (min-width:900px)": {
+              "display": "flex",
+              "gap": 16,
+              "alignItems": "flex-start"
+            }
+          }
+        },
+        "[data-visual-part][data-visual-part=\"map-main\"]": {
+          "flex": 1,
+          "minWidth": 0
+        },
+        "[data-visual-part][data-visual-part=\"feature-panel\"]": {
+          "marginTop": 8,
+          "[data-layout=\"side\"] > &": {
+            "@media (min-width:900px)": {
+              "marginTop": 0,
+              "width": 280,
+              "flexShrink": 0
+            }
+          }
+        },
+        "[data-visual-part][data-visual-part=\"feature-list\"]": {
+          "listStyle": "none",
+          "margin": 0,
+          "padding": 0,
+          "maxHeight": 240,
+          "overflowY": "auto"
+        },
+        "[data-visual-part][data-visual-part=\"feature-item\"]": {
+          "justifyContent": "flex-start",
+          "textAlign": "left",
+          "textTransform": "none"
         }
       }
     },

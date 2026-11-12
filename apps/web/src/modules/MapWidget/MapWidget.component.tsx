@@ -305,15 +305,24 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       // #796: "Features in view" re-reads what the map draws whenever it
       // settles, and the count is announced once the view stops moving.
       let viewMoved = false;
+      // The map's own first fit (fitBounds/jumpTo on load) fires moveend too;
+      // only a move after the first settle is the user's, worth announcing.
+      let settled = false;
       let inViewKey = "";
       m.on("moveend", () => {
         viewMoved = true;
       });
       m.on("idle", () => {
+        if (!settled) {
+          settled = true;
+          viewMoved = false;
+        }
+        // A layer MapLibre refused at addLayer can't be queried (it errors).
+        const layers = mlLayers.map((l) => l.id).filter((id) => m.getLayer(id));
         const collected = collectRenderedFeatures(
-          m.queryRenderedFeatures({
-            layers: mlLayers.map((l) => l.id),
-          }) as unknown as QueriedFeature[],
+          (layers.length > 0
+            ? m.queryRenderedFeatures({ layers })
+            : []) as unknown as QueriedFeature[],
           { template, cap: RENDERED_FEATURE_CAP, colorByForLayer }
         );
         const key = `${collected.total}|${collected.items.map((i) => i.key).join(",")}`;
@@ -576,15 +585,39 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     if (template) popup.setHTML(renderPopupTemplate(template, item.properties));
     else popup.setText(item.label);
     popup.addTo(m);
+    // Focus returns to the list only when the details were closed from the
+    // keyboard (Escape, or the popup's own close button while focused). A
+    // click elsewhere on the map closes them too, and must not pull focus.
+    // MapLibre removes the element before "close", so focus is tracked here.
+    let focusInside = false;
+    let closedFromPopup = false;
+    const element = popup.getElement();
+    element?.addEventListener("focusin", () => {
+      focusInside = true;
+    });
+    element?.addEventListener("focusout", (event) => {
+      if (!element.contains(event.relatedTarget as Node | null)) {
+        focusInside = false;
+      }
+    });
+    element?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closedFromPopup = true;
+        popup.remove();
+      }
+    });
+    element?.addEventListener("click", (event) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".maplibregl-popup-close-button")) {
+        closedFromPopup = true;
+      }
+    });
     popup.on("close", () => {
       if (popupRef.current !== popup) return;
       popupRef.current = null;
       clearHighlight();
       setSelectedKey(null);
-      focusListItem(item.key);
-    });
-    popup.getElement()?.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") popup.remove();
+      if (closedFromPopup || focusInside) focusListItem(item.key);
     });
     popupRef.current = popup;
     setSelectedKey(item.key);
@@ -650,14 +683,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     );
   } else {
     body = (
-      <Box
-        sx={
-          layout === "side"
-            ? { display: { md: "flex" }, gap: 2, alignItems: "flex-start" }
-            : undefined
-        }
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+      // Laid out from the theme (#796): the `map-body`, `map-main` and
+      // `feature-panel` visual parts, side by side from md up.
+      <Box data-visual-part="map-body" data-layout={layout}>
+        <Box data-visual-part="map-main">
           <Box sx={{ position: "relative" }}>
             <Box
               ref={mapRef}
@@ -839,14 +868,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             </Box>
           ) : null}
         </Box>
-        <Box
-          ref={featureListRef}
-          sx={
-            layout === "side"
-              ? { width: { md: 280 }, flexShrink: 0 }
-              : { mt: 1 }
-          }
-        >
+        <Box ref={featureListRef} data-visual-part="feature-panel">
           <MapFeatureListUI
             items={inView.items}
             total={inView.total}

@@ -46,7 +46,8 @@ export const VisualFigureUI: React.FC<VisualFigureUIProps> = ({
       aria-label={name}
       aria-describedby={summaryId}
       data-testid={testId}
-      sx={{ p: 1.5 }}
+      // Styled from the theme (#796): `[data-visual-part="figure"]`.
+      data-visual-part="figure"
     >
       {header}
       <Typography

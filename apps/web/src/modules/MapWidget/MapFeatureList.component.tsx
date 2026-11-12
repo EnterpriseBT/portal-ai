@@ -46,13 +46,8 @@ export const MapFeatureListUI: React.FC<MapFeatureListUIProps> = ({
         <Box
           component="ul"
           data-testid="map-feature-list"
-          sx={{
-            listStyle: "none",
-            m: 0,
-            p: 0,
-            maxHeight: 240,
-            overflowY: "auto",
-          }}
+          // Styled from the theme (#796): `[data-visual-part="feature-list"]`.
+          data-visual-part="feature-list"
         >
           {items.map((item) => (
             <li key={item.key}>
@@ -61,11 +56,7 @@ export const MapFeatureListUI: React.FC<MapFeatureListUIProps> = ({
                 aria-pressed={item.key === selectedKey}
                 data-feature-key={item.key}
                 onClick={() => onSelect(item)}
-                sx={{
-                  justifyContent: "flex-start",
-                  textAlign: "left",
-                  textTransform: "none",
-                }}
+                data-visual-part="feature-item"
               >
                 {item.label}
               </Button>

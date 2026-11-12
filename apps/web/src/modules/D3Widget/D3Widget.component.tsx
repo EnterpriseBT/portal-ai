@@ -347,6 +347,10 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       : (refreshError?.message ?? fetchError ?? frameError);
   const complete = isHandle ? progressive.complete : true;
 
+  // #796: the handle the frame reads (a refresh's, else the block's own; a pin
+  // has none until its delivery). The summary and the table both read it.
+  const liveHandle = freshHandle ?? (fresh || isPin ? null : baseHandle);
+
   // #796: the agent's summary, or one derived from the data the frame draws.
   const summary = visualSummary(
     parsedContent.summary,
@@ -354,14 +358,13 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       kind: "chart",
       title: parsedContent.title,
       rows: inlineRows,
-      handle: freshHandle ?? (fresh || isPin ? null : baseHandle),
+      handle: liveHandle,
     })
   );
 
   // #796: the table reads the same data the frame draws — the live handle,
   // or the inline rows. A pin before its delivery has none yet.
   const tableLabel = `${parsedContent.title?.trim() || "Chart"} data`;
-  const liveHandle = freshHandle ?? (fresh || isPin ? null : baseHandle);
   const data = effectiveHandle ? (
     <VisualDataTable
       key={effectiveHandle}
@@ -376,7 +379,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       }}
       onRefresh={refreshAllowed && !notRefreshable ? refresh : undefined}
     />
-  ) : inlineRows && (!isPin || fresh) ? (
+  ) : inlineRows ? (
     <VisualDataTable
       key={frameKey}
       label={tableLabel}

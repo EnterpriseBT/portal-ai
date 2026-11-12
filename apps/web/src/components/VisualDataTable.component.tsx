@@ -7,6 +7,7 @@ import { DataTableBlock, StatusMessage } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { serverErrorMessage } from "../utils/permission-denied.util";
+import { dataCapNote } from "../utils/data-cap-note.util";
 
 import type { DataTableBlockPaging } from "@portalai/core/ui";
 import type { ServerError } from "../utils/api.util";
@@ -34,8 +35,6 @@ export type VisualDataSource =
 
 const DEFAULT_ROWS_PER_PAGE = 10;
 const READ_HANDLE_EXPIRED = "READ_HANDLE_EXPIRED";
-
-const formatCount = (n: number) => n.toLocaleString("en-US");
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
 
@@ -144,13 +143,7 @@ export const VisualDataTable: React.FC<VisualDataTableProps> = ({
   const total = snapshot.data?.total ?? 0;
   const error = snapshot.error;
 
-  let capNote: string | undefined;
-  if (source.truncated && total > 0) {
-    capNote =
-      source.matchedCount != null && source.matchedCountExact
-        ? `Showing the first ${formatCount(total)} of ${formatCount(source.matchedCount)} rows.`
-        : `Showing the first ${formatCount(total)} of more than ${formatCount(total)} rows.`;
-  }
+  const capNote = dataCapNote(total, source);
 
   return (
     <VisualDataTableUI

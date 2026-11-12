@@ -2,7 +2,6 @@ import React, { useId, useMemo, useRef, useState } from "react";
 import { Box } from "@mui/material";
 
 import { D3BlockContentSchema } from "@portalai/core/contracts";
-import { visuallyHidden } from "@portalai/core/ui";
 import { visualSummary } from "@portalai/core/utils";
 
 import { useInView } from "../../utils/use-in-view.util";
@@ -45,10 +44,11 @@ export const D3WidgetPlaceholderUI: React.FC<D3WidgetPlaceholderUIProps> = ({
       style={{ height }}
     >
       {figure ? (
-        // Visually hidden: the placeholder is offscreen by definition.
-        <Box component="span" id={summaryId} sx={visuallyHidden}>
+        // Hidden: the placeholder is offscreen by definition, and
+        // aria-describedby still reads hidden text.
+        <span id={summaryId} hidden>
           {summary}
-        </Box>
+        </span>
       ) : null}
     </Box>
   );

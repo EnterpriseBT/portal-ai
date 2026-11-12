@@ -1017,7 +1017,7 @@ describe("selected feature paint (#796)", () => {
         } as MapLayer,
         "line"
       )["line-width"]
-    ).toEqual(["case", SELECTED, ["+", 2, 2], 2]);
+    ).toEqual(["case", SELECTED, 4, 2]);
   });
 
   it("keeps an author's own stroke and outline when not selected", () => {
@@ -1029,5 +1029,50 @@ describe("selected feature paint (#796)", () => {
     expect(
       layerToMapLibre(layer, 0, []).layers[0].paint["circle-stroke-width"]
     ).toEqual(["case", SELECTED, 3, 1.5]);
+  });
+});
+
+// #796 review: MapLibre only accepts a zoom expression as the input of a
+// top-level step/interpolate, so an author's expression width is never
+// wrapped in the selection `case` (it would fail addLayer and blank the map).
+describe("selected paint leaves an expression width alone (#796)", () => {
+  const zoomWidth = ["interpolate", ["linear"], ["zoom"], 5, 1, 15, 6];
+
+  it.each([
+    [
+      "line width",
+      {
+        kind: "lines",
+        source: { geometryColumn: "geom" },
+        style: { width: zoomWidth },
+      },
+      "line",
+      "line-width",
+    ],
+    [
+      "polygon outline width",
+      {
+        kind: "polygons",
+        source: { geometryColumn: "geom" },
+        style: { outlineWidth: zoomWidth },
+      },
+      "line",
+      "line-width",
+    ],
+    [
+      "point stroke width",
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { outlineWidth: zoomWidth },
+      },
+      "circle",
+      "circle-stroke-width",
+    ],
+  ])("keeps a %s expression as authored", (_name, layer, type, prop) => {
+    const paint = layerToMapLibre(layer as MapLayer, 0, []).layers.find(
+      (l) => l.type === type
+    )!.paint;
+    expect(paint[prop]).toEqual(zoomWidth);
   });
 });

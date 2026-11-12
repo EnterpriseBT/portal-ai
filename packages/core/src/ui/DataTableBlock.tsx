@@ -70,7 +70,8 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return rows;
+    // A server page is shown as given (#796): no client search over it.
+    if (paging || !term) return rows;
     return rows.filter((row) =>
       columns.some((col) => {
         const val = row[col];
@@ -78,15 +79,15 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
         return String(val).toLowerCase().includes(term);
       })
     );
-  }, [rows, columns, search]);
+  }, [rows, columns, search, paging]);
 
   const sortedRows = useMemo(() => {
-    if (!sortColumn) return filteredRows;
+    if (paging || !sortColumn) return filteredRows;
     const sorted = [...filteredRows].sort((a, b) =>
       compareValues(a[sortColumn], b[sortColumn])
     );
     return sortDirection === "desc" ? sorted.reverse() : sorted;
-  }, [filteredRows, sortColumn, sortDirection]);
+  }, [filteredRows, sortColumn, sortDirection, paging]);
 
   const displayRows = paging
     ? rows
