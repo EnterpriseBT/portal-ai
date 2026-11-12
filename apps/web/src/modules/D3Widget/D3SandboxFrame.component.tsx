@@ -30,6 +30,8 @@ export interface D3SandboxFrameUIProps {
     width?: number;
   }) => void;
   onError: (event: { message: string }) => void;
+  /** The chart's title (#796): names the frame "<title> (chart)". */
+  title?: string;
 }
 
 /**
@@ -46,6 +48,7 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
   batches,
   onRendered,
   onError,
+  title,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<SandboxBridge | null>(null);
@@ -190,7 +193,7 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
       ref={iframeRef}
       sandbox="allow-scripts"
       srcDoc={SANDBOX_SRCDOC}
-      title="D3 visualization"
+      title={`${title?.trim() || "Chart"} (chart)`}
       style={{
         // Painted width when the content is wider than the column (making the
         // host's overflowX wrapper a real scroller), never narrower than it.

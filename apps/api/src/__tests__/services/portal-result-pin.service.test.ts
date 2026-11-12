@@ -118,6 +118,32 @@ describe("PortalResultPinService.materialize", () => {
     });
   });
 
+  // #796 smoke: a pin keeps the agent's text alternative, so the pinned
+  // chart or map reads the same as it did in the session.
+  it.each<["d3" | "geo", Record<string, unknown>]>([
+    ["d3", { program: "api.d3;", title: "Sales" }],
+    [
+      "geo",
+      {
+        spec: {
+          layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+        },
+      },
+    ],
+  ])("keeps a %s block's summary", async (type, recipe) => {
+    const result = await PortalResultPinService.materialize(
+      type,
+      {
+        ...recipe,
+        summary: "Sales double in June.",
+        pipeline: PIPELINE,
+        ...DATA_BEARING,
+      },
+      SCOPE
+    );
+    expect(result.content).toMatchObject({ summary: "Sales double in June." });
+  });
+
   it("keeps a map's spec, and marks a handle-backed map tiled", async () => {
     const spec = {
       layers: [{ kind: "points", source: { geometryColumn: "geom" } }],

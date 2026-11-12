@@ -65,28 +65,63 @@ jest.unstable_mockModule("maplibre-gl", () => {
     }
     fitBounds() {}
     jumpTo() {}
+    // #796: the canvas the widget describes, the features it lists and the
+    // feature state it highlights.
+    canvas = { style: {}, setAttribute: jest.fn() };
     getCanvas() {
-      return { style: {} };
+      return this.canvas;
     }
+    queryRenderedFeatures = jest.fn((): unknown[] => []);
+    // Every layer the widget adds exists unless a test says otherwise.
+    getLayer = jest.fn((id: string): unknown => ({ id }));
+    setFeatureState = jest.fn();
+    removeFeatureState = jest.fn();
     remove() {}
   }
   // maplibre-gl v6 is ESM-only with named exports (the widget uses
   // `import * as maplibregl`), so the mock exposes named exports rather than a
   // default object.
+  const popups: MockPopup[] = [];
   class MockPopup {
-    setLngLat() {
+    lngLat: unknown;
+    html: string | null = null;
+    text: string | null = null;
+    closeHandlers: Handler[] = [];
+    element = document.createElement("div");
+    constructor() {
+      popups.push(this);
+    }
+    setLngLat(lngLat: unknown) {
+      this.lngLat = lngLat;
       return this;
     }
-    setHTML() {
+    setHTML(html: string) {
+      this.html = html;
+      return this;
+    }
+    setText(text: string) {
+      this.text = text;
       return this;
     }
     addTo() {
+      return this;
+    }
+    on(event: string, fn: Handler) {
+      if (event === "close") this.closeHandlers.push(fn);
+      return this;
+    }
+    getElement() {
+      return this.element;
+    }
+    remove() {
+      this.closeHandlers.forEach((fn) => fn(undefined));
       return this;
     }
   }
   return {
     __esModule: true,
     __instances: instances,
+    __popups: popups,
     Map: MockMap,
     addProtocol: () => {},
     removeProtocol: () => {},
@@ -101,10 +136,27 @@ jest.unstable_mockModule("maplibre-gl", () => {
 });
 
 const { MapWidgetUI } = await import("../MapWidget.component");
+
+const SUMMARY = "Parcels by class; most are residential.";
+const { MapWidgetPlaceholderUI } = await import("../MapWidgetGate.component");
+const { expectNoAxeViolations, render: renderThemed } =
+  await import("../../../__tests__/test-utils");
 const { BASEMAP_LOAD_TIMEOUT_MS, emptyBasemapStyle } =
   await import("../utils/map-config.util");
 const maplibreMock = (await import("maplibre-gl")) as unknown as {
+  __popups: {
+    lngLat: unknown;
+    html: string | null;
+    text: string | null;
+    element: HTMLElement;
+    remove: () => void;
+  }[];
   __instances: {
+    canvas: { setAttribute: jest.Mock };
+    queryRenderedFeatures: jest.Mock;
+    getLayer: jest.Mock;
+    setFeatureState: jest.Mock;
+    removeFeatureState: jest.Mock;
     options: Record<string, unknown>;
     setStyle: jest.Mock;
     addLayer: jest.Mock;
@@ -156,7 +208,9 @@ const poly = (klass: string) => ({
 
 describe("MapWidgetUI", () => {
   it("renders the empty state when no rows are mappable", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={[]} mode="light" />);
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={pointsSpec} rows={[]} mode="light" />
+    );
     expect(screen.getByTestId("map-widget-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("map-widget-canvas")).not.toBeInTheDocument();
   });
@@ -164,6 +218,7 @@ describe("MapWidgetUI", () => {
   it("renders the error state and no map when error is set", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[]}
         mode="light"
@@ -177,7 +232,13 @@ describe("MapWidgetUI", () => {
 
   it("explains a large result with no persisted ref (can't tile)", () => {
     render(
-      <MapWidgetUI spec={pointsSpec} rows={[]} mode="light" largeUnpersisted />
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        largeUnpersisted
+      />
     );
     expect(
       screen.getByTestId("map-widget-large-unpersisted")
@@ -187,6 +248,7 @@ describe("MapWidgetUI", () => {
   it("renders the map canvas and a colorBy legend when features are present", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={polySpec}
         rows={[poly("vacant"), poly("improved")]}
         mode="light"
@@ -221,6 +283,7 @@ describe("MapWidgetUI", () => {
     } as unknown as MapSpec;
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={gradientSpec}
         rows={[{ ...poly("a"), value: 250 }]}
         mode="light"
@@ -240,7 +303,14 @@ describe("MapWidgetUI", () => {
       lat: i % 80,
       lng: i % 170,
     }));
-    render(<MapWidgetUI spec={pointsSpec} rows={many} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={many}
+        mode="light"
+      />
+    );
     expect(screen.getByTestId("map-widget-cap-notice")).toHaveTextContent(
       /first .* of .* features/i
     );
@@ -256,6 +326,7 @@ describe("MapWidgetUI", () => {
     };
     const { rerender } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: true,
@@ -275,6 +346,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -292,6 +364,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -310,6 +383,7 @@ describe("MapWidgetUI", () => {
     // #698: a saturated tile gate reads as busy, not as a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -328,6 +402,7 @@ describe("MapWidgetUI", () => {
 
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -346,6 +421,7 @@ describe("MapWidgetUI", () => {
     // #640: a pin whose definer lost access — explained, not a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -367,6 +443,7 @@ describe("MapWidgetUI", () => {
     // #705: over the per-user tile limit is a timed pause, never a failure.
     rerender(
       <MapWidgetUI
+        summary={SUMMARY}
         {...tileProps}
         tileStatus={{
           simplified: false,
@@ -412,12 +489,14 @@ describe("MapWidgetUI", () => {
       },
     };
     // Line layer → "most prominent" copy.
-    const { rerender } = render(<MapWidgetUI {...tileProps} spec={lineSpec} />);
+    const { rerender } = render(
+      <MapWidgetUI summary={SUMMARY} {...tileProps} spec={lineSpec} />
+    );
     expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
       /most prominent/i
     );
     // Polygon layer → the existing "partial / all features" copy (regression).
-    rerender(<MapWidgetUI {...tileProps} spec={polySpec} />);
+    rerender(<MapWidgetUI summary={SUMMARY} {...tileProps} spec={polySpec} />);
     expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
       /all features/i
     );
@@ -426,6 +505,7 @@ describe("MapWidgetUI", () => {
   it("renders the aggregated-overview notice, suppressing the truncated one (#330)", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[]}
         mode="light"
@@ -451,6 +531,7 @@ describe("MapWidgetUI", () => {
     const onRefresh = jest.fn();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={[{ lat: 1, lng: 2 }]}
         mode="light"
@@ -482,26 +563,32 @@ describe("MapWidgetUI — status cues (#348, #352)", () => {
   };
 
   it("shows an 'Updated …' freshness cue when lastUpdatedAt is set (#348)", () => {
-    render(<MapWidgetUI {...tileProps} lastUpdatedAt={Date.now() - 60_000} />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        {...tileProps}
+        lastUpdatedAt={Date.now() - 60_000}
+      />
+    );
     expect(screen.getByTestId("widget-freshness-updated")).toHaveTextContent(
       /updated/i
     );
   });
 
   it("omits the freshness cue when lastUpdatedAt is absent", () => {
-    render(<MapWidgetUI {...tileProps} />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} />);
     expect(screen.queryByTestId("widget-freshness-updated")).toBeNull();
   });
 
   it("shows a tile-rendering cue while tilesLoading (#352)", () => {
-    render(<MapWidgetUI {...tileProps} tilesLoading />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} tilesLoading />);
     expect(screen.getByTestId("map-widget-tiles-loading")).toHaveTextContent(
       /rendering/i
     );
   });
 
   it("omits the tile-rendering cue when not loading", () => {
-    render(<MapWidgetUI {...tileProps} />);
+    render(<MapWidgetUI summary={SUMMARY} {...tileProps} />);
     expect(screen.queryByTestId("map-widget-tiles-loading")).toBeNull();
   });
 });
@@ -536,6 +623,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("constructs the map on the install's basemap, not the spec's", () => {
     const { unmount } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={specWithUrl}
         rows={rows}
         mode="light"
@@ -547,6 +635,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
 
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={specWithUrl}
         rows={rows}
         mode="light"
@@ -559,6 +648,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("an error before the style loads swaps to the empty style and shows the notice", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="dark"
@@ -577,6 +667,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("attaches the data layers once the fallback style loads", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -596,6 +687,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -613,6 +705,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -629,6 +722,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("shows no notice under `none`, which is a choice rather than a failure", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -644,6 +738,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
     jest.useFakeTimers();
     const { unmount } = render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -659,6 +754,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("shows the notice when the basemap's tiles fail after its style loads (XYZ)", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -680,6 +776,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("keeps quiet about a basemap tile error once a basemap tile has loaded", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -706,6 +803,7 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
   it("a data-source error after load is no basemap failure, and logs as an error", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -726,14 +824,28 @@ describe("MapWidgetUI — install basemap + fallback (#910)", () => {
 
   it("`default` (SaaS CARTO) never times out a slow style", () => {
     jest.useFakeTimers();
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => jest.advanceTimersByTime(BASEMAP_LOAD_TIMEOUT_MS * 3));
     expect(lastMap().setStyle).not.toHaveBeenCalled();
     expect(notice()).toBeNull();
   });
 
   it("`default` still falls back when its style actually errors", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => lastMap().emit("error", { error: new Error("blocked") }));
     expect(lastMap().setStyle).toHaveBeenCalledTimes(1);
     expect(notice()).toBeInTheDocument();
@@ -764,12 +876,26 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("turns off MapLibre's HTML attribution control", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     expect(lastMap().options.attributionControl).toBe(false);
   });
 
   it("renders a hostile source attribution as text only", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() =>
       withSources({
         hostile:
@@ -784,7 +910,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("keeps CARTO's credits as links", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => withSources({ carto: CARTO }));
     expect(screen.getByRole("link", { name: "CARTO" })).toHaveAttribute(
       "href",
@@ -796,7 +929,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("credits only sources a visible layer draws from", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => {
       const map = lastMap();
       map.styleSources = {
@@ -817,6 +957,7 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   it("keeps an operator's https credit links under a custom basemap", () => {
     render(
       <MapWidgetUI
+        summary={SUMMARY}
         spec={pointsSpec}
         rows={rows}
         mode="light"
@@ -841,7 +982,14 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("re-reads attribution on source metadata, not on every tile", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     const map = lastMap();
     map.getStyle.mockClear();
     act(() => {
@@ -858,8 +1006,405 @@ describe("MapWidgetUI — safe attribution (#928)", () => {
   });
 
   it("shows no attribution when no source credits anyone", () => {
-    render(<MapWidgetUI spec={pointsSpec} rows={rows} mode="light" />);
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={rows}
+        mode="light"
+      />
+    );
     act(() => withSources({ "layer-0": undefined }));
     expect(screen.queryByTestId("map-attribution")).toBeNull();
+  });
+});
+
+// #796: the map is a figure named by its title and described by its summary.
+describe("MapWidget as a figure (#796)", () => {
+  it("is named by its title, or 'Map' without one", () => {
+    const { rerender } = render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    expect(screen.getByRole("figure", { name: "Parcels" })).toBeInTheDocument();
+    rerender(
+      <MapWidgetUI summary={SUMMARY} spec={pointsSpec} rows={[]} mode="light" />
+    );
+    expect(screen.getByRole("figure", { name: "Map" })).toBeInTheDocument();
+  });
+
+  it("is described by its visible summary", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Parcels" })
+    ).toHaveAccessibleDescription(SUMMARY);
+  });
+
+  it("keeps an offscreen placeholder a named, described figure", () => {
+    render(
+      <MapWidgetPlaceholderUI height={400} title="Parcels" summary={SUMMARY} />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Parcels" })
+    ).toHaveAccessibleDescription(SUMMARY);
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796: the map's data, one disclosure away.
+describe("MapWidget data alternative (#796)", () => {
+  it("toggles the data the UI is given", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+        data={<p>the rows</p>}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    expect(
+      screen.getByRole("region", { name: "Data for Parcels" })
+    ).toHaveTextContent("the rows");
+  });
+
+  it("still offers the data when the map errors", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        error="boom"
+        status="error"
+        data={<p>the rows</p>}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Show data" })
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations with the data open", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+        data={<p>the rows</p>}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796: a keyboard user can read how the map's keys work, walk the features in
+// view, and open any of them.
+describe("MapWidget keyboard inspection (#796)", () => {
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const parcel = (id: number, klass: string) => ({
+    id,
+    layer: { id: "layer-0-fill" },
+    source: "layer-0",
+    properties: { name: `Parcel ${id}`, klass },
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [2, 0],
+          [2, 2],
+          [0, 0],
+        ],
+      ],
+    },
+  });
+  const renderMap = () =>
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a"), poly("b")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+  const showFeatures = (features: unknown[]) => {
+    lastMap().queryRenderedFeatures.mockReturnValue(features);
+    act(() => lastMap().emit("style.load"));
+    act(() => lastMap().emit("idle"));
+  };
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+    maplibreMock.__popups.length = 0;
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("names the canvas after the map and describes its keys", () => {
+    renderMap();
+    expect(lastMap().options.locale).toEqual({ "Map.Title": "Map: Parcels" });
+    const hint = screen.getByText(
+      "Arrow keys pan, + and − zoom, when the map has focus."
+    );
+    expect(lastMap().canvas.setAttribute).toHaveBeenCalledWith(
+      "aria-describedby",
+      hint.id
+    );
+  });
+
+  it("lists the features in view once the map settles, with the colour's value", () => {
+    renderMap();
+    showFeatures([parcel(1, "a"), parcel(2, "b")]);
+    expect(
+      screen.getByRole("heading", { name: "Features in view (2)" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "name: Parcel 2, klass: b" })
+    ).toBeInTheDocument();
+  });
+
+  it("opens a selected feature's details and highlights it", () => {
+    renderMap();
+    showFeatures([parcel(1, "a"), parcel(2, "b")]);
+    fireEvent.click(screen.getByRole("button", { name: /Parcel 1/ }));
+    expect(lastMap().setFeatureState).toHaveBeenCalledWith(
+      { source: "layer-0", id: 1 },
+      { selected: true }
+    );
+    expect(maplibreMock.__popups.at(-1)?.lngLat).toEqual([1, 1]);
+    expect(screen.getByRole("button", { name: /Parcel 1/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Parcel 2/ }));
+    expect(lastMap().setFeatureState).toHaveBeenLastCalledWith(
+      { source: "layer-0", id: 2 },
+      { selected: true }
+    );
+    expect(lastMap().removeFeatureState).toHaveBeenCalledWith(
+      { source: "layer-0", id: 1 },
+      "selected"
+    );
+  });
+
+  // #1016: a record value is never parsed as HTML in the details popup.
+  it("shows a hostile value in the details as text, never HTML", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={
+          { ...polySpec, popup: { template: "<b>{{name}}</b>" } } as MapSpec
+        }
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    const evil = {
+      ...parcel(1, "a"),
+      properties: { name: "<img src=x onerror=alert(1)>Evil", klass: "a" },
+    };
+    showFeatures([evil]);
+    fireEvent.click(screen.getByRole("button", { name: /Evil/ }));
+    const popup = maplibreMock.__popups.at(-1)!;
+    expect(popup.html).toBeNull();
+    expect(popup.text).toBe("<img src=x onerror=alert(1)>Evil");
+  });
+
+  it("shows a clicked feature's details as text, never HTML", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={{ ...polySpec, popup: { template: "{{klass}}" } } as MapSpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    act(() => lastMap().emit("style.load"));
+    act(() =>
+      lastMap().emit("click:layer-0-fill", {
+        lngLat: { lng: 1, lat: 1 },
+        features: [{ properties: { klass: "<img src=x onerror=alert(1)>" } }],
+      })
+    );
+    const popup = maplibreMock.__popups.at(-1)!;
+    expect(popup.html).toBeNull();
+    expect(popup.text).toBe("<img src=x onerror=alert(1)>");
+  });
+
+  it("closes the details on Escape and returns focus to the list", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const popup = maplibreMock.__popups.at(-1)!;
+    fireEvent.keyDown(popup.element, { key: "Escape" });
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("announces the count after the view moves", () => {
+    jest.useFakeTimers();
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    act(() => lastMap().emit("moveend"));
+    lastMap().queryRenderedFeatures.mockReturnValue([
+      parcel(1, "a"),
+      parcel(2, "b"),
+    ]);
+    act(() => lastMap().emit("idle"));
+    expect(screen.queryByText("2 features in view")).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(500));
+    expect(screen.getByRole("status")).toHaveTextContent("2 features in view");
+  });
+
+  // #796 review: only a keyboard close hands focus back to the list.
+  it("leaves focus alone when the details close by a click elsewhere", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const elsewhere = document.createElement("button");
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    act(() => maplibreMock.__popups.at(-1)!.remove()); // closeOnClick
+    expect(elsewhere).toHaveFocus();
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    elsewhere.remove();
+  });
+
+  it("returns focus to the list from the details' own close button", () => {
+    renderMap();
+    showFeatures([parcel(1, "a")]);
+    const button = screen.getByRole("button", { name: /Parcel 1/ });
+    fireEvent.click(button);
+    const popup = maplibreMock.__popups.at(-1)!;
+    const close = document.createElement("button");
+    popup.element.appendChild(close);
+    document.body.appendChild(popup.element);
+    close.focus();
+    act(() => popup.remove());
+    expect(button).toHaveFocus();
+    popup.element.remove();
+  });
+
+  // #796 review: the map's own first fit isn't a move the user made.
+  it("doesn't announce the count when the map first fits its data", () => {
+    jest.useFakeTimers();
+    renderMap();
+    lastMap().queryRenderedFeatures.mockReturnValue([parcel(1, "a")]);
+    act(() => lastMap().emit("style.load"));
+    act(() => lastMap().emit("moveend")); // fitBounds on load
+    act(() => lastMap().emit("idle"));
+    act(() => jest.advanceTimersByTime(500));
+    expect(screen.getByRole("status")).not.toHaveTextContent(/in view/);
+  });
+
+  // #796 review: a layer MapLibre refused can't be queried.
+  it("queries only the layers the map actually has", () => {
+    renderMap();
+    lastMap().getLayer.mockImplementation(((id: string) =>
+      id.endsWith("-outline") ? undefined : { id }) as never);
+    showFeatures([parcel(1, "a")]);
+    const [{ layers }] = lastMap().queryRenderedFeatures.mock.calls.at(-1) as [
+      { layers: string[] },
+    ];
+    expect(layers.length).toBeGreaterThan(0);
+    expect(layers.some((id) => id.endsWith("-outline"))).toBe(false);
+  });
+
+  it("has no axe violations with the list showing", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+      />
+    );
+    showFeatures([parcel(1, "a")]);
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796 smoke: the selection ring contrasts with the basemap, whatever the
+// author's outline colour.
+describe("MapWidget selection ring colour (#796)", () => {
+  const lastMap = () =>
+    maplibreMock.__instances[maplibreMock.__instances.length - 1];
+  const ringColour = () => {
+    const circle = lastMap()
+      .addLayer.mock.calls.map(
+        (c) => c[0] as { type: string; paint: Record<string, unknown> }
+      )
+      .find((l) => l.type === "circle");
+    return (circle?.paint["circle-stroke-color"] as unknown[])?.[2];
+  };
+  const spec = {
+    basemap: "carto-light",
+    initialView: "fit",
+    layers: [
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { outlineColor: "#ffffff", outlineWidth: 2 },
+      },
+    ],
+  } as unknown as MapSpec;
+  const rows = [{ lat: 40.7, lng: -111.9 }];
+
+  beforeEach(() => {
+    maplibreMock.__instances.length = 0;
+  });
+
+  it("rings in black on a light map", () => {
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={spec} rows={rows} mode="light" />
+    );
+    act(() => lastMap().emit("style.load"));
+    expect(ringColour()).toBe("#000000");
+  });
+
+  it("rings in white on a dark map", () => {
+    render(
+      <MapWidgetUI summary={SUMMARY} spec={spec} rows={rows} mode="dark" />
+    );
+    act(() => lastMap().emit("style.load"));
+    expect(ringColour()).toBe("#ffffff");
   });
 });

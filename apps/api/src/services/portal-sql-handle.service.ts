@@ -42,6 +42,7 @@ import {
 } from "./transform-fold.js";
 import { fenceSql } from "./portal-sql-validation.util.js";
 import { capSamplePeek } from "./portal-sql-response.util.js";
+import { HANDLE_EXPIRED_MESSAGE } from "../constants/query-handle.constants.js";
 
 const logger = createLogger({ module: "portal-sql-handle" });
 
@@ -501,7 +502,7 @@ export class PortalSqlHandleService {
       throw new ApiError(
         404,
         ApiCode.READ_HANDLE_EXPIRED,
-        "Query handle has expired or does not exist"
+        HANDLE_EXPIRED_MESSAGE
       );
     }
     const envelope = JSON.parse(metaRaw) as QueryHandleEnvelope;
@@ -575,7 +576,7 @@ export class PortalSqlHandleService {
       throw new ApiError(
         404,
         ApiCode.READ_HANDLE_EXPIRED,
-        "Query handle has expired or does not exist"
+        HANDLE_EXPIRED_MESSAGE
       );
     }
     return JSON.parse(raw) as StoredHandleMeta;

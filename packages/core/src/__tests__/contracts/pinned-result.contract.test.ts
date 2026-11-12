@@ -127,6 +127,28 @@ describe("PinnedGeoContentSchema (#640)", () => {
   });
 });
 
+// #796: a pin keeps its block's summary under `.strict()`.
+describe("pinned summary (#796)", () => {
+  it("accepts a summary on pinned d3 and geo content", () => {
+    expect(
+      PinnedD3ContentSchema.safeParse({
+        program: "api.svg.append('g');",
+        pipeline: PIPELINE,
+        summary: "Sales rise each month.",
+      }).success
+    ).toBe(true);
+    expect(
+      PinnedGeoContentSchema.safeParse({
+        spec: {
+          layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+        },
+        pipeline: PIPELINE,
+        summary: "Most parcels are residential.",
+      }).success
+    ).toBe(true);
+  });
+});
+
 describe("PinDataResponseSchema", () => {
   it("is the widget-refresh delivery union: inline rows or a handle", () => {
     expect(PinDataResponseSchema).toBe(WidgetRefreshResponseSchema);

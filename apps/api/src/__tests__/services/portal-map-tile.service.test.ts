@@ -1227,3 +1227,50 @@ describe("renderTile — tile admission gate (#698)", () => {
     expect(mapTileError(timeout)?.code).toBe(ApiCode.MAP_TILE_TIMEOUT);
   });
 });
+
+// #796: raw features carry a stable id, so the widget can dedupe and
+// highlight them; aggregate bins don't.
+describe("tile feature ids (#796)", () => {
+  const ID = "(hashtextextended(src::text, 0) & 9007199254740991)";
+
+  it("hashes the source row into a 53-bit id", () => {
+    expect(PortalMapTileService.featureIdExpr("src")).toBe(ID);
+  });
+
+  it("emits the id as the raw tile's MVT feature id", () => {
+    const sql = PortalMapTileService.buildRawTileSql(
+      "SELECT geom FROM t",
+      "ST_TileEnvelope(3, 1, 3)",
+      ["cat"],
+      0,
+      MAP_TILE_FEATURE_CAP
+    );
+    expect(sql).toContain(`${ID} AS _fid`);
+    expect(sql).toContain("ST_AsMVT(q, 'default', 4096, 'geom', '_fid')");
+  });
+
+  it("ids the line hybrid's raw skeleton and leaves its bins without one", () => {
+    const sql = PortalMapTileService.buildLineHybridTileSql(
+      "SELECT geom FROM roads",
+      3,
+      "ST_TileEnvelope(3, 1, 3)",
+      0,
+      MAP_TILE_FEATURE_CAP
+    );
+    expect(sql).toContain(`${ID} AS fid`);
+    expect(sql).toContain("r.fid AS _fid");
+    expect(sql).toContain("NULL::bigint AS _fid");
+    expect(sql).toContain("'geom', '_fid')");
+  });
+
+  it("gives aggregate bins no id", () => {
+    const sql = PortalMapTileService.buildAggregateTileSql(
+      "SELECT geom FROM t",
+      3,
+      "ST_TileEnvelope(3, 1, 3)",
+      { treatment: "bins", colorByColumn: null } as never,
+      MAP_TILE_FEATURE_CAP
+    );
+    expect(sql).not.toContain("_fid");
+  });
+});

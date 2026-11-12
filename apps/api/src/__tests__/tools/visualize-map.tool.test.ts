@@ -42,7 +42,10 @@ type ExecArgs = {
   sql: string;
   spec: Record<string, unknown>;
   title?: string;
+  summary?: string;
 };
+
+const SUMMARY = "Parcels by class; most are residential.";
 
 function buildTool(
   deps: VisualizeMapDeps
@@ -58,7 +61,7 @@ function buildTool(
       built as unknown as {
         execute: (a: ExecArgs) => Promise<Record<string, unknown>>;
       }
-    ).execute(args);
+    ).execute({ summary: SUMMARY, ...args });
 }
 
 describe("categoryColor (#314 — uncapped categorical colours)", () => {
@@ -484,5 +487,46 @@ describe("VisualizeMapTool input limits", () => {
     expect(titleIssues("t".repeat(121))).toEqual([
       "Title must be 120 characters or fewer",
     ]);
+  });
+});
+
+// #796: every map carries an agent-written text alternative.
+describe("VisualizeMapTool summary (#796)", () => {
+  const summaryIssues = (input: Record<string, unknown>) =>
+    (
+      new VisualizeMapTool().schema.safeParse({ sql: "SELECT 1", ...input })
+        .error?.issues ?? []
+    )
+      .filter((i) => i.path[0] === "summary")
+      .map((i) => i.message);
+
+  it("refuses a missing or blank summary, and one over 2000 characters", () => {
+    expect(summaryIssues({})).toHaveLength(1);
+    expect(summaryIssues({ summary: "   " })).toEqual(["Summary is required"]);
+    expect(summaryIssues({ summary: "s".repeat(2001) })).toEqual([
+      "Summary must be 2000 characters or fewer",
+    ]);
+  });
+
+  it("puts the summary on the inline block", async () => {
+    const exec = buildTool({
+      resolveSqlDelivery: jest.fn(async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "SELECT lat, lng FROM t", spec: validSpec });
+    expect(out).toMatchObject({ type: "geo", summary: SUMMARY });
+  });
+
+  it("puts the summary on the handle block", async () => {
+    const exec = buildTool({
+      resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
+      sqlQuery: jest.fn(async () => ({ rows: [] })) as never,
+    });
+    const out = await exec({
+      sql: "SELECT geom FROM parcels",
+      spec: {
+        layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+      },
+    });
+    expect(out).toMatchObject({ type: "geo", summary: SUMMARY });
   });
 });

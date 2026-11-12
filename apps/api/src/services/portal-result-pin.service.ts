@@ -37,11 +37,13 @@ export interface MaterializedPin {
   content: Record<string, unknown> | string;
 }
 
-/** The keys each data kind keeps: the recipe, never the rows. */
+/** The keys each data kind keeps: the recipe, never the rows. A chart's or
+ *  map's `summary` (#796) is its text alternative, kept so a pin reads the
+ *  same as the session result it came from. */
 const RECIPE_KEYS: Partial<Record<PortalResultType, readonly string[]>> = {
   "data-table": [],
-  d3: ["program", "title", "params"],
-  geo: ["spec", "title", "program"],
+  d3: ["program", "title", "params", "summary"],
+  geo: ["spec", "title", "program", "summary"],
 };
 
 function contentMismatch(type: PortalResultType): ApiError {

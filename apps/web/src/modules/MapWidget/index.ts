@@ -44,7 +44,7 @@ export type {
 export {
   EMPTY_TILE_STATUS,
   readTileStatus,
-  renderPopupTemplate,
+  popupText,
   tilePath,
   TILE_SOURCE_LAYER,
 } from "./utils/tile-source.util";

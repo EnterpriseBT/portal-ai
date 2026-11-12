@@ -4,6 +4,7 @@ import { tool } from "ai";
 import {
   MapSpecSchema,
   NAME_MAX_LENGTH,
+  descriptionField,
   tooLongMessage,
 } from "@portalai/core/contracts";
 import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
@@ -43,6 +44,12 @@ const InputSchema = z.object({
     .string()
     .max(NAME_MAX_LENGTH, tooLongMessage("Title", NAME_MAX_LENGTH))
     .optional(),
+  summary: descriptionField("Summary")
+    .trim()
+    .min(1, "Summary is required")
+    .describe(
+      "One to three sentences for someone who can't see the map: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+    ),
 });
 
 /** Injectable dependencies (test seam; mirrors the DI style used elsewhere). */
@@ -175,10 +182,12 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           sql,
           spec: rawSpec,
           title,
+          summary,
         } = input as {
           sql: string;
           spec: unknown;
           title?: string;
+          summary: string;
         };
 
         const specResult = MapSpecSchema.safeParse(rawSpec);
@@ -288,6 +297,8 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         }
 
         const titleField = title ? { title } : {};
+        // #796: the agent-written text alternative rides every map block.
+        const summaryField = { summary };
         // The tile path (#316) re-runs the pipeline SQL and needs a raw geometry
         // column named `geom`. A geometry-column layer exposes it directly; a
         // lat/lng layer (#520) has none, so synthesize a point from the pair —
@@ -356,6 +367,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             type: "geo",
             spec,
             ...titleField,
+            ...summaryField,
             pipeline,
             ...delivery.envelope,
           };
@@ -372,7 +384,14 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           { stationId, organizationId, userId },
           { sqlQuery }
         );
-        return { type: "geo", spec, ...titleField, pipeline, rows };
+        return {
+          type: "geo",
+          spec,
+          ...titleField,
+          ...summaryField,
+          pipeline,
+          rows,
+        };
       },
     });
   }

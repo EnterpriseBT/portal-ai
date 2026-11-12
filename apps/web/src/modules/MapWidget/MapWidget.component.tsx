@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import * as maplibregl from "maplibre-gl";
 // maplibre v6 computes its worker URL as
@@ -20,12 +20,23 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
+import { visualSummary } from "@portalai/core/utils";
+import { StatusMessage } from "@portalai/core/ui";
 
 import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { VisualFigureUI } from "../../components/VisualFigure.component";
+import { VisualDataTable } from "../../components/VisualDataTable.component";
+import { mapTableColumns } from "./utils/map-table-columns.util";
+import { toSummaryInput } from "../../utils/visual-summary-input.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
+import { MapFeatureListUI } from "./MapFeatureList.component";
+import {
+  collectRenderedFeatures,
+  RENDERED_FEATURE_CAP,
+} from "./utils/rendered-features.util";
 import { MapAttributionUI } from "./MapAttribution.component";
 import { toSafeAttributions } from "./utils/attribution.util";
 import {
@@ -41,7 +52,7 @@ import {
 } from "./utils/map-config.util";
 import {
   EMPTY_TILE_STATUS,
-  renderPopupTemplate,
+  popupText,
   tilePath,
   TILE_SOURCE_LAYER,
   type TileStatus,
@@ -58,8 +69,23 @@ import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
 import type { InstallBasemap } from "../../utils/runtime-config.util";
 import type { AttributionPart } from "./utils/attribution.util";
 import type { MapLegend } from "./utils/map-config.util";
+import type {
+  QueriedFeature,
+  RenderedFeature,
+} from "./utils/rendered-features.util";
 
 const MAP_HEIGHT = 380;
+
+/** Wait after the view moves before announcing the count in view (#796), so
+ *  a pan of several steps is announced once. */
+const VIEW_ANNOUNCE_DELAY_MS = 500;
+
+/** A feature-state target (#796): MapLibre's `FeatureIdentifier`. */
+interface FeatureTarget {
+  source: string;
+  sourceLayer?: string;
+  id: string | number;
+}
 
 // A stable reference: the map effect depends on `installBasemap`, so an inline
 // default would rebuild the map on every render.
@@ -81,6 +107,11 @@ export interface MapWidgetUIProps {
   rows: Record<string, unknown>[];
   mode: "light" | "dark";
   title?: string;
+  /** Text alternative (#796), resolved through `visualSummary`. */
+  summary: string;
+  /** The data alternative (#796), behind "Show data". The container builds
+   *  it; it's offered in every state, an error included. */
+  data?: React.ReactNode;
   loading?: boolean;
   error?: string | null;
   /** Real API tile template (`…/{z}/{x}/{y}.mvt`) for a large/handle result;
@@ -109,6 +140,9 @@ export interface MapWidgetUIProps {
   /** The install-wide basemap (#910); `custom`/`none` override the spec's.
    *  Pass a stable reference — the map is rebuilt when it changes. */
   installBasemap?: InstallBasemap;
+  /** Where "Features in view" sits (#796): under the map (default), or beside
+   *  it. The view decides, per the view-owns-layout rule. */
+  layout?: "stacked" | "side";
 }
 
 export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
@@ -116,6 +150,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   rows,
   mode,
   title,
+  summary,
+  data,
   loading = false,
   error = null,
   tileTemplate = null,
@@ -133,8 +169,27 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   status = "ready",
   onHeight,
   installBasemap = DEFAULT_INSTALL_BASEMAP,
+  layout = "stacked",
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
+  // #796: keyboard inspection. The live map, its open popup and highlighted
+  // feature, and the list that is the keyboard route into its features.
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const selectedTargetRef = useRef<FeatureTarget | null>(null);
+  const featureListRef = useRef<HTMLDivElement>(null);
+  // The title names the canvas, but a title change shouldn't rebuild the map.
+  const titleRef = useRef(title);
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+  const keysHintId = useId();
+  const [inView, setInView] = useState<{
+    items: RenderedFeature[];
+    total: number;
+  }>({ items: [], total: 0 });
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [viewAnnouncement, setViewAnnouncement] = useState("");
   // React's useId() returns colon-wrapped ids (":r0:"); strip to URL-safe chars
   // because ctxId rides in the tile URL authority (`portalmap://<ctxId>/…`),
   // where a colon is invalid and silently breaks tile dispatch.
@@ -161,30 +216,48 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   const hasLineLayer = spec.layers.some((l) => l.kind === "lines");
 
   // Pure spec→MapLibre translation (unit-tested in map-config.util.test).
-  const { layerData, mlLayers, legend, bounds, featureCapNotice, hasFeatures } =
-    useMemo(() => {
-      const data = spec.layers.map((l, i) => featuresForLayer(l, i, rows));
-      const layers = spec.layers.flatMap(
-        (l, i) => layerToMapLibre(l, i, rows, { tiled: isTile }).layers
-      );
-      const lg: MapLegend[] = buildLegend(spec, rows);
-      const truncated = data.filter((d) => d.truncated);
-      const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
-      const notice =
-        truncated.length > 0
-          ? `Showing the first ${shown.toLocaleString()} of ${truncated
-              .reduce((n, d) => Math.max(n, d.total), 0)
-              .toLocaleString()} features.`
-          : null;
-      return {
-        layerData: data,
-        mlLayers: layers,
-        legend: lg,
-        bounds: boundsOf(data.map((d) => d.collection)),
-        featureCapNotice: notice,
-        hasFeatures: data.some((d) => d.collection.features.length > 0),
-      };
-    }, [spec, rows, isTile]);
+  const {
+    layerData,
+    mlLayers,
+    colorByForLayer,
+    legend,
+    bounds,
+    featureCapNotice,
+    hasFeatures,
+  } = useMemo(() => {
+    const data = spec.layers.map((l, i) => featuresForLayer(l, i, rows));
+    const perLayer = spec.layers.map((l, i) => ({
+      colorBy: l.style?.colorBy?.column,
+      layers: layerToMapLibre(l, i, rows, {
+        tiled: isTile,
+        // #796: the selection ring contrasts with the basemap.
+        highlightColor: mode === "dark" ? "#ffffff" : "#000000",
+      }).layers,
+    }));
+    const layers = perLayer.flatMap((p) => p.layers);
+    // #796: what each MapLibre layer's colour encodes, for the list's labels.
+    const colorBy = Object.fromEntries(
+      perLayer.flatMap((p) => p.layers.map((l) => [l.id, p.colorBy]))
+    );
+    const lg: MapLegend[] = buildLegend(spec, rows);
+    const truncated = data.filter((d) => d.truncated);
+    const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
+    const notice =
+      truncated.length > 0
+        ? `Showing the first ${shown.toLocaleString()} of ${truncated
+            .reduce((n, d) => Math.max(n, d.total), 0)
+            .toLocaleString()} features.`
+        : null;
+    return {
+      layerData: data,
+      mlLayers: layers,
+      colorByForLayer: colorBy,
+      legend: lg,
+      bounds: boundsOf(data.map((d) => d.collection)),
+      featureCapNotice: notice,
+      hasFeatures: data.some((d) => d.collection.features.length > 0),
+    };
+  }, [spec, rows, isTile, mode]);
 
   const showMap = !error && (isTile || hasFeatures);
 
@@ -192,6 +265,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     if (!showMap || mapRef.current == null) return;
     let map: maplibregl.Map | null = null;
     let basemapTimer: ReturnType<typeof setTimeout> | undefined;
+    let announceTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (isTile) {
       installPortalMapProtocol(maplibregl, resolveTileUrl);
@@ -213,17 +287,64 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         // spec's basemap can be a style its author chose; MapAttributionUI
         // renders it as text instead.
         attributionControl: false,
+        // #796: the focusable canvas (MapLibre's own region) is named after
+        // the map, and described by the key hint under it.
+        locale: {
+          "Map.Title": `Map: ${titleRef.current?.trim() || "untitled"}`,
+        },
       });
       map.addControl(
         new maplibregl.NavigationControl({ showCompass: false }),
         "top-right"
       );
       const m = map;
+      mapInstanceRef.current = m;
+      m.getCanvas().setAttribute("aria-describedby", keysHintId);
       // #352: reflect tile fetch/render activity — busy on dataloading, clear
       // when the map settles (`idle` is the natural debounce).
       m.on("dataloading", () => setInternalTilesLoading(true));
       m.on("idle", () => setInternalTilesLoading(false));
       const template = spec.popup?.template;
+
+      // #796: "Features in view" re-reads what the map draws whenever it
+      // settles, and the count is announced once the view stops moving.
+      let viewMoved = false;
+      // The map's own first fit (fitBounds/jumpTo on load) fires moveend too;
+      // only a move after the first settle is the user's, worth announcing.
+      let settled = false;
+      let inViewKey = "";
+      m.on("moveend", () => {
+        viewMoved = true;
+      });
+      m.on("idle", () => {
+        if (!settled) {
+          settled = true;
+          viewMoved = false;
+        }
+        // A layer MapLibre refused at addLayer can't be queried (it errors).
+        const layers = mlLayers.map((l) => l.id).filter((id) => m.getLayer(id));
+        const collected = collectRenderedFeatures(
+          (layers.length > 0
+            ? m.queryRenderedFeatures({ layers })
+            : []) as unknown as QueriedFeature[],
+          { template, cap: RENDERED_FEATURE_CAP, colorByForLayer }
+        );
+        const key = `${collected.total}|${collected.items.map((i) => i.key).join(",")}`;
+        if (key !== inViewKey) {
+          inViewKey = key;
+          setInView(collected);
+        }
+        if (viewMoved) {
+          viewMoved = false;
+          clearTimeout(announceTimer);
+          announceTimer = setTimeout(() => {
+            const n = collected.total;
+            setViewAnnouncement(
+              `${n.toLocaleString("en-US")} ${n === 1 ? "feature" : "features"} in view`
+            );
+          }, VIEW_ANNOUNCE_DELAY_MS);
+        }
+      });
 
       // #910: data layers attach on the first `style.load` — whichever style
       // that is — so they never wait on the basemap. A basemap style that
@@ -357,6 +478,9 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
               m.addSource(d.sourceId, {
                 type: "geojson",
                 data: d.collection as never,
+                // #796: ids let a feature picked from the list be highlighted
+                // through feature state.
+                generateId: true,
               })
             );
             mlLayers.forEach((l) => m.addLayer(l as never));
@@ -381,7 +505,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
               if (!f) return;
               new maplibregl.Popup()
                 .setLngLat(e.lngLat)
-                .setHTML(renderPopupTemplate(template, f.properties ?? {}))
+                // #1016: text, never HTML (record values are untrusted).
+                .setText(popupText(template, f.properties ?? {}))
                 .addTo(m);
             });
           }
@@ -393,6 +518,12 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     }
     return () => {
       clearTimeout(basemapTimer);
+      clearTimeout(announceTimer);
+      mapInstanceRef.current = null;
+      popupRef.current = null;
+      selectedTargetRef.current = null;
+      setInView({ items: [], total: 0 });
+      setSelectedKey(null);
       // Per-map state resets as the map is torn down rather than at the top
       // of the effect (a synchronous setState there cascades renders), so the
       // next map starts with no render error and its basemap presumed fine.
@@ -414,10 +545,88 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     resolveTileUrl,
     layerData,
     mlLayers,
+    colorByForLayer,
     bounds,
     onHeight,
     installBasemap,
+    keysHintId,
   ]);
+
+  // #796: picking a feature from the list opens its details on the map and
+  // highlights it; closing the details (Escape included) clears both and
+  // returns focus to the list.
+  const clearHighlight = () => {
+    const target = selectedTargetRef.current;
+    selectedTargetRef.current = null;
+    if (target) mapInstanceRef.current?.removeFeatureState(target, "selected");
+  };
+  const focusListItem = (key: string) => {
+    const buttons =
+      featureListRef.current?.querySelectorAll<HTMLElement>(
+        "[data-feature-key]"
+      ) ?? [];
+    for (const button of buttons) {
+      if (button.dataset.featureKey === key) button.focus();
+    }
+  };
+  const handleSelectFeature = (item: RenderedFeature) => {
+    const m = mapInstanceRef.current;
+    if (!m) return;
+    const previous = popupRef.current;
+    popupRef.current = null;
+    previous?.remove();
+    clearHighlight();
+    if (item.featureId != null) {
+      const target: FeatureTarget = {
+        source: item.source,
+        ...(item.sourceLayer ? { sourceLayer: item.sourceLayer } : {}),
+        id: item.featureId,
+      };
+      m.setFeatureState(target, { selected: true });
+      selectedTargetRef.current = target;
+    }
+    const template = spec.popup?.template;
+    const popup = new maplibregl.Popup().setLngLat(item.lngLat);
+    // #1016: text, never HTML (record values are untrusted).
+    popup.setText(template ? popupText(template, item.properties) : item.label);
+    popup.addTo(m);
+    // Focus returns to the list only when the details were closed from the
+    // keyboard (Escape, or the popup's own close button while focused). A
+    // click elsewhere on the map closes them too, and must not pull focus.
+    // MapLibre removes the element before "close", so focus is tracked here.
+    let focusInside = false;
+    let closedFromPopup = false;
+    const element = popup.getElement();
+    element?.addEventListener("focusin", () => {
+      focusInside = true;
+    });
+    element?.addEventListener("focusout", (event) => {
+      if (!element.contains(event.relatedTarget as Node | null)) {
+        focusInside = false;
+      }
+    });
+    element?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closedFromPopup = true;
+        popup.remove();
+      }
+    });
+    element?.addEventListener("click", (event) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".maplibregl-popup-close-button")) {
+        closedFromPopup = true;
+      }
+    });
+    popup.on("close", () => {
+      if (popupRef.current !== popup) return;
+      popupRef.current = null;
+      clearHighlight();
+      setSelectedKey(null);
+      if (closedFromPopup || focusInside) focusListItem(item.key);
+    });
+    popupRef.current = popup;
+    setSelectedKey(item.key);
+  };
 
   // #349: the header is the shared WidgetFreshnessBar — d3, table, and the
   // pin detail view render the identical chrome.
@@ -479,186 +688,216 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     );
   } else {
     body = (
-      <>
-        <Box sx={{ position: "relative" }}>
-          <Box
-            ref={mapRef}
-            data-testid="map-widget-canvas"
-            sx={{
-              width: "100%",
-              height: MAP_HEIGHT,
-              borderRadius: 1,
-              overflow: "hidden",
-            }}
-          />
-          {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
-          <MapAttributionUI attributions={attributions} />
-        </Box>
-        {/* #352: tile fetch/render in progress (tile path only). */}
-        {isTile && tilesRendering ? (
-          <Box
-            sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-            data-testid="map-widget-tiles-loading"
-          >
-            <CircularProgress size={12} />
-            <Typography variant="caption" color="text.secondary">
-              Rendering…
+      // Laid out from the theme (#796): the `map-body`, `map-main` and
+      // `feature-panel` visual parts, side by side from md up.
+      <Box data-visual-part="map-body" data-layout={layout}>
+        <Box data-visual-part="map-main">
+          <Box sx={{ position: "relative" }}>
+            <Box
+              ref={mapRef}
+              data-testid="map-widget-canvas"
+              sx={{
+                width: "100%",
+                height: MAP_HEIGHT,
+                borderRadius: 1,
+                overflow: "hidden",
+              }}
+            />
+            {basemapUnavailable ? <BasemapUnavailableNoticeUI /> : null}
+            <MapAttributionUI attributions={attributions} />
+          </Box>
+          {/* #796: the canvas's description (aria-describedby). */}
+          <Typography id={keysHintId} variant="caption" color="text.secondary">
+            Arrow keys pan, + and − zoom, when the map has focus.
+          </Typography>
+          {/* #352: tile fetch/render in progress (tile path only). */}
+          {isTile && tilesRendering ? (
+            <Box
+              sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+              data-testid="map-widget-tiles-loading"
+            >
+              <CircularProgress size={12} />
+              <Typography variant="caption" color="text.secondary">
+                Rendering…
+              </Typography>
+            </Box>
+          ) : null}
+          {/* Visibility of limits — no quiet degradation (#314). */}
+          {tiles.timedOut ? (
+            <Typography
+              variant="caption"
+              color="error"
+              data-testid="map-widget-tile-timeout"
+            >
+              A map tile timed out — pan or zoom to retry.
             </Typography>
-          </Box>
-        ) : null}
-        {/* Visibility of limits — no quiet degradation (#314). */}
-        {tiles.timedOut ? (
-          <Typography
-            variant="caption"
-            color="error"
-            data-testid="map-widget-tile-timeout"
-          >
-            A map tile timed out — pan or zoom to retry.
-          </Typography>
-        ) : null}
-        {tiles.unavailable ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="map-widget-tile-unavailable"
-          >
-            This pin&apos;s data isn&apos;t available.
-          </Typography>
-        ) : null}
-        {tiles.failed ? (
-          <Typography
-            variant="caption"
-            color="error"
-            data-testid="map-widget-tile-failed"
-          >
-            A map tile failed to load — pan or zoom to retry.
-          </Typography>
-        ) : null}
-        {tiles.busy ? (
-          <Typography
-            variant="caption"
-            color="warning.main"
-            data-testid="map-widget-tile-busy"
-          >
-            Map server is busy — tiles will load when you pan or zoom.
-          </Typography>
-        ) : null}
-        {tiles.rateLimited ? (
-          <Typography
-            variant="caption"
-            color="warning.main"
-            data-testid="map-widget-tile-rate-limited"
-          >
-            Loading map tiles too quickly — tiles will load when you pan or
-            zoom.
-          </Typography>
-        ) : null}
-        {tiles.simplified ? (
-          <Typography
-            variant="caption"
-            color="warning.main"
-            data-testid="map-widget-simplified"
-          >
-            Simplified at this zoom — shapes are approximations. Zoom in for
-            full detail.
-          </Typography>
-        ) : null}
-        {tiles.aggregated ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="map-widget-aggregated"
-          >
-            Dense areas are summarized — zoom in for detail.
-          </Typography>
-        ) : tiles.truncated ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="map-widget-tile-truncated"
-          >
-            {hasLineLayer
-              ? "Showing the most prominent features — zoom in for the rest."
-              : "Partial at this zoom — zoom in for all features."}
-          </Typography>
-        ) : null}
-        {featureCapNotice ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="map-widget-cap-notice"
-          >
-            {featureCapNotice}
-          </Typography>
-        ) : null}
-        {legend.length > 0 ? (
-          <Box
-            sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 0.5 }}
-          >
-            {legend.map((lg, li) =>
-              lg.kind === "swatches" ? (
-                <Box
-                  key={li}
-                  data-testid="map-widget-legend"
-                  sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
-                >
-                  {lg.entries.map((e) => (
-                    <Box
-                      key={e.label}
-                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                    >
-                      <Box
-                        sx={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: "2px",
-                          bgcolor: e.color,
-                        }}
-                      />
-                      <Typography variant="caption">{e.label}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Box
-                  key={li}
-                  data-testid="map-widget-legend-gradient"
-                  sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
-                >
-                  <Typography variant="caption">{String(lg.min)}</Typography>
+          ) : null}
+          {tiles.unavailable ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              data-testid="map-widget-tile-unavailable"
+            >
+              This pin&apos;s data isn&apos;t available.
+            </Typography>
+          ) : null}
+          {tiles.failed ? (
+            <Typography
+              variant="caption"
+              color="error"
+              data-testid="map-widget-tile-failed"
+            >
+              A map tile failed to load — pan or zoom to retry.
+            </Typography>
+          ) : null}
+          {tiles.busy ? (
+            <Typography
+              variant="caption"
+              color="warning.main"
+              data-testid="map-widget-tile-busy"
+            >
+              Map server is busy — tiles will load when you pan or zoom.
+            </Typography>
+          ) : null}
+          {tiles.rateLimited ? (
+            <Typography
+              variant="caption"
+              color="warning.main"
+              data-testid="map-widget-tile-rate-limited"
+            >
+              Loading map tiles too quickly — tiles will load when you pan or
+              zoom.
+            </Typography>
+          ) : null}
+          {tiles.simplified ? (
+            <Typography
+              variant="caption"
+              color="warning.main"
+              data-testid="map-widget-simplified"
+            >
+              Simplified at this zoom — shapes are approximations. Zoom in for
+              full detail.
+            </Typography>
+          ) : null}
+          {tiles.aggregated ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              data-testid="map-widget-aggregated"
+            >
+              Dense areas are summarized — zoom in for detail.
+            </Typography>
+          ) : tiles.truncated ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              data-testid="map-widget-tile-truncated"
+            >
+              {hasLineLayer
+                ? "Showing the most prominent features — zoom in for the rest."
+                : "Partial at this zoom — zoom in for all features."}
+            </Typography>
+          ) : null}
+          {featureCapNotice ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              data-testid="map-widget-cap-notice"
+            >
+              {featureCapNotice}
+            </Typography>
+          ) : null}
+          {legend.length > 0 ? (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 0.5,
+                mt: 0.5,
+              }}
+            >
+              {legend.map((lg, li) =>
+                lg.kind === "swatches" ? (
                   <Box
-                    sx={{
-                      flexGrow: 1,
-                      maxWidth: 160,
-                      height: 10,
-                      borderRadius: "2px",
-                      background: `linear-gradient(to right, ${lg.stops
-                        .map(
-                          (s) =>
-                            `${s.color} ${
-                              lg.max > lg.min
-                                ? ((s.value - lg.min) / (lg.max - lg.min)) * 100
-                                : 0
-                            }%`
-                        )
-                        .join(", ")})`,
-                    }}
-                  />
-                  <Typography variant="caption">{String(lg.max)}</Typography>
-                </Box>
-              )
-            )}
-          </Box>
-        ) : null}
-      </>
+                    key={li}
+                    data-testid="map-widget-legend"
+                    sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
+                  >
+                    {lg.entries.map((e) => (
+                      <Box
+                        key={e.label}
+                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                      >
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: "2px",
+                            bgcolor: e.color,
+                          }}
+                        />
+                        <Typography variant="caption">{e.label}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <Box
+                    key={li}
+                    data-testid="map-widget-legend-gradient"
+                    sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                  >
+                    <Typography variant="caption">{String(lg.min)}</Typography>
+                    <Box
+                      sx={{
+                        flexGrow: 1,
+                        maxWidth: 160,
+                        height: 10,
+                        borderRadius: "2px",
+                        background: `linear-gradient(to right, ${lg.stops
+                          .map(
+                            (s) =>
+                              `${s.color} ${
+                                lg.max > lg.min
+                                  ? ((s.value - lg.min) / (lg.max - lg.min)) *
+                                    100
+                                  : 0
+                              }%`
+                          )
+                          .join(", ")})`,
+                      }}
+                    />
+                    <Typography variant="caption">{String(lg.max)}</Typography>
+                  </Box>
+                )
+              )}
+            </Box>
+          ) : null}
+        </Box>
+        <Box ref={featureListRef} data-visual-part="feature-panel">
+          <MapFeatureListUI
+            items={inView.items}
+            total={inView.total}
+            selectedKey={selectedKey}
+            onSelect={handleSelectFeature}
+          />
+        </Box>
+        {/* Mounted with the map so the count is read when it changes. */}
+        <StatusMessage message={viewAnnouncement} visuallyHidden />
+      </Box>
     );
   }
 
   return (
-    <Paper variant="outlined" data-testid="map-widget" sx={{ p: 1.5 }}>
-      {header}
+    <VisualFigureUI
+      kind="map"
+      title={title}
+      summary={summary}
+      header={header}
+      data={data}
+      testId="map-widget"
+    >
       {body}
-    </Paper>
+    </VisualFigureUI>
   );
 };
 
@@ -715,6 +954,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
         spec={{ layers: [] } as unknown as MapSpec}
         rows={[]}
         mode={mode}
+        summary="This map couldn't be read."
         error="Invalid map block content."
         status="error"
       />
@@ -737,6 +977,62 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   // Large result → vector tiles keyed to the block's own persisted ref.
   const tileTemplate = isHandle ? tilePath(blockRef) : null;
 
+  // #796: the agent's summary, or one derived from the data the map draws.
+  // A tiled map with no envelope (a tiled pin) and a pin before its first
+  // delivery have no count to state.
+  const handle =
+    fresh?.kind === "handle"
+      ? fresh
+      : fresh == null && "queryHandle" in parsedContent
+        ? parsedContent
+        : null;
+  const countKnown =
+    handle != null ||
+    (!isHandle && (fresh != null || blockRef?.kind !== "pin"));
+  const summary = visualSummary(
+    parsedContent.summary,
+    toSummaryInput({
+      kind: "map",
+      title: parsedContent.title,
+      spec: parsedContent.spec,
+      handle,
+      rows: countKnown && !handle ? rows : null,
+    })
+  );
+
+  // #796: the table reads the map's own data — its handle when it tiles, its
+  // rows when inline — without the raw geometry. A tiled pin with no handle
+  // draws only from its tile endpoint, so it has no table.
+  const tableLabel = `${parsedContent.title?.trim() || "Map"} data`;
+  const data = handle ? (
+    <VisualDataTable
+      key={handle.queryHandle}
+      label={tableLabel}
+      source={{
+        kind: "handle",
+        handleId: handle.queryHandle,
+        matchedCount: handle.matchedCount,
+        matchedCountExact: handle.matchedCountExact,
+        truncated: handle.truncated,
+        columns: mapTableColumns(parsedContent.spec, handle.schema),
+      }}
+      onRefresh={refreshAllowed && !notRefreshable ? refresh : undefined}
+    />
+  ) : countKnown && !isHandle ? (
+    <VisualDataTable
+      key={lastUpdatedAt ?? "base"}
+      label={tableLabel}
+      source={{
+        kind: "inline",
+        rows,
+        columns: mapTableColumns(
+          parsedContent.spec,
+          Object.keys(rows[0] ?? {}).map((name) => ({ name }))
+        ),
+      }}
+    />
+  ) : undefined;
+
   const status: NonNullable<MapWidgetUIProps["status"]> = isRefreshing
     ? "refreshing"
     : refreshError
@@ -749,6 +1045,8 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       rows={rows}
       mode={mode}
       title={parsedContent.title}
+      summary={summary}
+      data={data}
       error={refreshError?.message ?? null}
       tileTemplate={tileTemplate}
       largeUnpersisted={isHandle && tileTemplate == null}

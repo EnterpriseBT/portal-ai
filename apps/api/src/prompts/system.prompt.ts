@@ -310,6 +310,13 @@ export const PACK_PROMPT_SECTIONS: Record<
           "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
       );
       lines.push("");
+      lines.push(
+        "Always pass a `summary`: one to three sentences for someone who " +
+          "can't see it, saying what the chart shows and its main takeaway " +
+          "with the key values, not the colours. It is read aloud to " +
+          "screen-reader users and shown under the chart."
+      );
+      lines.push("");
       return lines;
     },
   },
@@ -356,6 +363,13 @@ export const PACK_PROMPT_SECTIONS: Record<
           'per layer with `aggregation.treatment`: `"bins"` forces grid bins, ' +
           '`"none"` keeps any layer raw at all zooms. Omit it to use the ' +
           "per-kind default."
+      );
+      lines.push("");
+      lines.push(
+        "Always pass a `summary`: one to three sentences for someone who " +
+          "can't see it, saying what the map shows and its main takeaway " +
+          "with the key values, not the colours. It is read aloud to " +
+          "screen-reader users and shown under the map."
       );
       lines.push("");
       lines.push(...geocodingGuidance(ctx));

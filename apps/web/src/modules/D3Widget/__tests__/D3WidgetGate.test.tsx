@@ -25,6 +25,12 @@ const refreshMutate = jest.fn();
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
+      // #796: the "Show data" table's paged read.
+      handleSnapshot: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+      }),
       handleSnapshotPage: () => ({ mutateAsync: pageMutate }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
@@ -82,6 +88,27 @@ describe("D3WidgetGate (#271)", () => {
     // The live widget (and its paging) never mount.
     expect(screen.queryByTestId("d3-widget")).not.toBeInTheDocument();
     expect(pageMutate).not.toHaveBeenCalled();
+  });
+
+  // #796: an offscreen chart still announces what it is.
+  it("keeps the placeholder a named, described figure", () => {
+    mockInView = false;
+    render(
+      <D3WidgetGate
+        content={{ ...handleContent, title: "Sales", summary: "Sales double." }}
+      />
+    );
+    expect(
+      screen.getByRole("figure", { name: "Sales" })
+    ).toHaveAccessibleDescription("Sales double.");
+  });
+
+  it("derives the placeholder's description when the block has no summary", () => {
+    mockInView = false;
+    render(<D3WidgetGate content={{ ...handleContent, title: "Sales" }} />);
+    expect(
+      screen.getByRole("figure", { name: "Sales" })
+    ).toHaveAccessibleDescription("Chart: Sales. 5,000 rows; fields x.");
   });
 
   it("swaps live → placeholder when it scrolls out of view", () => {

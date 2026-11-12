@@ -200,6 +200,25 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
   });
 });
 
+// #796 — both visualization tools require a text alternative, and every
+// example shows one.
+describe("visualization summary (#796)", () => {
+  it.each(["visualize_d3", "visualize_map"])(
+    "%s requires a summary",
+    (name) => {
+      const tool = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+        (t) => t.name === name
+      );
+      expect(tool!.parameterSchema.required).toContain("summary");
+      for (const example of tool!.examples ?? []) {
+        expect((example.input as Record<string, unknown>).summary).toEqual(
+          expect.any(String)
+        );
+      }
+    }
+  );
+});
+
 // #269 — the visualize pack + visualize_d3 tool contract.
 describe("visualize pack (#269)", () => {
   const pack = BUILTIN_TOOLPACKS.find((p) => p.slug === "visualize");
@@ -215,11 +234,16 @@ describe("visualize pack (#269)", () => {
     expect(pack!.tools[0].name).toBe("visualize_d3");
   });
 
-  it("visualize_d3 takes intent (sql + instruction + optional title), not a program", () => {
+  it("visualize_d3 takes intent (sql + instruction + summary + optional title), not a program", () => {
     const schema = tool!.parameterSchema;
     const props = schema.properties as Record<string, unknown>;
-    expect(Object.keys(props).sort()).toEqual(["instruction", "sql", "title"]);
-    expect(schema.required).toEqual(["sql", "instruction"]);
+    expect(Object.keys(props).sort()).toEqual([
+      "instruction",
+      "sql",
+      "summary",
+      "title",
+    ]);
+    expect(schema.required).toEqual(["sql", "instruction", "summary"]);
     // The agent supplies intent — never a program or a chart spec.
     expect(props.d3Program).toBeUndefined();
     expect(props.spec).toBeUndefined();

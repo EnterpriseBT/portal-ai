@@ -390,6 +390,39 @@ interface MapLibreLayer {
   filter?: unknown[];
 }
 
+/** True for the feature picked from "Features in view" (#796), which the
+ *  widget marks with `setFeatureState(…, { selected: true })`. */
+const SELECTED = ["boolean", ["feature-state", "selected"], false];
+/** Stroke/outline width of a selected point or polygon. */
+const SELECTED_STROKE = 3;
+/** Extra width of a selected line. */
+const SELECTED_LINE_EXTRA = 2;
+/** Extra radius of a selected point. */
+const SELECTED_RADIUS_EXTRA = 3;
+/** The selection ring's colour when the caller gives none: black, which
+ *  contrasts with the light basemaps. */
+const DEFAULT_HIGHLIGHT_COLOR = "#000000";
+
+/** True when a style value is, or contains, a `["zoom"]` expression. */
+const usesZoom = (value: unknown): boolean =>
+  JSON.stringify(value ?? null).includes('["zoom"]');
+
+/**
+ * A paint value that changes while its feature is selected (#796). A literal
+ * or a data expression is wrapped in a feature-state `case`. A `["zoom"]`
+ * expression is left as authored, unhighlighted: MapLibre accepts zoom only
+ * as the input of a top-level step/interpolate, so nesting it fails
+ * `addLayer` and blanks the map.
+ */
+function whenSelected(base: unknown, selected: unknown): unknown {
+  if (usesZoom(base)) return base;
+  return ["case", SELECTED, selected, base];
+}
+
+/** `base + extra`, as a number for a literal or an expression otherwise. */
+const plus = (base: unknown, extra: number): unknown =>
+  typeof base === "number" ? base + extra : ["+", base, extra];
+
 /**
  * Translate one MapSpec layer into the MapLibre layer(s) it renders as. A
  * `colorBy` compiles to a `match` expression for the primary colour; every
@@ -401,8 +434,15 @@ export function layerToMapLibre(
   layer: MapLayer,
   index: number,
   rows: Row[],
-  opts: { tiled?: boolean } = {}
+  opts: {
+    tiled?: boolean;
+    /** The selection ring's colour (#796): chosen by the widget to contrast
+     *  with its basemap, never the author's outline colour, which can match
+     *  the basemap (a white outline on a light map showed no selection). */
+    highlightColor?: string;
+  } = {}
 ): { layers: MapLibreLayer[]; legend: MapLegend | null } {
+  const highlight = opts.highlightColor ?? DEFAULT_HIGHLIGHT_COLOR;
   const source = sourceIdFor(index);
   const style = layer.style ?? {};
   let legend: MapLegend | null = null;
@@ -424,14 +464,19 @@ export function layerToMapLibre(
         source,
         paint: {
           "circle-color": color,
-          "circle-radius": style.radius ?? 5,
+          "circle-radius": whenSelected(
+            style.radius ?? 5,
+            plus(style.radius ?? 5, SELECTED_RADIUS_EXTRA)
+          ),
           "circle-opacity": style.opacity ?? 0.9,
-          ...(style.outlineColor != null
-            ? { "circle-stroke-color": style.outlineColor }
-            : {}),
-          ...(style.outlineWidth != null
-            ? { "circle-stroke-width": style.outlineWidth }
-            : {}),
+          "circle-stroke-color": whenSelected(
+            style.outlineColor ?? "#000000",
+            highlight
+          ),
+          "circle-stroke-width": whenSelected(
+            style.outlineWidth ?? 0,
+            SELECTED_STROKE
+          ),
         },
       });
       break;
@@ -454,8 +499,8 @@ export function layerToMapLibre(
         type: "line",
         source,
         paint: {
-          "line-color": style.outlineColor ?? color,
-          "line-width": style.outlineWidth ?? 1,
+          "line-color": whenSelected(style.outlineColor ?? color, highlight),
+          "line-width": whenSelected(style.outlineWidth ?? 1, SELECTED_STROKE),
         },
       });
       break;
@@ -467,7 +512,11 @@ export function layerToMapLibre(
         source,
         paint: {
           "line-color": color,
-          "line-width": style.width ?? 2,
+          // A line keeps its data colour; it widens instead.
+          "line-width": whenSelected(
+            style.width ?? 2,
+            plus(style.width ?? 2, SELECTED_LINE_EXTRA)
+          ),
           ...(style.opacity != null ? { "line-opacity": style.opacity } : {}),
         },
       });

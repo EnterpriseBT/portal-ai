@@ -92,18 +92,38 @@ export function readTileStatus(
   };
 }
 
+/** Placeholders a popup template names: `{{field}}` or `{field}` (models
+ *  author both). */
+const PLACEHOLDER = /\{\{?\s*([\w.]+)\s*\}?\}/g;
+
+/** The template's own markup is dropped: tags (with any script/style body)
+ *  and markdown emphasis markers, which an agent often writes. */
+const literalText = (segment: string): string =>
+  segment
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\*\*|__/g, "");
+
 /**
- * Mustache-ish popup fill. A field the feature lacks renders as `⟨field⟩`
- * (unresolved) rather than a blank popup — Visibility of limits, row 10.
+ * A map popup's text (#1016). A popup is plain text, never HTML: the template
+ * is agent-written and its values are record data any record writer or sync
+ * can set, so parsing either as HTML was a stored XSS. Values are inserted
+ * verbatim; only the template's own markup is dropped. A field the feature
+ * lacks renders as `⟨field⟩`, not a blank (Visibility of limits, row 10).
+ * The same text labels the feature in "Features in view".
  */
-export function renderPopupTemplate(
+export function popupText(
   template: string,
   props: Record<string, unknown>
 ): string {
-  // Tolerate single- or double-brace fields ({{x}} or {x}) — models author
-  // both. A field the feature lacks renders as ⟨field⟩, not a blank (row 10).
-  return template.replace(/\{\{?\s*([\w.]+)\s*\}?\}/g, (_m, key: string) => {
-    const v = props[key];
-    return v == null ? `⟨${key}⟩` : String(v);
-  });
+  let out = "";
+  let last = 0;
+  for (const m of template.matchAll(PLACEHOLDER)) {
+    out += literalText(template.slice(last, m.index));
+    const v = props[m[1]];
+    out += v == null ? `⟨${m[1]}⟩` : String(v);
+    last = (m.index ?? 0) + m[0].length;
+  }
+  out += literalText(template.slice(last));
+  return out.replace(/\s+/g, " ").trim();
 }
