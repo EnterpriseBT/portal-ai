@@ -101,7 +101,7 @@ export type CellValueField = z.infer<typeof CellValueFieldSchema>;
 
 // ── Region ─────────────────────────────────────────────────────────────────
 
-const BoundsSchema = z
+export const BoundsSchema = z
   .object({
     startRow: z.number().int().min(1),
     startCol: z.number().int().min(1),

@@ -707,3 +707,49 @@ describe("RegionDrawingStepUI — keys and focus from the adversarial walk (#795
     expect(screen.getByRole("spinbutton", { name: "Start row" })).toHaveFocus();
   });
 });
+
+// #1009: a region past its sheet is a validation error, and Fit to sheet
+// trims it through the normal bounds path.
+describe("RegionDrawingStepUI — region past its sheet", () => {
+  const overhanging = baseRegion({
+    bounds: { startRow: 0, endRow: 6, startCol: 0, endCol: 2 },
+  });
+
+  test("Fit to sheet trims the bounds and re-aligns the segments", () => {
+    const onRegionUpdate = jest.fn();
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({ regions: [overhanging], onRegionUpdate })}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fit to sheet" }));
+    expect(onRegionUpdate).toHaveBeenCalledWith(
+      "r1",
+      expect.objectContaining({
+        bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+      })
+    );
+  });
+
+  test("Interpret names the region and doesn't run while it overhangs", () => {
+    const onInterpret = jest.fn();
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({ regions: [overhanging], onInterpret })}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Interpret/ }));
+    expect(onInterpret).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/1 region has validation errors/)
+    ).toBeInTheDocument();
+  });
+
+  test("Interpret runs once the region fits", () => {
+    const onInterpret = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onInterpret })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Interpret/ }));
+    expect(onInterpret).toHaveBeenCalledTimes(1);
+  });
+});

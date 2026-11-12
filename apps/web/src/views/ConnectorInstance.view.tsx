@@ -698,6 +698,18 @@ export const ConnectorInstanceView = ({
                       progress={syncState.progress}
                       progressDetail={syncState.progressDetail}
                       recordCounts={syncState.recordCounts}
+                      replayWarnings={syncState.replayWarnings}
+                      replayWarningsOmitted={syncState.replayWarningsOmitted}
+                      editLayoutPlanLink={
+                        // #1009: the same condition as the Modify Layout
+                        // Plan menu item, so the link only goes where the
+                        // caller could already go.
+                        EDIT_PLAN_SLUGS.has(
+                          ci.connectorDefinition?.slug ?? ""
+                        ) && gates.editLayoutPlan.kind === "allow"
+                          ? { connectorInstanceId }
+                          : null
+                      }
                       errorMessage={syncState.errorMessage}
                       onDismissResult={syncState.onDismissResult}
                       showReconnect={isAuthFailureMessage(

@@ -24,6 +24,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { FormAlert } from "../components/FormAlert.component";
+import { OrphanedRegionsNoticeUI } from "../components/OrphanedRegionsNotice.component";
 import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
@@ -46,16 +47,38 @@ import {
   draftsToRegions,
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
+  orphanToDraft,
   planRegionsToDrafts,
   preserveUserRegionConfig,
   regionDraftsToHints,
   remapSelectedRegionId,
+  splitPlanRegionsBySheet,
 } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
+import type { OrphanedRegion } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 
 const STEP_CONFIGS: StepConfig[] = [
   { label: "Draw regions", description: "Outline the data on each sheet" },
   { label: "Review", description: "Confirm bindings and recommit" },
 ];
+
+/**
+ * The persisted region carries no display labels, so hydration backfills the
+ * picker chip and heading from the entity catalog, falling back to the
+ * region's entity key (a commit that failed before entities were created).
+ */
+function withEntityLabel(
+  draft: RegionDraft,
+  catalogById: Map<string, string>
+): RegionDraft {
+  const entityId = draft.targetEntityDefinitionId;
+  if (!entityId) return draft;
+  const entityLabel = catalogById.get(entityId) ?? entityId;
+  return {
+    ...draft,
+    targetEntityLabel: entityLabel,
+    proposedLabel: draft.proposedLabel ?? entityLabel,
+  };
+}
 
 /**
  * Convert the backend's preview envelope (`{ id, name, dimensions, cells }`)
@@ -119,6 +142,15 @@ export interface EditLayoutPlanViewUIProps {
    */
   entityOptions: EntityOption[];
   onCreateEntity: (key: string, label: string) => string;
+
+  /**
+   * #1009: plan regions whose sheet is gone from the workbook, held aside by
+   * hydration. Listed above the editor with Move to sheet / Delete; Interpret
+   * waits until none remain.
+   */
+  orphans?: OrphanedRegion[];
+  onMoveOrphan?: (regionId: string, sheetId: string) => void;
+  onDeleteOrphan?: (regionId: string) => void;
 
   /**
    * Slice 3c — per-rectangle slice loader for sheets too large to ship
@@ -230,7 +262,25 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   isInterpreting,
   resolveIdentityLocatorOptions,
   onIdentityUpdate,
+  orphans = [],
+  onMoveOrphan,
+  onDeleteOrphan,
 }) => {
+  // #1009: an Interpret refused because regions' sheets are missing; the
+  // notice says so and takes focus. Cleared once none remain.
+  const [orphanInterpretAttempted, setOrphanInterpretAttempted] =
+    useState(false);
+  const hasOrphans = orphans.length > 0;
+  React.useEffect(() => {
+    if (!hasOrphans) setOrphanInterpretAttempted(false);
+  }, [hasOrphans]);
+  const handleInterpretClick = () => {
+    if (hasOrphans) {
+      setOrphanInterpretAttempted(true);
+      return;
+    }
+    onInterpret();
+  };
   // Breadcrumb shared by every branch (loading, error, not-editable, editor)
   // so the user always has a one-click path back to the detail view. The
   // third crumb falls back to a generic label while the connector-name
@@ -344,6 +394,13 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
       <Stack spacing={4}>
         {header}
         {commitError ? <FormAlert serverError={commitError} /> : null}
+        <OrphanedRegionsNoticeUI
+          orphans={orphans}
+          sheets={workbook.sheets.map((s) => ({ id: s.id, name: s.name }))}
+          attempted={orphanInterpretAttempted}
+          onMove={(regionId, sheetId) => onMoveOrphan?.(regionId, sheetId)}
+          onDelete={(regionId) => onDeleteOrphan?.(regionId)}
+        />
         <RegionEditorUI
           step={step}
           stepConfigs={STEP_CONFIGS}
@@ -373,7 +430,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           // against the current spreadsheet shape. The container's
           // handler closes over `interpretMutate` + the helpers that
           // preserve user overrides; this prop just plumbs it.
-          onInterpret={onInterpret}
+          onInterpret={handleInterpretClick}
           isInterpreting={isInterpreting}
           onJumpToRegion={onJumpToRegion}
           {...bindingEditor}
@@ -517,6 +574,23 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onUpdateBinding(regionId, sourceLocator, { excluded }),
     [onUpdateBinding]
   );
+  // #1009: plan regions whose sheet is gone from the workbook.
+  const [orphans, setOrphans] = useState<OrphanedRegion[]>([]);
+  // The editor-shaped workbook and entity labels, built once per edit
+  // context rather than on each orphan move.
+  const workbookPreview = editContext?.workbookPreview;
+  const editorWorkbook = useMemo(
+    () => (workbookPreview ? previewToEditorWorkbook(workbookPreview) : null),
+    [workbookPreview]
+  );
+  const entityCatalog = editContext?.entityCatalog;
+  const entityLabelById = useMemo(
+    () =>
+      new Map<string, string>(
+        (entityCatalog ?? []).map((e) => [e.id, e.label] as const)
+      ),
+    [entityCatalog]
+  );
   const [activeSheetId, setActiveSheetId] = useState<string>("");
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [step, setStep] = useState<0 | 1>(0);
@@ -576,19 +650,22 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     //      user typed in the workflow. Use it verbatim so the chip
     //      and heading say "testtt" instead of "New region" — the
     //      user picked that key and will recognize it.
-    const hydratedDrafts = planRegionsToDrafts(editContext.plan, workbook).map(
-      (draft) => {
-        const entityId = draft.targetEntityDefinitionId;
-        if (!entityId) return draft;
-        const entityLabel = catalogById.get(entityId) ?? entityId;
-        return {
-          ...draft,
-          targetEntityLabel: entityLabel,
-          proposedLabel: draft.proposedLabel ?? entityLabel,
-        };
-      }
+    // #1009: a region whose sheet was deleted or renamed at the source is
+    // held aside rather than thrown on, so the view opens and offers to
+    // move or delete it.
+    const split = splitPlanRegionsBySheet(editContext.plan, workbook);
+    const hydratedDrafts = split.drafts.map((draft) =>
+      withEntityLabel(draft, catalogById)
     );
     setRegions(hydratedDrafts);
+    setOrphans(
+      split.orphans.map((orphan) => ({
+        ...orphan,
+        targetEntityLabel:
+          catalogById.get(orphan.region.targetEntityDefinitionId) ??
+          orphan.region.targetEntityDefinitionId,
+      }))
+    );
     // Auto-select the first region on the first sheet so the
     // configuration panel opens with real content instead of the
     // "no region selected" empty state. Without this, every edit-plan
@@ -628,6 +705,25 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     if (workbook.sheets[0]) setActiveSheetId(workbook.sheets[0].id);
     setHydratedFromContextId(editContext.planId);
   }, [editContext, hydratedFromContextId]);
+
+  // #1009: re-home an orphaned region onto a sheet, keeping its settings.
+  // If it overhangs the new sheet, the editor's overhang warning takes over.
+  const handleMoveOrphan = useCallback(
+    (regionId: string, sheetId: string) => {
+      const orphan = orphans.find((o) => o.region.id === regionId);
+      const sheet = editorWorkbook?.sheets.find((s) => s.id === sheetId);
+      if (!orphan || !sheet) return;
+      const draft = withEntityLabel(
+        orphanToDraft(orphan, sheet),
+        entityLabelById
+      );
+      setRegions((prev) => [...prev, draft]);
+      setOrphans((prev) => prev.filter((o) => o.region.id !== regionId));
+      setActiveSheetId(sheetId);
+      setSelectedRegionId(regionId);
+    },
+    [editorWorkbook, entityLabelById, orphans]
+  );
 
   const handleRegionDraft = useCallback(
     (draft: { sheetId: string; bounds: CellBounds }) => {
@@ -913,6 +1009,11 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // The chips' labels come from the catalog (a plan stores only ids);
       // the drafts in state, which commit saves, stay as they are.
       regions={regionsWithResolvedLabels}
+      orphans={orphans}
+      onMoveOrphan={handleMoveOrphan}
+      onDeleteOrphan={(regionId) =>
+        setOrphans((prev) => prev.filter((o) => o.region.id !== regionId))
+      }
       activeSheetId={activeSheetId}
       selectedRegionId={selectedRegionId}
       step={step}

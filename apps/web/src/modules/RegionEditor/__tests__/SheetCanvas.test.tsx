@@ -1685,3 +1685,137 @@ describe("SheetCanvasUI", () => {
     });
   });
 });
+
+// #1009: a region past its sheet carries a PAST SHEET tag on its tab.
+describe("SheetCanvasUI — region past its sheet", () => {
+  test("tags a region that runs past the sheet's last row", () => {
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 9, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId={null}
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(screen.getByText("PAST SHEET")).toBeInTheDocument();
+  });
+
+  test("doesn't tag a region inside its sheet", () => {
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId={null}
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(screen.queryByText("PAST SHEET")).toBeNull();
+  });
+});
+
+// #1009: dragging an overhanging region back inside used to land short: as
+// the region shrank mid-drag, the canvas's scroll area shrank with it and the
+// scroll snapped, moving the rows under the pointer. A marker holds the
+// region's original extent in the scroll area until the drag ends.
+describe("SheetCanvasUI — scroll extent held during a resize", () => {
+  test("reserves the region's original bottom-right while resizing, then releases it", () => {
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 9, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={jest.fn()}
+      />
+    );
+    expect(screen.queryByTestId("drag-extent-reserve")).toBeNull();
+    const seHandle = screen.getByTestId("region-resize-se");
+    fireEvent.pointerDown(seHandle, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 9 * 28 + 14,
+    });
+    fireEvent.pointerMove(seHandle, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 3 * 28 + 14,
+    });
+    const reserve = screen.getByTestId("drag-extent-reserve");
+    // Bottom-right of rows 0–9 × cols 0–2, plus the extension fade's 12px.
+    expect(reserve.style.top).toBe(`${24 + 10 * 28 + 12 - 1}px`);
+    expect(reserve.style.left).toBe(`${44 + 3 * 96 - 1}px`);
+    fireEvent.pointerUp(seHandle, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 3 * 28 + 14,
+    });
+    expect(screen.queryByTestId("drag-extent-reserve")).toBeNull();
+  });
+});
+
+// A press and release on a handle without moving is a click, not a resize.
+// On an overhanging region the handle sits past the grid, where the pointer
+// maps to the last row, so committing it would have trimmed the region.
+describe("SheetCanvasUI — a click on a resize handle", () => {
+  test("doesn't resize when the pointer never moved", () => {
+    const onRegionResize = jest.fn();
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[
+          {
+            id: "r1",
+            sheetId: "s1",
+            bounds: { startRow: 0, startCol: 0, endRow: 9, endCol: 2 },
+            targetEntityDefinitionId: "ent_a",
+          },
+        ]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={onRegionResize}
+      />
+    );
+    const seHandle = screen.getByTestId("region-resize-se");
+    const at = {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 9 * 28 + 14,
+    };
+    fireEvent.pointerDown(seHandle, at);
+    fireEvent.pointerUp(seHandle, at);
+    expect(onRegionResize).not.toHaveBeenCalled();
+  });
+});

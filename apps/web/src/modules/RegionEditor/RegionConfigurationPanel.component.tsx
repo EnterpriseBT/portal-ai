@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Alert from "@mui/material/Alert";
 import MuiChip from "@mui/material/Chip";
 import {
   Box,
@@ -29,7 +30,8 @@ import { SectionHelpUI } from "./SectionHelp.component";
 import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
 import { SegmentStripUI } from "./SegmentStrip.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
-import { formatBounds } from "./utils/a1-notation.util";
+import { colIndexToLetter, formatBounds } from "./utils/a1-notation.util";
+import { regionOverhang } from "./utils/region-overhang.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
 import { resizeSegment } from "./utils/segment-ops.util";
 import { entitySlot, confidenceBand } from "./utils/region-editor-colors.util";
@@ -60,6 +62,8 @@ export interface RegionConfigurationPanelUIProps {
   onDelete: () => void;
   onAcceptProposedIdentity?: () => void;
   onKeepPriorIdentity?: () => void;
+  /** #1009: trims a region that runs past its sheet back inside it. */
+  onFitToSheet?: () => void;
   driftProposedIdentityLabel?: string;
   onCreateEntity?: (key: string, label: string) => string;
   claimedEntityKeys?: Set<string>;
@@ -192,6 +196,18 @@ function readFieldHeaderCells(
 
 // ── Component ────────────────────────────────────────────────────────────
 
+/** #1009: "Rows 50–60 are" / "Row 50 is" (0-based indexes, display labels). */
+function lineRange(
+  noun: "Row" | "Column",
+  start: number,
+  end: number,
+  label: (index: number) => string
+): string {
+  return start === end
+    ? `${noun} ${label(end)} is`
+    : `${noun}s ${label(start)}–${label(end)} are`;
+}
+
 export const RegionConfigurationPanelUI: React.FC<
   RegionConfigurationPanelUIProps
 > = ({
@@ -204,6 +220,7 @@ export const RegionConfigurationPanelUI: React.FC<
   onDelete,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
+  onFitToSheet,
   driftProposedIdentityLabel,
   onCreateEntity,
   entityAssociationLocked = false,
@@ -214,6 +231,7 @@ export const RegionConfigurationPanelUI: React.FC<
   activeSheet,
   onCreateRegionFromRange,
 }) => {
+  const boundsCaptionRef = useRef<HTMLSpanElement>(null);
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
   const [editingSegment, setEditingSegment] = useState<EditingSegment | null>(
     null
@@ -329,6 +347,18 @@ export const RegionConfigurationPanelUI: React.FC<
   const slot = entitySlot(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
+  // #1009: a stored region can outlast its sheet (rows or columns deleted at
+  // the source). Computed from the sheet as loaded, so it clears as soon as
+  // Fit to sheet or a drag brings the region back inside.
+  const overhang = regionSheet
+    ? regionOverhang(region.bounds, regionSheet)
+    : null;
+  // The Fit to sheet button leaves with the warning; focus moves to the
+  // bounds caption, which states the trimmed range, not to the page body.
+  const handleFitToSheet = () => {
+    onFitToSheet?.();
+    boundsCaptionRef.current?.focus();
+  };
 
   const editingAxis = editingSegment?.axis;
   const editingSeg: Segment | null = editingSegment
@@ -675,7 +705,12 @@ export const RegionConfigurationPanelUI: React.FC<
           )}
         </Stack>
 
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          ref={boundsCaptionRef}
+          tabIndex={-1}
+          variant="caption"
+          color="text.secondary"
+        >
           <Box
             component="span"
             aria-label={orientationArrowLabel(orientation)}
@@ -727,6 +762,63 @@ export const RegionConfigurationPanelUI: React.FC<
               </Stack>
             ))}
           </Stack>
+        )}
+
+        {overhang && regionSheet && (
+          // #1009: themed (an Alert), and a labelled region rather than an
+          // alert role, since it describes the region instead of announcing.
+          <Alert severity="warning" role="region" aria-label="Past the sheet">
+            {regionSheet.rowCount === 0 || regionSheet.colCount === 0 ? (
+              <Typography variant="body2">
+                This sheet is now empty, so there&apos;s nothing to fit the
+                region to. Delete the region, or draw it on another sheet.
+              </Typography>
+            ) : (
+              <Stack spacing={1}>
+                <Typography variant="subtitle2" component="p">
+                  {[
+                    overhang.rowsPast > 0 &&
+                      lineRange(
+                        "Row",
+                        Math.max(overhang.lastRow + 1, region.bounds.startRow),
+                        region.bounds.endRow,
+                        (i) => String(i + 1)
+                      ) +
+                        ` past the sheet's last row (${overhang.lastRow + 1}).`,
+                    overhang.colsPast > 0 &&
+                      lineRange(
+                        "Column",
+                        Math.max(overhang.lastCol + 1, region.bounds.startCol),
+                        region.bounds.endCol,
+                        colIndexToLetter
+                      ) +
+                        ` past the sheet's last column (${colIndexToLetter(overhang.lastCol)}).`,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                </Typography>
+                <Typography variant="body2">
+                  They&apos;re gone from the sheet, and Interpret refuses a
+                  region outside its sheet.
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {onFitToSheet && (
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="contained"
+                      onClick={handleFitToSheet}
+                    >
+                      Fit to sheet
+                    </Button>
+                  )}
+                  <Typography variant="body2">
+                    {`Or drag its ${overhang.rowsPast > 0 && overhang.colsPast > 0 ? "bottom and right edges" : overhang.rowsPast > 0 ? "bottom edge" : "right edge"} back inside the sheet.`}
+                  </Typography>
+                </Stack>
+              </Stack>
+            )}
+          </Alert>
         )}
 
         {driftFlagged && (

@@ -847,3 +847,61 @@ describe("nulStrippedValues on import job results (#805)", () => {
     }
   );
 });
+
+describe("replayWarnings on connector sync results (#1009)", () => {
+  const sync = {
+    recordCounts: { created: 1, updated: 0, unchanged: 0, deleted: 0 },
+  };
+  const overflow = {
+    kind: "bounds-overflow" as const,
+    regionId: "r1",
+    sheet: "Q3",
+    targetEntityDefinitionId: "contacts",
+    bounds: { startRow: 2, startCol: 2, endRow: 100, endCol: 6 },
+    sheetLastRow: 80,
+    sheetLastCol: 8,
+    recordsAxis: "row" as const,
+  };
+  const missing = {
+    kind: "sheet-missing" as const,
+    regionId: "r2",
+    sheet: "Q4",
+    targetEntityDefinitionId: "contacts",
+    bounds: { startRow: 2, startCol: 2, endRow: 40, endCol: 6 },
+    recordsAxis: null,
+    targetEntityLabel: "Contacts",
+  };
+
+  it("accepts both warning kinds, and a count of the rest", () => {
+    expect(
+      ConnectorSyncResultSchema.safeParse({
+        ...sync,
+        replayWarnings: [overflow, missing],
+        replayWarningsOmitted: 3,
+      }).success
+    ).toBe(true);
+  });
+
+  it("still accepts a result without them", () => {
+    expect(ConnectorSyncResultSchema.safeParse(sync).success).toBe(true);
+  });
+
+  it("rejects more than the cap", () => {
+    expect(
+      ConnectorSyncResultSchema.safeParse({
+        ...sync,
+        replayWarnings: Array.from({ length: 21 }, (_, i) => ({
+          ...missing,
+          regionId: `r${i}`,
+        })),
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects an omitted count of 0 (absent when none)", () => {
+    expect(
+      ConnectorSyncResultSchema.safeParse({ ...sync, replayWarningsOmitted: 0 })
+        .success
+    ).toBe(false);
+  });
+});

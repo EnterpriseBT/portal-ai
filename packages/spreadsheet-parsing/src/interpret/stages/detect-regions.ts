@@ -1,4 +1,10 @@
+import { RegionSchema } from "../../plan/index.js";
+import { columnLetters, formatA1Range } from "../../workbook/index.js";
+import { inputError } from "../input-error.js";
+import { segmentsAreUserAuthored } from "./pivoted.util.js";
+
 import type { Region, RegionHint } from "../../plan/index.js";
+import type { SheetDimensions } from "../../workbook/index.js";
 import type { InterpretState } from "../types.js";
 
 function regionIdFromHint(hint: RegionHint, index: number): string {
@@ -67,6 +73,85 @@ function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
 }
 
 /**
+ * #1008: what's wrong with a hint's bounds on its sheet, one sentence each.
+ * A hint's bounds are only checked for being positive integers, so a region
+ * past the sheet came back with impossible bounds, and an inverted one failed
+ * the final plan parse as a 500.
+ */
+function boundsProblems(
+  hint: RegionHint,
+  dimensions: SheetDimensions
+): string[] {
+  const { startRow, startCol, endRow, endCol } = hint.bounds;
+  const region = `Region ${formatA1Range(hint.bounds)} on "${hint.sheet}"`;
+  // An empty sheet has no last row or column to name.
+  if (dimensions.rows === 0 || dimensions.cols === 0) {
+    return [`${region} is on an empty sheet. Pick a sheet with data.`];
+  }
+  const problems: string[] = [];
+  if (startRow > endRow) {
+    problems.push(
+      `${region} starts after it ends (row ${startRow} is below row ${endRow}). Redraw it.`
+    );
+  }
+  if (startCol > endCol) {
+    problems.push(
+      `${region} starts after it ends (column ${columnLetters(startCol)} is right of column ${columnLetters(endCol)}). Redraw it.`
+    );
+  }
+  if (Math.max(startRow, endRow) > dimensions.rows) {
+    problems.push(
+      `${region} runs past the sheet's last row (${dimensions.rows}). Redraw it inside the sheet.`
+    );
+  }
+  if (Math.max(startCol, endCol) > dimensions.cols) {
+    problems.push(
+      `${region} runs past the sheet's last column (${columnLetters(dimensions.cols)}). Redraw it inside the sheet.`
+    );
+  }
+  return problems;
+}
+
+/**
+ * #1011: hint fields interpret copies onto the region unrepaired. A region
+ * rule failing on one of these used to surface only at the final plan parse,
+ * as a scrubbed 500 after the model stages ran.
+ */
+const PASSED_THROUGH = new Set([
+  "axisAnchorCell",
+  "headerAxes",
+  "recordsAxis",
+  "recordAxisTerminator",
+]);
+
+/**
+ * #1011: the region rules (`RegionSchema`) run on the hint's skeleton, so a
+ * rule added there is enforced at the input too. Only issues on fields
+ * interpret passes through unrepaired are the caller's: segments count only
+ * when they're user-authored (interpret keeps them, the same rule
+ * `resolveEffectiveSegments` applies; otherwise they're re-detected), and
+ * cell-value / intersection fields are reconciled later (#998). The
+ * "header strategy required" rule fails on every skeleton (interpret fills
+ * strategies in later, #1002); its path isn't passed through, so it drops out.
+ */
+function hintRuleProblems(hint: RegionHint, skeleton: Region): string[] {
+  const parsed = RegionSchema.safeParse(skeleton);
+  if (parsed.success) return [];
+  const keepSegments = segmentsAreUserAuthored(hint.segmentsByAxis);
+  const region = `Region ${formatA1Range(hint.bounds)} on "${hint.sheet}"`;
+  const messages = parsed.error.issues
+    .filter((issue) => {
+      const field = String(issue.path[0] ?? "");
+      return (
+        PASSED_THROUGH.has(field) ||
+        (field === "segmentsByAxis" && keepSegments)
+      );
+    })
+    .map((issue) => `${region}: ${issue.message}.`);
+  return [...new Set(messages)];
+}
+
+/**
  * Stage 1 — populate `detectedRegions` from hints. Auto-detect without hints
  * is a later-phase feature; absence of hints raises `UNSUPPORTED_LAYOUT_SHAPE`.
  */
@@ -78,15 +163,32 @@ export function detectRegions(state: InterpretState): InterpretState {
     );
   }
 
-  const knownSheets = new Set(state.workbook.sheets.map((s) => s.name));
+  const dimensionsBySheet = new Map(
+    state.workbook.sheets.map((s) => [s.name, s.dimensions])
+  );
+  const problems: string[] = [];
   const detectedRegions: Region[] = hints.map((hint, i) => {
-    if (!knownSheets.has(hint.sheet)) {
+    const dimensions = dimensionsBySheet.get(hint.sheet);
+    if (!dimensions) {
       throw new Error(
         `UNKNOWN_SHEET: regionHint references sheet "${hint.sheet}" which is not in the workbook`
       );
     }
-    return skeletonRegionFromHint(hint, i);
+    problems.push(...boundsProblems(hint, dimensions));
+    const skeleton = skeletonRegionFromHint(hint, i);
+    // Inverted bounds have a negative span, so the span rules (anchor inside
+    // the bounds, segment sums) would only add false problems to #1008's.
+    const { startRow, endRow, startCol, endCol } = hint.bounds;
+    if (startRow <= endRow && startCol <= endCol) {
+      problems.push(...hintRuleProblems(hint, skeleton));
+    }
+    return skeleton;
   });
+  // Every bad hint at once, as #1002's header check does, and before header
+  // detection and the model stages, so an inverted region isn't misreported
+  // as headerless and a bad hint costs no model call. The API answers the
+  // prefix as a 400 with this message.
+  if (problems.length > 0) throw inputError(problems);
 
   return { ...state, detectedRegions };
 }

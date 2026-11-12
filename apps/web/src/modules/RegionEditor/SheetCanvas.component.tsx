@@ -32,6 +32,7 @@ import {
   computeRegionDecorations,
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
+import { regionOverhang } from "./utils/region-overhang.util";
 import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
 import { SHEET_LAYER } from "./utils/sheet-layers.util";
 import { useSheetKeyboard } from "./utils/use-sheet-keyboard.util";
@@ -144,6 +145,8 @@ type ActiveOp =
       regionId: string;
       handle: ResizeHandleKind;
       originalBounds: CellBounds;
+      /** Where the pointer went down; an unmoved release isn't a resize. */
+      pointerStart: CellCoord;
       current: CellCoord;
     }
   | {
@@ -655,6 +658,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           regionId,
           handle,
           originalBounds,
+          pointerStart: coord,
           current: coord,
         });
       },
@@ -787,12 +791,20 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           endCol: sheet.colCount - 1,
         });
       } else if (activeOp.kind === "resize") {
-        const next = computeResizedBounds(
-          activeOp.handle,
-          activeOp.originalBounds,
-          activeOp.current
-        );
-        onRegionResize?.(activeOp.regionId, next);
+        // A press and release without moving is a click. On an overhanging
+        // region (#1009) the handle sits past the grid, where the pointer
+        // maps to the last row, so committing it would trim the region.
+        const moved =
+          activeOp.current.row !== activeOp.pointerStart.row ||
+          activeOp.current.col !== activeOp.pointerStart.col;
+        if (moved) {
+          const next = computeResizedBounds(
+            activeOp.handle,
+            activeOp.originalBounds,
+            activeOp.current
+          );
+          onRegionResize?.(activeOp.regionId, next);
+        }
       } else if (activeOp.kind === "move") {
         const moved =
           activeOp.current.row !== activeOp.pointerStart.row ||
@@ -1961,9 +1973,39 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 cellHeight={cellHeight}
                 onBodyPointerDown={handleRegionBodyPointerDown}
                 onResizeStart={handleResizeStart}
+                overhanging={regionOverhang(region.bounds, sheet) !== null}
               />
             );
           })}
+
+          {(activeOp?.kind === "resize" || activeOp?.kind === "move") && (
+            // #1009: hold the dragged region's original extent in the scroll
+            // area until the drag ends. Overlays extend the canvas's scroll
+            // area; without this, dragging an overhanging region back inside
+            // shrank it mid-drag, the scroll snapped, and the rows under the
+            // pointer moved, so the region landed short of the release
+            // point. The extra 12px covers the extension fade below a region.
+            <div
+              aria-hidden
+              data-testid="drag-extent-reserve"
+              style={{
+                position: "absolute",
+                left:
+                  ROW_HEADER_WIDTH +
+                  (activeOp.originalBounds.endCol + 1) * cellWidth -
+                  1,
+                top:
+                  COL_HEADER_HEIGHT +
+                  (activeOp.originalBounds.endRow + 1) * cellHeight +
+                  12 -
+                  1,
+                width: 1,
+                height: 1,
+                pointerEvents: "none",
+                visibility: "hidden",
+              }}
+            />
+          )}
 
           {marqueeBounds && (
             <Box

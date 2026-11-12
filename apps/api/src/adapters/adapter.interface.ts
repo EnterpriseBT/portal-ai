@@ -5,6 +5,7 @@ import type {
 } from "@portalai/core/models";
 import type {
   PublicAccountInfo,
+  ReplayWarning,
   ResolvedColumn,
   TestConnectionRequestBody,
 } from "@portalai/core/contracts";
@@ -70,6 +71,12 @@ export interface SyncInstanceResult {
   /** #805: strings whose U+0000 was stripped on ingest (Postgres can't store
    *  one). Omitted when none. */
   nulStrippedValues?: number;
+  /** #1009: regions the replay read blank (past their sheet) or skipped (sheet
+   *  gone), capped; an adapter observation, like `mirrorDegraded`, since only
+   *  the run's replay can see them. Omitted on a clean run. */
+  replayWarnings?: ReplayWarning[];
+  /** #1009: warnings past the cap. Omitted when none. */
+  replayWarningsOmitted?: number;
   // #460 deliberately does NOT add a `superseded` field here. A pass that
   // cannot take the instance's sync lock never reaches an adapter at all —
   // the lock is held in `connector-sync.processor.ts`, the single call site

@@ -20,7 +20,10 @@ import type {
   LayoutPlanCommitResult,
   Region,
 } from "@portalai/core/contracts";
-import { sourceFieldFromBinding } from "@portalai/spreadsheet-parsing";
+import {
+  sourceFieldFromBinding,
+  summarizeReplayWarnings,
+} from "@portalai/spreadsheet-parsing";
 import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 
@@ -396,7 +399,32 @@ export class LayoutPlanCommitService {
       "layout plan commit completed"
     );
 
-    return { connectorEntityIds, recordCounts: totals };
+    // #1009: what this replay read blank or skipped because the plan no
+    // longer fits its workbook. Advisory (info drift): it never halts the
+    // commit; sync carries it to the job result.
+    const { warnings: summarized, omitted: replayWarningsOmitted } =
+      summarizeReplayWarnings(plan, drift);
+    // Name each region's entity as the user did; replay only knows the key.
+    let replayWarnings = summarized;
+    if (summarized.length > 0) {
+      const labelByKey = new Map(
+        (
+          await DbService.repository.connectorEntities.findByConnectorInstanceId(
+            connectorInstanceId
+          )
+        ).map((e) => [e.key, e.label] as const)
+      );
+      replayWarnings = summarized.map((w) => {
+        const label = labelByKey.get(w.targetEntityDefinitionId);
+        return label ? { ...w, targetEntityLabel: label } : w;
+      });
+    }
+    return {
+      connectorEntityIds,
+      recordCounts: totals,
+      ...(replayWarnings.length > 0 ? { replayWarnings } : {}),
+      ...(replayWarningsOmitted > 0 ? { replayWarningsOmitted } : {}),
+    };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────

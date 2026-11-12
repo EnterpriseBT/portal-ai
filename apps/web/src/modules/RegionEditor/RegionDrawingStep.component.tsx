@@ -51,6 +51,7 @@ import {
   type RegionEditorErrors,
   type RegionErrors,
 } from "./utils/region-editor-validation.util";
+import { fitBoundsToSheet, regionOverhang } from "./utils/region-overhang.util";
 
 export interface RegionDrawingStepUIProps {
   workbook: Workbook;
@@ -216,10 +217,22 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     [regions, regionDisplayLabel]
   );
 
-  const computedErrors = useMemo<RegionEditorErrors>(
-    () => validateRegions(regions),
-    [regions]
-  );
+  const computedErrors = useMemo<RegionEditorErrors>(() => {
+    const base = validateRegions(regions);
+    // #1009: a region past its sheet is refused by interpret, so it's an
+    // error here too, named in the "fix them before interpreting" alert.
+    for (const region of regions) {
+      const sheet = workbook.sheets.find((s) => s.id === region.sheetId);
+      if (sheet && regionOverhang(region.bounds, sheet)) {
+        base[region.id] = {
+          ...(base[region.id] ?? {}),
+          bounds:
+            "Runs past the sheet — Fit to sheet or drag its edge back inside",
+        };
+      }
+    }
+    return base;
+  }, [regions, workbook.sheets]);
 
   const effectiveErrors = useMemo<RegionEditorErrors>(() => {
     if (!errors) return computedErrors;
@@ -741,6 +754,17 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 ? () => onKeepPriorIdentity(selectedRegion.id)
                 : undefined
             }
+            onFitToSheet={() => {
+              if (!selectedRegion) return;
+              const sheet = workbook.sheets.find(
+                (s) => s.id === selectedRegion.sheetId
+              );
+              if (!sheet) return;
+              handleBoundsChange(
+                selectedRegion.id,
+                fitBoundsToSheet(selectedRegion.bounds, sheet)
+              );
+            }}
             onCreateEntity={onCreateEntity}
             entityAssociationLocked={entityAssociationLocked}
             regionDeletionLocked={regionDeletionLocked}

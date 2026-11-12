@@ -8,11 +8,13 @@ import {
   draftsToRegions,
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
+  orphanToDraft,
   overallConfidenceFromPlan,
   planRegionsToDrafts,
   preserveUserRegionConfig,
   regionDraftsToHints,
   remapSelectedRegionId,
+  splitPlanRegionsBySheet,
   workbookToBackend,
 } from "../utils/layout-plan-mapping.util";
 
@@ -1353,5 +1355,56 @@ describe("remapSelectedRegionId", () => {
     expect(
       remapSelectedRegionId("sheet_0-r3", drafts, [{ id: "region-1" }])
     ).toBeNull();
+  });
+});
+
+// #1009: Edit layout must open a plan whose region's sheet is gone (deleted
+// or renamed at the source), holding that region aside instead of throwing.
+describe("splitPlanRegionsBySheet / orphanToDraft", () => {
+  const region = (id: string, sheet: string) => ({
+    id,
+    sheet,
+    bounds: { startRow: 2, endRow: 3, startCol: 1, endCol: 2 },
+    targetEntityDefinitionId: "ent_contact",
+    headerAxes: ["row" as const],
+    segmentsByAxis: { row: [{ kind: "field" as const, positionCount: 2 }] },
+    identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
+    columnBindings: [],
+    skipRules: [],
+    confidence: { region: 0.9, aggregate: 0.85 },
+    warnings: [],
+  });
+  const plan = {
+    regions: [region("kept", "Alpha"), region("orphan", "Gone")],
+    confidence: { overall: 0.85, perRegion: {} },
+  } as unknown as Parameters<typeof planRegionsToDrafts>[0];
+
+  it("places regions on their sheets and holds a missing sheet's aside", () => {
+    const { drafts, orphans } = splitPlanRegionsBySheet(plan, makeWorkbook());
+    expect(drafts.map((d) => [d.id, d.sheetId])).toEqual([["kept", "sheet_a"]]);
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]).toMatchObject({
+      sheetName: "Gone",
+      boundsA1: "A2:B3",
+    });
+    expect(orphans[0].region.id).toBe("orphan");
+  });
+
+  it("moves an orphan onto a sheet, keeping its settings", () => {
+    const { orphans } = splitPlanRegionsBySheet(plan, makeWorkbook());
+    const draft = orphanToDraft(orphans[0], makeWorkbook().sheets[1]);
+    expect(draft).toMatchObject({
+      id: "orphan",
+      sheetId: "sheet_b",
+      bounds: { startRow: 1, endRow: 2, startCol: 0, endCol: 1 },
+      targetEntityDefinitionId: "ent_contact",
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+    });
+  });
+
+  it("leaves planRegionsToDrafts throwing on a missing sheet", () => {
+    expect(() => planRegionsToDrafts(plan, makeWorkbook())).toThrow(
+      /unknown sheet name "Gone"/
+    );
   });
 });

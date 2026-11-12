@@ -200,6 +200,13 @@ export const googleSheetsAdapter: ConnectorAdapter = {
       ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
       // #805: U+0000 the fetch stripped on ingest.
       ...(nulStrippedValues > 0 ? { nulStrippedValues } : {}),
+      // #1009: regions the replay read blank or skipped (advisory).
+      ...(commitResult.replayWarnings
+        ? { replayWarnings: commitResult.replayWarnings }
+        : {}),
+      ...(commitResult.replayWarningsOmitted
+        ? { replayWarningsOmitted: commitResult.replayWarningsOmitted }
+        : {}),
     };
   },
 

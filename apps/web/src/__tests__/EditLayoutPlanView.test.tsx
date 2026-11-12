@@ -347,3 +347,70 @@ describe("EditLayoutPlanViewUI — the review step's binding editor (#795)", () 
     );
   });
 });
+
+// #1009: regions whose sheet is gone are listed above the editor, and
+// Interpret waits until they're resolved.
+describe("EditLayoutPlanViewUI — regions whose sheet is missing", () => {
+  const orphan = {
+    region: { id: "r9" } as never,
+    sheetName: "Q3",
+    boundsA1: "B2:F40",
+    targetEntityLabel: "Contacts",
+  };
+
+  it("lists them above the editor", () => {
+    const editContext = makeEditableContext();
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={makeEditableDraftsFromContext(editContext)}
+        orphans={[orphan]}
+        onMoveOrphan={jest.fn()}
+        onDeleteOrphan={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("region", { name: "Regions whose sheet is missing" })
+    ).toHaveTextContent('B2:F40 (Contacts) was on sheet "Q3"');
+  });
+
+  it("refuses Interpret while any remain, and focuses the list", () => {
+    const editContext = makeEditableContext();
+    const onInterpret = jest.fn();
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={makeEditableDraftsFromContext(editContext)}
+        orphans={[orphan]}
+        onMoveOrphan={jest.fn()}
+        onDeleteOrphan={jest.fn()}
+        onInterpret={onInterpret}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Interpret/ }));
+    expect(onInterpret).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("region", { name: "Regions whose sheet is missing" })
+    ).toHaveFocus();
+  });
+
+  it("interprets as before when none remain", () => {
+    const editContext = makeEditableContext();
+    const onInterpret = jest.fn();
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={makeEditableDraftsFromContext(editContext)}
+        orphans={[]}
+        onMoveOrphan={jest.fn()}
+        onDeleteOrphan={jest.fn()}
+        onInterpret={onInterpret}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Interpret/ }));
+    expect(onInterpret).toHaveBeenCalledTimes(1);
+  });
+});

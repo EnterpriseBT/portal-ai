@@ -27,6 +27,15 @@ export type {
 // ── Plan (Phase 2) ─────────────────────────────────────────────────────────
 export * from "./plan/index.js";
 
+// #1009: the typed summary of a replay's out-of-sheet regions. Browser-safe
+// (plan schemas only), unlike `replay()` itself, so core and web can read it.
+export {
+  REPLAY_WARNINGS_MAX,
+  ReplayWarningSchema,
+  summarizeReplayWarnings,
+} from "./warnings/replay-warnings.js";
+export type { ReplayWarning } from "./warnings/replay-warnings.js";
+
 // ── Interpret (Phase 3) ────────────────────────────────────────────────────
 export { interpret } from "./interpret/index.js";
 export { segmentsAreUserAuthored } from "./interpret/stages/pivoted.util.js";

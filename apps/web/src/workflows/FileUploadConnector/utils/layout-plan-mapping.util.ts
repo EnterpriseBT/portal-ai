@@ -9,6 +9,7 @@ import type {
   WorkbookData,
 } from "@portalai/core/contracts";
 
+import { formatBounds } from "../../../modules/RegionEditor";
 import type {
   ColumnBindingDraft,
   EntityOption,
@@ -485,119 +486,173 @@ export function planRegionsToDrafts(
         `planRegionsToDrafts: unknown sheet name "${region.sheet}"`
       );
     }
-
-    const draft: RegionDraft = {
-      // Reuse the plan region's id so `state.regions[i].id` matches
-      // `state.plan.regions[j].id` — the workflow hook's `patchBinding`
-      // relies on this match to mirror per-binding edits (Omit, rebind,
-      // overrides) into the commit payload.
-      id: region.id,
-      sheetId: sheet.id,
-      bounds: boundsToFrontend(region.bounds),
-      headerAxes: [...region.headerAxes],
-      targetEntityDefinitionId: region.targetEntityDefinitionId,
-      columnBindings: region.columnBindings.map(bindingToDraft),
-      confidence: region.confidence.aggregate,
-      warnings: region.warnings.map((w) => ({
-        code: w.code,
-        severity: w.severity,
-        message: w.message,
-        suggestedFix: w.suggestedFix,
-      })),
-    };
-
-    if (region.segmentsByAxis) {
-      const segs: RegionDraft["segmentsByAxis"] = {};
-      if (region.segmentsByAxis.row) {
-        segs.row = region.segmentsByAxis.row;
-      }
-      if (region.segmentsByAxis.column) {
-        segs.column = region.segmentsByAxis.column;
-      }
-      if (segs.row || segs.column) draft.segmentsByAxis = segs;
-    }
-    if (region.cellValueField) {
-      draft.cellValueField = {
-        name: region.cellValueField.name,
-        nameSource: region.cellValueField.nameSource,
-        ...(region.cellValueField.columnDefinitionId !== undefined && {
-          columnDefinitionId: region.cellValueField.columnDefinitionId,
-        }),
-        ...(region.cellValueField.excluded !== undefined && {
-          excluded: region.cellValueField.excluded,
-        }),
-      };
-    }
-    if (region.intersectionCellValueFields) {
-      const next: NonNullable<RegionDraft["intersectionCellValueFields"]> = {};
-      for (const [id, field] of Object.entries(
-        region.intersectionCellValueFields
-      )) {
-        next[id] = {
-          name: field.name,
-          nameSource: field.nameSource,
-          ...(field.columnDefinitionId !== undefined && {
-            columnDefinitionId: field.columnDefinitionId,
-          }),
-          ...(field.excluded !== undefined && { excluded: field.excluded }),
-        };
-      }
-      draft.intersectionCellValueFields = next;
-    }
-    if (region.recordAxisTerminator) {
-      draft.recordAxisTerminator = region.recordAxisTerminator;
-    }
-    if (region.recordsAxis) {
-      draft.recordsAxis = region.recordsAxis;
-    }
-    if (region.axisAnchorCell) {
-      draft.axisAnchorCell = {
-        row: region.axisAnchorCell.row - 1,
-        col: region.axisAnchorCell.col - 1,
-      };
-    }
-    if (region.columnOverrides) {
-      draft.columnOverrides = { ...region.columnOverrides };
-    }
-    if (region.skipRules.length > 0) {
-      draft.skipRules = region.skipRules.map((rule) =>
-        rule.kind === "blank"
-          ? { kind: "blank" as const }
-          : {
-              kind: "cellMatches" as const,
-              crossAxisIndex: rule.crossAxisIndex,
-              pattern: rule.pattern,
-              ...(rule.axis ? { axis: rule.axis } : {}),
-            }
-      );
-    }
-    const headerStrategy =
-      region.headerStrategyByAxis?.row ?? region.headerStrategyByAxis?.column;
-    if (headerStrategy) {
-      draft.headerStrategy = {
-        kind: headerStrategy.kind,
-      };
-    }
-    if (region.identityStrategy) {
-      // The backend's identityStrategy locator is a Locator union (cell/range/
-      // column/row) whose shape differs from the BindingSourceLocator used by
-      // columnBindings. We preserve the structured locator on `rawLocator` so
-      // `regionDraftsToHints` can round-trip a user-locked choice back into
-      // the next interpret pass; the editor's decoration layer reads `kind`
-      // for display.
-      const draftIdentity: NonNullable<RegionDraft["identityStrategy"]> = {
-        kind: region.identityStrategy.kind,
-        source: region.identityStrategy.source ?? "heuristic",
-        confidence: region.identityStrategy.confidence,
-      };
-      if (region.identityStrategy.kind === "column") {
-        draftIdentity.rawLocator = region.identityStrategy.sourceLocator;
-      }
-      draft.identityStrategy = draftIdentity;
-    }
-
-    return draft;
+    return regionToDraft(region, sheet);
   });
+}
+
+/**
+ * #1009: a stored plan region whose sheet is no longer in the workbook
+ * (deleted or renamed at the source). Held aside so Edit layout can open,
+ * and offer to move the region to a sheet or delete it.
+ */
+export interface OrphanedRegion {
+  region: BackendRegion;
+  sheetName: string;
+  boundsA1: string;
+  targetEntityLabel: string | null;
+}
+
+/**
+ * #1009: like `planRegionsToDrafts`, but a region whose sheet is missing
+ * becomes an `OrphanedRegion` instead of throwing. Only Edit layout can meet
+ * one: the other workflows hydrate a plan they just interpreted.
+ */
+export function splitPlanRegionsBySheet(
+  plan: Pick<LayoutPlan, "regions" | "confidence">,
+  workbook: Workbook
+): { drafts: RegionDraft[]; orphans: OrphanedRegion[] } {
+  const { byName } = indexSheets(workbook);
+  const drafts: RegionDraft[] = [];
+  const orphans: OrphanedRegion[] = [];
+  for (const region of plan.regions) {
+    const sheet = byName.get(region.sheet);
+    if (sheet) {
+      drafts.push(regionToDraft(region, sheet));
+      continue;
+    }
+    orphans.push({
+      region,
+      sheetName: region.sheet,
+      boundsA1: formatBounds(boundsToFrontend(region.bounds)),
+      targetEntityLabel: null,
+    });
+  }
+  return { drafts, orphans };
+}
+
+/** #1009: an orphaned region re-homed onto `sheet`, keeping its settings. */
+export function orphanToDraft(
+  orphan: OrphanedRegion,
+  sheet: Workbook["sheets"][number]
+): RegionDraft {
+  return regionToDraft(orphan.region, sheet);
+}
+
+function regionToDraft(
+  region: BackendRegion,
+  sheet: Workbook["sheets"][number]
+): RegionDraft {
+  const draft: RegionDraft = {
+    // Reuse the plan region's id so `state.regions[i].id` matches
+    // `state.plan.regions[j].id` — the workflow hook's `patchBinding`
+    // relies on this match to mirror per-binding edits (Omit, rebind,
+    // overrides) into the commit payload.
+    id: region.id,
+    sheetId: sheet.id,
+    bounds: boundsToFrontend(region.bounds),
+    headerAxes: [...region.headerAxes],
+    targetEntityDefinitionId: region.targetEntityDefinitionId,
+    columnBindings: region.columnBindings.map(bindingToDraft),
+    confidence: region.confidence.aggregate,
+    warnings: region.warnings.map((w) => ({
+      code: w.code,
+      severity: w.severity,
+      message: w.message,
+      suggestedFix: w.suggestedFix,
+    })),
+  };
+
+  if (region.segmentsByAxis) {
+    const segs: RegionDraft["segmentsByAxis"] = {};
+    if (region.segmentsByAxis.row) {
+      segs.row = region.segmentsByAxis.row;
+    }
+    if (region.segmentsByAxis.column) {
+      segs.column = region.segmentsByAxis.column;
+    }
+    if (segs.row || segs.column) draft.segmentsByAxis = segs;
+  }
+  if (region.cellValueField) {
+    draft.cellValueField = {
+      name: region.cellValueField.name,
+      nameSource: region.cellValueField.nameSource,
+      ...(region.cellValueField.columnDefinitionId !== undefined && {
+        columnDefinitionId: region.cellValueField.columnDefinitionId,
+      }),
+      ...(region.cellValueField.excluded !== undefined && {
+        excluded: region.cellValueField.excluded,
+      }),
+    };
+  }
+  if (region.intersectionCellValueFields) {
+    const next: NonNullable<RegionDraft["intersectionCellValueFields"]> = {};
+    for (const [id, field] of Object.entries(
+      region.intersectionCellValueFields
+    )) {
+      next[id] = {
+        name: field.name,
+        nameSource: field.nameSource,
+        ...(field.columnDefinitionId !== undefined && {
+          columnDefinitionId: field.columnDefinitionId,
+        }),
+        ...(field.excluded !== undefined && { excluded: field.excluded }),
+      };
+    }
+    draft.intersectionCellValueFields = next;
+  }
+  if (region.recordAxisTerminator) {
+    draft.recordAxisTerminator = region.recordAxisTerminator;
+  }
+  if (region.recordsAxis) {
+    draft.recordsAxis = region.recordsAxis;
+  }
+  if (region.axisAnchorCell) {
+    draft.axisAnchorCell = {
+      row: region.axisAnchorCell.row - 1,
+      col: region.axisAnchorCell.col - 1,
+    };
+  }
+  if (region.columnOverrides) {
+    draft.columnOverrides = { ...region.columnOverrides };
+  }
+  if (region.skipRules.length > 0) {
+    draft.skipRules = region.skipRules.map((rule) =>
+      rule.kind === "blank"
+        ? { kind: "blank" as const }
+        : {
+            kind: "cellMatches" as const,
+            crossAxisIndex: rule.crossAxisIndex,
+            pattern: rule.pattern,
+            ...(rule.axis ? { axis: rule.axis } : {}),
+          }
+    );
+  }
+  const headerStrategy =
+    region.headerStrategyByAxis?.row ?? region.headerStrategyByAxis?.column;
+  if (headerStrategy) {
+    draft.headerStrategy = {
+      kind: headerStrategy.kind,
+    };
+  }
+  if (region.identityStrategy) {
+    // The backend's identityStrategy locator is a Locator union (cell/range/
+    // column/row) whose shape differs from the BindingSourceLocator used by
+    // columnBindings. We preserve the structured locator on `rawLocator` so
+    // `regionDraftsToHints` can round-trip a user-locked choice back into
+    // the next interpret pass; the editor's decoration layer reads `kind`
+    // for display.
+    const draftIdentity: NonNullable<RegionDraft["identityStrategy"]> = {
+      kind: region.identityStrategy.kind,
+      source: region.identityStrategy.source ?? "heuristic",
+      confidence: region.identityStrategy.confidence,
+    };
+    if (region.identityStrategy.kind === "column") {
+      draftIdentity.rawLocator = region.identityStrategy.sourceLocator;
+    }
+    draft.identityStrategy = draftIdentity;
+  }
+
+  return draft;
 }
 
 function boundsToBackend(

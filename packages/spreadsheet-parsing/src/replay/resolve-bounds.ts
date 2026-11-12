@@ -127,6 +127,27 @@ export async function resolveRegionBounds(
   region: Region,
   sheet: Sheet
 ): Promise<ResolvedBounds> {
+  const extended = await resolveExtendedBounds(region, sheet);
+  // #1009: a stored region can outlast its sheet (rows or columns deleted at
+  // the source). The part past the sheet doesn't exist, so every reader gets
+  // bounds clipped to it. A region wholly past the sheet comes back empty
+  // (start > end); callers treat that as "nothing to read".
+  return {
+    ...extended,
+    endRow: Math.min(extended.endRow, sheet.dimensions.rows),
+    endCol: Math.min(extended.endCol, sheet.dimensions.cols),
+  };
+}
+
+/** True when clipped bounds hold no cells (the region is wholly past its sheet). */
+export function isEmptyBounds(bounds: ResolvedBounds): boolean {
+  return bounds.startRow > bounds.endRow || bounds.startCol > bounds.endCol;
+}
+
+async function resolveExtendedBounds(
+  region: Region,
+  sheet: Sheet
+): Promise<ResolvedBounds> {
   const bounds: ResolvedBounds = { ...region.bounds };
   if (!region.recordAxisTerminator) return bounds;
 

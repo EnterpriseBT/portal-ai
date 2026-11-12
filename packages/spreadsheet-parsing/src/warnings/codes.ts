@@ -54,7 +54,8 @@ export const DEFAULT_WARNING_SEVERITY: Record<WarningCode, WarningSeverity> = {
   IDENTITY_COLUMN_HAS_BLANKS: "warn",
   UNRECOGNIZED_COLUMN: "info",
   REGION_BOUNDS_UNCERTAIN: "warn",
-  BOUNDS_OVERFLOW: "warn",
+  // #1009: advisory. The overhang replays as blank; nothing halts on it.
+  BOUNDS_OVERFLOW: "info",
   SHEET_MAY_BE_NON_DATA: "info",
   SEGMENT_MISSING_AXIS_NAME: "blocker",
   SEGMENT_NOT_BOUND: "warn",
