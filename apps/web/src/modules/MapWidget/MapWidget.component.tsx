@@ -27,6 +27,8 @@ import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { VisualFigureUI } from "../../components/VisualFigure.component";
+import { VisualDataTable } from "../../components/VisualDataTable.component";
+import { mapTableColumns } from "./utils/map-table-columns.util";
 import { toSummaryInput } from "../../utils/visual-summary-input.util";
 import { BasemapUnavailableNoticeUI } from "./BasemapUnavailableNotice.component";
 import { MapAttributionUI } from "./MapAttribution.component";
@@ -86,6 +88,9 @@ export interface MapWidgetUIProps {
   title?: string;
   /** Text alternative (#796), resolved through `visualSummary`. */
   summary: string;
+  /** The data alternative (#796), behind "Show data". The container builds
+   *  it; it's offered in every state, an error included. */
+  data?: React.ReactNode;
   loading?: boolean;
   error?: string | null;
   /** Real API tile template (`…/{z}/{x}/{y}.mvt`) for a large/handle result;
@@ -122,6 +127,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   mode,
   title,
   summary,
+  data,
   loading = false,
   error = null,
   tileTemplate = null,
@@ -666,6 +672,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       title={title}
       summary={summary}
       header={header}
+      data={data}
       testId="map-widget"
     >
       {body}
@@ -772,6 +779,39 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     })
   );
 
+  // #796: the table reads the map's own data — its handle when it tiles, its
+  // rows when inline — without the raw geometry. A tiled pin with no handle
+  // draws only from its tile endpoint, so it has no table.
+  const tableLabel = `${parsedContent.title?.trim() || "Map"} data`;
+  const data = handle ? (
+    <VisualDataTable
+      key={handle.queryHandle}
+      label={tableLabel}
+      source={{
+        kind: "handle",
+        handleId: handle.queryHandle,
+        matchedCount: handle.matchedCount,
+        matchedCountExact: handle.matchedCountExact,
+        truncated: handle.truncated,
+        columns: mapTableColumns(parsedContent.spec, handle.schema),
+      }}
+      onRefresh={refreshAllowed && !notRefreshable ? refresh : undefined}
+    />
+  ) : countKnown && !isHandle ? (
+    <VisualDataTable
+      key={lastUpdatedAt ?? "base"}
+      label={tableLabel}
+      source={{
+        kind: "inline",
+        rows,
+        columns: mapTableColumns(
+          parsedContent.spec,
+          Object.keys(rows[0] ?? {}).map((name) => ({ name }))
+        ),
+      }}
+    />
+  ) : undefined;
+
   const status: NonNullable<MapWidgetUIProps["status"]> = isRefreshing
     ? "refreshing"
     : refreshError
@@ -785,6 +825,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       mode={mode}
       title={parsedContent.title}
       summary={summary}
+      data={data}
       error={refreshError?.message ?? null}
       tileTemplate={tileTemplate}
       largeUnpersisted={isHandle && tileTemplate == null}

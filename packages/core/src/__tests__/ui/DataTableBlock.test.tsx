@@ -1,4 +1,5 @@
 import React from "react";
+import { jest } from "@jest/globals";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 
 import userEvent from "@testing-library/user-event";
@@ -234,6 +235,113 @@ describe("DataTableBlock accessibility (#794)", () => {
   it("has no axe violations", async () => {
     const { container } = render(
       <DataTableBlock label="Query results" columns={cols} rows={data} />
+    );
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796: a server-paged table. The rows are the current page, the parent owns
+// the page, and there is no client search or sort over a partial result.
+describe("DataTableBlock paging mode (#796)", () => {
+  const columns = ["id", "name"];
+  const page = [
+    { id: 11, name: "K" },
+    { id: 12, name: "L" },
+  ];
+  const paging = (over: Record<string, unknown> = {}) => ({
+    total: 1234,
+    page: 1,
+    rowsPerPage: 10,
+    onPageChange: jest.fn(),
+    onRowsPerPageChange: jest.fn(),
+    ...over,
+  });
+
+  it("shows the server total and the given page", () => {
+    render(
+      <DataTableBlock
+        label="Data"
+        columns={columns}
+        rows={page}
+        paging={paging()}
+      />
+    );
+    expect(screen.getByText("11–20 of 1,234")).toBeInTheDocument();
+    expect(screen.getByText("K")).toBeInTheDocument();
+  });
+
+  it("asks the parent for the next page and a new page size", async () => {
+    const user = userEvent.setup();
+    const p = paging();
+    render(
+      <DataTableBlock label="Data" columns={columns} rows={page} paging={p} />
+    );
+    await user.click(screen.getByRole("button", { name: /next page/i }));
+    expect(p.onPageChange).toHaveBeenCalledWith(2);
+
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "25" }));
+    expect(p.onRowsPerPageChange).toHaveBeenCalledWith(25);
+  });
+
+  it("renders no search box and no sort controls", () => {
+    render(
+      <DataTableBlock
+        label="Data"
+        columns={columns}
+        rows={page}
+        paging={paging()}
+      />
+    );
+    expect(screen.queryByTestId("table-search")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "name" })
+    ).not.toBeInTheDocument();
+    for (const header of screen.getAllByRole("columnheader")) {
+      expect(header).not.toHaveAttribute("aria-sort");
+    }
+  });
+
+  it("marks the table busy while a page loads", () => {
+    const { rerender } = render(
+      <DataTableBlock
+        label="Data"
+        columns={columns}
+        rows={page}
+        paging={paging({ loading: true })}
+      />
+    );
+    expect(screen.getByRole("table", { name: "Data" })).toHaveAttribute(
+      "aria-busy",
+      "true"
+    );
+    rerender(
+      <DataTableBlock
+        label="Data"
+        columns={columns}
+        rows={page}
+        paging={paging()}
+      />
+    );
+    expect(screen.getByRole("table", { name: "Data" })).not.toHaveAttribute(
+      "aria-busy"
+    );
+  });
+
+  it("keeps client search and sort without paging", () => {
+    render(<DataTableBlock label="Data" columns={columns} rows={page} />);
+    expect(screen.getByTestId("table-search")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "name" })).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <DataTableBlock
+        label="Data"
+        columns={columns}
+        rows={page}
+        paging={paging()}
+      />
     );
     await expectNoAxeViolations(container);
   });

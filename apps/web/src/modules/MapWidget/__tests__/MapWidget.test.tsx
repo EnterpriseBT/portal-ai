@@ -1028,3 +1028,55 @@ describe("MapWidget as a figure (#796)", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+// #796: the map's data, one disclosure away.
+describe("MapWidget data alternative (#796)", () => {
+  it("toggles the data the UI is given", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+        data={<p>the rows</p>}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    expect(
+      screen.getByRole("region", { name: "Data for Parcels" })
+    ).toHaveTextContent("the rows");
+  });
+
+  it("still offers the data when the map errors", () => {
+    render(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        error="boom"
+        status="error"
+        data={<p>the rows</p>}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Show data" })
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations with the data open", async () => {
+    const { container } = renderThemed(
+      <MapWidgetUI
+        summary={SUMMARY}
+        spec={polySpec}
+        rows={[poly("a")]}
+        mode="light"
+        title="Parcels"
+        data={<p>the rows</p>}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    await expectNoAxeViolations(container);
+  });
+});

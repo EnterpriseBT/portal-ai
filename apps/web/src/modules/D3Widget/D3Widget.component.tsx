@@ -11,6 +11,7 @@ import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { buildSandboxTheme } from "./utils/sandbox-theme.util";
 import { VisualFigureUI } from "../../components/VisualFigure.component";
+import { VisualDataTable } from "../../components/VisualDataTable.component";
 import { toSummaryInput } from "../../utils/visual-summary-input.util";
 import type { BlockRef } from "@portalai/core";
 
@@ -44,6 +45,9 @@ export interface D3WidgetUIProps {
   title?: string;
   /** Text alternative (#796), resolved through `visualSummary`. */
   summary: string;
+  /** The data alternative (#796), behind "Show data". The container builds
+   *  it; it's offered in every state, a failed render included. */
+  data?: React.ReactNode;
   params?: Record<string, unknown>;
   theme: D3SandboxTheme;
   batches: ProgressiveBatch[];
@@ -90,6 +94,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   program,
   title,
   summary,
+  data,
   params,
   theme,
   batches,
@@ -198,6 +203,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
       title={title}
       summary={summary}
       header={header}
+      data={data}
       testId="d3-widget"
     >
       {note}
@@ -352,6 +358,32 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     })
   );
 
+  // #796: the table reads the same data the frame draws — the live handle,
+  // or the inline rows. A pin before its delivery has none yet.
+  const tableLabel = `${parsedContent.title?.trim() || "Chart"} data`;
+  const liveHandle = freshHandle ?? (fresh || isPin ? null : baseHandle);
+  const data = effectiveHandle ? (
+    <VisualDataTable
+      key={effectiveHandle}
+      label={tableLabel}
+      source={{
+        kind: "handle",
+        handleId: effectiveHandle,
+        matchedCount: liveHandle?.matchedCount,
+        matchedCountExact: liveHandle?.matchedCountExact,
+        truncated: liveHandle?.truncated,
+        columns: liveHandle?.schema.map((c) => c.name),
+      }}
+      onRefresh={refreshAllowed && !notRefreshable ? refresh : undefined}
+    />
+  ) : inlineRows && (!isPin || fresh) ? (
+    <VisualDataTable
+      key={frameKey}
+      label={tableLabel}
+      source={{ kind: "inline", rows: inlineRows }}
+    />
+  ) : undefined;
+
   // Frame status (#271): refresh in flight > error > pre-first-batch load >
   // still-streaming rows > ready.
   const status: NonNullable<D3WidgetUIProps["status"]> = isRefreshing
@@ -369,6 +401,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       program={parsedContent.program}
       title={parsedContent.title}
       summary={summary}
+      data={data}
       params={parsedContent.params}
       theme={sandboxTheme}
       batches={batches}

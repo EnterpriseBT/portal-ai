@@ -25,6 +25,12 @@ const refreshMutate = jest.fn();
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
+      // #796: the "Show data" table's paged read.
+      handleSnapshot: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+      }),
       handleSnapshotPage: () => ({ mutateAsync: pageMutate }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },

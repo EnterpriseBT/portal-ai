@@ -3,6 +3,7 @@ import { fn } from "@storybook/test";
 import { THEME_MAP } from "@portalai/core/ui";
 
 import { D3WidgetUI } from "../D3Widget.component";
+import { VisualDataTableUI } from "../../../components/VisualDataTable.component";
 import { buildSandboxTheme } from "../utils/sandbox-theme.util";
 
 /**
@@ -97,6 +98,20 @@ type Story = StoryObj<typeof D3WidgetUI>;
 
 /** Live sandbox execution — a real D3 bar chart painted in the iframe. */
 export const Rendered: Story = {};
+
+/** #796: the chart's rows behind "Show data". */
+export const WithData: Story = {
+  args: {
+    title: "Monthly totals",
+    data: (
+      <VisualDataTableUI
+        label="Monthly totals data"
+        columns={["month", "total"]}
+        rows={MONTHLY_ROWS}
+      />
+    ),
+  },
+};
 
 export const WithTitle: Story = {
   args: { title: "Monthly totals" },

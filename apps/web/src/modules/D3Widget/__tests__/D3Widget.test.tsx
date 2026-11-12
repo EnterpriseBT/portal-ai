@@ -36,6 +36,19 @@ const pinDataIdle = (): PinDataState => ({
 });
 let pinData: PinDataState = pinDataIdle();
 
+// #796: the "Show data" table's paged read; tests inspect its calls.
+const handleSnapshot = jest.fn(
+  (
+    _handleId: string,
+    _params: { offset?: number; limit?: number },
+    _options?: { enabled?: boolean }
+  ) => ({
+    data: { rows: [{ x: 7 }], total: 1, offset: 0, limit: 10 },
+    error: null,
+    isFetching: false,
+  })
+);
+
 const refreshMutate =
   jest.fn<
     (vars: {
@@ -47,6 +60,11 @@ const refreshMutate =
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
+      handleSnapshot: (
+        handleId: string,
+        params: { offset?: number; limit?: number },
+        options?: { enabled?: boolean }
+      ) => handleSnapshot(handleId, params, options),
       handleSnapshotPage: () => ({ mutateAsync }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
@@ -90,6 +108,7 @@ const uiBase = {
 };
 
 beforeEach(() => {
+  handleSnapshot.mockClear();
   mutateAsync.mockReset();
   refreshMutate.mockReset();
   pinData = pinDataIdle();
@@ -599,6 +618,105 @@ describe("D3Widget as a figure (#796)", () => {
     const { container } = renderThemed(
       <D3WidgetUI {...uiBase} title="Revenue" />
     );
+    await expectNoAxeViolations(container);
+  });
+});
+
+// #796: the chart's data, one disclosure away.
+describe("D3Widget data alternative (#796)", () => {
+  it("toggles the data the UI is given", async () => {
+    render(<D3WidgetUI {...uiBase} title="Revenue" data={<p>the rows</p>} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    expect(
+      screen.getByRole("region", { name: "Data for Revenue" })
+    ).toHaveTextContent("the rows");
+  });
+
+  it("still offers the data when the chart failed to render", () => {
+    render(
+      <D3WidgetUI
+        {...uiBase}
+        loading={false}
+        error="boom"
+        data={<p>the rows</p>}
+      />
+    );
+    expect(screen.getByTestId("d3-widget-error")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show data" })
+    ).toBeInTheDocument();
+  });
+
+  it("shows an inline block's rows with no request", () => {
+    render(
+      <D3Widget
+        content={{
+          program: PROGRAM,
+          title: "Sales",
+          rows: [{ month: "Jan", total: 12 }],
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    expect(screen.getByRole("table", { name: "Sales data" })).toHaveTextContent(
+      "Jan"
+    );
+    // The paged read is mounted (hooks can't be conditional) but disabled.
+    for (const [, , options] of handleSnapshot.mock.calls) {
+      expect(options?.enabled).toBe(false);
+    }
+  });
+
+  it("pages a handle block's staged rows by offset", () => {
+    mutateAsync.mockResolvedValue({
+      rows: [],
+      total: 0,
+      offset: 0,
+      limit: 1000,
+    });
+    render(
+      <D3Widget
+        content={{
+          program: PROGRAM,
+          title: "Sales",
+          queryHandle: "qh-data",
+          rowCount: 5000,
+          schema: [{ name: "x", type: "numeric" }],
+          sampled: false,
+          truncated: false,
+          samplePeek: [],
+          sql: "SELECT x FROM t",
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
+    expect(handleSnapshot).toHaveBeenCalledWith(
+      "qh-data",
+      { offset: 0, limit: 10 },
+      expect.objectContaining({ enabled: true })
+    );
+    expect(screen.getByRole("table", { name: "Sales data" })).toHaveTextContent(
+      "7"
+    );
+  });
+
+  it("offers no data for a pin before its delivery", () => {
+    render(
+      <D3Widget
+        content={{ program: PROGRAM, rows: [] }}
+        blockRef={{ kind: "pin", portalResultId: "pin-data-1" }}
+      />
+    );
+    expect(
+      screen.queryByRole("button", { name: "Show data" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations with the data open", async () => {
+    const { container } = renderThemed(
+      <D3WidgetUI {...uiBase} title="Revenue" data={<p>the rows</p>} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show data" }));
     await expectNoAxeViolations(container);
   });
 });
