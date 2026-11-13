@@ -1,6 +1,10 @@
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  expectNoAxeViolations,
+  render,
+  screen,
+} from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { FileUploadRegionDrawingStepUI } from "../FileUploadRegionDrawingStep.component";
@@ -180,5 +184,27 @@ describe("FileUploadRegionDrawingStepUI — passthrough", () => {
     );
     await user.click(screen.getByRole("button", { name: /^interpret$/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/validation errors/i);
+  });
+});
+
+describe("FileUploadRegionDrawingStepUI — accessibility", () => {
+  test("has no axe violations with no regions", async () => {
+    const { container } = render(
+      <FileUploadRegionDrawingStepUI {...makeProps()} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations with a selected region and a server error", async () => {
+    const { container } = render(
+      <FileUploadRegionDrawingStepUI
+        {...makeProps({
+          regions: SAMPLE_REGIONS,
+          selectedRegionId: SAMPLE_REGIONS[0]?.id ?? null,
+          serverError: { message: "interpret failed", code: "X" },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

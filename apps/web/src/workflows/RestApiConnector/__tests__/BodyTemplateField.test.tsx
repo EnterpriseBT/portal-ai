@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { BodyTemplateFieldUI } from "../BodyTemplateField.component";
 import type { BodyTemplateFieldUIProps } from "../BodyTemplateField.component";
@@ -70,5 +74,14 @@ describe("BodyTemplateFieldUI", () => {
     expect(
       screen.queryByText(/unknown template variable/i)
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("BodyTemplateFieldUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <BodyTemplateFieldUI {...makeProps({ value: '{"q":1}' })} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { MapAttributionUI } from "../MapAttribution.component";
 
 describe("MapAttributionUI (#928)", () => {
@@ -36,6 +37,25 @@ describe("MapAttributionUI (#928)", () => {
       "title",
       "© OpenStreetMap contributors | © Corp tiles"
     );
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <MapAttributionUI
+        attributions={[
+          [
+            { text: "© " },
+            {
+              text: "OpenStreetMap",
+              href: "https://www.openstreetmap.org/copyright",
+            },
+            { text: " contributors" },
+          ],
+          [{ text: "© Corp tiles" }],
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 
   it("renders nothing when there is nothing to credit", () => {

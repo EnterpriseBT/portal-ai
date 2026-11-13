@@ -1,9 +1,14 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import type { SelectOption } from "@portalai/core/ui";
 
+import {
+  expectNoAxeViolations,
+  render as renderWithProviders,
+} from "../../../__tests__/test-utils";
 import { ReviewStepUI } from "../ReviewStep.component";
 import type { ReviewStepUIProps } from "../ReviewStep.component";
 import type {
@@ -44,7 +49,10 @@ function makeSearchStub(): SearchResult<SelectOption> {
   };
 }
 
-function setup(overrides: Partial<ReviewStepUIProps> = {}) {
+function setup(
+  overrides: Partial<ReviewStepUIProps> = {},
+  renderFn: (ui: ReactElement) => ReturnType<typeof render> = render
+) {
   const onEditBinding =
     jest.fn<(regionId: string, sourceLocator: string) => void>();
   const onUpdateBinding =
@@ -59,7 +67,7 @@ function setup(overrides: Partial<ReviewStepUIProps> = {}) {
     jest.fn<
       (regionId: string, sourceLocator: string, excluded: boolean) => void
     >();
-  const utils = render(
+  const utils = renderFn(
     <ReviewStepUI
       regions={[region]}
       overallConfidence={0.85}
@@ -351,5 +359,23 @@ describe("ReviewStepUI — keyboard and commit (#789)", () => {
     const field = popover.querySelector("input") as HTMLInputElement;
     await user.type(field, "{Enter}");
     expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReviewStepUI — accessibility", () => {
+  test("has no axe violations", async () => {
+    const { container } = setup();
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations with the binding editor open", async () => {
+    // The app's theme names every CircularProgress ("Loading"); the
+    // editor's spinner is unnamed without it, so render with providers.
+    setup({}, renderWithProviders);
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    await screen.findByRole("dialog", { name: "Edit column binding" });
+    await expectNoAxeViolations(document.body);
   });
 });

@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import typescript from "@typescript-eslint/eslint-plugin";
 import typescriptParser from "@typescript-eslint/parser";
 import react from "eslint-plugin-react";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
@@ -77,6 +78,30 @@ export default [
         beforeAll: "readonly",
         afterAll: "readonly",
         jest: "readonly",
+      },
+    },
+  },
+  // Accessibility (#799, epic #791): jsx-a11y's strict rules gate `lint`
+  // under --max-warnings 0, like every other rule here. Tests and stories
+  // render fixtures, not shipped markup; a component's own test asserts axe
+  // on what it renders instead (component-axe.guard.test.ts).
+  //
+  // The `components` map tells jsx-a11y which MUI primitives always render a
+  // native element. It's deliberately small: a wrong mapping invents findings.
+  {
+    files: ["src/**/*.tsx"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/*.test.tsx",
+      "src/**/*.stories.tsx",
+      "src/stories/**",
+    ],
+    plugins: { "jsx-a11y": jsxA11y },
+    rules: jsxA11y.flatConfigs.strict.rules,
+    settings: {
+      "jsx-a11y": {
+        polymorphicPropName: "component",
+        components: { Button: "button", IconButton: "button" },
       },
     },
   },

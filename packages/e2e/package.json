@@ -14,8 +14,6 @@
     "test:integration": "true",
     "test:e2e": "dotenv -e .env -- playwright test",
     "test:e2e:ui": "dotenv -e .env -- playwright test --ui",
-    "a11y:axe": "E2E_A11Y=1 dotenv -e .env -- playwright test --project=a11y",
-    "a11y:axe:site": "E2E_A11Y=1 dotenv -e .env -- playwright test --project=a11y-site",
     "playwright:install": "playwright install --with-deps chromium",
     "playwright:install:ci": "playwright install chromium",
     "e2e:stack:up": "scripts/e2e-stack.sh up",
@@ -36,7 +34,6 @@
     "e2e:qa:setup": "scripts/setup-qa-auth0.sh"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "1.62.1",
     "@portalai/core": "*",
     "@types/jest": "^29.5.14",

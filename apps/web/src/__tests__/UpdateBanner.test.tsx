@@ -10,7 +10,7 @@ jest.unstable_mockModule("../utils/app-version.util", () => ({
   useAppVersion: mockUseAppVersion,
 }));
 
-const { render, screen } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen } = await import("./test-utils");
 const { UpdateBannerUI, UpdateBanner } =
   await import("../components/UpdateBanner.component");
 const { UpdateNoticeProvider } = await import("../utils/update-notice.context");
@@ -66,6 +66,17 @@ describe("UpdateBannerUI", () => {
 
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no axe violations when open", async () => {
+    render(
+      <UpdateBannerUI open={true} onReload={jest.fn()} onDismiss={jest.fn()} />
+    );
+    // The notice portals into the Notifications region, outside `container`.
+    expect(
+      await screen.findByText("A new version is available.")
+    ).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
   });
 });
 

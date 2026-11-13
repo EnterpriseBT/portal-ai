@@ -40,6 +40,50 @@ const disabledLook = (action: Palette["action"]) => ({
   borderColor: action.disabledBackground,
 });
 
+/**
+ * A `HighlightedCode` block (#799), marked `data-code-block`, styled from
+ * `palette.code`: its background, its text and each highlight.js token
+ * class. The block scrolls, so it's a focusable region, ringed inset (its
+ * scroll container would clip an outside ring). The attribute twice
+ * outranks the block's own `sx` whatever the injection order.
+ */
+export function codeBlockRules(
+  palette: Palette,
+  ring: Record<string, unknown>
+): Record<string, Record<string, unknown>> {
+  const code = palette.code;
+  const block = "[data-code-block][data-code-block]";
+  const tokens: [string, Record<string, unknown>][] = [
+    ["keyword", { color: code.keyword }],
+    ["built_in", { color: code.builtin }],
+    ["type", { color: code.type }],
+    ["title.class_", { color: code.type }],
+    ["string", { color: code.string }],
+    ["attribute", { color: code.string }],
+    ["symbol", { color: code.string }],
+    ["number", { color: code.number }],
+    ["literal", { color: code.literal }],
+    ["meta", { color: code.meta }],
+    ["comment", { color: code.comment, fontStyle: "italic" }],
+    ["doctag", { color: code.comment, fontStyle: "italic" }],
+    ["quote", { color: code.comment, fontStyle: "italic" }],
+    ["title.function_", { color: code.function }],
+    ["attr", { color: code.attr }],
+    ["property", { color: code.attr }],
+    ["variable", { color: code.attr }],
+  ];
+  return {
+    [block]: { backgroundColor: code.background, color: code.text },
+    ...Object.fromEntries(
+      tokens.map(([cls, style]) => [`${block} .hljs-${cls}`, style])
+    ),
+    [`${block} .hljs-class .hljs-keyword`]: { color: code.keyword },
+    [`${block} .hljs-class .hljs-title`]: { color: code.type },
+    [`${block} .hljs-function .hljs-title`]: { color: code.function },
+    [`${block}:focus-visible`]: ring,
+  };
+}
+
 /** A `[data-sheet-part]` selector, optionally narrowed to one `data-kind`. */
 const part = (name: string, kind?: string) =>
   // The attribute twice: 0,2,0 outranks an sx or MUI root class (0,1,0)
@@ -253,6 +297,10 @@ export function a11yComponents(palette: Palette): ThemeOptions {
             outlineOffset: -FOCUS_RING_WIDTH,
           },
           ...sheetCanvasRules(palette, {
+            ...ring,
+            outlineOffset: -FOCUS_RING_WIDTH,
+          }),
+          ...codeBlockRules(palette, {
             ...ring,
             outlineOffset: -FOCUS_RING_WIDTH,
           }),

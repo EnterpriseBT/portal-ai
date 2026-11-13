@@ -173,6 +173,7 @@ const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
           </Typography>
           <Box sx={{ mt: 0.5 }}>
             <HighlightedCode
+              label={`${tool.name} parameters`}
               code={JSON.stringify(tool.parameterSchema, null, 2)}
               language="json"
               data-testid="toolpack-tool-schema"
@@ -219,6 +220,7 @@ const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
                         Input
                       </Typography>
                       <HighlightedCode
+                        label={`${tool.name}, ${ex.title || `example ${i + 1}`} input`}
                         code={JSON.stringify(ex.input, null, 2)}
                         language="json"
                       />
@@ -234,6 +236,7 @@ const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
                         Output
                       </Typography>
                       <HighlightedCode
+                        label={`${tool.name}, ${ex.title || `example ${i + 1}`} output`}
                         code={JSON.stringify(ex.output, null, 2)}
                         language="json"
                       />

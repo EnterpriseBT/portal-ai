@@ -4,6 +4,7 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { SelectOption, StepConfig } from "@portalai/core/ui";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { RegionEditorUI } from "../RegionEditor.component";
 import type { SearchResult } from "../../../api/types";
 import type { RegionDraft, Workbook } from "../utils/region-editor.types";
@@ -105,5 +106,22 @@ describe("RegionEditorUI — the review step's binding editor (#795)", () => {
     expect(
       screen.queryByRole("dialog", { name: "Edit column binding" })
     ).toBeNull();
+  });
+});
+
+describe("RegionEditorUI — accessibility", () => {
+  test("has no axe violations on the review step", async () => {
+    setup({
+      onUpdateBinding: jest.fn(),
+      onToggleBindingExcluded: jest.fn(),
+      columnDefinitionSearch: searchStub(),
+    });
+    await screen.findByRole("button", { name: /^Edit binding: header:Email/ });
+    await expectNoAxeViolations(document.body);
+  });
+
+  test("has no axe violations on the drawing step", async () => {
+    setup({ step: 0 as never, selectedRegionId: "r1" });
+    await expectNoAxeViolations(document.body);
   });
 });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
@@ -13,6 +13,8 @@ import typescript from "highlight.js/lib/languages/typescript";
 import python from "highlight.js/lib/languages/python";
 import csharp from "highlight.js/lib/languages/csharp";
 import json from "highlight.js/lib/languages/json";
+
+import { useScrollOverflow } from "../utils/use-scroll-overflow.util";
 
 // Register only the languages we actually highlight. Each grammar is
 // a few KB; keeping the list tight keeps the bundle small. Add new
@@ -34,6 +36,14 @@ export interface HighlightedCodeProps {
   /** Source code to render. */
   code: string;
   /**
+   * Names the block for assistive technology ("Result", "Request body").
+   * While the block scrolls it's a focusable region a keyboard user can
+   * scroll with the arrow keys, and a region needs a name (#799). Make it
+   * distinct on its page ("get_weather parameters", not "Parameters"), so
+   * two scrolling blocks are never two regions with one name.
+   */
+  label: string;
+  /**
    * Highlight.js language id. When omitted (or an unsupported value),
    * the source is rendered as plain monospaced text — no error.
    */
@@ -53,10 +63,12 @@ export interface HighlightedCodeProps {
 
 /**
  * Editor-styled monospace code block with syntax highlighting via
- * `highlight.js`. The token classes (`hljs-keyword`, `hljs-string`,
- * etc.) are coloured against the MUI theme palette so the snippet
- * adapts to light/dark mode without importing a separate
- * highlight.js theme stylesheet.
+ * `highlight.js`. Its colours, the highlight.js token classes included,
+ * come from the theme's `[data-code-block]` rules over `palette.code`
+ * (`@portalai/core`), where each is held at AA in both themes (#799).
+ * While the block overflows it's a named, focusable region, so a keyboard
+ * can scroll it; a block that fits is neither, so short snippets add no
+ * tab stops or landmarks.
  *
  * Pass `language` to opt in to highlighting; omit it to fall back to
  * plain monospace. Unsupported languages also render plain — the
@@ -64,6 +76,7 @@ export interface HighlightedCodeProps {
  */
 export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
   code,
+  label,
   language,
   fontSize = 12,
   maxHeight,
@@ -71,8 +84,9 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
   "data-testid": testId,
 }) => {
   const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
   const [copied, setCopied] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
+  const scrolls = useScrollOverflow(preRef, code);
 
   const handleCopy = async () => {
     try {
@@ -95,45 +109,20 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
     }
   }, [code, language]);
 
-  // Theme-derived palette for hljs token classes. Picks readable
-  // hues against both light and dark surfaces; plays nicely with
-  // the action.hover background used elsewhere for code blocks.
-  const tokenColors = isDark
-    ? {
-        keyword: "#c586c0",
-        builtin: "#4ec9b0",
-        type: "#4ec9b0",
-        string: "#ce9178",
-        number: "#b5cea8",
-        comment: "#6a9955",
-        function: "#dcdcaa",
-        attr: "#9cdcfe",
-        meta: "#569cd6",
-        literal: "#569cd6",
-      }
-    : {
-        keyword: "#af00db",
-        builtin: "#267f99",
-        type: "#267f99",
-        string: "#a31515",
-        number: "#098658",
-        comment: "#008000",
-        function: "#795e26",
-        attr: "#001080",
-        meta: "#0000ff",
-        literal: "#0000ff",
-      };
-
   return (
     <Box sx={{ position: "relative" }}>
       <Box
         component="pre"
+        ref={preRef}
         data-testid={testId}
+        data-code-block=""
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls ? label : undefined}
+        tabIndex={scrolls ? 0 : undefined}
         sx={{
           fontSize,
           fontFamily:
             'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-          backgroundColor: theme.palette.action.hover,
           borderRadius: 0.5,
           p: 1.5,
           // Reserve room on the right so a long unbroken line doesn't
@@ -142,29 +131,6 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
           m: 0,
           overflow: "auto",
           ...(maxHeight !== undefined ? { maxHeight } : {}),
-          // Theme highlight.js token classes against the palette.
-          "& .hljs-keyword, & .hljs-built_in, & .hljs-class .hljs-keyword": {
-            color: tokenColors.keyword,
-          },
-          "& .hljs-built_in": { color: tokenColors.builtin },
-          "& .hljs-type, & .hljs-class .hljs-title, & .hljs-title.class_": {
-            color: tokenColors.type,
-          },
-          "& .hljs-string, & .hljs-attribute, & .hljs-symbol": {
-            color: tokenColors.string,
-          },
-          "& .hljs-number": { color: tokenColors.number },
-          "& .hljs-literal, & .hljs-meta": { color: tokenColors.literal },
-          "& .hljs-comment, & .hljs-doctag, & .hljs-quote": {
-            color: tokenColors.comment,
-            fontStyle: "italic",
-          },
-          "& .hljs-function .hljs-title, & .hljs-title.function_": {
-            color: tokenColors.function,
-          },
-          "& .hljs-attr, & .hljs-property, & .hljs-variable": {
-            color: tokenColors.attr,
-          },
         }}
       >
         {highlighted ? (

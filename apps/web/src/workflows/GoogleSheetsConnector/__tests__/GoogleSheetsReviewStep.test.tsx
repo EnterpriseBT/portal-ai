@@ -12,7 +12,8 @@ jest.unstable_mockModule("../../../modules/RegionEditor", () => ({
   ),
 }));
 
-const { render, screen } = await import("../../../__tests__/test-utils");
+const { render, screen, expectNoAxeViolations } =
+  await import("../../../__tests__/test-utils");
 const { GoogleSheetsReviewStep } =
   await import("../GoogleSheetsReviewStep.component");
 type GoogleSheetsReviewStepUIProps = React.ComponentProps<
@@ -35,6 +36,28 @@ function makeProps(
 }
 
 describe("GoogleSheetsReviewStep — rowPosition advisory", () => {
+  it("has no axe violations with the advisory showing", async () => {
+    const { container } = render(
+      <GoogleSheetsReviewStep
+        {...makeProps({
+          regions: [
+            {
+              id: "r1",
+              proposedLabel: "Forecast",
+              identityStrategy: { kind: "column", confidence: 0.9 },
+            } as never,
+            {
+              id: "r2",
+              proposedLabel: "Misc data",
+              identityStrategy: { kind: "rowPosition", confidence: 0.3 },
+            } as never,
+          ],
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("does not render the advisory when no region uses rowPosition identity", () => {
     render(
       <GoogleSheetsReviewStep

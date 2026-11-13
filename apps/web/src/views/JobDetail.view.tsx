@@ -176,6 +176,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                     {result && Object.keys(result).length > 0 && (
                       <PageSection title="Result" variant="outlined">
                         <HighlightedCode
+                          label="Result"
                           code={JSON.stringify(result, null, 2)}
                           language="json"
                         />
@@ -185,6 +186,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                     {job.metadata && Object.keys(job.metadata).length > 0 && (
                       <PageSection title="Metadata" variant="outlined">
                         <HighlightedCode
+                          label="Metadata"
                           code={JSON.stringify(job.metadata, null, 2)}
                           language="json"
                         />

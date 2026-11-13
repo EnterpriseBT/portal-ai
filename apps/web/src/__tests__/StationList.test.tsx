@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { StationListResponsePayload } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, within } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent, within } =
+  await import("./test-utils");
 const { StationListUI, StationCardUI } =
   await import("../components/StationList.component");
 
@@ -227,5 +228,16 @@ describe("StationListUI", () => {
     expect(screen.getByTestId("default-badge")).toBeInTheDocument();
     // Only one default badge should be shown
     expect(screen.getAllByTestId("default-badge")).toHaveLength(1);
+  });
+
+  it("has no axe violations, with a default station and an unentitled pack", async () => {
+    const { container } = render(
+      <StationListUI
+        {...defaultListProps}
+        defaultStationId="station-1"
+        entitledBuiltinSlugs={new Set(["data_query"])}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

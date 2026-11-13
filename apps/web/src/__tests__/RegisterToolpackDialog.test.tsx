@@ -73,6 +73,27 @@ describe("RegisterToolpackDialogUI", () => {
     await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
+  it("names each open reference accordion's region by its summary, so the two aren't identical landmarks (#799)", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    for (const id of [
+      "register-toolpack-endpoint-shapes",
+      "register-toolpack-verify-snippets",
+    ]) {
+      fireEvent.click(screen.getByTestId(`${id}-summary`));
+    }
+    expect(
+      screen.getByRole("region", {
+        name: "See expected request / response shapes per endpoint",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", {
+        name: "See how to verify our signed requests on your server",
+      })
+    ).toBeInTheDocument();
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("renders a single tabbed accordion at the bottom for each endpoint's expected shape", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     const summary = screen.getByTestId(

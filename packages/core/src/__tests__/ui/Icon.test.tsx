@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { Icon, IconName } from "../../ui/Icon";
 import type { IconProps } from "../../ui/Icon";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Icon Component", () => {
   describe("Rendering", () => {
@@ -53,5 +54,9 @@ describe("Icon Component", () => {
       render(<Icon ref={ref} name={IconName.Star} />);
       expect(ref.current).toBeInstanceOf(SVGSVGElement);
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(<Icon name={IconName.Home} />);
+    await expectNoAxeViolations(container);
   });
 });

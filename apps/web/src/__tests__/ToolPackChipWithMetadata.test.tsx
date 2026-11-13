@@ -21,7 +21,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: { toolpacks: { root: ["toolpacks"] } },
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent } =
+  await import("./test-utils");
 const { ToolPackChipWithMetadata } =
   await import("../components/ToolPackChipWithMetadata.component");
 
@@ -111,5 +112,21 @@ describe("ToolPackChipWithMetadata", () => {
     // Click does not open the modal — heading still absent.
     fireEvent.click(screen.getByText("org:does-not-exist"));
     expect(screen.queryByLabelText("close")).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations, as a chip and with its details dialog open", async () => {
+    mockListResult.mockReturnValue({
+      data: { toolpacks: [customPack], total: 1 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+    });
+
+    const { container } = render(<ToolPackChipWithMetadata pack="org:otp-1" />);
+    await expectNoAxeViolations(container);
+
+    fireEvent.click(screen.getByText("Customer Intel"));
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 });

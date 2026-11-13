@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 
 import type { RunningJobSummary } from "@portalai/core/contracts";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { ConnectorInstanceLockAlertUI } =
   await import("../components/ConnectorInstanceLockAlert.component");
 
@@ -136,5 +136,25 @@ describe("ConnectorInstanceLockAlertUI — age + stuck hint (#391)", () => {
       />
     );
     expect(screen.getByText(/started 5 min ago/i)).toBeInTheDocument();
+  });
+
+  it("has no axe violations with a fresh and a stuck job", async () => {
+    const { container } = render(
+      <ConnectorInstanceLockAlertUI
+        runningJobs={[
+          job({
+            id: "fresh",
+            type: "connector_sync",
+            startedAt: Date.now() - 60_000,
+          }),
+          job({
+            id: "old",
+            type: "layout_plan_commit",
+            startedAt: Date.now() - 60 * 60_000,
+          }),
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

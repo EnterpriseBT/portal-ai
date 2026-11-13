@@ -3,6 +3,7 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { Terminator } from "@portalai/core/contracts";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import {
   TerminatorFormUI,
   type TerminatorFormUIProps,
@@ -50,5 +51,17 @@ describe("TerminatorFormUI", () => {
     setup({ terminator: { kind: "matchesPattern", pattern: "(" } });
     const patternInput = screen.getByRole("textbox", { name: /pattern/i });
     expect(patternInput).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = setup();
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with an invalid pattern", async () => {
+    const { container } = setup({
+      terminator: { kind: "matchesPattern", pattern: "(" },
+    });
+    await expectNoAxeViolations(container);
   });
 });

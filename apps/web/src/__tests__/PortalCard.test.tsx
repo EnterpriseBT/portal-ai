@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { PortalCardUI } = await import("../components/PortalCard.component");
 
 const props = {
@@ -30,5 +31,12 @@ describe("PortalCardUI", () => {
   it("#690: hides Delete when the caller may not", () => {
     render(<PortalCardUI {...props} canDelete={false} />);
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+});
+
+describe("PortalCardUI accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<PortalCardUI {...props} />);
+    await expectNoAxeViolations(container);
   });
 });

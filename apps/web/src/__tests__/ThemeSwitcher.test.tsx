@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, within } from "./test-utils";
+import { expectNoAxeViolations, render, screen, within } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import {
   ThemeSwitcherUI,
@@ -230,5 +230,21 @@ describe("ThemeSwitcherUI Component", () => {
         screen.getByRole("menuitemradio", { name: "Light" })
       ).toHaveAttribute("aria-checked", "false");
     });
+  });
+
+  it("has no axe violations, closed and with its menu open", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ThemeSwitcherUI
+        currentThemeName="brand"
+        availableThemes={availableThemes}
+        onThemeSelect={mockOnThemeSelect}
+      />
+    );
+    await expectNoAxeViolations(container);
+
+    await user.click(screen.getByRole("button", { name: /select theme/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
   });
 });

@@ -3,6 +3,7 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { Segment, Terminator } from "@portalai/core/contracts";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import {
   SegmentEditPopoverUI,
   type SegmentEditPopoverUIProps,
@@ -436,5 +437,23 @@ describe("SegmentEditPopoverUI — Enter to dismiss", () => {
     const input = screen.getByRole("textbox", { name: /axis name/i });
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("SegmentEditPopoverUI — accessibility", () => {
+  it("has no axe violations for a field segment", async () => {
+    setup({ segment: fieldSegment() });
+    await screen.findByRole("button", { name: "Close" });
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("has no axe violations for a dynamic pivot segment", async () => {
+    setup({
+      segment: pivotSegment({
+        dynamic: { terminator: { kind: "untilBlank", consecutiveBlanks: 2 } },
+      }),
+    });
+    await screen.findByRole("textbox", { name: /axis name/i });
+    await expectNoAxeViolations(document.body);
   });
 });

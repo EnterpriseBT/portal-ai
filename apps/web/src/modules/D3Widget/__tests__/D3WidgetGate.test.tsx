@@ -47,7 +47,8 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("../../../__tests__/test-utils");
+const { render, screen, expectNoAxeViolations } =
+  await import("../../../__tests__/test-utils");
 const { D3WidgetGate } = await import("../D3WidgetGate.component");
 
 const PROGRAM = "api.d3.select(api.container);";
@@ -70,6 +71,26 @@ beforeEach(() => {
 });
 
 describe("D3WidgetGate (#271)", () => {
+  it("has no axe violations when live", async () => {
+    const { container } = render(
+      <D3WidgetGate
+        content={{ ...handleContent, title: "Sales", summary: "Sales double." }}
+      />
+    );
+    await screen.findByTestId("d3-widget");
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations as an offscreen placeholder", async () => {
+    mockInView = false;
+    const { container } = render(
+      <D3WidgetGate
+        content={{ ...handleContent, title: "Sales", summary: "Sales double." }}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("mounts the live widget when in view", () => {
     render(<D3WidgetGate content={handleContent} />);
     expect(screen.getByTestId("d3-widget")).toBeInTheDocument();

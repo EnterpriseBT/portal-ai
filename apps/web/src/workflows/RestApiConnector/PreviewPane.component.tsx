@@ -279,6 +279,7 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
           ) : (
             <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
               <HighlightedCode
+                label="Raw response"
                 code={safeStringify(response)}
                 language="json"
                 maxHeight={PREVIEW_PANE_HEIGHT}
@@ -299,6 +300,11 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
           {derived.kind === "extracted" || derived.kind === "not-array" ? (
             <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
               <HighlightedCode
+                label={
+                  extractionMode === "recordsPath"
+                    ? "Extracted records"
+                    : "Transformed output"
+                }
                 code={safeStringify(
                   derived.kind === "extracted" && Array.isArray(derived.value)
                     ? derived.value.slice(0, 10)

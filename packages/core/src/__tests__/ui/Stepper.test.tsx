@@ -10,6 +10,7 @@ import {
   type StepConfig,
   type StepValidationError,
 } from "../../ui/Stepper";
+import { expectNoAxeViolations } from "../axe.util";
 
 const basicSteps: StepConfig[] = [
   { label: "Step One" },
@@ -514,5 +515,12 @@ describe("Stepper Components", () => {
       render(<Stepper ref={ref} steps={basicSteps} activeStep={0} />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+});
+
+describe("Stepper accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<UseStepperExample />);
+    await expectNoAxeViolations(container);
   });
 });

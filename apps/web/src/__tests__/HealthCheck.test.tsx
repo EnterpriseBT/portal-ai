@@ -23,7 +23,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, waitFor } = await import("./test-utils");
+const { render, screen, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { HealthCheck, HealthCheckUI } =
   await import("../components/HealthCheck.component");
@@ -221,5 +222,23 @@ describe("HealthCheckUI accessibility (#797)", () => {
       />
     );
     expect(screen.getByRole("img", { name: /healthy/i })).toBeInTheDocument();
+  });
+});
+
+describe("HealthCheckUI accessibility", () => {
+  it("has no axe violations with its tooltip open", async () => {
+    render(
+      <HealthCheckUI
+        data={{
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1.0.0",
+          sha: "abc1234",
+        }}
+        data-testid="health"
+      />
+    );
+    await userEvent.hover(screen.getByTestId("health"));
+    await screen.findByRole("tooltip");
+    await expectNoAxeViolations(document.body);
   });
 });

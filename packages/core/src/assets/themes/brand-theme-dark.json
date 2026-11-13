@@ -59,6 +59,20 @@
       "disabled": "#6e6890"
     },
     "divider": "rgba(176,168,216,0.12)",
+    "code": {
+      "background": "#1f1d36",
+      "text": "#f0eeff",
+      "keyword": "#d19ad0",
+      "builtin": "#4ec9b0",
+      "type": "#4ec9b0",
+      "string": "#ce9178",
+      "number": "#b5cea8",
+      "comment": "#7fb36a",
+      "function": "#dcdcaa",
+      "attr": "#9cdcfe",
+      "meta": "#7fb0f0",
+      "literal": "#7fb0f0"
+    },
     "sheet": {
       "gridLine": "rgba(176,168,216,0.14)",
       "headerBackground": "#1e1e38",

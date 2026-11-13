@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 
 import type { KeyValueRow } from "../utils/key-value-rows.util";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { KeyValueTableUI } =
   await import("../components/KeyValueTable.component");
 const { newKeyValueRow } = await import("../utils/key-value-rows.util");
@@ -128,5 +129,17 @@ describe("KeyValueTableUI (#808)", () => {
         name: "Remove count parameter returnCountOnly",
       })
     ).toBeInTheDocument();
+  });
+});
+
+describe("KeyValueTableUI accessibility", () => {
+  it("has no axe violations with rows", async () => {
+    const { container } = render(
+      <KeyValueTableUI
+        rows={[newKeyValueRow("a", "1"), newKeyValueRow("b", "2")]}
+        onChange={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

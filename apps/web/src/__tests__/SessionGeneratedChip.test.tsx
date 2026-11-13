@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 
 // #641: the provenance badge for an object an agent created in a portal
@@ -8,5 +8,10 @@ describe("SessionGeneratedChipUI (#641)", () => {
     render(<SessionGeneratedChipUI />);
     expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<SessionGeneratedChipUI />);
+    await expectNoAxeViolations(container);
   });
 });

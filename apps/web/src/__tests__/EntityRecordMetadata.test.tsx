@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 import type { EntityRecord } from "@portalai/core/models";
 
@@ -104,5 +104,12 @@ describe("EntityRecordMetadata", () => {
     expect(
       screen.queryByText("Created in a portal session")
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("EntityRecordMetadata accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<EntityRecordMetadata record={stubRecord} />);
+    await expectNoAxeViolations(container);
   });
 });

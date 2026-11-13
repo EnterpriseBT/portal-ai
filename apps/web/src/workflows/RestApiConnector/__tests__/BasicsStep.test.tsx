@@ -3,7 +3,11 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import { waitFor } from "@testing-library/react";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { BasicsStepUI } from "../BasicsStep.component";
 import type { BasicsStepUIProps } from "../BasicsStep.component";
@@ -153,5 +157,36 @@ describe("BasicsStepUI — autofocus", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/connector name/i)).toHaveFocus();
     });
+  });
+});
+
+describe("BasicsStepUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <BasicsStepUI
+        {...makeProps({
+          name: "Users API",
+          baseUrl: "https://api.example.com",
+          authMode: "bearer",
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with field errors and a server error showing", async () => {
+    const { container } = render(
+      <BasicsStepUI
+        {...makeProps({
+          errors: { name: "Name is required", baseUrl: "Enter a valid URL" },
+          touched: { name: true, baseUrl: true },
+          serverError: {
+            message: "Probe failed",
+            code: "REST_API_AUTH_FAILED",
+          },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

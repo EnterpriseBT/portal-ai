@@ -18,6 +18,7 @@ import {
   THEME_MAP,
   type ThemeName,
 } from "../../ui/ThemeProvider";
+import { expectNoAxeViolations } from "../axe.util";
 
 // Test component that uses the theme context
 const ThemeConsumer: React.FC<{
@@ -540,6 +541,30 @@ describe("accessibility defaults (#797)", () => {
     }
   );
 
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s colours a code block from palette.code and rings it on focus (#799)",
+    (name) => {
+      const { palette } = THEME_MAP[name];
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      const block = "[data-code-block][data-code-block]";
+      expect(overrides[block]).toEqual({
+        backgroundColor: palette.code.background,
+        color: palette.code.text,
+      });
+      expect(overrides[`${block} .hljs-number`]).toEqual({
+        color: palette.code.number,
+      });
+      expect(overrides[`${block} .hljs-meta`]).toEqual({
+        color: palette.code.meta,
+      });
+      expect(overrides[`${block}:focus-visible`]).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${palette.primary.main}`,
+        outlineOffset: -FOCUS_RING_WIDTH,
+      });
+    }
+  );
+
   it("names an unnamed CircularProgress 'Loading'", () => {
     render(
       <ThemeProvider>
@@ -745,5 +770,20 @@ describe("sheet canvas rules (#996)", () => {
 
   it("keeps the gridcell focus ring beside the canvas rules", () => {
     expect(baseline("brand")['[role="gridcell"]:focus-visible']).toBeDefined();
+  });
+});
+
+describe("ThemeProvider accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ThemeProvider>
+        <Typography variant="h1">Settings</Typography>
+        <Button>Save</Button>
+        <IconButton aria-label="Close">x</IconButton>
+        <CircularProgress />
+        <LinearProgress aria-label="Uploading" />
+      </ThemeProvider>
+    );
+    await expectNoAxeViolations(container);
   });
 });

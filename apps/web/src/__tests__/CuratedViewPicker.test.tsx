@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { SelectOption } from "@portalai/core/ui";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { CuratedViewPickerUI } =
   await import("../components/CuratedViewPicker.component");
 
@@ -63,5 +64,18 @@ describe("CuratedViewPickerUI (#674)", () => {
       />
     );
     expect(screen.getByText("No views selected")).toBeInTheDocument();
+  });
+
+  it("has no axe violations with a selection and helper text", async () => {
+    const { container } = render(
+      <CuratedViewPickerUI
+        selected={["cv-1"]}
+        onChange={jest.fn()}
+        fetchOptions={async () => OPTIONS}
+        helperText="Pick the views to share"
+      />
+    );
+    expect(await screen.findByText("Q3 orders")).toBeInTheDocument();
+    await expectNoAxeViolations(container);
   });
 });

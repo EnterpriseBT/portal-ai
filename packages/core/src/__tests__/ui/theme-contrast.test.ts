@@ -6,6 +6,8 @@
  * - 1.4.3: text (status messages, links, button labels) ≥ 4.5:1.
  * - 1.4.11: the focus ring against the page ≥ 3:1.
  * - `text.disabled` is deliberately absent: WCAG exempts inactive controls.
+ * - Code tokens (#799): every `HighlightedCode` token colour on its opaque
+ *   background.
  * - The sheet canvas (#996): its header text, every overlay chip, the
  *   decoration labels and the cell text under each overlay tint. Gridlines
  *   and the loading row's "…" are decorative and left out (headers and the
@@ -229,6 +231,23 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
     );
   });
 
+  describe("code tokens (#799)", () => {
+    const code = palette.code;
+
+    it("the code background is opaque, so each ratio is fixed", () => {
+      expect(opaque(code.background)).toBe(true);
+    });
+
+    it.each(Object.entries(code).filter(([key]) => key !== "background"))(
+      "%s is readable on the code background",
+      (_key, color) => {
+        expect(getContrastRatio(color, code.background)).toBeGreaterThanOrEqual(
+          TEXT
+        );
+      }
+    );
+  });
+
   it.each(STATUS)(
     "%s.contrastText is readable on its main (filled buttons, chips, alerts)",
     (key) => {
@@ -245,5 +264,13 @@ it("both themes define the same sheet tokens (#996)", () => {
     keyPaths(t.palette.sheet).sort()
   );
   expect(first.length).toBeGreaterThan(0);
+  for (const paths of rest) expect(paths).toEqual(first);
+});
+
+it("both themes define the same code tokens (#799)", () => {
+  const [first, ...rest] = Object.values(THEME_MAP).map((t) =>
+    keyPaths(t.palette.code).sort()
+  );
+  expect(first.length).toBe(12);
   for (const paths of rest) expect(paths).toEqual(first);
 });

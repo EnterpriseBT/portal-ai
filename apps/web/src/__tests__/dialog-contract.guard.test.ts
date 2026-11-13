@@ -46,6 +46,8 @@ import { dirname, join, relative } from "node:path";
 
 import ts from "typescript";
 
+import { codeOnly, pairedTests, runsAxe } from "./component-axe.util";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const webSrc = join(here, "..");
 
@@ -259,27 +261,6 @@ export function disabledReadsPending(source: string): number[] {
   return lines;
 }
 
-/** R6: whether a test source runs the shared axe assertion. */
-export function runsAxe(source: string): boolean {
-  return /\bexpectNoAxeViolations\(/.test(withoutComments(source));
-}
-
-/** R6: the test files named for a component file. */
-function pairedTests(componentPath: string, tests: string[]): string[] {
-  const name = componentPath
-    .split("/")
-    .pop()!
-    .replace(/\.tsx$/, "")
-    .replace(/\.(component|view|layout)$/, "");
-  return tests.filter((t) =>
-    [
-      `${name}.test.tsx`,
-      `${name}.component.test.tsx`,
-      `${name}.view.test.tsx`,
-    ].includes(t.split("/").pop()!)
-  );
-}
-
 // R6's allowlist. Empty; it only shrinks.
 const AXE_EXEMPT: Record<string, string> = {};
 
@@ -315,16 +296,9 @@ function testFiles(dir: string): string[] {
   });
 }
 
-// A block comment only counts where it opens a line or a JSX expression, so
-// a string like "image/*" can't swallow the code up to the next `*/`.
-const withoutComments = (source: string) =>
-  source
-    .replace(/(^[ \t]*|\{)\/\*[\s\S]*?\*\//gm, "$1")
-    .replace(/^\s*\/\/.*$/gm, "");
-
 /** R5: a `fireEvent.submit(` call, ignoring comments. */
 export function callsSyntheticSubmit(source: string): boolean {
-  return /\bfireEvent\.submit\(/.test(withoutComments(source));
+  return /\bfireEvent\.submit\(/.test(codeOnly(source));
 }
 
 const violationsOf = (source: string) => {

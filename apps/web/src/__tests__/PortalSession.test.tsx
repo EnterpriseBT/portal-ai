@@ -135,7 +135,7 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 // ── Imports ──────────────────────────────────────────────────────────
 
-const { render, screen, fireEvent, waitFor, act } =
+const { expectNoAxeViolations, render, screen, fireEvent, waitFor, act } =
   await import("./test-utils");
 const { PortalSessionUI } =
   await import("../components/PortalSession.component");
@@ -435,6 +435,31 @@ describe("PortalSessionUI", () => {
     fireEvent.change(textarea, { target: { value: "test message" } });
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
     expect(onSubmit).toHaveBeenCalledWith("test message");
+  });
+
+  it("has no axe violations, empty and holding a conversation", async () => {
+    const empty = render(<PortalSessionUI {...defaultProps} />);
+    expect(screen.getByTestId("portal-session-empty")).toBeInTheDocument();
+    await expectNoAxeViolations(empty.container);
+    empty.unmount();
+
+    const messages = [
+      makeMessage({
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      }),
+      makeMessage({
+        id: "msg-2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there" }],
+      }),
+    ];
+    const { container } = render(
+      <PortalSessionUI {...defaultProps} messages={messages} />
+    );
+    expect(screen.getByText("Hi there")).toBeInTheDocument();
+    await expectNoAxeViolations(container);
   });
 });
 

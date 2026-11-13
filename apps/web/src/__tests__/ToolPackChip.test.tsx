@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent } =
+  await import("./test-utils");
 const { ToolPackChip } = await import("../components/ToolPackChip.component");
 
 describe("ToolPackChip", () => {
@@ -101,5 +102,15 @@ describe("ToolPackChip", () => {
     // MUI renders a delete icon button when onDelete is provided
     fireEvent.click(screen.getByTestId("CancelIcon"));
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no axe violations, entitled and unentitled", async () => {
+    const { container } = render(
+      <>
+        <ToolPackChip pack="data_query" />
+        <ToolPackChip pack="entity_management" entitled={false} />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

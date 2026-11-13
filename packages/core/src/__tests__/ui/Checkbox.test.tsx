@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Checkbox } from "../../ui/Checkbox";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Checkbox Component", () => {
   describe("Rendering", () => {
@@ -66,5 +67,11 @@ describe("Checkbox Component", () => {
       );
       expect(screen.getByText("This field is required")).toBeInTheDocument();
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <Checkbox label="Newsletter" helperText="Optional" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

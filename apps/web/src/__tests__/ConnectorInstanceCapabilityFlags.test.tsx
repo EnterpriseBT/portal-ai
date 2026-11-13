@@ -5,7 +5,8 @@
  */
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { ConnectorInstanceCapabilityFlagsUI } =
   await import("../components/ConnectorInstanceCapabilityFlags.component");
 
@@ -70,5 +71,22 @@ describe("ConnectorInstanceCapabilityFlagsUI", () => {
   it("disables the controls while an update is pending", () => {
     render(<ConnectorInstanceCapabilityFlagsUI {...baseProps} isPending />);
     expect(screen.getByRole("checkbox", { name: "Write" })).toBeDisabled();
+  });
+
+  it("has no axe violations as controls and while locked", async () => {
+    const { container } = render(
+      <ConnectorInstanceCapabilityFlagsUI
+        {...baseProps}
+        lockedReason="Sync is running on this connector — try again when it finishes."
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations as read-only text", async () => {
+    const { container } = render(
+      <ConnectorInstanceCapabilityFlagsUI {...baseProps} canEdit={false} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

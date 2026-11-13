@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { Progress } from "../../ui/Progress";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Progress Component", () => {
   describe("Rendering", () => {
@@ -115,5 +116,23 @@ describe("Inherit color mode (#458 toast contrast)", () => {
     const bar = screen.getByRole("progressbar");
     expect(bar.className).toContain("MuiLinearProgress-colorInherit");
     expect(bar).not.toHaveAttribute("aria-valuenow");
+  });
+});
+
+describe("Progress accessibility", () => {
+  it("names the bar 'Progress' by default and keeps a caller's name", () => {
+    const { rerender } = render(<Progress value={45} />);
+    expect(
+      screen.getByRole("progressbar", { name: "Progress" })
+    ).toBeInTheDocument();
+    rerender(<Progress value={45} aria-label="Uploading sales.csv" />);
+    expect(
+      screen.getByRole("progressbar", { name: "Uploading sales.csv" })
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<Progress value={45} />);
+    await expectNoAxeViolations(container);
   });
 });

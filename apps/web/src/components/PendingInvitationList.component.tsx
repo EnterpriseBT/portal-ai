@@ -69,6 +69,7 @@ export const PendingInvitationListUI: React.FC<
     {
       key: "actions",
       label: "",
+      headerLabel: "Actions",
       render: (_v, row) => {
         const invitation = row as unknown as InvitationResponse;
         return (

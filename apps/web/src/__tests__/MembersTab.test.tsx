@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { expectNoAxeViolations, render, screen, fireEvent } from "./test-utils";
 import { MembersTabUI } from "../components/MembersTab.component";
 import type { Member, SeatUsage } from "@portalai/core/contracts";
 
@@ -149,5 +149,46 @@ describe("MembersTabUI invite + pending (#585)", () => {
     );
     expect(screen.getByText("Pending invitations")).toBeInTheDocument();
     expect(screen.getByText("pending@example.com")).toBeInTheDocument();
+  });
+});
+
+describe("MembersTabUI accessibility", () => {
+  it("has no axe violations with members, an invite link and a pending invitation", async () => {
+    const member: Member = {
+      ...owner,
+      userId: "u-member",
+      email: "member@x.com",
+      name: "Member",
+      roles: ["member"],
+      roleSlugs: ["member"],
+    };
+    const { container } = render(
+      <MembersTabUI
+        {...base}
+        members={[owner, member]}
+        seatUsage={{ used: 3, max: 5 }}
+        lastInviteUrl="https://app.local/accept?token=abc"
+        invitations={[
+          {
+            id: "inv-1",
+            organizationId: "org-1",
+            email: "pending@example.com",
+            role: "member",
+            status: "pending",
+            expiresAt: 1_784_100_000_000,
+            invitedByUserId: "u-owner",
+            acceptedByUserId: null,
+            acceptedAt: null,
+            created: 1_784_000_000_000,
+            createdBy: "u-owner",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

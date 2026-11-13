@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { SuggestionChipUI } from "../SuggestionChip.component";
 import type { SuggestionChipUIProps } from "../SuggestionChip.component";
@@ -64,5 +68,12 @@ describe("SuggestionChipUI", () => {
     expect(
       screen.getByRole("button", { name: /adopt suggestion user_email/i })
     ).toBeInTheDocument();
+  });
+});
+
+describe("SuggestionChipUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<SuggestionChipUI {...makeProps()} />);
+    await expectNoAxeViolations(container);
   });
 });

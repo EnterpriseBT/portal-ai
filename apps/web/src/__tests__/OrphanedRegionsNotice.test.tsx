@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { OrphanedRegionsNoticeUI } =
   await import("../components/OrphanedRegionsNotice.component");
 
@@ -75,5 +76,12 @@ describe("OrphanedRegionsNoticeUI", () => {
     expect(
       screen.getByRole("region", { name: "Regions whose sheet is missing" })
     ).toHaveFocus();
+  });
+
+  it("has no axe violations after an attempted Interpret", async () => {
+    const { container } = render(
+      <OrphanedRegionsNoticeUI {...props} attempted />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,13 +1,18 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { HighlightedCode } =
   await import("../components/HighlightedCode.component");
 
 describe("HighlightedCode", () => {
   it("renders plain monospaced code when no language is provided", () => {
     render(
-      <HighlightedCode code='const x = "hello";' data-testid="hc-plain" />
+      <HighlightedCode
+        label="Snippet"
+        code='const x = "hello";'
+        data-testid="hc-plain"
+      />
     );
     const block = screen.getByTestId("hc-plain");
     expect(block.textContent).toBe('const x = "hello";');
@@ -19,6 +24,7 @@ describe("HighlightedCode", () => {
   it("highlights TypeScript keywords + strings when language='typescript'", () => {
     render(
       <HighlightedCode
+        label="Snippet"
         code='const greet: string = "hello";'
         language="typescript"
         data-testid="hc-ts"
@@ -35,6 +41,7 @@ describe("HighlightedCode", () => {
   it("highlights JSON strings + numbers when language='json'", () => {
     render(
       <HighlightedCode
+        label="Snippet"
         code='{"name": "Acme", "founded": 1923}'
         language="json"
         data-testid="hc-json"
@@ -60,7 +67,12 @@ describe("HighlightedCode", () => {
     });
 
     render(
-      <HighlightedCode code='{"x":1}' language="json" data-testid="hc-copy" />
+      <HighlightedCode
+        label="Snippet"
+        code='{"x":1}'
+        language="json"
+        data-testid="hc-copy"
+      />
     );
     const copyButton = screen.getByTestId("hc-copy-copy");
     expect(copyButton).toBeInTheDocument();
@@ -73,6 +85,7 @@ describe("HighlightedCode", () => {
   it("hides the copy button when showCopyButton=false", () => {
     render(
       <HighlightedCode
+        label="Snippet"
         code='{"x":1}'
         showCopyButton={false}
         data-testid="hc-no-copy"
@@ -88,6 +101,7 @@ describe("HighlightedCode", () => {
     // guarding against runtime regression.
     render(
       <HighlightedCode
+        label="Snippet"
         code="lambda x: x + 1"
         language={"haskell" as never}
         data-testid="hc-fallback"
@@ -96,5 +110,69 @@ describe("HighlightedCode", () => {
     const block = screen.getByTestId("hc-fallback");
     expect(block.textContent).toBe("lambda x: x + 1");
     expect(block.querySelector(".hljs-keyword")).toBeNull();
+  });
+
+  describe("scrolling (#799)", () => {
+    // jsdom has no layout: every box measures 0 × 0. Overflow is faked by
+    // giving every element taller content than its box.
+    let restore: (() => void) | null = null;
+    const overflow = () => {
+      const scroll = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "scrollHeight"
+      )!;
+      Object.defineProperty(Element.prototype, "scrollHeight", {
+        configurable: true,
+        get: () => 500,
+      });
+      restore = () =>
+        Object.defineProperty(Element.prototype, "scrollHeight", scroll);
+    };
+    afterEach(() => {
+      restore?.();
+      restore = null;
+    });
+
+    it("is a focusable region named by its label while it overflows, so a keyboard can scroll it", () => {
+      overflow();
+      render(<HighlightedCode label="Result" code='{"x":1}' language="json" />);
+      const region = screen.getByRole("region", { name: "Result" });
+      expect(region.tagName).toBe("PRE");
+      expect(region).toHaveAttribute("tabindex", "0");
+      // Colours come from the theme's [data-code-block] rules (palette.code).
+      expect(region).toHaveAttribute("data-code-block");
+      region.focus();
+      expect(region).toHaveFocus();
+    });
+
+    it("is neither a region nor a tab stop when it fits", () => {
+      render(
+        <HighlightedCode
+          label="Result"
+          code='{"x":1}'
+          language="json"
+          data-testid="fits"
+        />
+      );
+      expect(screen.queryByRole("region", { name: "Result" })).toBeNull();
+      const block = screen.getByTestId("fits");
+      expect(block).not.toHaveAttribute("tabindex");
+      expect(block).not.toHaveAttribute("aria-label");
+    });
+
+    it("has no axe violations while it overflows", async () => {
+      overflow();
+      const { container } = render(
+        <HighlightedCode label="Result" code='{"x":1}' language="json" />
+      );
+      await expectNoAxeViolations(container);
+    });
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <HighlightedCode label="Result" code='{"x":1}' language="json" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

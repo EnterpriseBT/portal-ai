@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { ConnectorInstanceSyncFeedbackUI } =
   await import("../components/ConnectorInstanceSyncFeedback.component");
 
@@ -224,6 +225,29 @@ describe("ConnectorInstanceSyncFeedbackUI", () => {
     expect(
       screen.getByRole("button", { name: /reconnecting/i })
     ).toBeDisabled();
+  });
+
+  it("has no axe violations while active", async () => {
+    const { container } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="active"
+        progress={0}
+        progressDetail={{ processed: 123954, total: 397960 }}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations showing a completed result (portalled Snackbar)", async () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="completed"
+        recordCounts={{ created: 1, updated: 0, unchanged: 0, deleted: 0 }}
+      />
+    );
+    await expectNoAxeViolations(document.body);
   });
 });
 

@@ -10,7 +10,6 @@
     "preview": "astro preview",
     "lint": "eslint src scripts --ext .ts,.mjs,.astro --max-warnings 0",
     "lint:fix": "eslint src scripts --ext .ts,.mjs,.astro --max-warnings 0 --fix",
-    "a11y:lint": "sh -c 'eslint --config eslint.a11y.config.js src --format json --output-file a11y-results/eslint.json; s=$?; [ $s -le 1 ]'",
     "format": "prettier --write \"{src,scripts}/**/*.{ts,json,css,astro}\"",
     "format:check": "prettier --check \"{src,scripts}/**/*.{ts,json,css,astro}\"",
     "type-check": "astro check",
