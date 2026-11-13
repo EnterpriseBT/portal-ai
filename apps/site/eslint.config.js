@@ -19,8 +19,7 @@ export default [
   ...astro.configs.recommended,
   // Accessibility (#799, epic #791): eslint-plugin-astro's preset applies
   // jsx-a11y's strict rules to `.astro` files under the `astro/jsx-a11y/`
-  // prefix, gated by `lint`'s --max-warnings 0. `npm run a11y:lint` reads
-  // the same config for the inventory.
+  // prefix, gated by `lint`'s --max-warnings 0.
   ...astro.configs["flat/jsx-a11y-strict"],
   {
     files: ["src/**/*.ts"],

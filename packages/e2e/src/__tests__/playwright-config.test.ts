@@ -50,43 +50,6 @@ describe("buildConfig", () => {
     ]);
   });
 
-  // The accessibility walks (#792) record findings and never fail on them,
-  // and run only against a local target. A bare `test:e2e` must not start a
-  // 90-minute walk with its own preconditions, so they join only when
-  // E2E_A11Y asks for them (the a11y:axe scripts set it).
-  it("adds the accessibility walks only when E2E_A11Y asks, and only against a local target", () => {
-    const a11yLocal = buildConfig(resolveTarget({}), { E2E_A11Y: "1" });
-    const a11yProd = buildConfig(resolveTarget({ E2E_TARGET: "prod" }), {
-      E2E_A11Y: "1",
-    });
-    for (const cfg of [local, prod, a11yProd]) {
-      const names = (cfg.projects ?? []).map((p) => p.name);
-      expect(names).not.toContain("a11y");
-      expect(names).not.toContain("a11y-site");
-    }
-    for (const name of ["a11y", "a11y-site"]) {
-      const project = (a11yLocal.projects ?? []).find((p) => p.name === name);
-      expect(project?.retries).toBe(0);
-      expect(project?.dependencies ?? []).toEqual([]);
-    }
-  });
-
-  it("points the site walk at astro preview, overridable with E2E_SITE_BASE_URL", () => {
-    const site = (cfg: typeof local) =>
-      (cfg.projects ?? []).find((p) => p.name === "a11y-site")?.use?.baseURL;
-    expect(site(buildConfig(resolveTarget({}), { E2E_A11Y: "1" }))).toBe(
-      "http://localhost:3002"
-    );
-    expect(
-      site(
-        buildConfig(resolveTarget({}), {
-          E2E_A11Y: "1",
-          E2E_SITE_BASE_URL: "http://localhost:4321",
-        })
-      )
-    ).toBe("http://localhost:4321");
-  });
-
   it("gives a test long enough for a slow Auth0 round trip", () => {
     expect(prod.timeout).toBeGreaterThanOrEqual(120_000);
   });

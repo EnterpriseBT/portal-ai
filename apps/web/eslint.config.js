@@ -109,9 +109,8 @@ export default [
   },
   // Accessibility (#799, epic #791): jsx-a11y's strict rules gate `lint`
   // under --max-warnings 0, like every other rule here. Tests and stories
-  // render fixtures, not shipped markup; a11y:stories audits what the stories
-  // render instead. `npm run a11y:lint` reads the same config for the
-  // inventory (scripts/a11y-inventory.mjs counts only jsx-a11y rules).
+  // render fixtures, not shipped markup; a component's own test asserts axe
+  // on what it renders instead (component-axe.guard.test.ts).
   //
   // The `components` map tells jsx-a11y which MUI primitives always render a
   // native element. It's deliberately small: a wrong mapping invents findings.

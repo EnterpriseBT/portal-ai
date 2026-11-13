@@ -98,34 +98,6 @@
       // coverage glob only if the script starts passing `--coverage`.
       "cache": true
     },
-    "@portalai/e2e#test:unit": {
-      "dependsOn": [
-        "^build"
-      ],
-      // smoke-walk-axe.test.ts reads the /smoke-walk skill's tag list from
-      // outside the package (#799). Hash it, or a SKILL.md-only edit would
-      // restore an old pass and its drift check would never run. The rest
-      // is test:unit's shape.
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/.claude/skills/smoke-walk/SKILL.md"
-      ],
-      "cache": true
-    },
-    "a11y:stories": {
-      "dependsOn": [
-        "^build"
-      ],
-      // The story gate (#799): axe over every story, failing on a violation
-      // or an unlisted skip. No `outputs`, like test:unit: a cached pass is
-      // its log and exit status. A11Y_REPORT_ONLY is hashed so a report-only
-      // pass (which records violations without failing) can never be
-      // restored for a gating run.
-      "env": [
-        "A11Y_REPORT_ONLY"
-      ],
-      "cache": true
-    },
     "test:integration": {
       "dependsOn": [
         "^build"

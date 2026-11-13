@@ -2,9 +2,7 @@
  * Component-axe guard (#799, epic #791). Every `*.component.tsx` and
  * `*.layout.tsx` under `src/` that has a test of its own must run
  * `expectNoAxeViolations` in it, so a component can't ship an axe
- * regression that jsdom could have caught. The story sweep
- * (`npm run a11y:stories`) covers the states stories render; this covers
- * the states tests drive. The dialog guard's R6 applies the same rule to
+ * regression that jsdom could have caught. The dialog guard's R6 applies the same rule to
  * every component rendering a `Modal`, with or without a test.
  *
  * Pairing and detection live in `component-axe.util.ts`, shared with R6.

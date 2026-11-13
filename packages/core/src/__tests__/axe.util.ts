@@ -3,8 +3,8 @@ import jestAxe from "jest-axe";
 
 /**
  * jsdom has no layout or computed colour, and a component rendered on its own
- * sits in no landmark, so these two rules can only report noise here. The
- * browser walk (`npm run a11y:axe`, #792) measures them. Mirrors
+ * sits in no landmark, so these two rules can only report noise here.
+ * Contrast is held by `theme-contrast.test.ts` instead. Mirrors
  * `apps/web/src/__tests__/test-utils.tsx`; keep the two lists the same.
  */
 export const JSDOM_DISABLED_AXE_RULES = ["color-contrast", "region"] as const;

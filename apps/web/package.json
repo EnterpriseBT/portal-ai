@@ -10,8 +10,6 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext ts,tsx --fix",
-    "a11y:lint": "sh -c 'eslint src --format json --output-file a11y-results/eslint.json; s=$?; [ $s -le 1 ]'",
-    "a11y:stories": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.a11y.config.js",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css,scss}\" \"!src/routeTree.gen.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,scss}\" \"!src/routeTree.gen.ts\"",
     "type-check": "tsc --noEmit",

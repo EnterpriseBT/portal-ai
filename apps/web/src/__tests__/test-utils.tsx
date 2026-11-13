@@ -100,8 +100,8 @@ export async function pressEnter(element: HTMLElement): Promise<void> {
 
 /**
  * jsdom has no layout or computed colour, and a component rendered on its own
- * sits in no landmark, so these two rules can only report noise here. The
- * browser walk (`npm run a11y:axe`, #792) measures them. Mirrors
+ * sits in no landmark, so these two rules can only report noise here.
+ * Contrast is held by core's `theme-contrast.test.ts` instead. Mirrors
  * `packages/core/src/__tests__/axe.util.ts`; keep the two lists the same.
  */
 export const JSDOM_DISABLED_AXE_RULES = ["color-contrast", "region"] as const;

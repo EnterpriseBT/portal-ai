@@ -2,9 +2,7 @@
  * Component-axe guard (#799, epic #791). Every component under `src/ui/`
  * that has a test of its own (`src/__tests__/ui/<Name>.test.tsx`) must run
  * `expectNoAxeViolations` in it, so a component can't ship an axe
- * regression that jsdom could have caught. The story sweep
- * (`npm run a11y:stories`) covers the states stories render; this covers
- * the states tests drive.
+ * regression that jsdom could have caught.
  *
  * `AXE_EXEMPT` takes only a component jsdom can't render meaningfully,
  * with the reason. It starts empty and only shrinks. The floor stops the
