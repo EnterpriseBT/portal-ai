@@ -99,6 +99,12 @@ img {
   left: -9999px;
 }
 
+/* main takes focus only from the skip link (#798); it isn't a control, so
+   it doesn't draw the focus ring the way links and buttons do. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
 .skip-link:focus {
   left: var(--space-unit);
   top: var(--space-unit);

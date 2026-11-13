@@ -23,6 +23,8 @@ export default {
       "<rootDir>/../../packages/core/src/content/index.ts",
     "^@portalai/core/registries$":
       "<rootDir>/../../packages/core/src/registries/index.ts",
+    "^@portalai/core/constants$":
+      "<rootDir>/../../packages/core/src/constants/index.ts",
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   testMatch: [

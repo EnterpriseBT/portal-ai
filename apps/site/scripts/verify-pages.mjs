@@ -115,6 +115,17 @@ for (const page of pages) {
   const h1Count = (html.match(/<h1[\s>]/g) ?? []).length;
   if (h1Count !== 1) fail(`${route}: expected exactly one <h1>, found ${h1Count}`);
 
+  // ── skip link reaches a focusable main (#798) ─────────────────────
+  // A skip link whose target can't take focus leaves focus on <body>, and
+  // some screen reader / browser pairs then don't follow it.
+  if (html.includes('class="skip-link"')) {
+    const main = html.match(/<main\b[^>]*\bid="main"[^>]*>/)?.[0];
+    if (!main) fail(`${route}: skip link has no <main id="main"> to land on`);
+    else if (!/\btabindex="-1"/.test(main)) {
+      fail(`${route}: <main id="main"> can't take focus (needs tabindex="-1")`);
+    }
+  }
+
   // ── OG/Twitter ─────────────────────────────────────────────────────
   for (const property of ["og:title", "og:description", "og:url", "og:image"]) {
     if (!html.includes(`property="${property}"`)) {

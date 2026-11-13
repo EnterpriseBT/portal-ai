@@ -72,6 +72,27 @@ describe("generateTokensCss", () => {
     expect(css).not.toMatch(/--color-sheet-/);
   });
 
+  // #798 review: without JS no data-theme is set, and the page had no
+  // palette at all. It now follows the system preference.
+  it("styles a page without JS from the system preference", () => {
+    const css = generateTokensCss(readThemes());
+    const light = css.match(/:root\[data-theme="light"\] \{([^}]*)\}/)?.[1];
+    const dark = css.match(/:root\[data-theme="dark"\] \{([^}]*)\}/)?.[1];
+    const fallback = css.match(/:root:not\(\[data-theme\]\) \{([^}]*)\}/)?.[1];
+    const media = css.match(
+      /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\) \{([^}]*)\}/
+    )?.[1];
+    const norm = (block?: string) =>
+      block
+        ?.split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join("\n");
+    expect(light).toBeTruthy();
+    expect(norm(fallback)).toBe(norm(light));
+    expect(norm(media)).toBe(norm(dark));
+  });
+
   it("is deterministic — same input, byte-identical output", () => {
     expect(generateTokensCss(readThemes())).toBe(css);
   });
