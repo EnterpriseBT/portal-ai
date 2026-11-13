@@ -92,7 +92,8 @@ The FAQList and GlossaryList stories (`apps/web/src/stories/` or the components'
 ### 5. Story gate
 
 `apps/web/src/__tests__/__a11y__/stories.a11y.tsx` and `packages/core/src/__tests__/__a11y__/stories.a11y.tsx` change as follows:
-- **Allowlist:** each file holds `const SKIPPED: Record<string, string> = {}`. The key is `"<repo file>#<story>"` and the value is the reason. It starts empty and only shrinks.
+- **Web is sharded.** One test file took ~8 minutes in CI, so web's harness is `story-sweep.tsx`, which defines a shard. `stories-1…4.a11y.tsx` each sweep a round-robin quarter of the story files in parallel workers (`maxWorkers: "100%"`), and `gate-helpers.a11y.tsx` holds the helper fixtures plus a check that one file exists per shard. Each shard writes `a11y-results/stories.shard-<n>.json`; `jest.a11y.config.js`'s `globalSetup` (`scripts/a11y-stories.setup.mjs`) clears old results and its `globalTeardown` (`scripts/a11y-stories.teardown.mjs`) merges the shards into `stories.json`, sorted by file. Each shard gates its own runs, with `SKIPPED` filtered to its files. Core (17 seconds) stays one file.
+- **Allowlist:** each package holds `const SKIPPED: Record<string, string> = {}`. The key is `"<repo file>#<story>"` and the value is the reason. It starts empty and only shrinks.
 - **Results file:** written first, exactly as today.
 - **Then, unless `process.env.A11Y_REPORT_ONLY === "1"`:**
   - one `expect({ violating, unlistedSkips, staleSkips })` against three empty lists, so a failing run lists every problem at once (separate asserts stopped at the first);
