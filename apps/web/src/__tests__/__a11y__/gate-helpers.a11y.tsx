@@ -6,6 +6,9 @@ import { readdirSync } from "node:fs";
 import path from "node:path";
 
 import {
+  orphanedSkips,
+  repoStoryFiles,
+  SKIPPED,
   STORY_SHARDS,
   type RawRun,
   staleSkips,
@@ -73,5 +76,23 @@ describe("story gate helpers", () => {
         (_, i) => `stories-${i + 1}.a11y.tsx`
       ).sort()
     );
+  });
+
+  it("lists an allowlisted story whose file is gone", () => {
+    expect(
+      orphanedSkips(
+        {
+          "pkg/src/A.stories.tsx#Kept": "reason",
+          "pkg/src/Gone.stories.tsx#X": "reason",
+          "pkg/src/Gone.stories.tsx#*": "reason",
+        },
+        ["pkg/src/A.stories.tsx"]
+      )
+    ).toEqual(["pkg/src/Gone.stories.tsx#X", "pkg/src/Gone.stories.tsx#*"]);
+  });
+
+  it("allowlists no story whose file is gone", () => {
+    if (process.env.A11Y_REPORT_ONLY === "1") return;
+    expect(orphanedSkips(SKIPPED, repoStoryFiles())).toEqual([]);
   });
 });

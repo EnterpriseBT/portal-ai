@@ -17,7 +17,8 @@
  *
  * Since #799 each shard is a gate. After its results are written it fails
  * on any violation, on any skip not listed in `SKIPPED`, and on a `SKIPPED`
- * entry of its files whose story didn't skip, so the allowlist can't rot.
+ * entry of its files whose story didn't skip; `gate-helpers.a11y.tsx` fails on an
+ * entry whose story file is gone. So the allowlist can't rot.
  * `A11Y_REPORT_ONLY=1` (set by `npm run a11y:report`) records without
  * failing. It also fails when a shard found or rendered nothing: an empty
  * result isn't a clean one.
@@ -86,6 +87,25 @@ export function staleSkips(
 
 const PACKAGE_DIR = process.cwd();
 const REPO_ROOT = path.resolve(PACKAGE_DIR, "../..");
+
+/** Each allowlisted key whose story file isn't among `files` (repo paths).
+ *  No shard holds such a file, so no shard's `staleSkips` can see it. */
+export function orphanedSkips(
+  skipped: Record<string, string>,
+  files: string[]
+): string[] {
+  const known = new Set(files);
+  return Object.keys(skipped).filter(
+    (key) => !known.has(key.slice(0, key.lastIndexOf("#")))
+  );
+}
+
+/** Every story file in the package, as a repo path. */
+export function repoStoryFiles(): string[] {
+  return storyFiles().map((f) =>
+    path.relative(REPO_ROOT, f).split(path.sep).join("/")
+  );
+}
 const PACKAGE = path.relative(REPO_ROOT, PACKAGE_DIR);
 const RESULTS_DIR = path.join(PACKAGE_DIR, "a11y-results");
 

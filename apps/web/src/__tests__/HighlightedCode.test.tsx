@@ -112,20 +112,61 @@ describe("HighlightedCode", () => {
     expect(block.querySelector(".hljs-keyword")).toBeNull();
   });
 
-  it("is a focusable region named by its label, so a keyboard can scroll it (#799)", () => {
-    render(<HighlightedCode label="Result" code='{"x":1}' language="json" />);
-    const region = screen.getByRole("region", { name: "Result" });
-    expect(region.tagName).toBe("PRE");
-    expect(region).toHaveAttribute("tabindex", "0");
-    // Colours come from the theme's [data-code-block] rules (palette.code).
-    expect(region).toHaveAttribute("data-code-block");
-  });
+  describe("scrolling (#799)", () => {
+    // jsdom has no layout: every box measures 0 × 0. Overflow is faked by
+    // giving every element taller content than its box.
+    let restore: (() => void) | null = null;
+    const overflow = () => {
+      const scroll = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "scrollHeight"
+      )!;
+      Object.defineProperty(Element.prototype, "scrollHeight", {
+        configurable: true,
+        get: () => 500,
+      });
+      restore = () =>
+        Object.defineProperty(Element.prototype, "scrollHeight", scroll);
+    };
+    afterEach(() => {
+      restore?.();
+      restore = null;
+    });
 
-  it("takes keyboard focus", () => {
-    render(<HighlightedCode label="Result" code='{"x":1}' language="json" />);
-    const region = screen.getByRole("region", { name: "Result" });
-    region.focus();
-    expect(region).toHaveFocus();
+    it("is a focusable region named by its label while it overflows, so a keyboard can scroll it", () => {
+      overflow();
+      render(<HighlightedCode label="Result" code='{"x":1}' language="json" />);
+      const region = screen.getByRole("region", { name: "Result" });
+      expect(region.tagName).toBe("PRE");
+      expect(region).toHaveAttribute("tabindex", "0");
+      // Colours come from the theme's [data-code-block] rules (palette.code).
+      expect(region).toHaveAttribute("data-code-block");
+      region.focus();
+      expect(region).toHaveFocus();
+    });
+
+    it("is neither a region nor a tab stop when it fits", () => {
+      render(
+        <HighlightedCode
+          label="Result"
+          code='{"x":1}'
+          language="json"
+          data-testid="fits"
+        />
+      );
+      expect(screen.queryByRole("region", { name: "Result" })).toBeNull();
+      const block = screen.getByTestId("fits");
+      expect(block).not.toHaveAttribute("tabindex");
+      expect(block).not.toHaveAttribute("aria-label");
+    });
+
+    it("has no axe violations while it overflows", async () => {
+      overflow();
+      const { container } = render(
+        <HighlightedCode label="Result" code='{"x":1}' language="json" />
+      );
+      await expectNoAxeViolations(container);
+    });
   });
 
   it("has no axe violations", async () => {

@@ -98,6 +98,20 @@
       // coverage glob only if the script starts passing `--coverage`.
       "cache": true
     },
+    "@portalai/e2e#test:unit": {
+      "dependsOn": [
+        "^build"
+      ],
+      // smoke-walk-axe.test.ts reads the /smoke-walk skill's tag list from
+      // outside the package (#799). Hash it, or a SKILL.md-only edit would
+      // restore an old pass and its drift check would never run. The rest
+      // is test:unit's shape.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.claude/skills/smoke-walk/SKILL.md"
+      ],
+      "cache": true
+    },
     "a11y:stories": {
       "dependsOn": [
         "^build"

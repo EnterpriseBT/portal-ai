@@ -49,10 +49,12 @@ For each checkbox step, in document order:
 
 1. **Drive** the action described using the `mcp__playwright__*` tools — navigate, click, type, select, etc. Use the exact prompts/inputs/values the step names.
 2. **Observe** the externally-observable result the step asserts. Read the real value from the page (text, a rendered count, a URL, a disabled state) via a snapshot / DOM read — never assume.
-3. **Audit** the page with axe (#799). Every step that leaves the app on screen gets one `mcp__playwright__browser_run_code_unsafe` call, after observing and before the screenshot:
+3. **Audit** the page with axe (#799). Every step that leaves the app on screen gets one `mcp__playwright__browser_run_code_unsafe` call, after observing and before the screenshot. Pass this block as `code`, verbatim:
 
+   <!-- axe-tags:start -->
    ```js
    async (page) => {
+     const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
      await page.addScriptTag({ path: "/workspace/node_modules/axe-core/axe.min.js" });
      return await page.evaluate(async (values) => {
        const r = await window.axe.run(document, { runOnly: { type: "tag", values } });
@@ -60,14 +62,9 @@ For each checkbox step, in document order:
      }, TAGS);
    }
    ```
-
-   `TAGS` is this list, verbatim. It is the browser walks' `AXE_TAGS` (`packages/e2e/src/lib/a11y-walk.ts`), and `smoke-walk-axe.test.ts` fails CI if the two differ:
-
-   <!-- axe-tags:start -->
-   ```js
-   ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]
-   ```
    <!-- axe-tags:end -->
+
+   `TAGS` is the browser walks' `AXE_TAGS` (`packages/e2e/src/lib/a11y-walk.ts`), and `smoke-walk-axe.test.ts` fails CI if the two differ.
 
    Any violation makes the step a **mismatch**, whatever the step itself observed: the report row names each `rule · impact · first target`. A clean audit adds `axe: 0` to the row. A step that leaves a third-party page on screen (Auth0, Google, Stripe) isn't audited; its row says `axe: not run (<reason>)` and keeps its own classification.
 4. **Capture** a screenshot (`mcp__playwright__browser_take_screenshot`) into `packages/e2e/test-results/`. For steps that assert console/network behavior, also capture `mcp__playwright__browser_console_messages` / `mcp__playwright__browser_network_requests`.

@@ -23,12 +23,20 @@ const AXE_EXEMPT: Record<string, string> = {};
 /** The fewest paired components the scan may find (39 when written). */
 const PAIRED_FLOOR = 34;
 
+/**
+ * Comments, stripped where they open a line or follow whitespace or
+ * punctuation: a trailing line or block comment after code goes, while a
+ * string like "image/*" or "https://x" can't swallow the code after it.
+ * The same rule as web's `component-axe.util.ts`.
+ */
+const withoutComments = (source: string): string =>
+  source
+    .replace(/(^|[\s;,(){}[\]=])\/\*[\s\S]*?\*\//gm, "$1")
+    .replace(/(^|[\s;,(){}[\]=])\/\/.*$/gm, "$1");
+
 /** Whether a test source calls `expectNoAxeViolations(` outside a comment. */
 function runsAxe(source: string): boolean {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-  return /\bexpectNoAxeViolations\(/.test(code);
+  return /\bexpectNoAxeViolations\(/.test(withoutComments(source));
 }
 
 /** The tests among `tests` (file names in `src/__tests__/ui/`) that are the
@@ -64,6 +72,19 @@ describe("runsAxe", () => {
   it("ignores a call inside a line or block comment", () => {
     expect(runsAxe("// await expectNoAxeViolations(container);")).toBe(false);
     expect(runsAxe("/* expectNoAxeViolations(container) */")).toBe(false);
+  });
+
+  it("ignores a call in a trailing comment after code", () => {
+    expect(runsAxe("render(<X />); // expectNoAxeViolations(c)")).toBe(false);
+    expect(runsAxe("doX(); /* expectNoAxeViolations(c) */")).toBe(false);
+  });
+
+  it("keeps a call after a string holding `/*`", () => {
+    expect(
+      runsAxe(
+        'const accept = "image/*";\nawait expectNoAxeViolations(c);\n// */'
+      )
+    ).toBe(true);
   });
 
   it("keeps code after a URL's `//`", () => {

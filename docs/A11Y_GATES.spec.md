@@ -60,7 +60,7 @@ export interface CodePalette {
 `apps/web/src/components/HighlightedCode.component.tsx`:
 - **Colours:** the inline `tokenColors` objects, the `isDark` branch and the `action.hover` background are removed. The `pre` carries `data-code-block`, and core's `codeBlockRules(palette, ring)` (`ui/ThemeProvider.tsx`, spread into `MuiCssBaseline` like `sheetCanvasRules`) colours it from `palette.code`: background, text, each highlight.js token class, and the inset focus ring. Nothing in `apps/web` styles a colour.
 - **New required prop:** `label: string`. It names the scroll region ("Result", "Metadata", "Request body"…), so the type checker forces every caller to name its block.
-- **The `pre`:** renders `tabIndex={0}`, `role="region"` and `aria-label={label}`. Its focus ring is `codeBlockRules`' `:focus-visible` rule, never an `sx` outline.
+- **The `pre`:** while it overflows (`useScrollOverflow`, `utils/use-scroll-overflow.util.ts`: axe's own scroll comparison, re-measured on resize and on new `code`) it renders `tabIndex={0}`, `role="region"` and `aria-label={label}`; a block that fits is none of these, so short snippets add no tab stops or landmarks (code review). Callers make `label` distinct on its page (`${tool.name} parameters`, `Signature verification, TypeScript: example`). Its focus ring is `codeBlockRules`' `:focus-visible` rule, never an `sx` outline.
 - **Callers that pass `label`:**
   - `JobDetail.view.tsx` (Result and Metadata);
   - `PreviewPane.component.tsx`;

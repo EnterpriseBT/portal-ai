@@ -4,12 +4,14 @@
  * not a test file: importing a test file would register its tests twice.
  */
 
-// A block comment only counts where it opens a line or a JSX expression, so
-// a string like "image/*" can't swallow the code up to the next `*/`.
+// A comment counts where it opens a line or follows whitespace or
+// punctuation, so a trailing `// …` or `/* … */` after code is stripped,
+// while a string like "image/*" or "https://x" (a letter or `:` before
+// the slashes) can't swallow the code after it.
 export const withoutComments = (source: string): string =>
   source
-    .replace(/(^[ \t]*|\{)\/\*[\s\S]*?\*\//gm, "$1")
-    .replace(/^\s*\/\/.*$/gm, "");
+    .replace(/(^|[\s;,(){}[\]=])\/\*[\s\S]*?\*\//gm, "$1")
+    .replace(/(^|[\s;,(){}[\]=])\/\/.*$/gm, "$1");
 
 /** Whether a test source runs the shared axe assertion. */
 export function runsAxe(source: string): boolean {

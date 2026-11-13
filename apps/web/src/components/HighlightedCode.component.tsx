@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
@@ -13,6 +13,8 @@ import typescript from "highlight.js/lib/languages/typescript";
 import python from "highlight.js/lib/languages/python";
 import csharp from "highlight.js/lib/languages/csharp";
 import json from "highlight.js/lib/languages/json";
+
+import { useScrollOverflow } from "../utils/use-scroll-overflow.util";
 
 // Register only the languages we actually highlight. Each grammar is
 // a few KB; keeping the list tight keeps the bundle small. Add new
@@ -35,8 +37,10 @@ export interface HighlightedCodeProps {
   code: string;
   /**
    * Names the block for assistive technology ("Result", "Request body").
-   * The block scrolls, so it's a focusable region a keyboard user can
-   * scroll with the arrow keys, and a region needs a name (#799).
+   * While the block scrolls it's a focusable region a keyboard user can
+   * scroll with the arrow keys, and a region needs a name (#799). Make it
+   * distinct on its page ("get_weather parameters", not "Parameters"), so
+   * two scrolling blocks are never two regions with one name.
    */
   label: string;
   /**
@@ -62,7 +66,9 @@ export interface HighlightedCodeProps {
  * `highlight.js`. Its colours, the highlight.js token classes included,
  * come from the theme's `[data-code-block]` rules over `palette.code`
  * (`@portalai/core`), where each is held at AA in both themes (#799).
- * The block is a named, focusable region, since it scrolls.
+ * While the block overflows it's a named, focusable region, so a keyboard
+ * can scroll it; a block that fits is neither, so short snippets add no
+ * tab stops or landmarks.
  *
  * Pass `language` to opt in to highlighting; omit it to fall back to
  * plain monospace. Unsupported languages also render plain — the
@@ -79,6 +85,8 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
 }) => {
   const theme = useTheme();
   const [copied, setCopied] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
+  const scrolls = useScrollOverflow(preRef, code);
 
   const handleCopy = async () => {
     try {
@@ -105,11 +113,12 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
     <Box sx={{ position: "relative" }}>
       <Box
         component="pre"
+        ref={preRef}
         data-testid={testId}
         data-code-block=""
-        role="region"
-        aria-label={label}
-        tabIndex={0}
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls ? label : undefined}
+        tabIndex={scrolls ? 0 : undefined}
         sx={{
           fontSize,
           fontFamily:

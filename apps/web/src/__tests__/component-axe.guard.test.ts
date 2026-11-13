@@ -47,6 +47,14 @@ describe("the guard's own rules (fixtures)", () => {
     expect(runsAxe("import { expectNoAxeViolations } from './x';")).toBe(false);
   });
 
+  it("ignores a call in a trailing comment after code", () => {
+    expect(runsAxe("render(<X />); // expectNoAxeViolations(c)")).toBe(false);
+    expect(runsAxe("doX(); /* expectNoAxeViolations(c) */")).toBe(false);
+    expect(
+      runsAxe('const u = "https://x"; await expectNoAxeViolations(c);')
+    ).toBe(true);
+  });
+
   it("keeps a call after a string holding `/*`", () => {
     expect(
       runsAxe(
