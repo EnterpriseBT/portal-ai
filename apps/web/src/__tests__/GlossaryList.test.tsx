@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 import React from "react";
 import type { GlossaryEntry } from "@portalai/core/content";
 
-const { render, screen, within } = await import("./test-utils");
+const { render, screen, within, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { GlossaryList } = await import("../components/GlossaryList.component");
 const { GlossaryCategory } = await import("@portalai/core/content");
@@ -249,5 +250,18 @@ describe("GlossaryList expansion", () => {
 
     unmount();
     expect(registerEntryRef).toHaveBeenCalledWith("station", null);
+  });
+});
+
+describe("GlossaryList accessibility", () => {
+  it("has no axe violations with an entry expanded", async () => {
+    const { container } = render(
+      <ControlledGlossaryList
+        onSelectTerm={jest.fn()}
+        initialExpanded={["connector-instance"]}
+      />
+    );
+    expect(screen.getByText(fixture[0].definition)).toBeVisible();
+    await expectNoAxeViolations(container);
   });
 });

@@ -2,10 +2,12 @@ import { jest } from "@jest/globals";
 import React from "react";
 import type { FAQEntry } from "@portalai/core/content";
 
-const { render, screen, within } = await import("./test-utils");
+const { render, screen, within, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { FAQList } = await import("../components/FAQList.component");
-const { FAQCategory } = await import("@portalai/core/content");
+const { FAQCategory, contentEntrySlug } =
+  await import("@portalai/core/content");
 
 const fixture: FAQEntry[] = [
   {
@@ -248,5 +250,19 @@ describe("FAQList expansion", () => {
       "what-do-job-statuses-mean",
       null
     );
+  });
+});
+
+describe("FAQList accessibility", () => {
+  it("has no axe violations, grouped with an entry expanded", async () => {
+    const { container } = render(
+      <ControlledFAQList
+        groupByCategory
+        onSelectTerm={jest.fn()}
+        initialExpanded={[contentEntrySlug(fixture[0].question)]}
+      />
+    );
+    expect(screen.getByText(fixture[0].answer)).toBeVisible();
+    await expectNoAxeViolations(container);
   });
 });

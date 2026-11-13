@@ -15,7 +15,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { FieldMappingDataList } =
   await import("../components/FieldMapping.component");
 type FieldMappingDataListProps =
@@ -103,5 +103,32 @@ describe("FieldMappingDataList", () => {
 
     expect(childrenFn).toHaveBeenCalled();
     expect(screen.getByText("empty-content")).toBeInTheDocument();
+  });
+});
+
+describe("FieldMappingDataList accessibility", () => {
+  it("has no axe violations rendering its children's list", async () => {
+    currentListQuery = {
+      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+      isSuccess: true,
+    } as Partial<ListQuery>;
+    const { container } = render(
+      <FieldMappingDataList
+        query={{
+          columnDefinitionId: "cd-1",
+          limit: 10,
+          offset: 0,
+          sortBy: "created",
+          sortOrder: "asc",
+        }}
+      >
+        {(res) => (
+          <ul aria-label="Field mappings">
+            <li>{res.data?.total ?? 0} mappings</li>
+          </ul>
+        )}
+      </FieldMappingDataList>
+    );
+    await expectNoAxeViolations(container);
   });
 });

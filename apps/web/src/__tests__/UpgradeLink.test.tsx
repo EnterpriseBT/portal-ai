@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { UpgradeLink } from "../components/UpgradeLink.component";
 import { UPGRADE_CTA_LABEL } from "../utils/tool-packs.util";
 
@@ -9,5 +9,10 @@ describe("UpgradeLink (#284)", () => {
     const link = screen.getByRole("link", { name: UPGRADE_CTA_LABEL });
     // One shared destination so every unentitled affordance agrees.
     expect(link).toHaveAttribute("href", "/settings?tab=billing");
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<UpgradeLink />);
+    await expectNoAxeViolations(container);
   });
 });

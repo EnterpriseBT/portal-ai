@@ -30,7 +30,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, waitFor, within } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, waitFor, within } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const {
   SubscriptionBilling,
@@ -423,6 +424,38 @@ describe("SubscriptionBillingUI — server error", () => {
   it("renders no alert when serverError is null", () => {
     render(<SubscriptionBillingUI {...baseUIProps} serverError={null} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+// ── #799: axe ────────────────────────────────────────────────────────
+
+describe("SubscriptionBillingUI — accessibility", () => {
+  it("has no axe violations, unsubscribed with a contact tier and a server error", async () => {
+    const { container } = render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, proTier, contactTier]}
+        serverError={{
+          message: "Checkout failed",
+          code: "BILLING_CHECKOUT_FAILED",
+        }}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations, subscribed with a payment processing", async () => {
+    const { container } = render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        state="subscribed"
+        currentTierName="Pro"
+        currentTierSlug="pro"
+        tiers={[standardTier, proTier, scaleTier]}
+        paymentProcessing
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });
 

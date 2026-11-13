@@ -22,7 +22,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const {
   ColumnDefinitionDataList,
   ColumnDefinitionDataItem,
@@ -212,5 +212,20 @@ describe("ColumnDefinitionCardUI", () => {
     expect(
       screen.queryByRole("button", { name: /delete/i })
     ).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations as a linked custom card with Delete", async () => {
+    const cd = makeColumnDefinition({
+      system: false,
+      description: "User email",
+    });
+    const { container } = render(
+      <ColumnDefinitionCardUI
+        columnDefinition={cd}
+        href={`/column-definitions/${cd.id}`}
+        onDelete={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

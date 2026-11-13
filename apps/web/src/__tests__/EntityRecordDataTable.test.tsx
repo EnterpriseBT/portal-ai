@@ -32,7 +32,7 @@ jest.unstable_mockModule(
   })
 );
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { EntityRecordDataTableUI } =
   await import("../components/EntityRecordDataTable.component");
 
@@ -462,5 +462,31 @@ describe("EntityRecordDataTableUI", () => {
     );
     expect(screen.queryByText("email")).not.toBeInTheDocument();
     localStorage.clear();
+  });
+
+  it("has no axe violations with linked, sortable rows", async () => {
+    const { container } = render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        source="cache"
+        onSort={jest.fn()}
+        rowHref={(row) => `/records/${String(row.first_name)}`}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the empty state", async () => {
+    const { container } = render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[]}
+        columns={[]}
+        source="cache"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

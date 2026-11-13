@@ -28,7 +28,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: {},
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { PortalHeaderMeta, PortalHeaderMetaUI } =
   await import("../components/PortalHeaderMeta.component");
 
@@ -289,6 +290,37 @@ describe("PortalHeaderMeta", () => {
       expect(
         screen.queryByTestId("portal-header-station-unavailable")
       ).not.toBeInTheDocument();
+    });
+    it("has no axe violations with the station, a locked view and usage", async () => {
+      const station = {
+        ...stationFixture.station,
+        views: [
+          ...stationFixture.station.views,
+          {
+            ...stationFixture.station.views[0],
+            id: "sv-2",
+            curatedViewId: "cv-2",
+            curatedView: { id: "cv-2", key: "pay", label: "Payroll" },
+            canRead: false,
+          },
+        ],
+      };
+      const { container } = render(
+        <PortalHeaderMetaUI {...uiProps} station={station as never} />
+      );
+      await expectNoAxeViolations(container);
+    });
+
+    it("has no axe violations expanded on mobile", async () => {
+      const { container } = render(
+        <PortalHeaderMetaUI
+          {...uiProps}
+          station={stationFixture.station as never}
+          isMobile
+          expanded
+        />
+      );
+      await expectNoAxeViolations(container);
     });
   });
 

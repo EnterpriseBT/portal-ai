@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { PendingInvitationListUI } from "../components/PendingInvitationList.component";
 import type { InvitationResponse } from "@portalai/core/contracts";
 
@@ -83,5 +83,26 @@ describe("PendingInvitationListUI", () => {
       />
     );
     expect(screen.getByText("Expired")).toBeInTheDocument();
+  });
+});
+
+describe("PendingInvitationListUI accessibility", () => {
+  it("has no axe violations with an active and an expired invitation", async () => {
+    const { container } = render(
+      <PendingInvitationListUI
+        invitations={[
+          invite(),
+          invite({
+            id: "inv-2",
+            email: "late@example.com",
+            expiresAt: NOW - 1000,
+          }),
+        ]}
+        onResend={jest.fn()}
+        onRevoke={jest.fn()}
+        now={NOW}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

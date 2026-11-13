@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { RouterLink } from "../components/RouterLink.component";
 
 // #794: core renders links with whatever component the app passes; this is
@@ -10,5 +10,12 @@ describe("RouterLink", () => {
       "href",
       "/entities/ent-1"
     );
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <RouterLink href="/entities/ent-1">Customers</RouterLink>
+    );
+    await expectNoAxeViolations(container);
   });
 });

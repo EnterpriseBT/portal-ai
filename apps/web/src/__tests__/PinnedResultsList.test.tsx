@@ -4,7 +4,8 @@ import type { PortalResultListResponsePayload } from "@portalai/core/contracts";
 type PortalResultWithIncludes =
   PortalResultListResponsePayload["portalResults"][number];
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { PinnedResultCardUI, PinnedResultsListUI } =
   await import("../components/PinnedResultsList.component");
 
@@ -233,5 +234,42 @@ describe("PinnedResultCardUI gates (#690)", () => {
       />
     );
     expect(screen.queryByRole("button", { name: "Unpin" })).toBeNull();
+  });
+});
+
+describe("PinnedResultsListUI accessibility", () => {
+  it("has no axe violations with mixed pins", async () => {
+    const { container } = render(
+      <PinnedResultsListUI
+        results={[
+          result1,
+          result2,
+          d3Result,
+          makePinnedResult({
+            id: "result-geo-shared",
+            name: "Parcel Map",
+            type: "geo",
+            content: { layers: [] },
+            viewerIsDefiner: false,
+            definer: { id: "user-2", displayName: "Other User" },
+            capabilities: {
+              read: true,
+              write: false,
+              delete: false,
+              share: false,
+            },
+          }),
+        ]}
+        onUnpin={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations when empty", async () => {
+    const { container } = render(
+      <PinnedResultsListUI results={[]} onUnpin={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DefaultStationCardUI } =
   await import("../components/DefaultStationCard.component");
 
@@ -115,5 +116,17 @@ describe("DefaultStationCardUI", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Go to Stations" }));
     expect(onChangeDefault).toHaveBeenCalled();
+  });
+
+  it("has no axe violations with a station", async () => {
+    const { container } = render(<DefaultStationCardUI {...defaultProps} />);
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the empty state", async () => {
+    const { container } = render(
+      <DefaultStationCardUI {...defaultProps} station={null} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

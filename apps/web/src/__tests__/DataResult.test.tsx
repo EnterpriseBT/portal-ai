@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { render, screen, expectNoAxeViolations } from "./test-utils";
 import {
   DataResult,
   QueryResultLike,
@@ -318,5 +318,17 @@ describe("DataResult page title (#797)", () => {
       <DataResult results={{ item: loadingQuery() }}>{() => null}</DataResult>
     );
     expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["loading", loadingQuery()],
+    ["error", errorQuery("Boom")],
+  ])("has no axe violations while %s", async (_state, query) => {
+    const { container } = render(
+      <DataResult pageTitle="Job" results={{ item: query }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    await expectNoAxeViolations(container);
   });
 });

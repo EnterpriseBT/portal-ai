@@ -3,7 +3,8 @@ import type { PortalListResponsePayload } from "@portalai/core/contracts";
 
 type PortalWithIncludes = PortalListResponsePayload["portals"][number];
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent } =
+  await import("./test-utils");
 const { RecentPortalsListUI } =
   await import("../components/RecentPortalsList.component");
 
@@ -168,5 +169,10 @@ describe("RecentPortalsListUI", () => {
       />
     );
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<RecentPortalsListUI {...defaultProps} />);
+    await expectNoAxeViolations(container);
   });
 });

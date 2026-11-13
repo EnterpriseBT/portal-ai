@@ -1,4 +1,4 @@
-const { render, screen } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen } = await import("./test-utils");
 const { StationAttachmentAlertsUI } =
   await import("../components/StationAttachmentAlerts.component");
 
@@ -29,5 +29,12 @@ describe("StationAttachmentAlertsUI (#674)", () => {
   it("renders nothing when both kinds are attached", () => {
     render(<StationAttachmentAlertsUI viewCount={1} connectorCount={1} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <StationAttachmentAlertsUI viewCount={0} connectorCount={0} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

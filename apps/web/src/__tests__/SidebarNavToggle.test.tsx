@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { expectNoAxeViolations, render, screen, fireEvent } from "./test-utils";
 import { IconName } from "@portalai/core/ui";
 import {
   SidebarNavToggleUI,
@@ -143,5 +143,20 @@ describe("SidebarNavToggleUI Escape (#797)", () => {
       key: "Escape",
     });
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("has no axe violations, controlling the nav it toggles", async () => {
+    const { container } = render(
+      <>
+        <SidebarNavToggleUI
+          variant="full"
+          collapsed={false}
+          onClick={jest.fn()}
+          controlsId="primary-nav"
+        />
+        <nav id="primary-nav" aria-label="Primary" />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

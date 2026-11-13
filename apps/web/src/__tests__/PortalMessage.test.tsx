@@ -80,7 +80,8 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 // ── Imports ──────────────────────────────────────────────────────────
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent, waitFor } =
+  await import("./test-utils");
 const { QueryClient } = await import("@tanstack/react-query");
 const { ToastContext } = await import("../utils/toast.context");
 const { registerBlockRenderer } = await import("@portalai/core");
@@ -748,6 +749,46 @@ describe("PortalMessageUI", () => {
       expect(
         screen.getByRole("button", { name: /unpin result/i })
       ).toBeInTheDocument();
+    });
+  });
+
+  describe("accessibility (#799)", () => {
+    it("has no axe violations: a user message and an assistant message with a pinned and an unpinned block", async () => {
+      const userMessage = makeMessage({
+        id: "msg-0",
+        role: "user",
+        blocks: [{ type: "text", content: "Show me the customers" }],
+      });
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "Here is your answer" },
+          {
+            type: "data-table",
+            content: { columns: ["name"], rows: [{ name: "Alice" }] },
+          },
+        ],
+      });
+      const { container } = render(
+        <>
+          <PortalMessageUI
+            canPin
+            message={userMessage}
+            pinnedBlocks={new Map()}
+            onPin={jest.fn(async () => {})}
+            onUnpin={jest.fn()}
+          />
+          <PortalMessageUI
+            canPin
+            message={message}
+            pinnedBlocks={new Map([[`${message.id}:0`, "pr-1"]])}
+            onPin={jest.fn(async () => {})}
+            onUnpin={jest.fn()}
+          />
+        </>
+      );
+      expect(await screen.findByText("Alice")).toBeInTheDocument();
+      await expectNoAxeViolations(container);
     });
   });
 });

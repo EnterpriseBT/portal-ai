@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { FilterSqlEditorUI } =
   await import("../components/FilterSqlEditor.component");
@@ -120,5 +120,19 @@ describe("FilterSqlEditorUI (#644)", () => {
     expect(
       screen.getByText(/no longer includes SQL filters/)
     ).toBeInTheDocument();
+  });
+});
+
+describe("FilterSqlEditorUI accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<FilterSqlEditorUI {...props()} />);
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with a field error showing", async () => {
+    const { container } = render(
+      <FilterSqlEditorUI {...props()} touched error="Filter is required" />
+    );
+    await expectNoAxeViolations(container);
   });
 });
