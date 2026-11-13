@@ -4,11 +4,15 @@
  *
  * Every story in this package is composed, rendered in jsdom through
  * `test-utils`' provider stack, and checked with axe (WCAG 2.2 AA and best
- * practice, minus the rules jsdom can't evaluate). Violations are recorded
- * in `a11y-results/stories.json` for `scripts/a11y-inventory.mjs`, never
- * asserted. A story that can't load or render is recorded as skipped with
- * its error, so it shows up as a coverage gap instead of disappearing. The
- * one assertion is that the sweep found and rendered something: an empty
+ * practice, minus the rules jsdom can't evaluate). Every run is recorded
+ * in `a11y-results/stories.json` for `scripts/a11y-inventory.mjs`. A story that can't load or render is recorded as skipped with
+ * its error, so it shows up as a coverage gap instead of disappearing.
+ *
+ * Since #799 the sweep is a gate. After the results file is written it fails
+ * on any violation, on any skip not listed in `SKIPPED`, and on a `SKIPPED`
+ * entry whose story now renders, so the allowlist can't rot.
+ * `A11Y_REPORT_ONLY=1` (set by `npm run a11y:report`) records without
+ * failing. It also fails when the sweep found or rendered nothing: an empty
  * result isn't a clean one.
  */
 import type React from "react";
@@ -31,6 +35,40 @@ interface RawRun {
     tags: string[];
     nodes: { target: string[] }[];
   }[];
+}
+
+/**
+ * Stories the sweep may skip, keyed `"<repo file>#<story>"` (`#*` for a
+ * module that fails to load), each with the reason it can't render in jsdom.
+ * Empty, and it only shrinks: a new entry needs a reason a reviewer accepts.
+ */
+const SKIPPED: Record<string, string> = {};
+
+const runKey = (r: RawRun): string => `${r.context.file}#${r.context.story}`;
+
+/** Each rendered story with violations, with its rule ids. */
+function violatingRuns(runs: RawRun[]): string[] {
+  return runs
+    .filter((r) => r.status === "ok" && r.violations.length > 0)
+    .map((r) => `${runKey(r)}: ${r.violations.map((v) => v.id).join(", ")}`);
+}
+
+/** Each skipped story the allowlist doesn't name, with its error. */
+function unlistedSkips(
+  runs: RawRun[],
+  skipped: Record<string, string>
+): string[] {
+  return runs
+    .filter((r) => r.status === "skipped" && !(runKey(r) in skipped))
+    .map((r) => `${runKey(r)}: ${r.error ?? "unknown error"}`);
+}
+
+/** Each allowlisted story that didn't skip: it renders now, or is gone. */
+function staleSkips(runs: RawRun[], skipped: Record<string, string>): string[] {
+  const stillSkipped = new Set(
+    runs.filter((r) => r.status === "skipped").map(runKey)
+  );
+  return Object.keys(skipped).filter((key) => !stillSkipped.has(key));
 }
 
 const PACKAGE_DIR = process.cwd();
@@ -168,4 +206,61 @@ it("sweeps every story with axe", async () => {
   );
   expect(runs.length).toBeGreaterThan(0);
   expect(ok).toBeGreaterThan(0);
+  if (process.env.A11Y_REPORT_ONLY === "1") return;
+  // One assertion, so a failing run lists every problem at once.
+  expect({
+    violating: violatingRuns(runs),
+    unlistedSkips: unlistedSkips(runs, SKIPPED),
+    staleSkips: staleSkips(runs, SKIPPED),
+  }).toEqual({ violating: [], unlistedSkips: [], staleSkips: [] });
+});
+
+describe("gate helpers", () => {
+  const run = (
+    story: string,
+    status: RawRun["status"],
+    ids: string[] = [],
+    error?: string
+  ): RawRun => ({
+    context: { file: "pkg/src/A.stories.tsx", story },
+    status,
+    error,
+    violations: ids.map((id) => ({
+      id,
+      impact: "serious",
+      tags: [],
+      nodes: [],
+    })),
+  });
+
+  it("lists a rendered story with violations, with its rule ids", () => {
+    expect(
+      violatingRuns([
+        run("Clean", "ok"),
+        run("Bad", "ok", ["button-name", "label"]),
+        run("Broken", "skipped", [], "boom"),
+      ])
+    ).toEqual(["pkg/src/A.stories.tsx#Bad: button-name, label"]);
+  });
+
+  it("lists a skip the allowlist doesn't name", () => {
+    const runs = [
+      run("Listed", "skipped", [], "a"),
+      run("New", "skipped", [], "b"),
+    ];
+    expect(
+      unlistedSkips(runs, { "pkg/src/A.stories.tsx#Listed": "reason" })
+    ).toEqual(["pkg/src/A.stories.tsx#New: b"]);
+  });
+
+  it("lists an allowlisted story that renders now or is gone", () => {
+    const runs = [run("Fixed", "ok"), run("Still", "skipped", [], "x")];
+    expect(
+      staleSkips(runs, {
+        "pkg/src/A.stories.tsx#Fixed": "reason",
+        "pkg/src/A.stories.tsx#Still": "reason",
+        "pkg/src/A.stories.tsx#Gone": "reason",
+      })
+    ).toEqual(["pkg/src/A.stories.tsx#Fixed", "pkg/src/A.stories.tsx#Gone"]);
+  });
 });

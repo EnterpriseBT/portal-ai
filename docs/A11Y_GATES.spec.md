@@ -78,7 +78,7 @@ The FAQList and GlossaryList stories (`apps/web/src/stories/` or the components'
   - `files: ["src/**/*.tsx"]`;
   - the same `ignores` (tests, stories);
   - `plugins: { "jsx-a11y": jsxA11y }`;
-  - `jsxA11y.flatConfigs.strict.rules`. Web adds the `no-noninteractive-element-interactions` `form: ["onKeyDown"]` override; core has no override.
+  - `jsxA11y.flatConfigs.strict.rules`. Web adds the `no-noninteractive-element-interactions` `form: ["onKeyDown"]` override, and `no-noninteractive-tabindex` with `roles: ["tabpanel", "region"]` (a scrollable region needs a tab stop, WCAG 2.1.1 and axe's `scrollable-region-focusable`; `HighlightedCode` is the case); core has no override.
   - `settings["jsx-a11y"] = { polymorphicPropName: "component", components: { Button: "button", IconButton: "button" } }`.
 - **`apps/site/eslint.config.js`** spreads `...astro.configs["flat/jsx-a11y-strict"]` after `...astro.configs.recommended`.
 - **Deleted:** `apps/web/eslint.a11y.config.js`, `packages/core/eslint.a11y.config.js`, `apps/site/eslint.a11y.config.js`.
@@ -95,14 +95,15 @@ The FAQList and GlossaryList stories (`apps/web/src/stories/` or the components'
 - **Allowlist:** each file holds `const SKIPPED: Record<string, string> = {}`. The key is `"<repo file>#<story>"` and the value is the reason. It starts empty and only shrinks.
 - **Results file:** written first, exactly as today.
 - **Then, unless `process.env.A11Y_REPORT_ONLY === "1"`:**
-  - `expect(violating).toEqual([])`, where each entry is `"<file>#<story>: <rule ids>"`;
-  - `expect(unlistedSkips).toEqual([])`, where each entry is `"<file>#<story>: <error>"`;
-  - `expect(staleSkips).toEqual([])`, where each entry is a `SKIPPED` key that now renders ok, so the allowlist can't rot.
+  - one `expect({ violating, unlistedSkips, staleSkips })` against three empty lists, so a failing run lists every problem at once (separate asserts stopped at the first);
+  - `violating`: each entry is `"<file>#<story>: <rule ids>"`;
+  - `unlistedSkips`: each entry is `"<file>#<story>: <error>"`;
+  - `staleSkips`: each `SKIPPED` key that didn't skip (it renders now, or is gone), so the allowlist can't rot.
 - **Unchanged:** the existing `runs > 0` and `ok > 0` assertions stay.
 
 Wiring:
 - **Root `package.json`:** `a11y:report`'s story step becomes `A11Y_REPORT_ONLY=1 npm run a11y:stories -w @portalai/web -w @portalai/core`, using the env prefix the shell already supports in that npm script.
-- **`turbo.json`:** a new `a11y:stories` task with `dependsOn: ["^build"]`, `cache: true` and no outputs, the same shape as `test:unit`. Root `package.json` adds `"a11y:stories": "turbo run a11y:stories"`.
+- **`turbo.json`:** a new `a11y:stories` task with `dependsOn: ["^build"]`, `cache: true` and no outputs, the same shape as `test:unit`, plus `env: ["A11Y_REPORT_ONLY"]` so a report-only pass is never restored for a gating run. Root `package.json` adds `"a11y:stories": "turbo run a11y:stories"`.
 - **`.github/workflows/unit-test.yml`:** two steps before "Run unit tests":
   - `Check the a11y inventory script` → `npm run lint:a11y-inventory`;
   - `Run axe over every story` → `npm run a11y:stories`.

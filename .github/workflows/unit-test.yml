@@ -122,5 +122,18 @@ jobs:
       - name: Check migrations for unacknowledged destructive DDL
         run: npm run lint:migrations
 
+      # Self-tests the accessibility inventory's parsers and rules against
+      # embedded fixtures (#799), so `npm run a11y:report` can't silently
+      # miscount what docs/A11Y_AUDIT.md lists.
+      - name: Check the a11y inventory script
+        run: npm run lint:a11y-inventory
+
+      # Renders every Storybook story in web and core and runs axe over it
+      # (#799). Fails on any violation, on a story that can't render unless
+      # its harness's SKIPPED list names it with a reason, and on a stale
+      # SKIPPED entry. Cached by turbo like test:unit.
+      - name: Run axe over every story
+        run: npm run a11y:stories
+
       - name: Run unit tests
         run: npm run test:unit
