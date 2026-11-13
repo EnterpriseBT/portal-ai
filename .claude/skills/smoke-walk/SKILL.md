@@ -49,8 +49,29 @@ For each checkbox step, in document order:
 
 1. **Drive** the action described using the `mcp__playwright__*` tools — navigate, click, type, select, etc. Use the exact prompts/inputs/values the step names.
 2. **Observe** the externally-observable result the step asserts. Read the real value from the page (text, a rendered count, a URL, a disabled state) via a snapshot / DOM read — never assume.
-3. **Capture** a screenshot (`mcp__playwright__browser_take_screenshot`) into `packages/e2e/test-results/`. For steps that assert console/network behavior, also capture `mcp__playwright__browser_console_messages` / `mcp__playwright__browser_network_requests`.
-4. **Classify** the step (see rules below).
+3. **Audit** the page with axe (#799). Every step that leaves the app on screen gets one `mcp__playwright__browser_run_code_unsafe` call, after observing and before the screenshot:
+
+   ```js
+   async (page) => {
+     await page.addScriptTag({ path: "/workspace/node_modules/axe-core/axe.min.js" });
+     return await page.evaluate(async (values) => {
+       const r = await window.axe.run(document, { runOnly: { type: "tag", values } });
+       return r.violations.map((v) => `${v.id} · ${v.impact} · ${v.nodes[0]?.target.join(" ")}`);
+     }, TAGS);
+   }
+   ```
+
+   `TAGS` is this list, verbatim. It is the browser walks' `AXE_TAGS` (`packages/e2e/src/lib/a11y-walk.ts`), and `smoke-walk-axe.test.ts` fails CI if the two differ:
+
+   <!-- axe-tags:start -->
+   ```js
+   ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"]
+   ```
+   <!-- axe-tags:end -->
+
+   Any violation makes the step a **mismatch**, whatever the step itself observed: the report row names each `rule · impact · first target`. A clean audit adds `axe: 0` to the row. A step that leaves a third-party page on screen (Auth0, Google, Stripe) isn't audited; its row says `axe: not run (<reason>)` and keeps its own classification.
+4. **Capture** a screenshot (`mcp__playwright__browser_take_screenshot`) into `packages/e2e/test-results/`. For steps that assert console/network behavior, also capture `mcp__playwright__browser_console_messages` / `mcp__playwright__browser_network_requests`.
+5. **Classify** the step (see rules below).
 
 Do not stop the walk on a single step's `mismatch` — record it and continue, so the report covers the whole checklist. Only a **preflight** failure or a genuinely blocked navigation (can't proceed further) halts the walk; say so in the report.
 
@@ -65,8 +86,9 @@ Preflight: stack ✓ · auth ✓ · fixture ✓
 Branch: <branch> · walked: <count> steps
 
 ## §1 — <section name>
-- <step text> → **verified** · observed: <the real value read> · shot: test-results/…/s1.png
-- <step text> → **mismatch** · expected: <X> · observed: <Y> · shot: …/s2.png
+- <step text> → **verified** · observed: <the real value read> · axe: 0 · shot: test-results/…/s1.png
+- <step text> → **mismatch** · expected: <X> · observed: <Y> · axe: 0 · shot: …/s2.png
+- <step text> → **mismatch** · observed: <as expected> · axe: button-name · critical · #save · shot: …/s3.png
 - <step text> → **could-not-automate: <reason>** · (human must walk)
 
 ## §2 — <…>
@@ -83,7 +105,8 @@ Stop. Tell the user: the report path, the summary counts, and that **they** revi
 
 ## Classification rules
 
-- **verified** — you drove the step and read a real observed value that matches the expected result. A `verified` step **must** carry an observed value in the report; "looks right" is not an observation.
+- **verified** — you drove the step, read a real observed value that matches the expected result, and its axe audit found nothing (or it couldn't be audited, with the reason). A `verified` step **must** carry an observed value and its `axe:` result in the report; "looks right" is not an observation.
+- An axe violation on a step's page makes it a **mismatch** even when the step's own result matched: the walk holds every page it visits to WCAG 2.2 AA.
 - **mismatch** — you drove the step and the observed value contradicts the expected result. Record both values. Never silently pass it.
 - **could-not-automate: `<reason>`** — the step is inherently outside a browser-only walk. Report it, never guess at it, and **never** upgrade it to `verified`. Typical reasons: a third-party redirect (Auth0/Google/Stripe hosted pages beyond the app), a payment flow, a real vendor account/webhook, visual/aesthetic judgment, an email/SMS round-trip, anything the step tagged `— manual`, or an adversarial probe tagged `— backend` (an API/CLI/DB check outside a browser walk — `/smoke-walk` stays in the browser; those probes are walked separately and recorded in the `.adversarial.md` Findings).
 

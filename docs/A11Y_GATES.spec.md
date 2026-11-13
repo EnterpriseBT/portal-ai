@@ -139,7 +139,7 @@ Wiring:
 ### 8. `/smoke-walk`
 
 `.claude/skills/smoke-walk/SKILL.md` gains a step between "Observe" and "Capture" in §3: **"Audit."**
-- **How:** after observing, run `mcp__playwright__browser_run_code_unsafe`. It calls `page.addScriptTag({ path: "/workspace/node_modules/axe-core/axe.min.js" })`, then `page.evaluate(() => axe.run(document, { runOnly: { type: "tag", values: [...] } }))`.
+- **How** (spiked live in slice 7: `addScriptTag({ path })` works, axe 4.14.0, and a planted unnamed button reported `button-name`): after observing, run `mcp__playwright__browser_run_code_unsafe`. It calls `page.addScriptTag({ path: "/workspace/node_modules/axe-core/axe.min.js" })`, then `page.evaluate(() => axe.run(document, { runOnly: { type: "tag", values: [...] } }))`.
 - **The tags are listed verbatim** in the skill and must equal `AXE_TAGS` (`packages/e2e/src/lib/a11y-walk.ts`).
 - **Classification:**
   - Any violation makes the step `mismatch`, and the report row names `rule · impact · first target`.

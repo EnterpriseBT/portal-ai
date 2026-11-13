@@ -8,7 +8,9 @@ Every accessibility finding in Portals AI against **WCAG 2.2 AA**, mapped to a s
 
 The section between the markers below is **generated**. Never edit it by hand: run `npm run a11y:report` and commit the result. That command:
 
-1. Runs three report-only tools. Each writes raw results to a gitignored `a11y-results/` directory in its package:
+**What gates (#799).** jsx-a11y fails `lint`, the story sweep fails Unit Tests (`npm run a11y:stories`), and each package's `component-axe.guard.test.ts` requires every component test to run axe. The Playwright walks stay report-only by design. `a11y:report` runs the story sweep with `A11Y_REPORT_ONLY=1`, so it records instead of stopping.
+
+1. Runs the tools in report mode. Each writes raw results to a gitignored `a11y-results/` directory in its package:
 
 | Tool | Script | Packages | Sees |
 |---|---|---|---|

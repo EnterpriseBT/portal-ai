@@ -102,7 +102,7 @@ Notes:
 
 ## Accessibility audit (#792)
 
-Two report-only Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA inventory for epic #791. They **record** axe violations and never fail on one. They fail only on setup: a missing or expired session, a site that isn't being served, or a run that checked nothing. They exist only for a local target and only when `E2E_A11Y` is set, which the two scripts do, so a bare `test:e2e` never starts them and CI's `--project` list never names them.
+Two Playwright projects feed `docs/A11Y_AUDIT.md`, the WCAG 2.2 AA inventory for epic #791. They are **report-only by design** (#799): they **record** axe violations and never fail on one, because they need a live seeded stack, and the CI gates (jsx-a11y in `lint`, `a11y:stories` and the component-axe guards in Unit Tests) catch regressions first. `/smoke-walk` audits each page it walks with the same tags. They fail only on setup: a missing or expired session, a site that isn't being served, or a run that checked nothing. They exist only for a local target and only when `E2E_A11Y` is set, which the two scripts do, so a bare `test:e2e` never starts them and CI's `--project` list never names them.
 
 | Script | Project | Walks | Writes |
 |---|---|---|---|
