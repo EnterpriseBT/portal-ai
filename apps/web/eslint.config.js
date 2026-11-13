@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import typescript from "@typescript-eslint/eslint-plugin";
 import typescriptParser from "@typescript-eslint/parser";
 import react from "eslint-plugin-react";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
@@ -103,6 +104,54 @@ export default [
         afterAll: "readonly",
         jest: "readonly",
         global: "readonly",
+      },
+    },
+  },
+  // Accessibility (#799, epic #791): jsx-a11y's strict rules gate `lint`
+  // under --max-warnings 0, like every other rule here. Tests and stories
+  // render fixtures, not shipped markup; a11y:stories audits what the stories
+  // render instead. `npm run a11y:lint` reads the same config for the
+  // inventory (scripts/a11y-inventory.mjs counts only jsx-a11y rules).
+  //
+  // The `components` map tells jsx-a11y which MUI primitives always render a
+  // native element. It's deliberately small: a wrong mapping invents findings.
+  {
+    files: ["src/**/*.tsx"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/*.test.tsx",
+      "src/**/*.stories.tsx",
+      "src/stories/**",
+    ],
+    plugins: { "jsx-a11y": jsxA11y },
+    rules: {
+      ...jsxA11y.flatConfigs.strict.rules,
+      // A form's onKeyDown is #789's Enter-submit delegation
+      // (`preventToggleEnterSubmit`): it keeps Enter on a checkbox or radio
+      // from submitting, and the form itself is never the key's target
+      // (#795). Strict's own element allowances are kept.
+      "jsx-a11y/no-noninteractive-element-interactions": [
+        "error",
+        {
+          ...jsxA11y.flatConfigs.strict.rules[
+            "jsx-a11y/no-noninteractive-element-interactions"
+          ][1],
+          form: ["onKeyDown"],
+        },
+      ],
+      // A scrollable box is a tab stop so a keyboard can scroll it (WCAG
+      // 2.1.1; axe's scrollable-region-focusable), and a named region is
+      // the role that carries it (#799: HighlightedCode). Strict allows only
+      // tabpanel by default.
+      "jsx-a11y/no-noninteractive-tabindex": [
+        "error",
+        { tags: [], roles: ["tabpanel", "region"], allowExpressionValues: true },
+      ],
+    },
+    settings: {
+      "jsx-a11y": {
+        polymorphicPropName: "component",
+        components: { Button: "button", IconButton: "button" },
       },
     },
   },

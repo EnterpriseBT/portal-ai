@@ -6,7 +6,8 @@ import globals from "globals";
 
 /**
  * Site lint config (#311). Same plugin/parser shape as `apps/web`, plus
- * `eslint-plugin-astro` for `.astro` single-file components.
+ * `eslint-plugin-astro` for `.astro` single-file components and its
+ * jsx-a11y strict preset (#799).
  *
  * Two distinct environments live in this package: `src/**` is browser/Astro
  * code, `scripts/**` are Node build scripts. They get different globals so
@@ -16,6 +17,11 @@ export default [
   { ignores: ["dist/**", ".astro/**", "src/styles/tokens.css"] },
   js.configs.recommended,
   ...astro.configs.recommended,
+  // Accessibility (#799, epic #791): eslint-plugin-astro's preset applies
+  // jsx-a11y's strict rules to `.astro` files under the `astro/jsx-a11y/`
+  // prefix, gated by `lint`'s --max-warnings 0. `npm run a11y:lint` reads
+  // the same config for the inventory.
+  ...astro.configs["flat/jsx-a11y-strict"],
   {
     files: ["src/**/*.ts"],
     languageOptions: {

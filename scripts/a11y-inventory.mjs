@@ -553,7 +553,8 @@ export function replaceGenerated(doc, generated) {
 
 const ruleIsOn = (v) => !(v === "off" || v === 0 || (Array.isArray(v) && (v[0] === "off" || v[0] === 0)));
 
-/** The jsx-a11y rule names (prefix stripped) the report configs enable:
+/** The jsx-a11y rule names (prefix stripped) each package's `lint` config enables
+ *  (#799 moved them out of the report-only configs):
  *  jsx-a11y's `strict` (web, core) and eslint-plugin-astro's
  *  `flat/jsx-a11y-strict` (site), each resolved from the package that uses it. */
 export async function enabledJsxA11yRulesAsync(root = REPO_ROOT) {
