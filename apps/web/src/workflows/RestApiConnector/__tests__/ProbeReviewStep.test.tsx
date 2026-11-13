@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { ProbeReviewStepUI } from "../ProbeReviewStep.component";
 import type { ProbeReviewStepUIProps } from "../ProbeReviewStep.component";
@@ -94,5 +98,49 @@ describe("ProbeReviewStepUI", () => {
       />
     );
     expect(screen.getByText(/REST_API_OPERATION_FAILED/)).toBeInTheDocument();
+  });
+});
+
+describe("ProbeReviewStepUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ProbeReviewStepUI
+        {...makeProps({
+          endpoints: [
+            endpoint({ key: "users", label: "Users" }),
+            endpoint({ key: "posts", label: "Posts" }),
+          ],
+          stateByKey: {
+            users: {
+              kind: "success",
+              degradation: null,
+              recordsScanned: 12,
+            },
+            posts: { kind: "loading" },
+          },
+          rowsByKey: {
+            users: [
+              {
+                sourceField: "email",
+                normalizedKey: "email",
+                required: true,
+                samples: ["a@example.com"],
+                columnDefinitionId: null,
+                suggestion: {
+                  columnDefinitionId: "cd-1",
+                  suggestedNormalizedKey: "user_email",
+                  suggestedSemanticType: "string",
+                  confidence: 0.85,
+                  rationale: "matches catalog entry 'email'",
+                },
+              },
+            ],
+            posts: [],
+          },
+          errorsByKey: { users: {}, posts: {} },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

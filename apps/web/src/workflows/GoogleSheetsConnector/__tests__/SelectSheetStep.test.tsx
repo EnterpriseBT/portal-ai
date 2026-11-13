@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { SelectSheetStep } from "../SelectSheetStep.component";
 import type { SelectSheetStepUIProps } from "../SelectSheetStep.component";
@@ -24,6 +28,22 @@ function makeProps(
 }
 
 describe("SelectSheetStep", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<SelectSheetStep {...makeProps()} />);
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with a server error", async () => {
+    const { container } = render(
+      <SelectSheetStep
+        {...makeProps({
+          serverError: { message: "Could not load the sheet.", code: "X" },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("offers a choose-a-spreadsheet affordance and opens the Picker on click", async () => {
     const onOpenPicker = jest.fn();
     render(<SelectSheetStep {...makeProps({ onOpenPicker })} />);

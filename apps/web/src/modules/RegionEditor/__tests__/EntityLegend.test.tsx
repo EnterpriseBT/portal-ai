@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { EntityLegendUI } from "../EntityLegend.component";
 import type { EntityLegendEntry } from "../utils/region-editor.types";
 
@@ -29,5 +30,17 @@ describe("EntityLegendUI", () => {
     render(<EntityLegendUI entries={ENTRIES} onEntitySelect={onSelect} />);
     fireEvent.click(screen.getByText("Contact"));
     expect(onSelect).toHaveBeenCalledWith("ent_a");
+  });
+
+  test("has no axe violations", async () => {
+    const { container } = render(
+      <EntityLegendUI entries={ENTRIES} onEntitySelect={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations when empty", async () => {
+    const { container } = render(<EntityLegendUI entries={[]} />);
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { within } from "@testing-library/react";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, expectNoAxeViolations } from "./test-utils";
 import {
   StatementEditorUI,
   rowsToStatements,
@@ -81,6 +81,32 @@ describe("rowsToStatements (#622 fan-out)", () => {
 });
 
 describe("StatementEditorUI (#622)", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <StatementEditorUI
+        onChange={jest.fn()}
+        onSearch={noSearch}
+        initialStatements={[
+          {
+            effect: "allow",
+            verb: "read",
+            resourceType: "station",
+            resourceId: null,
+            condition: null,
+          },
+          {
+            effect: "allow",
+            verb: "read",
+            resourceType: "curated_view",
+            resourceId: "view-1",
+            condition: null,
+          },
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("emits the default row at mount so a no-edit save is non-empty", () => {
     // Regression: the parent's statements state must reflect the visible default
     // row without any user edit — otherwise Save sends [] and the server rejects

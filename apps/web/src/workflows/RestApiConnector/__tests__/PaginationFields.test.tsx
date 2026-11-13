@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { PaginationFieldsUI } from "../PaginationFields.component";
 import type { PaginationFieldsUIProps } from "../PaginationFields.component";
@@ -130,5 +134,29 @@ describe("PaginationFieldsUI — per-strategy sub-form rendering", () => {
     render(<PaginationFieldsUI {...makeProps({ draft })} />);
     expect(screen.getByText(/follows the response/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/parameter name/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("PaginationFieldsUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <PaginationFieldsUI
+        {...makeProps({
+          draft: { ...EMPTY_PAGINATION_DRAFT, strategy: "pageOffset" },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with the cursor sub-form", async () => {
+    const { container } = render(
+      <PaginationFieldsUI
+        {...makeProps({
+          draft: { ...EMPTY_PAGINATION_DRAFT, strategy: "cursor" },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

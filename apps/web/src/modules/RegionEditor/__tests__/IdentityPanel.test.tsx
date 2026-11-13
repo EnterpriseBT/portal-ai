@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 
 import "@testing-library/jest-dom";
 
-const { render, screen, fireEvent } =
+const { render, screen, fireEvent, expectNoAxeViolations } =
   await import("../../../__tests__/test-utils");
 const { IdentityPanelUI } = await import("../IdentityPanel.component");
 
@@ -171,5 +171,19 @@ describe("IdentityPanelUI — inline duplicate warning", () => {
       />
     );
     expect(screen.queryByText(/duplicate values/i)).toBeNull();
+  });
+});
+
+describe("IdentityPanelUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<IdentityPanelUI {...makeProps()} />);
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with the dropdown open", async () => {
+    render(<IdentityPanelUI {...makeProps()} />);
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    await screen.findByRole("listbox");
+    await expectNoAxeViolations(document.body);
   });
 });

@@ -117,7 +117,7 @@ Wiring:
 - **Exports** (unit-tested against fixtures):
   - `runsAxe(source: string): boolean`: comment-stripped `\bexpectNoAxeViolations\(`.
   - `pairedTests(componentPath: string, tests: string[]): string[]`:
-    - web: `<Name>.test.tsx`, `<Name>.component.test.tsx`, `<Name>.layout.test.tsx`;
+    - web: `<Name>.test.tsx`, or `<Name>.<kind>.test.tsx` for the component's own kind (`component`, `view`, `layout`). A test inside `modules/<X>/` or `workflows/<X>/` pairs only with that folder's components, so RegionEditor's and RestApi's `ReviewStep` can't pass on each other's test (183 paired when written);
     - core: `<Name>.test.tsx` under `src/__tests__/ui/`.
 - **What it scans:**
   - web: every `*.component.tsx` and `*.layout.tsx` under `src/`;
@@ -127,7 +127,7 @@ Wiring:
   - if it has paired tests, at least one of them runs axe.
 - **Allowlist:** `const AXE_EXEMPT: Record<string, string> = {}`. It starts empty and only shrinks.
 - **Floor:** the paired count must be ≥ 170 for web and ≥ 34 for core, so the guard can't pass vacuously.
-- **R6:** `dialog-contract.guard.test.ts` keeps R6 (its dialog-specific "a test of its own that runs axe on the open dialog"). Its `runsAxe` and `pairedTests` import from the new guard, so the two can't drift.
+- **R6:** `dialog-contract.guard.test.ts` keeps R6 (its dialog-specific "a test of its own that runs axe on the open dialog"). In web, `runsAxe`, `pairedTests` and `withoutComments` live in `src/__tests__/component-axe.util.ts`, imported by both guards so the two can't drift (a test file can't be imported without registering its tests twice). Core's guard keeps its own copies, since core has no R6.
 
 ### 7. Component tests
 

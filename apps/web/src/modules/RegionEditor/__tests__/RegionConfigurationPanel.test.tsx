@@ -3,6 +3,7 @@ import { useState } from "react";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
 import type { EntityOption, RegionDraft } from "../utils/region-editor.types";
 
@@ -1050,5 +1051,52 @@ describe("RegionConfigurationPanelUI", () => {
         screen.queryByRole("region", { name: "Past the sheet" })
       ).toBeNull();
     });
+  });
+});
+
+describe("RegionConfigurationPanelUI — accessibility", () => {
+  test("has no axe violations in the empty state", async () => {
+    const { container } = render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        activeSheet={{ rowCount: 10, colCount: 5 }}
+        onCreateRegionFromRange={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations for a segmented region with a pivot", async () => {
+    const { container } = render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              { kind: "field", positionCount: 2 },
+              {
+                kind: "pivot",
+                id: "p1",
+                axisName: "Quarter",
+                axisNameSource: "user",
+                positionCount: 2,
+              },
+            ],
+          },
+          cellValueField: { name: "value", nameSource: "user" },
+        })}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

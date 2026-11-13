@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { EndpointColumnReviewUI } from "../EndpointColumnReview.component";
 import type { EndpointColumnReviewUIProps } from "../EndpointColumnReview.component";
@@ -122,5 +126,53 @@ describe("EndpointColumnReviewUI — Re-probe button", () => {
       screen.getByRole("button", { name: /re-probe users/i })
     );
     expect(onReprobe).toHaveBeenCalled();
+  });
+});
+
+describe("EndpointColumnReviewUI — accessibility", () => {
+  it("has no axe violations in the success state", async () => {
+    const { container } = render(
+      <EndpointColumnReviewUI
+        {...makeProps({
+          state: {
+            kind: "success",
+            degradation: "llm-failed",
+            recordsScanned: 12,
+          },
+          rows: [
+            {
+              sourceField: "email",
+              normalizedKey: "email",
+              required: true,
+              samples: ["a@example.com"],
+              columnDefinitionId: null,
+              suggestion: {
+                columnDefinitionId: "cd-1",
+                suggestedNormalizedKey: "user_email",
+                suggestedSemanticType: "string",
+                confidence: 0.85,
+                rationale: "matches catalog entry 'email'",
+              },
+            },
+          ],
+          onReprobe: jest.fn(),
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the error state", async () => {
+    const { container } = render(
+      <EndpointColumnReviewUI
+        {...makeProps({
+          state: {
+            kind: "error",
+            serverError: { code: "REST_API_AUTH_FAILED", message: "401" },
+          },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

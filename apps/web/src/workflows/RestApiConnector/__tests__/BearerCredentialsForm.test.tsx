@@ -3,7 +3,11 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import { waitFor } from "@testing-library/react";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { BearerCredentialsFormUI } from "../BearerCredentialsForm.component";
 import type { BearerCredentialsFormUIProps } from "../BearerCredentialsForm.component";
@@ -66,5 +70,26 @@ describe("BearerCredentialsFormUI", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/bearer token/i)).toHaveFocus();
     });
+  });
+});
+
+describe("BearerCredentialsFormUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <BearerCredentialsFormUI {...makeProps({ token: "abc" })} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with a field error showing", async () => {
+    const { container } = render(
+      <BearerCredentialsFormUI
+        {...makeProps({
+          errors: { token: "Token is required" },
+          touched: { token: true },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

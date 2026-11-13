@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import {
   IntersectionEditPopoverUI,
   type IntersectionEditPopoverUIProps,
@@ -97,5 +98,18 @@ describe("IntersectionEditPopoverUI", () => {
     const { onClose } = setup();
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("IntersectionEditPopoverUI — accessibility", () => {
+  it("has no axe violations, inherited and overridden", async () => {
+    const { unmount } = setup();
+    await screen.findByRole("textbox", {
+      name: /cell-value field name for this intersection/i,
+    });
+    await expectNoAxeViolations(document.body);
+    unmount();
+    setup({ overridden: true, value: "revenue" });
+    await expectNoAxeViolations(document.body);
   });
 });

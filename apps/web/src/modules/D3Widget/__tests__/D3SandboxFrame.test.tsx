@@ -31,6 +31,7 @@ jest.unstable_mockModule("../utils/bridge.util", () => ({
 
 const { D3SandboxFrameUI } = await import("../D3SandboxFrame.component");
 const { SANDBOX_SRCDOC } = await import("../utils/sandbox-srcdoc.util");
+const { expectNoAxeViolations } = await import("../../../__tests__/test-utils");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -59,6 +60,15 @@ beforeEach(() => {
 // ── Tests (spec case 20 + bridge lifecycle wiring) ───────────────────
 
 describe("D3SandboxFrameUI", () => {
+  // #796: axe can't reach inside the sandboxed iframe; the frame itself and
+  // its wrapper carry the contract (a titled frame).
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <D3SandboxFrameUI {...baseProps} title="Revenue" />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   // #796: the frame is named after the chart it draws.
   it("names the iframe after the chart, or 'Chart' without a title", () => {
     const { container, rerender } = render(

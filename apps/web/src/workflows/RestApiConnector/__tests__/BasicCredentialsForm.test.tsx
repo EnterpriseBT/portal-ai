@@ -3,7 +3,11 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import { waitFor } from "@testing-library/react";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { BasicCredentialsFormUI } from "../BasicCredentialsForm.component";
 import type { BasicCredentialsFormUIProps } from "../BasicCredentialsForm.component";
@@ -81,5 +85,28 @@ describe("BasicCredentialsFormUI", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/^username/i)).toHaveFocus();
     });
+  });
+});
+
+describe("BasicCredentialsFormUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <BasicCredentialsFormUI
+        {...makeProps({ username: "alice", password: "secret" })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with field errors showing", async () => {
+    const { container } = render(
+      <BasicCredentialsFormUI
+        {...makeProps({
+          errors: { username: "Username is required", password: "Required" },
+          touched: { username: true, password: true },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

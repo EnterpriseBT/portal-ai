@@ -2,7 +2,12 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen, waitFor } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { SelectWorkbookStep } from "../SelectWorkbookStep.component";
 import type { SelectWorkbookStepUIProps } from "../SelectWorkbookStep.component";
@@ -21,6 +26,18 @@ function makeProps(
 }
 
 describe("SelectWorkbookStep", () => {
+  it("has no axe violations", async () => {
+    const searchFn = jest.fn(async () => [
+      { value: "01ABC", label: "Q3 Forecast.xlsx" },
+    ]);
+    const { container } = render(
+      <SelectWorkbookStep {...makeProps({ searchFn })} />
+    );
+    await waitFor(() => expect(searchFn).toHaveBeenCalled());
+    await screen.findByRole("combobox");
+    await expectNoAxeViolations(container);
+  });
+
   it("calls searchFn on mount with the empty query", async () => {
     const searchFn = jest.fn(async () => [
       { value: "01ABC", label: "Q3 Forecast.xlsx" },
