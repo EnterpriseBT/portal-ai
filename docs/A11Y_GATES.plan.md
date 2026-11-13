@@ -1,5 +1,7 @@
 # Accessibility gates in CI — Plan
 
+> **Amendment (2026-11-13): axe now runs only in unit tests.** After implementation, the story sweep (`a11y:stories`) and the Playwright axe walks (`a11y:axe`, `a11y:axe:site`) proved slow and flaky, and the sweep's load crashed the dev container. They're removed, along with the `/smoke-walk` axe audit, the `a11y:report` inventory generator and `@axe-core/playwright`. Playwright itself stays: the E2E specs, `verify-login` and the agent sessions are unchanged. Two gates remain: jsx-a11y in `lint`, and the component-axe guards, which make every component test run `expectNoAxeViolations` in jsdom. `docs/A11Y_AUDIT.md` records the last automated run and keeps the hand-walked passes. Anything below about the sweep, the walks, the inventory or the `/smoke-walk` audit is superseded.
+
 **This plan sequences #799 test-first.** It turns three in-repo accessibility checks into gates that fail CI:
 - jsx-a11y in `lint`;
 - axe over every story in Unit Tests;

@@ -1,5 +1,7 @@
 # Accessibility gates in CI — Discovery
 
+> **Amendment (2026-11-13): axe now runs only in unit tests.** After implementation, the story sweep (`a11y:stories`) and the Playwright axe walks (`a11y:axe`, `a11y:axe:site`) proved slow and flaky, and the sweep's load crashed the dev container. They're removed, along with the `/smoke-walk` axe audit, the `a11y:report` inventory generator and `@axe-core/playwright`. Playwright itself stays: the E2E specs, `verify-login` and the agent sessions are unchanged. Two gates remain: jsx-a11y in `lint`, and the component-axe guards, which make every component test run `expectNoAxeViolations` in jsdom. `docs/A11Y_AUDIT.md` records the last automated run and keeps the hand-walked passes. Anything below about the sweep, the walks, the inventory or the `/smoke-walk` audit is superseded.
+
 **Issue:** [EnterpriseBT/portal-ai#799](https://github.com/EnterpriseBT/portal-ai/issues/799) · Feature · `full`. Child of epic #791; branch `feat/799-a11y-gates` → `epic/a11y-conformance`.
 
 **Why this exists.** Epic #791 audited the app and the marketing site with four report-only tools, and the six area children (#793–#798) fixed what they found. Each tool records findings into `docs/A11Y_AUDIT.md` and never fails. So nothing stops the next PR from bringing a finding back:

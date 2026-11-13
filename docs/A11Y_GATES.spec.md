@@ -2,6 +2,8 @@
 
 This spec pins the contract for turning the in-repo accessibility checks into gates that fail CI. It follows the decisions in [`docs/A11Y_GATES.discovery.md`](A11Y_GATES.discovery.md) for [#799](https://github.com/EnterpriseBT/portal-ai/issues/799) (epic #791).
 
+> **Amendment (2026-11-13): axe now runs only in unit tests.** After implementation, the story sweep (`a11y:stories`) and the Playwright axe walks (`a11y:axe`, `a11y:axe:site`) proved slow and flaky, and the sweep's load crashed the dev container. They're removed, along with the `/smoke-walk` axe audit, the `a11y:report` inventory generator and `@axe-core/playwright`. Playwright itself stays: the E2E specs, `verify-login` and the agent sessions are unchanged. Two gates remain: jsx-a11y in `lint`, and the component-axe guards, which make every component test run `expectNoAxeViolations` in jsdom. `docs/A11Y_AUDIT.md` records the last automated run and keeps the hand-walked passes. Anything below about the sweep, the walks, the inventory or the `/smoke-walk` audit is superseded.
+
 ## Key decisions (flag for review)
 
 1. **jsx-a11y moves into `lint` itself.** Each package's main eslint config gains the jsx-a11y strict block, and the three `eslint.a11y.config.js` files are deleted.
