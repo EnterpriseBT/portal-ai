@@ -38,21 +38,16 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 956 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-12 23:46 | 301 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 344 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-12 23:46 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 33 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-13 00:12 | 426 | 60 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-13 00:13 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-13 16:37 | 963 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-13 16:38 | 306 | 0 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-13 16:37 | 345 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-13 16:39 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-13 16:37 | 33 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-13 16:36 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-13 16:36 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
-- `apps/web/a11y-results/stories.json` · apps/web/src/stories/FAQList.component.stories.tsx › Default: Cannot read properties of undefined (reading 'has')
-- `apps/web/a11y-results/stories.json` · apps/web/src/stories/FAQList.component.stories.tsx › FilteredToJobs: Cannot read properties of undefined (reading 'has')
-- `apps/web/a11y-results/stories.json` · apps/web/src/stories/FAQList.component.stories.tsx › GroupedByCategory: Cannot read properties of undefined (reading 'has')
-- `apps/web/a11y-results/stories.json` · apps/web/src/stories/GlossaryList.component.stories.tsx › Default: Cannot read properties of undefined (reading 'has')
-- `apps/web/a11y-results/stories.json` · apps/web/src/stories/GlossaryList.component.stories.tsx › FilteredToAnalytics: Cannot read properties of undefined (reading 'has')
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · populated · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · error · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
 - `packages/e2e/a11y-results/app.json` · entity-group-detail · owner · loading · brand: nothing to drill into at step 1: /api/entity-groups on /entity-groups returned no item
@@ -121,7 +116,7 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 0 | 0 | — | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 2 | 2 | 1.4.3, 2.1.1, 2.1.3 | 0 |
+| [#794 Tables, grids and lists](#owner-794) | 0 | 0 | — | 0 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 0 | 0 | — | 0 |
 | [#796 Maps and charts](#owner-796) | 0 | 0 | — | 0 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
@@ -138,10 +133,7 @@ No automated findings.
 
 ## #794 Tables, grids and lists
 
-| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
-|---|---|---|---|---|---|---|---|---|
-| 4c604bca | 1.4.3 | color-contrast | serious | `.hljs-number` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand | axe-app |
-| e0b147d5 | 2.1.1, 2.1.3 | scrollable-region-focusable | serious | `.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root > .MuiBox-root > pre` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
+No automated findings.
 
 <a id="owner-795"></a>
 
