@@ -20,6 +20,9 @@ const meta = {
   tags: ["autodocs"],
   args: {
     onSelectTerm: fn(),
+    // Controlled accordions (#365): every entry starts closed.
+    expandedSlugs: new Set<string>(),
+    onToggleEntry: fn(),
   },
 } satisfies Meta<typeof GlossaryList>;
 

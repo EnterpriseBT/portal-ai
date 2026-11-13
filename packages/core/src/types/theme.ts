@@ -61,13 +61,35 @@ export interface SheetPalette {
   drift: { blocker: string; warn: string };
 }
 
+/**
+ * Syntax-highlight colours for `HighlightedCode` (#799). `background` is
+ * opaque, so each token's contrast against it is fixed; every token and
+ * `text` is AA (4.5:1) on it in both themes (`theme-contrast.test.ts`).
+ */
+export interface CodePalette {
+  background: string;
+  text: string;
+  keyword: string;
+  builtin: string;
+  type: string;
+  string: string;
+  number: string;
+  comment: string;
+  function: string;
+  attr: string;
+  meta: string;
+  literal: string;
+}
+
 declare module "@mui/material/styles" {
   interface Palette {
     sheet: SheetPalette;
+    code: CodePalette;
   }
 
   interface PaletteOptions {
     sheet?: SheetPalette;
+    code?: CodePalette;
   }
 
   interface TypographyVariants {

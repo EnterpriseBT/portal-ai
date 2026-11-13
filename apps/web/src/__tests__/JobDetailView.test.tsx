@@ -411,4 +411,25 @@ describe("JobDetailView", () => {
     expect(screen.getByText("Result")).toBeInTheDocument();
     expect(screen.getByText(/recordsSynced/)).toBeInTheDocument();
   });
+
+  it("names the Result and Metadata code blocks as focusable regions (#799)", () => {
+    const job = makeJob({
+      result: { recordsSynced: 42 },
+      metadata: { connectorInstanceId: "ci-1" },
+    });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    render(<JobDetailView jobId="job-1" />);
+    for (const name of ["Result", "Metadata"]) {
+      expect(screen.getByRole("region", { name })).toHaveAttribute(
+        "tabindex",
+        "0"
+      );
+    }
+  });
 });

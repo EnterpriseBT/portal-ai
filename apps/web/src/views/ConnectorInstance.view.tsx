@@ -499,6 +499,7 @@ export const ConnectorInstanceView = ({
                           label: "Config",
                           value: (
                             <HighlightedCode
+                              label="Config"
                               code={JSON.stringify(ci.config, null, 2)}
                               language="json"
                               maxHeight={320}

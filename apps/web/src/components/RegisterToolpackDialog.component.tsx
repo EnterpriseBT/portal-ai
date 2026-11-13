@@ -862,7 +862,11 @@ const TabbedSnippetAccordion: React.FC<{
                       {b.label}
                     </Typography>
                   )}
-                  <HighlightedCode code={b.example} language={b.language} />
+                  <HighlightedCode
+                    label={b.label || `${current.label} example`}
+                    code={b.example}
+                    language={b.language}
+                  />
                 </Box>
               ))}
             </Stack>
