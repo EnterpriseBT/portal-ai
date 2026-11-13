@@ -46,7 +46,7 @@ import { dirname, join, relative } from "node:path";
 
 import ts from "typescript";
 
-import { pairedTests, runsAxe, withoutComments } from "./component-axe.util";
+import { codeOnly, pairedTests, runsAxe } from "./component-axe.util";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webSrc = join(here, "..");
@@ -298,7 +298,7 @@ function testFiles(dir: string): string[] {
 
 /** R5: a `fireEvent.submit(` call, ignoring comments. */
 export function callsSyntheticSubmit(source: string): boolean {
-  return /\bfireEvent\.submit\(/.test(withoutComments(source));
+  return /\bfireEvent\.submit\(/.test(codeOnly(source));
 }
 
 const violationsOf = (source: string) => {

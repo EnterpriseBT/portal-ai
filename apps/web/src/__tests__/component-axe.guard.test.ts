@@ -53,6 +53,29 @@ describe("the guard's own rules (fixtures)", () => {
     ).toBe(true);
   });
 
+  it("ignores a call written inside a string or template literal", () => {
+    expect(runsAxe('const note = "expectNoAxeViolations(container)";')).toBe(
+      false
+    );
+    expect(runsAxe("const n = 'expectNoAxeViolations(c)';")).toBe(false);
+    expect(runsAxe("const n = `expectNoAxeViolations(${c})`;")).toBe(false);
+  });
+
+  it("keeps a call after JSX closing tags on the same line", () => {
+    expect(runsAxe("render(<p>Hi</p>); await expectNoAxeViolations(c);")).toBe(
+      true
+    );
+  });
+
+  it("keeps a call after a regex literal holding `/*`, or after division", () => {
+    expect(
+      runsAxe("const re = /a\\/*/;\nawait expectNoAxeViolations(c);\n// */")
+    ).toBe(true);
+    expect(runsAxe("const h = a / 2; await expectNoAxeViolations(c);")).toBe(
+      true
+    );
+  });
+
   it("keeps a call after a string holding `/*`", () => {
     expect(
       runsAxe(
