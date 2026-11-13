@@ -36,13 +36,13 @@ The **Keyboard pass** and **Screen-reader pass** sections after the generated se
 
 | Result file | Tool | Version | Ran (UTC) | Runs ok | Skipped |
 |---|---|---|---|---|---|
-| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:38 | 920 | 0 |
-| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-10 00:07 | 281 | 5 |
-| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:40 | 338 | 0 |
-| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-10 00:08 | 177 | 0 |
-| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-09 23:41 | 31 | 0 |
-| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-10 00:47 | 426 | 60 |
-| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-10 00:47 | 24 | 0 |
+| `apps/web/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 956 | 0 |
+| `apps/web/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-12 23:46 | 301 | 5 |
+| `packages/core/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 344 | 0 |
+| `packages/core/a11y-results/stories.json` | jest-axe | 4.14.0 | 2026-11-12 23:46 | 177 | 0 |
+| `apps/site/a11y-results/eslint.json` | eslint | — | 2026-11-12 23:41 | 33 | 0 |
+| `packages/e2e/a11y-results/app.json` | axe-app | 4.14.0 | 2026-11-13 00:12 | 426 | 60 |
+| `packages/e2e/a11y-results/site.json` | axe-site | 4.14.0 | 2026-11-13 00:13 | 24 | 0 |
 
 Skipped runs (not audited; each is a coverage gap until it renders):
 
@@ -119,11 +119,11 @@ Each row below is one rule on one element, wherever it was seen: **Where** lists
 | Owner | Rows | Instances | WCAG criteria | Keyboard / screen-reader findings |
 |---|---|---|---|---|
 | [#793 Dialogs and forms](#owner-793) | 0 | 0 | — | 0 |
-| [#794 Tables, grids and lists](#owner-794) | 0 | 0 | — | 0 |
+| [#794 Tables, grids and lists](#owner-794) | 2 | 2 | 1.4.3, 2.1.1, 2.1.3 | 0 |
 | [#795 RegionEditor spreadsheet canvas](#owner-795) | 0 | 0 | — | 0 |
-| [#796 Maps and charts](#owner-796) | 0 | 0 | — | 1 |
+| [#796 Maps and charts](#owner-796) | 0 | 0 | — | 0 |
 | [#797 App shell, navigation and landmarks](#owner-797) | 0 | 0 | — | 0 |
-| [#798 Marketing site](#owner-798) | 0 | 0 | — | 1 |
+| [#798 Marketing site](#owner-798) | 0 | 0 | — | 0 |
 | Unassigned | 0 | 0 | — | 0 |
 
 <a id="owner-793"></a>
@@ -136,7 +136,10 @@ No automated findings.
 
 ## #794 Tables, grids and lists
 
-No automated findings.
+| ID | WCAG | Rule | Impact | Element | Where | Instances | Seen | Tool |
+|---|---|---|---|---|---|---|---|---|
+| 4c604bca | 1.4.3 | color-contrast | serious | `.hljs-number` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand | axe-app |
+| e0b147d5 | 2.1.1, 2.1.3 | scrollable-region-focusable | serious | `.MuiPaper-outlined.MuiPaper-rounded > .MuiStack-root > .MuiBox-root > .MuiBox-root > pre` | 1: job-detail | 1 | roles: admin, owner · states: populated · themes: brand, brand.dark | axe-app |
 
 <a id="owner-795"></a>
 
