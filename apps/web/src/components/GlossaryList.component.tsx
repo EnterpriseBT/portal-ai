@@ -108,7 +108,14 @@ export const GlossaryList: React.FC<GlossaryListProps> = ({
             expanded={expandedSlugs.has(slug)}
             onChange={() => onToggleEntry(slug)}
           >
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            {/* The id and aria-controls let MUI name the definition's
+                region by this term (#799); unnamed, two open entries were
+                identical landmarks (axe landmark-unique). */}
+            <AccordionSummary
+              id={`glossary-entry-${slug}-header`}
+              aria-controls={`glossary-entry-${slug}-content`}
+              expandIcon={<ExpandMoreIcon />}
+            >
               <Stack
                 direction="row"
                 spacing={1.5}

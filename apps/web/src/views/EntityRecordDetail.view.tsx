@@ -96,7 +96,14 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
 
   return (
     <Accordion data-testid={`related-records-group-${group.id}`}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      {/* The id and aria-controls let MUI name the group's region by its
+          name (#799); unnamed, two open groups were identical landmarks
+          (axe landmark-unique). */}
+      <AccordionSummary
+        id={`related-records-group-${group.id}-header`}
+        aria-controls={`related-records-group-${group.id}-content`}
+        expandIcon={<ExpandMoreIcon />}
+      >
         <Typography variant="subtitle1">{group.name}</Typography>
       </AccordionSummary>
       <AccordionDetails>

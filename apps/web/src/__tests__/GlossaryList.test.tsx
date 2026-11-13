@@ -6,7 +6,8 @@ const { render, screen, within, expectNoAxeViolations } =
   await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { GlossaryList } = await import("../components/GlossaryList.component");
-const { GlossaryCategory } = await import("@portalai/core/content");
+const { GlossaryCategory, contentEntrySlug } =
+  await import("@portalai/core/content");
 
 const fixture: GlossaryEntry[] = [
   {
@@ -262,6 +263,23 @@ describe("GlossaryList accessibility", () => {
       />
     );
     expect(screen.getByText(fixture[0].definition)).toBeVisible();
+    await expectNoAxeViolations(container);
+  });
+
+  it("names each expanded entry's region by its term, so two open entries aren't identical landmarks (#799)", async () => {
+    const { container } = render(
+      <ControlledGlossaryList
+        onSelectTerm={jest.fn()}
+        initialExpanded={fixture
+          .slice(0, 2)
+          .map((e) => contentEntrySlug(e.term))}
+      />
+    );
+    for (const e of fixture.slice(0, 2)) {
+      expect(
+        screen.getByRole("region", { name: new RegExp(e.term) })
+      ).toBeVisible();
+    }
     await expectNoAxeViolations(container);
   });
 });

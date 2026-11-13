@@ -43,7 +43,14 @@ export const FAQEntryAccordion: React.FC<FAQEntryAccordionProps> = ({
         registerEntryRef?.(slug, el);
       }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      {/* The id and aria-controls let MUI name the answer's region by
+          this question (#799); unnamed, two open entries were identical
+          landmarks (axe landmark-unique). */}
+      <AccordionSummary
+        id={`faq-entry-${slug}-header`}
+        aria-controls={`faq-entry-${slug}-content`}
+        expandIcon={<ExpandMoreIcon />}
+      >
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           {entry.question}
         </Typography>

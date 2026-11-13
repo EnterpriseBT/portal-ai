@@ -265,4 +265,19 @@ describe("FAQList accessibility", () => {
     expect(screen.getByText(fixture[0].answer)).toBeVisible();
     await expectNoAxeViolations(container);
   });
+
+  it("names each expanded entry's region by its question, so two open entries aren't identical landmarks (#799)", async () => {
+    const { container } = render(
+      <ControlledFAQList
+        onSelectTerm={jest.fn()}
+        initialExpanded={fixture
+          .slice(0, 2)
+          .map((e) => contentEntrySlug(e.question))}
+      />
+    );
+    for (const e of fixture.slice(0, 2)) {
+      expect(screen.getByRole("region", { name: e.question })).toBeVisible();
+    }
+    await expectNoAxeViolations(container);
+  });
 });

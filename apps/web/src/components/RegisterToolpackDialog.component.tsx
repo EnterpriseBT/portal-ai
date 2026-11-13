@@ -821,7 +821,12 @@ const TabbedSnippetAccordion: React.FC<{
         backgroundColor: "transparent",
       }}
     >
+      {/* The id and aria-controls let MUI name the details region by this
+          summary (#799); unnamed, two open accordions were identical
+          landmarks (axe landmark-unique). */}
       <AccordionSummary
+        id={`${testId}-header`}
+        aria-controls={`${testId}-content`}
         expandIcon={<ExpandMoreIcon fontSize="small" />}
         data-testid={`${testId}-summary`}
         sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
