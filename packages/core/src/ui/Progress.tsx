@@ -32,6 +32,12 @@ export interface ProgressProps {
    * (an indeterminate bar has no honest number to print).
    */
   indeterminate?: boolean;
+  /**
+   * The progress bar's accessible name (#799): a `progressbar` must have
+   * one. Defaults to "Progress"; pass what is progressing ("Uploading
+   * sales.csv") where the caller knows.
+   */
+  "aria-label"?: string;
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -45,6 +51,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       height = 8,
       animated = false,
       indeterminate = false,
+      "aria-label": ariaLabel = "Progress",
       className,
       ...rest
     },
@@ -66,6 +73,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             variant={indeterminate ? "indeterminate" : "determinate"}
             {...(indeterminate ? {} : { value: clampedValue })}
             color={color}
+            aria-label={ariaLabel}
             sx={(theme) => {
               // No palette entry exists for `inherit`; the shadow pulse is
               // skipped there (the bar's own pulseGlow still runs).

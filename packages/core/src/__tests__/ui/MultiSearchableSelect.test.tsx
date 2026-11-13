@@ -6,6 +6,7 @@ import { MultiSearchableSelect } from "../../ui/searchable-select/MultiSearchabl
 import { MultiAsyncSearchableSelect } from "../../ui/searchable-select/MultiAsyncSearchableSelect";
 import { MultiInfiniteScrollSelect } from "../../ui/searchable-select/MultiInfiniteScrollSelect";
 import type { SelectOption } from "../../ui/searchable-select/types";
+import { expectNoAxeViolations } from "../axe.util";
 
 const OPTIONS: SelectOption[] = [
   { value: "apple", label: "Apple" },
@@ -830,4 +831,23 @@ describe("options with the same label (#986)", () => {
       expect(onChange).toHaveBeenCalledWith(["segment"]);
     }
   );
+});
+
+describe("MultiSearchableSelect accessibility", () => {
+  it("has no axe violations", async () => {
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={OPTIONS}
+        value={["apple"]}
+        onChange={() => {}}
+      />
+    );
+    await expectNoAxeViolations(document.body);
+
+    // Open listbox, which portals out of the container.
+    await userEvent.click(screen.getByRole("combobox"));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
 });

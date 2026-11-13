@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { Button } from "../../ui/Button";
 import type { ButtonProps } from "../../ui/Button";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Button Component", () => {
   describe("Rendering", () => {
@@ -61,5 +62,9 @@ describe("Button Component", () => {
       expect(ref.current).toBeInstanceOf(HTMLButtonElement);
       expect(ref.current?.textContent).toBe("Ref Test");
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(<Button>Click me</Button>);
+    await expectNoAxeViolations(container);
   });
 });

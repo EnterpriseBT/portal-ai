@@ -18,6 +18,7 @@ import {
   THEME_MAP,
   type ThemeName,
 } from "../../ui/ThemeProvider";
+import { expectNoAxeViolations } from "../axe.util";
 
 // Test component that uses the theme context
 const ThemeConsumer: React.FC<{
@@ -769,5 +770,20 @@ describe("sheet canvas rules (#996)", () => {
 
   it("keeps the gridcell focus ring beside the canvas rules", () => {
     expect(baseline("brand")['[role="gridcell"]:focus-visible']).toBeDefined();
+  });
+});
+
+describe("ThemeProvider accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ThemeProvider>
+        <Typography variant="h1">Settings</Typography>
+        <Button>Save</Button>
+        <IconButton aria-label="Close">x</IconButton>
+        <CircularProgress />
+        <LinearProgress aria-label="Uploading" />
+      </ThemeProvider>
+    );
+    await expectNoAxeViolations(container);
   });
 });

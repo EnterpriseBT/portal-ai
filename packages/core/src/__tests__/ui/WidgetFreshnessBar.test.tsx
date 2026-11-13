@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { jest } from "@jest/globals";
 
 import { WidgetFreshnessBar } from "../../ui/WidgetFreshnessBar";
+import { expectNoAxeViolations } from "../axe.util";
 
 /**
  * Shared widget chrome (#349): the "Updated X ago" cue, the manual refresh
@@ -143,5 +144,19 @@ describe("WidgetFreshnessBar", () => {
       <WidgetFreshnessBar lastUpdatedAt={null} refreshLabel="Refresh table" />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("WidgetFreshnessBar accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <WidgetFreshnessBar
+        lastUpdatedAt={Date.now() - 60_000}
+        canRefresh
+        onRefresh={() => {}}
+        refreshLabel="Refresh chart"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

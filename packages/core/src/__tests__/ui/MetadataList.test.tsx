@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MetadataList } from "../../ui/MetadataList";
 import type { MetadataItem } from "../../ui/MetadataList";
+import { expectNoAxeViolations } from "../axe.util";
 
 const baseItems: MetadataItem[] = [
   { label: "ID", value: "abc-123", variant: "mono" },
@@ -233,5 +234,9 @@ describe("MetadataList", () => {
       render(<MetadataList data-testid="custom-list" items={baseItems} />);
       expect(screen.getByTestId("custom-list")).toBeInTheDocument();
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(<MetadataList items={baseItems} />);
+    await expectNoAxeViolations(container);
   });
 });

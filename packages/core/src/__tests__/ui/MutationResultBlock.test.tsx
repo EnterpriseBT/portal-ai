@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { MutationResultBlock } from "../../ui/MutationResultBlock";
 import type { MutationResultContentBlock } from "../../contracts/portal.contract.js";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("MutationResultBlock", () => {
   describe("Single variant", () => {
@@ -119,5 +120,18 @@ describe("MutationResultBlock", () => {
 
       expect(screen.getByText("4 records")).toBeInTheDocument();
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <MutationResultBlock
+        content={{
+          type: "mutation-result",
+          operation: "created",
+          entity: "record",
+          item: { entityId: "r-1", summary: { sourceId: "abc-123" } },
+        }}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

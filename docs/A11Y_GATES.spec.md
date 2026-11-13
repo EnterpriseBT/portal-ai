@@ -121,7 +121,7 @@ Wiring:
     - core: `<Name>.test.tsx` under `src/__tests__/ui/`.
 - **What it scans:**
   - web: every `*.component.tsx` and `*.layout.tsx` under `src/`;
-  - core: every `src/ui/*.tsx` except `index.ts`.
+  - core: every `src/ui/**/*.tsx`, recursive so `searchable-select/` is covered (39 paired when written).
 - **Per file:**
   - `if (path in AXE_EXEMPT) return;`
   - if it has paired tests, at least one of them runs axe.
