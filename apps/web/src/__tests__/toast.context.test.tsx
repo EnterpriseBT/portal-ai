@@ -14,13 +14,14 @@ import {
 // a missing toast may never break the feature that raised it.
 
 describe("toast constants", () => {
-  it("never auto-hides an error, and does auto-hide everything else", () => {
-    // The asymmetry is the contract, not an implementation detail: an error
-    // is a long-lived occupant the user must dismiss.
+  it("auto-hides only a success; everything else waits to be dismissed", () => {
+    // The asymmetry is the contract (#1021, WCAG 2.2.1): an error, info or
+    // warning carries something the user must read; a success confirms what
+    // the page already shows.
     expect(TOAST_AUTO_HIDE_MS.error).toBeNull();
+    expect(TOAST_AUTO_HIDE_MS.info).toBeNull();
+    expect(TOAST_AUTO_HIDE_MS.warning).toBeNull();
     expect(TOAST_AUTO_HIDE_MS.success).toBeGreaterThan(0);
-    expect(TOAST_AUTO_HIDE_MS.info).toBeGreaterThan(0);
-    expect(TOAST_AUTO_HIDE_MS.warning).toBeGreaterThan(0);
   });
 
   it("anchors bottom-right, clear of UpdateBanner's bottom-center", () => {
