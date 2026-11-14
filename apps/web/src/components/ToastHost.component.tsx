@@ -22,6 +22,12 @@ export interface ToastHostProps {
   hiddenCount: number;
   onDismiss: (id: string) => void;
   onDismissAll: () => void;
+  /**
+   * True while the pointer is over the stack or focus is inside it, false
+   * once neither is (#1021). The provider stops every timer while held.
+   * Reported only on a change.
+   */
+  onHoldChange: (held: boolean) => void;
 }
 
 /**
@@ -37,12 +43,17 @@ export interface ToastHostProps {
  * When a toast holding keyboard focus goes (its Close, Dismiss all, or its
  * own timer), focus moves to the close button of the toast that takes its
  * place, else Dismiss all, else `main`, so it never falls to the body.
+ *
+ * It reports a hold while the pointer or keyboard focus is in the stack, so
+ * nothing hides while it's being read (#1021). One hold covers the whole stack:
+ * moving between toasts mustn't restart the clock on the one just left.
  */
 export const ToastHost: React.FC<ToastHostProps> = ({
   toasts,
   hiddenCount,
   onDismiss,
   onDismissAll,
+  onHoldChange,
 }) => {
   // One polite live region holds the stack, in the queue's order (#797).
   // It's always in the page, since a screen reader only announces what's
@@ -58,6 +69,24 @@ export const ToastHost: React.FC<ToastHostProps> = ({
    * for the overflow row. Null when focus is outside it.
    */
   const focusedAt = useRef<number | null>(null);
+  /** The hold's two halves, and the last value reported. */
+  const pointerInside = useRef(false);
+  const focusInside = useRef(false);
+  /**
+   * Focus came in with a pointer press (a click on Close keeps focus on the
+   * button, and the hand-off then moves it to the next one). That focus
+   * doesn't hold: the pointer hold already covers the mouse user, and it
+   * ends when they move away. A key press in the stack clears it.
+   */
+  const pointerFocused = useRef(false);
+  const reportedHold = useRef(false);
+  const reportHold = () => {
+    const held =
+      pointerInside.current || (focusInside.current && !pointerFocused.current);
+    if (held === reportedHold.current) return;
+    reportedHold.current = held;
+    onHoldChange(held);
+  };
 
   const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
     const holder = (e.target as HTMLElement).closest("[data-toast-id]");
@@ -65,13 +94,38 @@ export const ToastHost: React.FC<ToastHostProps> = ({
       ? toasts.findIndex((t) => t.id === holder.getAttribute("data-toast-id"))
       : -1;
     focusedAt.current = index >= 0 ? index : toasts.length;
+    focusInside.current = true;
+    reportHold();
   };
   const handleBlur = (e: React.FocusEvent<HTMLElement>) => {
     const next = e.relatedTarget as Node | null;
     if (next && hostRef.current?.contains(next)) return;
     // A blur from a node being removed isn't the user leaving; one from a
-    // node still in the page is (a click on the page, Tab out).
-    if ((e.target as Node).isConnected) focusedAt.current = null;
+    // node still in the page is (a click on the page, Tab out). For a
+    // removed node the layout effect below settles the hold, once focus
+    // has been handed on.
+    if ((e.target as Node).isConnected) {
+      focusedAt.current = null;
+      focusInside.current = false;
+      pointerFocused.current = false;
+      reportHold();
+    }
+  };
+  const handlePointerDown = () => {
+    pointerFocused.current = true;
+    reportHold();
+  };
+  const handleKeyDown = () => {
+    pointerFocused.current = false;
+    reportHold();
+  };
+  const handlePointerEnter = () => {
+    pointerInside.current = true;
+    reportHold();
+  };
+  const handlePointerLeave = () => {
+    pointerInside.current = false;
+    reportHold();
   };
 
   // Runs before paint, after React has removed the gone toast's nodes.
@@ -96,6 +150,20 @@ export const ToastHost: React.FC<ToastHostProps> = ({
       document.getElementById(MAIN_CONTENT_ID);
     target?.focus();
   }, [toasts, hiddenCount]);
+
+  // Runs after the hand-off above. A focused node that's removed fires no
+  // blur, and an emptied stack has nothing left under the pointer, so the
+  // hold is recomputed here. A hold left on would stop every later success
+  // from hiding. `activeElement` outlives the window losing focus (another
+  // tab), so a page without focus has nothing focused in the stack.
+  useLayoutEffect(() => {
+    const active = document.activeElement;
+    focusInside.current =
+      document.hasFocus() && !!active && !!hostRef.current?.contains(active);
+    if (!focusInside.current) pointerFocused.current = false;
+    if (toasts.length === 0 && hiddenCount === 0) pointerInside.current = false;
+    reportHold();
+  });
 
   const isUrgent = (t: Toast) =>
     t.severity === "error" || t.severity === "warning";
@@ -143,6 +211,10 @@ export const ToastHost: React.FC<ToastHostProps> = ({
       ref={hostRef}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+      onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
       // Dismissal is explicit: per-toast close, or Dismiss all. Nothing
       // here closes on a click elsewhere.
       data-testid={toasts.length > 0 ? "toast-host" : undefined}

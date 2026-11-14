@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Product** | Portals AI: the web application and the public marketing site |
-| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14) |
+| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14; 2.2.1: #1021) |
 | **First release carrying it** | The first production release after epic #791 merges to `main` |
 | **Report date** | 2026-11-14 |
 | **Contact** | support@portalsai.io (accessibility feedback); sales@portalsai.io (procurement and report requests) |
@@ -58,7 +58,7 @@ APG patterns used: dialog (modal), grid (the spreadsheet region editor and edita
 | 2.1.1 Keyboard | Supports | Every function works from the keyboard (keyboard pass KB-01…KB-10, all closed; KB-07…KB-09 confirmed by inspection). The spreadsheet region editor is a keyboard grid: Shift-selection plus Enter creates a region, Enter opens one. Column reordering has Move up/down buttons. A map's canvas takes arrow keys, and its features are reachable through "Features in view". The chart and map keyboard paths are held by #796's tests, not by a walk: the evaluation org's plan doesn't include the Visualize or GIS toolpacks. |
 | 2.1.2 No Keyboard Trap | Supports | Every walked page completed a full tab cycle. Dialogs return focus to their trigger on close. |
 | 2.1.4 Character Key Shortcuts | Supports | There are no single-character shortcuts. The region editor's Delete/Backspace and Escape act only while focus is on the sheet, and its other shortcuts use a modifier. |
-| 2.2.1 Timing Adjustable | Partially Supports | No session or form has a time limit; sign-in renews silently. Error notifications persist until dismissed. **Limitation:** success notifications hide after 4 s and info/warning after 6 s, and hovering or focusing doesn't pause them. Two info notices (a cleared view filter, an unconfirmed Stripe subscription) say something the page doesn't. Tracked in #1021. |
+| 2.2.1 Timing Adjustable | Supports | No session or form has a time limit; sign-in renews silently. Error, info and warning notifications persist until dismissed (#1021). Only a success notification hides itself, after 4 s, and it confirms an outcome the page already shows; its timer stops while the pointer or keyboard focus is in the notifications, and restarts in full afterwards. The rate-limit warning hides when the wait it names ends, held or not, since it's no longer true after that and the data it's waiting for loads on the page. Pinned by `Toast.provider.test.tsx` and `ToastHost.test.tsx`. |
 | 2.2.2 Pause, Stop, Hide | Supports | No content moves, blinks or scrolls automatically. Loading indicators stop when their content arrives. Live updates (a streaming reply, job progress) are started by the user and end when the work does. |
 | 2.3.1 Three Flashes or Below Threshold | Supports | Nothing flashes. |
 | 2.4.1 Bypass Blocks | Supports | Every app layout starts with a "Skip to main content" link and every site page with "Skip to content", and landmarks are named (KB-01). |

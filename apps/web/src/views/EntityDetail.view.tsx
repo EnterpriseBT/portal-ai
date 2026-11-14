@@ -751,8 +751,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const handleClearRecords = useCallback(() => {
     clearRecordsMutation.mutate(undefined, {
       toast: {
+        // A success, so it hides itself (#1021): the lock alert carries the
+        // running clear, and "Deleted N records" reports its end.
         success: "Deleting records… this can take a few minutes.",
-        successSeverity: "info",
       },
       // The lock alert + disabled action appear immediately rather than
       // waiting for the first SSE event to land.

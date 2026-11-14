@@ -20,6 +20,7 @@ const baseProps = {
   hiddenCount: 0,
   onDismiss: jest.fn<(id: string) => void>(),
   onDismissAll: jest.fn<() => void>(),
+  onHoldChange: jest.fn<(held: boolean) => void>(),
 };
 
 beforeEach(() => {
@@ -155,6 +156,98 @@ describe("ToastHost — focus after a toast goes (#797)", () => {
     closeButtons()[0].blur();
     rerender(<ToastHost {...baseProps} toasts={[three[1], three[2]]} />);
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe("ToastHost — hold while read (#1021)", () => {
+  const holds = () => baseProps.onHoldChange.mock.calls.map(([h]) => h);
+
+  it("holds while the pointer is over the stack", () => {
+    render(<ToastHost {...baseProps} />);
+    fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+    fireEvent.pointerLeave(screen.getByTestId("toast-host"));
+    expect(holds()).toEqual([true, false]);
+  });
+
+  it("holds while focus is inside, and releases on leaving it", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      render(<ToastHost {...baseProps} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      outside.focus();
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("stays held while either the pointer or focus is inside", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      render(<ToastHost {...baseProps} />);
+      fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+      screen.getByRole("button", { name: /close/i }).focus();
+      outside.focus();
+      expect(holds()).toEqual([true]);
+      fireEvent.pointerLeave(screen.getByTestId("toast-host"));
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("releases when the focused last toast goes and focus moves to main", () => {
+    const main = document.createElement("main");
+    main.id = "main-content";
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+    try {
+      const { rerender } = render(<ToastHost {...baseProps} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      rerender(<ToastHost {...baseProps} toasts={[]} />);
+      expect(document.activeElement).toBe(main);
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      main.remove();
+    }
+  });
+
+  it("doesn't hold for focus a pointer press put there, until a key is pressed", () => {
+    render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    fireEvent.pointerDown(close);
+    close.focus();
+    expect(holds()).toEqual([]);
+    fireEvent.keyDown(close, { key: "Shift" });
+    expect(holds()).toEqual([true]);
+  });
+
+  it("releases when the window loses focus, even though activeElement stays", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    close.focus();
+    const hasFocus = jest.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      fireEvent.blur(close);
+      rerender(
+        <ToastHost
+          {...baseProps}
+          toasts={[...baseProps.toasts, toast({ id: "t-2", message: "Again" })]}
+        />
+      );
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it("releases a pointer hold when the stack empties under it", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+    rerender(<ToastHost {...baseProps} toasts={[]} />);
+    expect(holds()).toEqual([true, false]);
   });
 });
 
