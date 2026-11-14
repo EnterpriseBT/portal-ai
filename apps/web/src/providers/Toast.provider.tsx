@@ -37,9 +37,10 @@ export interface ToastProviderProps {
  *   `info` and `warning` persist until dismissed unless a caller passes
  *   `autoHideMs`. Each *visible* toast runs its own timer, so a success fades
  *   from beside a persistent error.
- * - **Held while read.** While the pointer or focus is in the stack
- *   (`ToastHost`'s `onHoldChange`), no timer runs; when the hold ends each
- *   restarts in full (WCAG 2.2.1).
+ * - **Held while read.** While the pointer or keyboard focus is in the stack
+ *   (`ToastHost`'s `onHoldChange`), no success timer runs; when the hold
+ *   ends each restarts in full (WCAG 2.2.1). An `autoHideMs` notice isn't
+ *   held, since it stops being true when its wait ends.
  * - **Timers start on promotion**, not on raise — a toast that waited its turn
  *   still gets its full reading time.
  * - **Dedupe against visible toasts**, so double-clicking a failing button
@@ -96,24 +97,26 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
    * Arm one timer per visible toast, and only once it is visible — hence
    * keying off `visible` rather than the whole queue. Timers for toasts that
    * have left the visible set are cleared, so a dismissal cannot fire a
-   * stale callback. While the stack is held every timer is cleared, so the
-   * release re-arms each one with its full duration.
+   * stale callback. While the stack is held a success's timer is cleared, so
+   * the release re-arms it with its full duration. A notice with
+   * `autoHideMs` isn't held: its end is the end of what it reports (a
+   * rate-limit wait), and its caller times that independently.
    */
   useEffect(() => {
     const live = timers.current;
-    const visibleIds = new Set(visible.map((t) => t.id));
+    const byId = new Map(visible.map((t) => [t.id, t]));
+    const holds = (t: Toast) => held && t.autoHideMs == null;
 
     for (const [id, handle] of live) {
-      if (held || !visibleIds.has(id)) {
+      const toast = byId.get(id);
+      if (!toast || holds(toast)) {
         clearTimeout(handle);
         live.delete(id);
       }
     }
 
-    if (held) return;
-
     for (const toast of visible) {
-      if (live.has(toast.id)) continue;
+      if (live.has(toast.id) || holds(toast)) continue;
       // An error persists until dismissed, whatever the caller asked for.
       const duration =
         toast.severity === "error"

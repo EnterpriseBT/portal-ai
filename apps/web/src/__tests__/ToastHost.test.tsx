@@ -214,6 +214,35 @@ describe("ToastHost — hold while read (#1021)", () => {
     }
   });
 
+  it("doesn't hold for focus a pointer press put there, until a key is pressed", () => {
+    render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    fireEvent.pointerDown(close);
+    close.focus();
+    expect(holds()).toEqual([]);
+    fireEvent.keyDown(close, { key: "Shift" });
+    expect(holds()).toEqual([true]);
+  });
+
+  it("releases when the window loses focus, even though activeElement stays", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    close.focus();
+    const hasFocus = jest.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      fireEvent.blur(close);
+      rerender(
+        <ToastHost
+          {...baseProps}
+          toasts={[...baseProps.toasts, toast({ id: "t-2", message: "Again" })]}
+        />
+      );
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
   it("releases a pointer hold when the stack empties under it", () => {
     const { rerender } = render(<ToastHost {...baseProps} />);
     fireEvent.pointerEnter(screen.getByTestId("toast-host"));

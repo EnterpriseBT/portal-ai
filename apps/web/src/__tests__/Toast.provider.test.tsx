@@ -271,12 +271,35 @@ describe("ToastProvider — held while read (#1021)", () => {
     }
   });
 
-  it("holds a autoHideMs warning too", () => {
+  // Its end is the end of what it reports (a rate-limit wait), and its
+  // caller times that on its own, so the two agree.
+  it("doesn't hold an autoHideMs notice", () => {
     const api = mount();
     raise(() => api().warning("Wait 5s", { autoHideMs: 5_000 }));
     fireEvent.pointerEnter(host());
-    advance(20_000);
-    expect(screen.getByTestId("toast-warning")).toBeInTheDocument();
+    advance(5_100);
+    expect(screen.queryByTestId("toast-warning")).not.toBeInTheDocument();
+  });
+
+  // Review: a mouse click on Close keeps focus on the button, and the
+  // hand-off moves it to the next toast's Close. That focus mustn't hold,
+  // or the next success would never hide.
+  it("lets a success hide after another toast is closed with the mouse", () => {
+    const api = mount();
+    raise(() => {
+      api().error("Broke");
+      api().success("Saved");
+    });
+    const close = screen.getAllByRole("button", { name: /close/i })[0];
+    fireEvent.pointerEnter(host());
+    fireEvent.pointerDown(close);
+    act(() => close.focus());
+    fireEvent.click(close);
+    expect(screen.queryByTestId("toast-error")).not.toBeInTheDocument();
+    expect(host()).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.pointerLeave(host());
+    advance(SUCCESS_MS + 100);
+    expect(screen.queryByTestId("toast-success")).not.toBeInTheDocument();
   });
 
   // A focused node that's removed fires no blur: the hold must still end,
