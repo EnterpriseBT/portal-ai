@@ -2,7 +2,7 @@
 
 Every accessibility finding in Portals AI against **WCAG 2.2 AA**, mapped to a success criterion, to where it was seen (role, state, theme), and to the child of epic [#791](https://github.com/EnterpriseBT/portal-ai/issues/791) that owns the fix. It is the working list the area children (#793–#798) fix from, and the evidence the Accessibility Conformance Report (#800) is written from.
 
-**Lifecycle.** This doc is durable for the life of the epic. It has no phase suffix, so a child's `/discovery` sweep leaves it alone. At close-out, #800 folds it into the ACR or deletes it.
+**Lifecycle.** This doc is durable: it's the evidence log for [`ACCESSIBILITY_CONFORMANCE_REPORT.md`](ACCESSIBILITY_CONFORMANCE_REPORT.md) (#800), whose rows cite its walk IDs (KB-nn, RZ-nn, SR flows). When the ACR's documentation-sync row fires, re-walk the affected flows here and record the result. It has no phase suffix, so a `/discovery` sweep leaves it alone.
 
 ## How it was produced
 
