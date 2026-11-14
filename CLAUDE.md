@@ -251,7 +251,7 @@ The provider (`providers/Toast.provider.tsx`) is mounted once in `Application.pr
 | Rule | Behavior |
 |---|---|
 | Timing | `error`, `info` and `warning` **persist until dismissed**; only `success` hides itself, after 4s (#1021, WCAG 2.2.1: a success confirms what the page already shows, the others carry something the user must read). Each visible toast runs its own timer, and no success timer runs while the pointer or keyboard focus is in the stack: when that hold ends, each restarts in full. A notice whose relevance has a known end passes `autoHideMs` (the API rate-limit warning stays up for the wait it names, #747), which the hold doesn't extend; an `error` ignores it. |
-| Stacking | Up to 3 visible, bottom-right. Beyond that a `+N more` row appears carrying **Dismiss all**. While the focused control would sit under the stack, the stack moves to the top right, so it never hides focus (#1024, WCAG 2.4.11; `utils/toast-placement.util.ts`). |
+| Stacking | Up to 3 visible, bottom-right. Beyond that a `+N more` row appears carrying **Dismiss all**. While keyboard focus would sit under the stack, the stack moves to the top right, so it never hides focus (#1024, WCAG 2.4.11; `utils/use-toast-stack-edge.util.ts`). |
 | Dedupe | A raise matching a **currently visible** `(message, severity)` is dropped. |
 | Never | The **system** never auto-dismisses an error to make room. Only the user may discard an unread one. |
 | No provider | `useToast()` returns no-ops rather than throwing — a missing notification must never break the feature that raised it. |
