@@ -67,6 +67,9 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
   isPending,
   onChange,
 }: ConnectorInstanceCapabilityFlagsUIProps) => {
+  // The rows wrap at narrow widths (#1019, WCAG 1.4.10). They keep Stack's
+  // margin-based `spacing` rather than `useFlexGap`: only the margin mode
+  // resets FormControlLabel's default -11px/16px margins.
   if (!canEdit) {
     const enabled = [
       "Read",
@@ -76,7 +79,7 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
       <Stack
         direction="row"
         spacing={1}
-        useFlexGap
+        rowGap={1}
         flexWrap="wrap"
         alignItems="center"
       >
@@ -92,7 +95,7 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
       <Stack
         direction="row"
         spacing={1}
-        useFlexGap
+        rowGap={1}
         flexWrap="wrap"
         alignItems="center"
       >

@@ -152,7 +152,7 @@ describe("MetadataList", () => {
           items={[{ label: "Config", value: <pre>{"x".repeat(200)}</pre> }]}
         />
       );
-      const value = document.querySelector("[data-metadata-value]");
+      const value = screen.getByText("Config").nextElementSibling;
       expect(value).toHaveStyle({ alignSelf: "stretch", minWidth: "0" });
     });
 
