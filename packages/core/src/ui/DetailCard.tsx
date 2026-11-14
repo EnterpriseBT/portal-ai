@@ -180,14 +180,12 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
             alignItems={{ xs: "flex-start", sm: "center" }}
             justifyContent="space-between"
           >
-            {/* alignSelf: stretch gives the column the card's width when the
-                row is a column (xs), so the title's ellipsis engages instead
-                of the card clipping it (#1020, WCAG 1.4.12). On sm+ its width
-                comes from flex: 1. */}
-            <Stack
-              spacing={1.5}
-              sx={{ minWidth: 0, flex: 1, alignSelf: "stretch" }}
-            >
+            {/* width: 100% gives the column the card's width when the row is a
+                column (xs), so the title's ellipsis engages instead of the card
+                clipping it (#1020, WCAG 1.4.12). In the sm+ row, flex: 1's zero
+                basis sizes it and the width is ignored, so the row's vertical
+                centring is untouched (alignSelf: stretch would override it). */}
+            <Stack spacing={1.5} sx={{ minWidth: 0, flex: 1, width: "100%" }}>
               {titleRow}
               {body}
             </Stack>

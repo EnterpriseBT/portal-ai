@@ -17,7 +17,7 @@
 
 ## Decision — stretch the column, keep the ellipsis
 
-- **Stretch:** the title + body column gets `alignSelf: "stretch"`, as #1019 did for `MetadataList`. On sm+ (row) it only stretches the height of a box whose width comes from `flex: 1`.
+- **Fill the card:** the title + body column gets `width: "100%"`. On xs (column) that gives it the card's width. In the sm+ row, `flex: 1`'s zero basis sizes it and the width is ignored. (`alignSelf: "stretch"`, as #1019 used, was the first cut; code review found it overrides the sm+ row's `alignItems: center`, top-aligning a title-only card's title against taller actions.)
 - **Ellipsis, not wrap:** the card keeps its one-line title, which the issue allows. The full name stays readable on the page the card opens, and in the card's link or button name. Wrapping to two lines would change every card list's rhythm for a narrow-and-spaced case.
 - **ACR:** 1.4.12 moves to Supports, and RZ-02 is marked closed by #1020.
 
