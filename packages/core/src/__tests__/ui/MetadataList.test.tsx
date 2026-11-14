@@ -144,6 +144,18 @@ describe("MetadataList", () => {
       expect(screen.getByText("ext_123")).toBeInTheDocument();
     });
 
+    it("should stretch a responsive row's value so wide content can shrink (#1019)", () => {
+      render(
+        <MetadataList
+          layout="responsive"
+          direction="vertical"
+          items={[{ label: "Config", value: <pre>{"x".repeat(200)}</pre> }]}
+        />
+      );
+      const value = document.querySelector("[data-metadata-value]");
+      expect(value).toHaveStyle({ alignSelf: "stretch", minWidth: "0" });
+    });
+
     it("should render stacked layout by default", () => {
       render(<MetadataList items={[{ label: "Name", value: "Test" }]} />);
       expect(screen.getByText("Name")).toBeInTheDocument();

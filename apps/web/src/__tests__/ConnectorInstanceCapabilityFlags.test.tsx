@@ -27,6 +27,23 @@ describe("ConnectorInstanceCapabilityFlagsUI", () => {
     expect(screen.getByRole("checkbox", { name: "Write" })).not.toBeChecked();
   });
 
+  // #1019: at 320px the row ran past the page edge (WCAG 1.4.10 Reflow).
+  it("wraps the editable row of flags", () => {
+    render(<ConnectorInstanceCapabilityFlagsUI {...baseProps} />);
+    const row = screen.getByRole("checkbox", { name: "Sync" }).closest("label")
+      ?.parentElement as HTMLElement;
+    expect(row).toHaveStyle({ flexWrap: "wrap" });
+  });
+
+  it("wraps the read-only row of flags", () => {
+    render(
+      <ConnectorInstanceCapabilityFlagsUI {...baseProps} canEdit={false} />
+    );
+    const row = screen.getByText("Sync").closest(".MuiChip-root")
+      ?.parentElement as HTMLElement;
+    expect(row).toHaveStyle({ flexWrap: "wrap" });
+  });
+
   it("reports a toggle through onChange", () => {
     const onChange = jest.fn();
     render(

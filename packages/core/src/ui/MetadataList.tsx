@@ -163,7 +163,14 @@ const ResponsiveRow: React.FC<{
       }}
     >
       <MetadataLabel item={item} size={size} shrink />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      {/* alignSelf: stretch gives the value the row's width when the row is a
+          column (xs), so minWidth: 0 can let wide content (a code block) shrink
+          and scroll inside it rather than push the page sideways (#1019,
+          WCAG 1.4.10). In the sm+ row its width comes from flex: 1. */}
+      <Box
+        data-metadata-value=""
+        sx={{ flex: 1, minWidth: 0, alignSelf: "stretch" }}
+      >
         <MetadataValue item={item} size={size} />
       </Box>
     </Box>

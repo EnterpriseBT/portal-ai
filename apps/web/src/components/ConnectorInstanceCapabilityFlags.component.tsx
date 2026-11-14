@@ -73,7 +73,13 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
       ...FLAGS.filter((f) => flags?.[f.key]).map((f) => f.label),
     ];
     return (
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        flexWrap="wrap"
+        alignItems="center"
+      >
         {enabled.map((label) => (
           <Chip key={label} label={label} size="small" variant="outlined" />
         ))}
@@ -83,7 +89,13 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
 
   return (
     <Stack spacing={0.5}>
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        flexWrap="wrap"
+        alignItems="center"
+      >
         <Tooltip title="Allow reading data from this connector" describeChild>
           <FormControlLabel
             control={<Checkbox checked disabled size="small" />}
