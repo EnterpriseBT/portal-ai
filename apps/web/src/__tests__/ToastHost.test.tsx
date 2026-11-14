@@ -310,7 +310,10 @@ describe("ToastHost — steps aside for focus (#1024)", () => {
   it("moves to the top while the focused control would be under it, and back once it isn't", () => {
     render(<ToastHost {...baseProps} />);
     const host = stub();
-    act(() => under.focus());
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
     expect(host).toHaveAttribute("data-toast-edge", "top");
     act(() => clear.focus());
     expect(host).toHaveAttribute("data-toast-edge", "bottom");
@@ -319,18 +322,30 @@ describe("ToastHost — steps aside for focus (#1024)", () => {
   it("stays put while focus is inside the stack", () => {
     render(<ToastHost {...baseProps} />);
     const host = stub();
-    act(() => under.focus());
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
     act(() => screen.getByRole("button", { name: /close/i }).focus());
     expect(host).toHaveAttribute("data-toast-edge", "top");
   });
 
+  /** Focus as the keyboard does: a key press first, then the focus. */
+  const keyFocus = (el: HTMLElement) =>
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      el.focus();
+    });
+  const moveUnder = (el: HTMLElement) =>
+    jest
+      .spyOn(el, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+
   it("re-checks when a toast arrives over the control that has focus", () => {
     const { rerender } = render(<ToastHost {...baseProps} />);
     const host = stub();
-    act(() => clear.focus());
-    jest
-      .spyOn(clear, "getBoundingClientRect")
-      .mockReturnValue(rect(900, 700, 32, 32));
+    keyFocus(clear);
+    moveUnder(clear);
     rerender(
       <ToastHost
         {...baseProps}
@@ -340,29 +355,78 @@ describe("ToastHost — steps aside for focus (#1024)", () => {
     expect(host).toHaveAttribute("data-toast-edge", "top");
   });
 
-  it("re-checks on scroll, once the browser has brought focus into view", () => {
+  it("re-checks on scroll, once per frame", async () => {
     render(<ToastHost {...baseProps} />);
     const host = stub();
-    act(() => clear.focus());
-    jest
-      .spyOn(clear, "getBoundingClientRect")
-      .mockReturnValue(rect(900, 700, 32, 32));
+    keyFocus(clear);
+    moveUnder(clear);
     act(() => void document.dispatchEvent(new Event("scroll")));
+    await act(
+      () => new Promise<void>((done) => requestAnimationFrame(() => done()))
+    );
     expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  // Review: 2.4.11 is about keyboard focus; a click near the corner
+  // mustn't make the stack jump from where the user is looking.
+  it("doesn't move for focus a pointer press put under it", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => {
+      fireEvent.pointerDown(under);
+      under.focus();
+    });
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  // Review: a stack moving away from a resting pointer gets no
+  // pointerleave, so the move itself ends the pointer's hold.
+  it("ends a pointer hold when it moves", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    fireEvent.pointerEnter(host);
+    keyFocus(under);
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+    expect(baseProps.onHoldChange.mock.calls.map(([h]) => h)).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it("stops listening when it unmounts", () => {
     const remove = jest.spyOn(document, "removeEventListener");
+    const removeWin = jest.spyOn(window, "removeEventListener");
     const { unmount } = render(<ToastHost {...baseProps} />);
     unmount();
+    const capture = { capture: true };
     expect(remove).toHaveBeenCalledWith("focusin", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith(
+      "scroll",
+      expect.any(Function),
+      capture
+    );
+    expect(remove).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+      capture
+    );
+    expect(remove).toHaveBeenCalledWith(
+      "pointerdown",
+      expect.any(Function),
+      capture
+    );
+    expect(removeWin).toHaveBeenCalledWith("resize", expect.any(Function));
     remove.mockRestore();
+    removeWin.mockRestore();
   });
 
   it("has no axe violations at the top", async () => {
     render(<ToastHost {...baseProps} />);
     stub();
-    act(() => under.focus());
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
     await expectNoAxeViolations(screen.getByTestId("toast-host"));
   });
 });

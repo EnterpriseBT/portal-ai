@@ -19,7 +19,8 @@ const overlaps = (a: ToastRect, b: ToastRect): boolean =>
 /**
  * Where the toast stack sits for the focused element (#1024, WCAG 2.4.11).
  *
- * The stack lives `inset` px from the bottom-right corner. When the focused
+ * The stack lives `inset` px from the bottom-right corner (`TOAST_ANCHOR`;
+ * a test holds the two together). When the focused
  * box would be under it there, it moves to the top-right corner instead, so
  * focus is never hidden. It's measured against the bottom position, never
  * the current one, so the stack doesn't flip back and forth, and it stays at

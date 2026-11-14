@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import Alert from "@mui/material/Alert";
@@ -19,10 +13,9 @@ import CloseIcon from "@mui/icons-material/Close";
 import { MAIN_CONTENT_ID } from "./SkipLinks.component";
 import { getNotificationsRoot } from "../utils/notifications-root.util";
 import { TOAST_ANCHOR } from "../utils/toast.constants";
-import { toastStackEdge } from "../utils/toast-placement.util";
+import { useToastStackEdge } from "../utils/use-toast-stack-edge.util";
 
 import type { Toast } from "../utils/toast.context";
-import type { ToastStackEdge } from "../utils/toast-placement.util";
 
 export interface ToastHostProps {
   /** Already sliced to `TOAST_MAX_VISIBLE` by the provider. */
@@ -58,7 +51,7 @@ export interface ToastHostProps {
  *
  * It never covers the focused control (#1024, WCAG 2.4.11): when focus lands
  * where the stack sits at the bottom right, the stack moves to the top right
- * until focus is clear of the bottom again (`toastStackEdge`). Focus inside
+ * until focus is clear of the bottom again (`useToastStackEdge`). Focus inside
  * the stack never moves it. One hold covers the whole stack:
  * moving between toasts mustn't restart the clock on the one just left.
  */
@@ -85,28 +78,7 @@ export const ToastHost: React.FC<ToastHostProps> = ({
   const focusedAt = useRef<number | null>(null);
   const theme = useTheme();
   const inset = parseFloat(theme.spacing(3));
-  const [edge, setEdge] = useState<ToastStackEdge>("bottom");
-  /** Puts the stack where it doesn't cover `target`, the focused element. */
-  const place = useCallback(
-    (target: Element | null) => {
-      const host = hostRef.current;
-      if (!host || (target && host.contains(target))) return;
-      const stack = host.getBoundingClientRect();
-      const focus =
-        target && target !== document.body
-          ? target.getBoundingClientRect()
-          : null;
-      setEdge(
-        toastStackEdge(
-          focus,
-          { width: stack.width, height: stack.height },
-          { width: window.innerWidth, height: window.innerHeight },
-          inset
-        )
-      );
-    },
-    [inset]
-  );
+  const edge = useToastStackEdge(hostRef, inset, toasts, hiddenCount);
   /** The hold's two halves, and the last value reported. */
   const pointerInside = useRef(false);
   const focusInside = useRef(false);
@@ -203,37 +175,13 @@ export const ToastHost: React.FC<ToastHostProps> = ({
     reportHold();
   });
 
-  // Focus moves before the browser scrolls it into view, so a focus is
-  // re-checked a frame later; a scroll anywhere (captured) or a resize
-  // re-checks the element that has focus.
-  useEffect(() => {
-    let frame = 0;
-    const onFocusIn = (e: FocusEvent) => {
-      const target = e.target instanceof Element ? e.target : null;
-      place(target);
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => place(document.activeElement));
-    };
-    const onMove = () => place(document.activeElement);
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("scroll", onMove, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("resize", onMove);
-    return () => {
-      cancelAnimationFrame(frame);
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("scroll", onMove, { capture: true });
-      window.removeEventListener("resize", onMove);
-    };
-  }, [place]);
-
-  // The stack's size changes with its toasts: a new one can reach a
-  // control that already has focus.
+  // A stack that moves away from a resting pointer gets no pointerleave
+  // until the pointer moves, so a move ends the pointer's hold (#1024).
   useLayoutEffect(() => {
-    place(document.activeElement);
-  }, [toasts, hiddenCount, place]);
+    pointerInside.current = false;
+    reportHold();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a move only; reportHold reads refs
+  }, [edge]);
 
   const isUrgent = (t: Toast) =>
     t.severity === "error" || t.severity === "warning";

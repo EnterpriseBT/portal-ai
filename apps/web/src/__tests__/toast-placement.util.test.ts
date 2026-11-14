@@ -1,3 +1,4 @@
+import { TOAST_ANCHOR } from "../utils/toast.constants";
 import { toastStackEdge } from "../utils/toast-placement.util";
 
 // #1024: the stack steps aside for focus (WCAG 2.4.11). Viewport 1280×720,
@@ -14,6 +15,12 @@ const box = (left: number, top: number, width: number, height: number) => ({
 });
 
 describe("toastStackEdge", () => {
+  // Review: the geometry models a bottom-right stack. Moving the anchor
+  // means changing the model too.
+  it("models the anchor ToastHost renders from", () => {
+    expect(TOAST_ANCHOR).toEqual({ vertical: "bottom", horizontal: "right" });
+  });
+
   it("stays at the bottom when the focused box is clear of it", () => {
     expect(toastStackEdge(box(100, 600, 80, 30), stack, viewport, INSET)).toBe(
       "bottom"
