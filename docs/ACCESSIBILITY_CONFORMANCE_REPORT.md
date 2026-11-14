@@ -30,7 +30,7 @@ There is no browser-based axe run in CI. A full browser audit (axe in Playwright
 
 Manual and scripted walks:
 - **Keyboard pass** (2026-11-04, re-walked 2026-11-05): six flows, keyboard only, in Chromium. Checks 2.1.1, 2.1.2, 2.4.3, 2.4.7, 2.4.11, 2.5.7 and 2.5.8. Three of its rows (KB-07…KB-09) were confirmed by code inspection rather than walked. KB-11 (a persistent error-toast stack over focused controls) was added on 2026-11-14. 3.3.7 is evidenced by the screen-reader pass and 3.3.8 by inspection of the sign-in page.
-- **Screen-reader pass** (2026-11-05): the same six flows with VoiceOver + Safari (macOS) and NVDA + Firefox (Windows).
+- **Screen-reader pass** (2026-11-05; flow 3's chart steps walked 2026-11-14): the same six flows with VoiceOver + Safari (macOS) and NVDA + Firefox (Windows).
 - **Resize, reflow, text-spacing and orientation pass** (2026-11-13, re-run in Brand Dark 2026-11-14): scripted in Chromium, both themes. 320 CSS px; WCAG text-spacing overrides; 200% text and 200% zoom; four orientations. Covers the app, a dialog, the spreadsheet region editor and every marketing-site page.
 
 APG patterns used: dialog (modal), grid (the spreadsheet region editor and editable tables), tabs, menu and menu button, accordion, combobox (searchable selects), disclosure, and the toolbar's live result announcements.
@@ -46,7 +46,7 @@ APG patterns used: dialog (modal), grid (the spreadsheet region editor and edita
 
 | Criteria | Conformance Level | Remarks and Explanations |
 |---|---|---|
-| 1.1.1 Non-text Content | Partially Supports | Images carry alt text (jsx-a11y `alt-text`), icon-only buttons are named, decorative icons are hidden. Every chart and map is a figure named by its title and described by a visible summary that the agent must write. "Show data" opens the plotted data as a table; a map offers "Features in view" (#796). **Limitation:** the chart and map alternatives are held by unit tests, but their screen-reader walk (SR flow 3, steps 3 and 5) hasn't been done yet, so this row stays Partially Supports until it is. Tracked in #800. |
+| 1.1.1 Non-text Content | Supports | Images carry alt text (jsx-a11y `alt-text`), icon-only buttons are named, decorative icons are hidden. Every chart and map is a figure named by its title and described by a visible summary that the agent must write. "Show data" opens the plotted data as a table; a map offers "Features in view" (#796). The screen-reader pass walked a generated chart and its pinned copy (SR flow 3, steps 3 and 5, 2026-11-14): its name, summary and titled frame are announced, and "Show data" reads as a table. |
 | 1.2.1 Audio-only and Video-only (Prerecorded) | Not Applicable | The product contains no audio or video. |
 | 1.2.2 Captions (Prerecorded) | Not Applicable | No audio or video. |
 | 1.2.3 Audio Description or Media Alternative (Prerecorded) | Not Applicable | No audio or video. |
