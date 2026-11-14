@@ -816,9 +816,12 @@ Which review-chain phases are *required* scales by ticket kind and sizing — he
 | Bug (full) | required | required¹ | required | required |
 | Condensed (feature/bug) | required | required¹ / else waivable | required (embedded `## Smoke`) | waivable-with-reason |
 | Chore / docs / test | required | waivable-with-reason | waivable-with-reason | waivable-with-reason |
+| Docs-only PR (any kind)² | waivable-with-reason | waivable-with-reason | per its row above | waivable-with-reason |
 | Trivial (no docs at all) | — | — | — | — |
 
 ¹ **`security` is required whenever the change touches auth, data access, multi-tenancy, secrets, or external egress** — waivable-with-reason otherwise. Epic **children run the full chain independently** on their own branch before merging to `epic/<slug>` (see "Epic branches"), never deferred to close-out. A waiver is a **recorded reason** in the PR's `## Merge gate` checklist, never a silent skip.
+
+² **A docs-only PR** changes only markdown (`*.md`), with no code, config, workflow or skill file. It needs no code review: the agent doesn't run one and writes the waiver ("docs-only change") on the code-review row, and the user can still ask for a review. Smoke still follows the ticket's own row, because a doc that records a walk or a decision is only as true as that walk. A PR that also touches anything else follows its ticket's row in full.
 
 ### Agent-guided browser sessions
 
