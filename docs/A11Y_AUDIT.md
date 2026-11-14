@@ -63,6 +63,7 @@ The flows:
 | KB-08 | CSV import → records | layout plan | 2.5.7 | **Closed:** with no region selected the panel takes a typed range ("A1:D20", "A:D", "3:10") and Add region (#795, 23e698ce), and the sheet is a keyboard grid where Shift-selection plus Enter creates a region and Enter opens the one under the active cell (#795, b3069f20, d946f03a). Was: drawing a region took a pointer drag, and typed bounds existed only for a region already drawn. | inspection | #795 |
 | KB-09 | Station → portal → pin | chart result | 1.1.1, 4.1.2 | **Closed:** every chart and map is a figure named by its title and described by a visible summary, which the agent must write (`visualize_d3`/`visualize_map` refuse a call without one) or which is derived from the result for older blocks; the chart's iframe is titled "<title> (chart)"; "Show data" opens the full result as a table (paged, up to 100,000 rows, with the cap stated); a map's canvas is named and described by its key hint, and "Features in view" lists and opens its features from the keyboard (#796, b085c951, 477ccb89, 63ae3e0d, 2eb68d1b). Covered by unit and jest-axe tests; screen-reader flow 3 steps 3 and 5 still to walk. Was: D3 charts render inside a sandboxed iframe that axe can't enter, with no text alternative contract for a chart's content. | inspection | #796 |
 | KB-10 | Marketing site | header and footer nav | 2.5.8 | **Closed:** every header and footer nav link is a ≥24px target (`min-block-size: 24px`), measured 25.6px tall at 1280px and at 400px, where the nav wraps (#798). The footer contact addresses sit inside a sentence, which 2.5.8 exempts. axe (WCAG 2.2 AA + best-practice) is clean on all 12 site pages in both themes. Was: nav links were 19px tall, and passing relied on the spacing exception. | keyboard | #798 |
+| KB-11 | Toolpacks list (any page whose controls reach the bottom of the viewport) | Tab with 3 error toasts showing | 2.4.11 | **Open.** The fixed toast stack at the bottom right fully covers the row actions of the last rows as they take focus. At 1280×720 the last three rows' Refresh, Edit and Delete were covered 100%; at 390×844 whole rows were. Error toasts persist until dismissed. Walked 2026-11-14 by script, with the refresh request failed by a network intercept. | keyboard | #1024 |
 
 ## Resize, reflow, text-spacing and orientation pass
 
@@ -72,7 +73,7 @@ Added for the ACR (#800), since the keyboard and screen-reader passes don't chec
 - 1.4.10 reflow
 - 1.4.12 text spacing
 
-**Walked 2026-11-13** by script in Chromium against the local stack and the `e2e-fixture` org, as owner, in the light theme. The themes change colours, not layout. Each page was loaded at each condition and measured. Every hit was checked by screenshot, and visually hidden text (the skip link before focus, the collapsed user name, "(app version)") was ruled out by hand.
+**Walked 2026-11-13** in Brand and **re-walked 2026-11-14** in Brand Dark, by script in Chromium against the local stack and the `e2e-fixture` org, as owner. Both themes gave the same results. Each page was loaded at each condition and measured. Every hit was checked by screenshot, and visually hidden text (the skip link before focus, the collapsed user name, "(app version)") was ruled out by hand.
 
 - **Reflow (1.4.10):** viewport 320×720. A failure is page-level horizontal scroll, or any element past the viewport's edge outside a scroll container. Tables, grids, code blocks, charts and maps are 2D content, which the criterion exempts, but their box must still fit the page.
 - **Text spacing (1.4.12):** at 320×720, with line-height 1.5, letter-spacing 0.12em, word-spacing 0.16em and paragraph spacing 2em forced with `!important`. A failure is the same overflow, or text clipped by an `overflow: hidden` box.
@@ -84,11 +85,11 @@ Added for the ACR (#800), since the keyboard and screen-reader passes don't chec
 - **App, beyond pages:** the Edit Connector Instance dialog; the RegionEditor (File Upload wizard, Draw regions step, with `core-loop.csv`).
 - **Site:** home, features, use cases and one use case, pricing, contact, security, privacy, terms.
 
-**Not reached:** a portal with a chart or map. The fixture org has none, as in the keyboard pass. Charts and maps are 2D content for 1.4.10, and their "Show data" table is held by #796's tests.
+**Not reached:** a portal with a chart or map. The fixture org's plan doesn't include the Visualize or GIS toolpacks, so none can be generated there. Charts and maps are 2D content for 1.4.10, and their "Show data" table is held by #796's tests.
 
 | ID | Page | Condition | WCAG | Observed | Owner |
 |---|---|---|---|---|---|
-| RZ-01 | Connector instance detail (`/connectors/<id>` with a config) | 320px | 1.4.10 | **Open.** `main` scrolls sideways (scrollWidth 399 vs 320): the Config code block's box is 375px wide, so its copy button is off-screen, and the Capabilities row is cut off. Every other app page, the dialog and the RegionEditor reflow with no page-level scroll. | #1019 |
+| RZ-01 | Connector instance detail (`/connectors/<id>`) | 320px | 1.4.10 | **Open.** `main` scrolls sideways. On a REST connector it measured 399px against 320: the Config code block's box is 375px wide, so its copy button is off-screen. On a File Upload connector with no config it measured 347px: the Capabilities row (323px) doesn't wrap, and its entity cards' titles ellipsize. Every other app page, the dialog and the RegionEditor reflow with no page-level scroll. | #1019 |
 | RZ-02 | Connectors card list (`DetailCard`) | 320px + text spacing | 1.4.12 | **Open.** Long card titles run past the card and are cut mid-word with no ellipsis: the title row is 290px wide in a 240px card. No other clipping on any page, dialog or the RegionEditor. | #1020 |
 | RZ-03 | All app pages, dialog, RegionEditor | 200% text; 200% zoom | 1.4.4 | **Passes.** No clipping or overlap, and no page-level horizontal scroll at either. | — |
 | RZ-04 | Marketing site, all pages | 320px; text spacing; 200% text; 200% zoom | 1.4.4, 1.4.10, 1.4.12 | **Passes.** No horizontal scroll and no clipping. Text-only zoom doubles body text (16→32px), but the h1 grows only 52→64px because it's capped by a viewport-relative clamp. Browser zoom (how 1.4.4 is met) scales it fully. | — |
@@ -168,7 +169,7 @@ Each step says what you **do** and what you should **hear**. Anything you hear t
 
 ### Findings
 
-**No findings.** The six flows were walked with VoiceOver + Safari and NVDA + Firefox on 2026-11-05, and every step announced what the script expects. A later walk adds its findings to this table.
+**No findings in what was walked.** The six flows were walked with VoiceOver + Safari and NVDA + Firefox on 2026-11-05, except flow 3, steps 3 and 5 (a chart and its pinned copy): the fixture org had no portal to produce one, so they're still to be walked (KB-09). Every walked step announced what the script expects. A later walk adds its findings to this table.
 
 | ID | Flow | Step | WCAG | Observed | AT | Owner |
 |---|---|---|---|---|---|---|
