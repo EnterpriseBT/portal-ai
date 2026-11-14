@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Product** | Portals AI: the web application and the public marketing site |
-| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md` |
+| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019, re-measured 2026-11-14) |
 | **First release carrying it** | The first production release after epic #791 merges to `main` |
 | **Report date** | 2026-11-14 |
 | **Contact** | support@portalsai.io (accessibility feedback); sales@portalsai.io (procurement and report requests) |
@@ -90,7 +90,7 @@ APG patterns used: dialog (modal), grid (the spreadsheet region editor and edita
 | 1.4.3 Contrast (Minimum) | Supports | Both themes' text colours are held at 4.5:1 (3:1 for large text) by `theme-contrast.test.ts`, and code-block token colours too. The last full browser audit (2026-11-13) found no contrast violations in either theme. Text inside an agent-generated chart is covered by 1.4.1 and 1.4.11's limitation (#1022). |
 | 1.4.4 Resize Text | Supports | No loss of content or function at 200% text-only zoom or 200% browser zoom, in both themes, in the app, dialogs, the region editor or on the site (RZ-03, RZ-04). On the site, text-only zoom caps the page heading at 1.23×; browser zoom scales it fully. |
 | 1.4.5 Images of Text | Supports | Text is rendered as text; the only images of text are the logos. |
-| 1.4.10 Reflow | Partially Supports | At 320 CSS px, in both themes, every walked page, dialog and the region editor reflow to one column, and only tables, grids and code scroll in two dimensions. Charts and maps weren't walked: the evaluation org's plan doesn't include the Visualize or GIS toolpacks. **Limitation:** connector detail pages scroll sideways, because the Capabilities row doesn't wrap and the Config code block's box doesn't shrink (RZ-01). Tracked in #1019. |
+| 1.4.10 Reflow | Supports | At 320 CSS px, in both themes, every walked page, dialog and the region editor reflow to one column, and only tables, grids and code scroll in two dimensions. Connector detail pages used to scroll sideways (RZ-01); since #1019 their Capabilities row wraps and their Config code block shrinks and scrolls on its own (re-measured on five connectors, with and without config; the REST connector in both themes). Charts and maps weren't walked: the evaluation org's plan doesn't include the Visualize or GIS toolpacks. |
 | 1.4.11 Non-text Contrast | Partially Supports | Focus rings, field borders, chips and controls are held at 3:1 in both themes by `theme-contrast.test.ts`. **Limitation:** no contrast check covers the lines, bars, markers and map features in agent-generated charts and maps. Tracked in #1022. |
 | 1.4.12 Text Spacing | Partially Supports | With WCAG's text-spacing overrides, in both themes, no content is lost on any walked app page, dialog, the region editor or the site. **Limitation:** long card titles (connector and other card lists) are cut off mid-word instead of wrapping or ending in an ellipsis; the full name stays in the card's link name (RZ-02). Tracked in #1020. |
 | 1.4.13 Content on Hover or Focus | Supports | Tooltips (MUI) can be hovered, stay while hovered or focused, and close on Escape. A disabled control's reason is also its permanent description, not only a tooltip. |
