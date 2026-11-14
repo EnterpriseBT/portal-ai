@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Product** | Portals AI: the web application and the public marketing site |
-| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14; 2.2.1: #1021) |
+| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14; 2.2.1: #1021; 2.4.11: #1024) |
 | **First release carrying it** | The first production release after epic #791 merges to `main` |
 | **Report date** | 2026-11-14 |
 | **Contact** | support@portalsai.io (accessibility feedback); sales@portalsai.io (procurement and report requests) |
@@ -97,7 +97,7 @@ APG patterns used: dialog (modal), grid (the spreadsheet region editor and edita
 | 2.4.5 Multiple Ways | Supports | App pages are reached through the navigation, breadcrumbs and the dashboard, and list pages are searchable. Site pages are reached through the header navigation, the footer navigation and links from the home page. |
 | 2.4.6 Headings and Labels | Supports | Headings and labels describe their topic or purpose. Option lists name each option distinctly (#986). |
 | 2.4.7 Focus Visible | Supports | Every focusable control gets a 2px focus ring from the theme, in both themes (KB-04, KB-05). |
-| 2.4.11 Focus Not Obscured (Minimum) | Partially Supports | The app header doesn't cover focused controls, and dialogs keep focus inside them. **Limitation:** error notifications persist until dismissed and stack at the bottom right over the page. With two or three showing, controls near the bottom of a page (e.g. a table's last rows' actions) can take focus while fully covered (KB-11). Tracked in #1024. |
+| 2.4.11 Focus Not Obscured (Minimum) | Supports | The app header doesn't cover focused controls, and dialogs keep focus inside them. Notifications stack at the bottom right over the page; while the focused control would sit under them, in a page or a dialog, they move to the top right (#1024; KB-11 re-walked). Pinned by `toast-placement.util.test.ts` and `ToastHost.test.tsx`. |
 | 2.5.7 Dragging Movements | Supports | Each drag has a single-pointer alternative: Move up/down for column order (KB-07); a typed range or click-selection for regions (KB-08); zoom buttons and double-click-to-zoom for maps. |
 | 2.5.8 Target Size (Minimum) | Supports | Targets are at least 24 × 24 CSS px or meet the spacing exception (KB-06, KB-10). Inline links in sentences are exempt. |
 | 3.1.2 Language of Parts | Supports | The interface is English throughout. Data the user brings is shown as entered. |

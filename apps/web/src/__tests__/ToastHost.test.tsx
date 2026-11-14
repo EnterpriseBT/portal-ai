@@ -1,6 +1,12 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, fireEvent, expectNoAxeViolations } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  expectNoAxeViolations,
+} from "./test-utils";
 import { ToastHost } from "../components/ToastHost.component";
 import { TOAST_ANCHOR } from "../utils/toast.constants";
 import type { Toast } from "../utils/toast.context";
@@ -248,6 +254,116 @@ describe("ToastHost — hold while read (#1021)", () => {
     fireEvent.pointerEnter(screen.getByTestId("toast-host"));
     rerender(<ToastHost {...baseProps} toasts={[]} />);
     expect(holds()).toEqual([true, false]);
+  });
+});
+
+describe("ToastHost — steps aside for focus (#1024)", () => {
+  // jsdom lays nothing out, so boxes are stubbed. Its viewport is 1024×768;
+  // a 400×200 stack at the bottom right spans x 600–1000, y 544–744.
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  let under: HTMLButtonElement;
+  let clear: HTMLButtonElement;
+  beforeEach(() => {
+    under = document.createElement("button");
+    under.textContent = "Delete last row";
+    clear = document.createElement("button");
+    clear.textContent = "First row";
+    document.body.append(under, clear);
+    jest
+      .spyOn(under, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+    jest
+      .spyOn(clear, "getBoundingClientRect")
+      .mockReturnValue(rect(40, 120, 32, 32));
+  });
+  afterEach(() => {
+    under.remove();
+    clear.remove();
+  });
+  const stub = () => {
+    const host = screen.getByTestId("toast-host");
+    jest
+      .spyOn(host, "getBoundingClientRect")
+      .mockReturnValue(rect(600, 544, 400, 200));
+    return host;
+  };
+
+  it("sits at the bottom until focus lands under it", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+    act(() => clear.focus());
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  it("moves to the top while the focused control would be under it, and back once it isn't", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => under.focus());
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+    act(() => clear.focus());
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  it("stays put while focus is inside the stack", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => under.focus());
+    act(() => screen.getByRole("button", { name: /close/i }).focus());
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  it("re-checks when a toast arrives over the control that has focus", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => clear.focus());
+    jest
+      .spyOn(clear, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+    rerender(
+      <ToastHost
+        {...baseProps}
+        toasts={[...baseProps.toasts, toast({ id: "t-2", message: "Again" })]}
+      />
+    );
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  it("re-checks on scroll, once the browser has brought focus into view", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => clear.focus());
+    jest
+      .spyOn(clear, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+    act(() => void document.dispatchEvent(new Event("scroll")));
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  it("stops listening when it unmounts", () => {
+    const remove = jest.spyOn(document, "removeEventListener");
+    const { unmount } = render(<ToastHost {...baseProps} />);
+    unmount();
+    expect(remove).toHaveBeenCalledWith("focusin", expect.any(Function));
+    remove.mockRestore();
+  });
+
+  it("has no axe violations at the top", async () => {
+    render(<ToastHost {...baseProps} />);
+    stub();
+    act(() => under.focus());
+    await expectNoAxeViolations(screen.getByTestId("toast-host"));
   });
 });
 
