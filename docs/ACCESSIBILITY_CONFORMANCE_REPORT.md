@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Product** | Portals AI: the web application and the public marketing site |
-| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019, re-measured 2026-11-14) |
+| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14) |
 | **First release carrying it** | The first production release after epic #791 merges to `main` |
 | **Report date** | 2026-11-14 |
 | **Contact** | support@portalsai.io (accessibility feedback); sales@portalsai.io (procurement and report requests) |
@@ -92,7 +92,7 @@ APG patterns used: dialog (modal), grid (the spreadsheet region editor and edita
 | 1.4.5 Images of Text | Supports | Text is rendered as text; the only images of text are the logos. |
 | 1.4.10 Reflow | Supports | At 320 CSS px, in both themes, every walked page, dialog and the region editor reflow to one column, and only tables, grids and code scroll in two dimensions. Connector detail pages used to scroll sideways (RZ-01); since #1019 their Capabilities row wraps and their Config code block shrinks and scrolls on its own (re-measured on five connectors, with and without config; the REST connector in both themes). Charts and maps weren't walked: the evaluation org's plan doesn't include the Visualize or GIS toolpacks. |
 | 1.4.11 Non-text Contrast | Partially Supports | Focus rings, field borders, chips and controls are held at 3:1 in both themes by `theme-contrast.test.ts`. **Limitation:** no contrast check covers the lines, bars, markers and map features in agent-generated charts and maps. Tracked in #1022. |
-| 1.4.12 Text Spacing | Partially Supports | With WCAG's text-spacing overrides, in both themes, no content is lost on any walked app page, dialog, the region editor or the site. **Limitation:** long card titles (connector and other card lists) are cut off mid-word instead of wrapping or ending in an ellipsis; the full name stays in the card's link name (RZ-02). Tracked in #1020. |
+| 1.4.12 Text Spacing | Supports | With WCAG's text-spacing overrides, in both themes, no content is lost on any walked app page, dialog, the region editor or the site. Long card titles used to be cut off mid-word (RZ-02); since #1020 they end in an ellipsis inside the card, and the full name stays in the card's link name and on the page it opens (re-measured on the connector, station and entity card lists). |
 | 1.4.13 Content on Hover or Focus | Supports | Tooltips (MUI) can be hovered, stay while hovered or focused, and close on Escape. A disabled control's reason is also its permanent description, not only a tooltip. |
 | 2.4.5 Multiple Ways | Supports | App pages are reached through the navigation, breadcrumbs and the dashboard, and list pages are searchable. Site pages are reached through the header navigation, the footer navigation and links from the home page. |
 | 2.4.6 Headings and Labels | Supports | Headings and labels describe their topic or purpose. Option lists name each option distinctly (#986). |

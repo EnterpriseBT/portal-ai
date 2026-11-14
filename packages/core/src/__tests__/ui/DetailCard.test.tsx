@@ -80,6 +80,19 @@ describe("DetailCard Component", () => {
     });
   });
 
+  describe("Narrow layout", () => {
+    // #1020: on xs the content row is a column; the title's column must take
+    // the card's width (width: 100%, not alignSelf, which would undo the sm+
+    // row's vertical centring) so a long title ellipsizes instead of being clipped.
+    it("stretches the title's column so a long title can ellipsize", () => {
+      render(<DetailCard title={"A very long card title ".repeat(5)} />);
+      const column = screen
+        .getByRole("heading")
+        .closest(".MuiStack-root")?.parentElement;
+      expect(column).toHaveStyle({ width: "100%", minWidth: "0" });
+    });
+  });
+
   // #794: the title is the card's one control, named by the title alone.
   describe("Clickable Card", () => {
     it("makes the title a button named by the title, inside its heading", () => {
