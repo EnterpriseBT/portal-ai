@@ -126,6 +126,18 @@ const HEX =
 const COLOUR_FUNCTION = /\b(?:rgba?|hsla?)\(/gi;
 const D3_SCHEME = /\b(?:api\.)?d3\.scheme[A-Z]\w*/g;
 const D3_INTERPOLATOR = /\b(?:api\.)?d3\.(interpolate\w*)/g;
+/** A d3 colour constructor making a colour, unless it reads a theme colour
+ *  (`d3.color(api.theme.text)`). Adversarial F2. */
+const D3_COLOUR_CONSTRUCTOR =
+  /\b(?:api\.)?d3\.(?:rgb|hsl|lab|hcl|lch|gray|cubehelix|color)\s*\((?!\s*api\.theme\.)/g;
+/** A named colour in a CSS declaration inside a string ("fill: red").
+ *  Adversarial F3. */
+const CSS_DECLARATION =
+  /(?:^|[;{\s])(?:fill|stroke|color|stop-color|background(?:-color)?)\s*:\s*([a-z]+)/gi;
+/** Code just before a string that makes it a class name or an id, never a
+ *  colour (`.attr("class", "blue")`, `.classed("green", …)`). Adversarial F4. */
+const NAME_ARGUMENT =
+  /(?:\.attr\(\s*["'`](?:class|id)["'`]\s*,|\.classed\()\s*["'`]$/;
 
 /** The content of one string literal, or one text segment of a template. */
 interface StringPart {
@@ -214,10 +226,22 @@ export function findColourLiterals(src: string): ColourLiteral[] {
     for (const m of text.matchAll(COLOUR_FUNCTION)) {
       found.push({ at: start + (m.index ?? 0), literal: m[0] });
     }
-    // A string that is exactly a colour name, wherever it's used: an attr
-    // value, a ternary branch, an array of series colours.
+    for (const m of text.matchAll(CSS_DECLARATION)) {
+      if (CSS_NAMED_COLOURS.has(m[1].toLowerCase())) {
+        found.push({
+          at: start + (m.index ?? 0) + m[0].lastIndexOf(m[1]),
+          literal: m[1],
+        });
+      }
+    }
+    // A string that is exactly a colour name, wherever it's used (an attr
+    // value, a ternary branch, an array of series colours), unless the code
+    // before it makes it a class name or an id.
     const word = text.trim();
-    if (CSS_NAMED_COLOURS.has(word.toLowerCase())) {
+    if (
+      CSS_NAMED_COLOURS.has(word.toLowerCase()) &&
+      !NAME_ARGUMENT.test(src.slice(Math.max(0, start - 40), start))
+    ) {
       found.push({ at: start + text.indexOf(word), literal: word });
     }
   }
@@ -231,6 +255,9 @@ export function findColourLiterals(src: string): ColourLiteral[] {
   const bare = chars.join("");
   for (const m of bare.matchAll(D3_SCHEME)) {
     found.push({ at: m.index ?? 0, literal: m[0] });
+  }
+  for (const m of bare.matchAll(D3_COLOUR_CONSTRUCTOR)) {
+    found.push({ at: m.index ?? 0, literal: m[0].replace(/\s+/g, "") });
   }
   for (const m of bare.matchAll(D3_INTERPOLATOR)) {
     if (!NON_COLOUR_INTERPOLATORS.has(m[1])) {

@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
-import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -41,8 +40,10 @@ const COLOURS: MapColours = {
     "#c77777",
   ],
   other: "#0e0e0e",
+  sequential: ["#5a0000", "#5b1111", "#5c2222"],
 };
 const [C0, C1, C2] = COLOURS.categorical;
+const [S0, S1, S2] = COLOURS.sequential;
 
 /** Swatch labels of a legend (or [] for null/gradient) — the discriminated
  *  MapLegend replaced the flat LegendEntry[] in #336. */
@@ -329,7 +330,9 @@ describe("resolveColorBy", () => {
     expect(interp[0]).toBe("interpolate");
     expect(interp[1]).toEqual(["linear"]);
     expect(interp[2]).toEqual(["to-number", ["get", "mkt"], 0]);
-    expect(interp.slice(3)).toEqual([0, "#000000", 100, "#ffffff"]);
+    // #1022 adversarial F1: the theme's ramp, spread evenly from min to max;
+    // the stored colours aren't used.
+    expect(interp.slice(3)).toEqual([0, S0, 50, S1, 100, S2]);
     expect(typeof expr[3]).toBe("string"); // no-data colour, never black
     expect(legend).toEqual({
       kind: "gradient",
@@ -337,13 +340,14 @@ describe("resolveColorBy", () => {
       min: 0,
       max: 100,
       stops: [
-        { value: 0, color: "#000000" },
-        { value: 100, color: "#ffffff" },
+        { value: 0, color: S0 },
+        { value: 50, color: S1 },
+        { value: 100, color: S2 },
       ],
     });
   });
 
-  it("interpolate sorts + dedupes stops ascending (MapLibre requires strictly increasing) (#336)", () => {
+  it("interpolate spans the stored stops' range, whatever their order (#336, #1022)", () => {
     const { legend } = resolveColorBy(
       {
         column: "v",
@@ -364,9 +368,9 @@ describe("resolveColorBy", () => {
       min: 0,
       max: 300,
       stops: [
-        { value: 0, color: "#0" },
-        { value: 100, color: "#1" },
-        { value: 300, color: "#3" },
+        { value: 0, color: S0 },
+        { value: 150, color: S1 },
+        { value: 300, color: S2 },
       ],
     });
   });
@@ -383,7 +387,7 @@ describe("resolveColorBy", () => {
     expect(legend?.kind).toBe("swatches");
   });
 
-  it("scale:'interpolate' with no stops derives min→max from rows using SEQUENTIAL_PALETTE (#336)", () => {
+  it("scale:'interpolate' with no stops derives min→max from rows, in the theme's ramp (#336, #1022)", () => {
     const rows = [{ v: 10 }, { v: 30 }, { v: 20 }];
     const { expression, legend } = resolveColorBy(
       { column: "v", scale: "interpolate" },
@@ -393,7 +397,7 @@ describe("resolveColorBy", () => {
     const interp = (expression as unknown[])[2] as unknown[];
     expect(interp[0]).toBe("interpolate");
     const colors = interp.slice(3).filter((_, i) => i % 2 === 1);
-    for (const c of colors) expect(SEQUENTIAL_PALETTE).toContain(c);
+    expect(colors).toEqual(COLOURS.sequential);
     expect(legend).toMatchObject({ kind: "gradient", min: 10, max: 30 });
   });
 
@@ -1373,7 +1377,7 @@ describe("theme colours (#1022)", () => {
     ]);
   });
 
-  it("keeps an interpolate ramp's own colours", () => {
+  it("ignores an interpolate's own palette and stop colours (adversarial F1)", () => {
     const { legend } = resolveColorBy(
       {
         column: "v",
@@ -1389,10 +1393,20 @@ describe("theme colours (#1022)", () => {
     expect(legend).toMatchObject({
       kind: "gradient",
       stops: [
-        { value: 0, color: "#440154" },
-        { value: 9, color: "#fde725" },
+        { value: 0, color: S0 },
+        { value: 4.5, color: S1 },
+        { value: 9, color: S2 },
       ],
     });
+    const viaPalette = resolveColorBy(
+      { column: "v", scale: "interpolate", palette: ["#fffff0", "#ffffff"] },
+      [{ v: 1 }, { v: 9 }],
+      COLOURS
+    );
+    expect(
+      viaPalette.legend?.kind === "gradient" &&
+        viaPalette.legend.stops.map((s) => s.color)
+    ).toEqual(COLOURS.sequential);
   });
 
   it("gives each layer without colorBy its own palette colour, by index", () => {

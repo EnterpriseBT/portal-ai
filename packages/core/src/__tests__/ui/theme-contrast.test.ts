@@ -281,15 +281,25 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
       basemap: BASEMAP_BACKGROUND[palette.mode],
     };
 
+    it("has a sequential ramp of at least two distinct stops", () => {
+      const { sequential } = palette.dataViz;
+      expect(sequential.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(sequential).size).toBe(sequential.length);
+    });
+
     it("has eight distinct categorical colours", () => {
       expect(categorical).toHaveLength(8);
       expect(new Set(categorical.map((c) => c.toLowerCase())).size).toBe(8);
     });
 
     describe.each(Object.entries(surfaces))("on %s", (_surface, bg) => {
-      it.each([...categorical, other])("%s is visible", (color) => {
-        expect(getContrastRatio(color, bg)).toBeGreaterThanOrEqual(NON_TEXT);
-      });
+      // The sequential ramp (a gradient map, adversarial F1) too.
+      it.each([...categorical, other, ...palette.dataViz.sequential])(
+        "%s is visible",
+        (color) => {
+          expect(getContrastRatio(color, bg)).toBeGreaterThanOrEqual(NON_TEXT);
+        }
+      );
     });
 
     const pairs = categorical.flatMap((a, i) =>
@@ -337,6 +347,6 @@ it("both themes define the same dataViz tokens (#1022)", () => {
   const [first, ...rest] = Object.values(THEME_MAP).map((t) =>
     keyPaths(t.palette.dataViz).sort()
   );
-  expect(first).toHaveLength(9);
+  expect(first).toHaveLength(15);
   for (const paths of rest) expect(paths).toEqual(first);
 });

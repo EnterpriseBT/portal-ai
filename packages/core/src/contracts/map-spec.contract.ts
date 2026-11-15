@@ -76,11 +76,11 @@ export const MapLayerStyleSchema = z.object({
   colorBy: z
     .object({
       column: z.string().min(1),
-      /** Colours for `scale: "interpolate"` only (#1022): categorical and
-       *  step colouring take the theme's palette and ignore these. */
+      /** Kept so stored blocks parse; ignored (#1022). Every scale takes its
+       *  colours from the theme. */
       palette: z.array(z.string()).optional(),
-      /** Value→colour pairs. The values order the categories; the colours
-       *  are used only for `scale: "interpolate"` (#1022). */
+      /** Value→colour pairs. The values order the categories (or give an
+       *  interpolate's range); the colours are ignored (#1022). */
       stops: z
         .array(z.tuple([z.union([z.string(), z.number()]), z.string()]))
         .optional(),

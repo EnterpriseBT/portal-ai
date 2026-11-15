@@ -1,7 +1,6 @@
 import {
   MAP_LAYER_FEATURE_CAP,
   AGG_DENSITY_MAX,
-  SEQUENTIAL_PALETTE,
 } from "@portalai/core/constants";
 
 import { resolveAggTreatment } from "@portalai/core/contracts";
@@ -173,6 +172,8 @@ export interface MapColours {
   categorical: readonly string[];
   /** Values past the last categorical colour, and features with no value. */
   other: string;
+  /** A gradient's ramp, low to high, spread evenly across the value range. */
+  sequential: readonly string[];
 }
 
 /**
@@ -255,8 +256,9 @@ function distinctValues(values: Iterable<unknown>): Array<string | number> {
  * values come from `colorBy.categories`, else the values of stored `stops`
  * (whose colours are ignored), else the rows' values in first-seen order,
  * and the i-th gets `categorical[i]`; values past the last share `other`.
- * `scale: "interpolate"` keeps its own ramp (stored stop colours, `palette`,
- * or `SEQUENTIAL_PALETTE`).
+ * `scale: "interpolate"` spreads the theme's `sequential` ramp evenly from
+ * the lowest to the highest value; stored stop and `palette` colours are
+ * ignored there too.
  */
 export function resolveColorBy(
   colorBy: NonNullable<MapLayer["style"]>["colorBy"] & object,
@@ -271,47 +273,43 @@ export function resolveColorBy(
   // sort + dedupe; if fewer than two distinct anchors survive, fall through
   // to step (never a broken expr).
   if (scale === "interpolate") {
-    const ramp: readonly string[] =
-      colorBy.palette && colorBy.palette.length
-        ? colorBy.palette
-        : SEQUENTIAL_PALETTE;
-    const pairs: Array<readonly [string | number, string]> =
+    // #1022 (adversarial F1): the ramp is the theme's, held at 3:1 against
+    // the basemap. Stored `stops` and `palette` give only the value range;
+    // their colours aren't used.
+    const values = (
       colorBy.stops && colorBy.stops.length
-        ? colorBy.stops
-        : distinctValues(rows.map((r) => r[column])).map(
-            (v, i) => [v, ramp[i % ramp.length]] as const
-          );
-    if (pairs.length && pairs.every(([v]) => toFiniteNum(v) != null)) {
-      const sorted = pairs
-        .map(([value, color]) => [toFiniteNum(value) as number, color] as const)
-        .sort((a, b) => a[0] - b[0]);
-      const deduped: Array<readonly [number, string]> = [];
-      for (const pair of sorted) {
-        if (deduped.length === 0 || deduped[deduped.length - 1][0] < pair[0]) {
-          deduped.push(pair);
-        }
-      }
-      if (deduped.length >= 2) {
-        // `to-number` coerces null/absent → 0 so a present-but-null property
-        // can't make `interpolate` throw (→ black layer); the outer
-        // `case(has, …)` routes genuinely-absent values to `other`.
-        const interp: unknown[] = [
-          "interpolate",
-          ["linear"],
-          ["to-number", ["get", column], 0],
-        ];
-        for (const [value, color] of deduped) interp.push(value, color);
-        return {
-          expression: ["case", ["has", column], interp, colours.other],
-          legend: {
-            kind: "gradient",
-            column,
-            min: deduped[0][0],
-            max: deduped[deduped.length - 1][0],
-            stops: deduped.map(([value, color]) => ({ value, color })),
-          },
-        };
-      }
+        ? colorBy.stops.map(([v]) => v)
+        : distinctValues(rows.map((r) => r[column]))
+    )
+      .map((v) => toFiniteNum(v))
+      .filter((v): v is number => v != null);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const ramp = colours.sequential;
+    if (values.length >= 2 && max > min && ramp.length >= 2) {
+      const anchors = ramp.map(
+        (color, i) =>
+          [min + ((max - min) * i) / (ramp.length - 1), color] as const
+      );
+      // `to-number` coerces null/absent → 0 so a present-but-null property
+      // can't make `interpolate` throw (→ black layer); the outer
+      // `case(has, …)` routes genuinely-absent values to `other`.
+      const interp: unknown[] = [
+        "interpolate",
+        ["linear"],
+        ["to-number", ["get", column], 0],
+      ];
+      for (const [value, color] of anchors) interp.push(value, color);
+      return {
+        expression: ["case", ["has", column], interp, colours.other],
+        legend: {
+          kind: "gradient",
+          column,
+          min,
+          max,
+          stops: anchors.map(([value, color]) => ({ value, color })),
+        },
+      };
     }
     // <2 distinct numeric anchors — fall through to step / categorical.
   }

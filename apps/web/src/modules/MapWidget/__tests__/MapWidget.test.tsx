@@ -345,7 +345,11 @@ describe("MapWidgetUI", () => {
           spec={polySpec}
           rows={[poly("vacant")]}
           mode="light"
-          colours={{ categorical: ["#123456"], other: "#654321" }}
+          colours={{
+            categorical: ["#123456"],
+            other: "#654321",
+            sequential: ["#111111", "#222222"],
+          }}
         />
       );
       expect(swatches()).toEqual(["rgb(18, 52, 86)"]);

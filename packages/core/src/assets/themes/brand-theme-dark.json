@@ -84,7 +84,15 @@
         "#4fd1d9",
         "#f28b78"
       ],
-      "other": "#9ca3af"
+      "other": "#9ca3af",
+      "sequential": [
+        "#26828e",
+        "#1f9e89",
+        "#35b779",
+        "#6ece58",
+        "#b5de2b",
+        "#fde725"
+      ]
     },
     "sheet": {
       "gridLine": "rgba(176,168,216,0.14)",

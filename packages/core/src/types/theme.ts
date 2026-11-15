@@ -90,6 +90,9 @@ export interface DataVizPalette {
   categorical: string[];
   /** Categories past the eighth, and the legend's "+N more" swatch. */
   other: string;
+  /** A gradient map's ramp, low to high: viridis stops each ≥3:1 against
+   *  both theme surfaces and the theme's basemap (#1022). */
+  sequential: string[];
 }
 
 declare module "@mui/material/styles" {

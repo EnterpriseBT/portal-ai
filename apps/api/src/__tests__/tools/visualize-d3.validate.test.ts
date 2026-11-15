@@ -99,6 +99,26 @@ describe("the colour check (#1022)", () => {
     ["a named fill", 'svg.attr("fill", "red");', "red"],
     ["a named style stroke", "svg.style('stroke', 'steelblue');", "steelblue"],
     [
+      "a d3 rgb() constructor (adversarial F2)",
+      "svg.attr('fill', api.d3.rgb(255, 0, 0));",
+      "api.d3.rgb(",
+    ],
+    [
+      "a d3 hsl() constructor",
+      "svg.attr('fill', d3.hsl(0, 1, 0.5));",
+      "d3.hsl(",
+    ],
+    [
+      "a d3 lab() constructor",
+      "svg.attr('fill', api.d3.lab(50, 80, 60));",
+      "api.d3.lab(",
+    ],
+    [
+      "a named colour in a CSS declaration (adversarial F3)",
+      'svg.attr("style", "stroke-width: 2; fill: red");',
+      "red",
+    ],
+    [
       "a named colour in a ternary",
       "svg.attr('fill', (d) => (d.v > 0 ? 'green' : api.theme.text));",
       "green",
@@ -165,6 +185,16 @@ describe("the colour check (#1022)", () => {
       "svg.append('text').text(`Rank #123 of ${api.data.length}`);",
     ],
     ["a hex-like word in text", "svg.append('text').text('Build #cafe');"],
+    [
+      "a class named after a colour (adversarial F4)",
+      'svg.attr("class", "blue");',
+    ],
+    ["an id named after a colour", "svg.attr('id', 'red');"],
+    ["a classed() toggle named after a colour", "svg.classed('green', true);"],
+    [
+      "d3.color used to read a theme colour",
+      "const c = api.d3.color(api.theme.text);",
+    ],
   ])("allows %s", (_kind, line) => {
     expect(validateProgram(program(line))).toEqual({ ok: true });
   });

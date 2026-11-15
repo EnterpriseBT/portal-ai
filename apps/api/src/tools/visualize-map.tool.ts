@@ -114,7 +114,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
   description =
-    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`: the style fields `color` and `outlineColor` are refused. Other style values (radius, width, opacity) take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
+    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`: the style fields `color` and `outlineColor` are refused. Other style values (radius, width, opacity) take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one; a gradient (`scale: "interpolate"`) uses the theme\'s sequential ramp. `palette` and `stops` colours are ignored. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
 
   get schema() {
     return InputSchema;
@@ -224,7 +224,8 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
 
           // #336: a smooth gradient needs a continuous ramp, not one anchor per
           // distinct value. Compute MIN/MAX and lay the sequential palette
-          // evenly across the range — one cheap aggregate, cheaper than the
+          // evenly across the range (since #1022 the web reads only the
+          // stops' range and draws the theme's ramp) — one cheap aggregate, cheaper than the
           // categorical GROUP BY. A non-numeric / empty / flat column yields no
           // stops (the widget falls back to a solid colour).
           if (cb.scale === "interpolate") {
