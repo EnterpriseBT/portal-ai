@@ -351,6 +351,40 @@ describe("VisualizeMapTool.execute (#314)", () => {
     expect(resolveSqlDelivery).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["color", "#ffff00"],
+    ["color", ["match", ["get", "prop_class"], "vacant", "#ff8a00", "#eeeeee"]],
+    ["outlineColor", "#ffffff"],
+  ])(
+    "a layer style setting %s is refused before any SQL runs (#1022)",
+    async (field, value) => {
+      const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+      const out = await buildTool({
+        resolveSqlDelivery: resolveSqlDelivery as never,
+      })({
+        sql: "SELECT lat, lng, prop_class FROM t",
+        spec: {
+          layers: [
+            {
+              kind: "points",
+              source: { latColumn: "lat", lngColumn: "lng" },
+            },
+            {
+              kind: "points",
+              source: { latColumn: "lat", lngColumn: "lng" },
+              style: { [field]: value },
+            },
+          ],
+        },
+      });
+      expect(out.error).toMatchObject({ code: "MAP_SPEC_INVALID" });
+      const message = (out.error as { message: string }).message;
+      expect(message).toContain(`layers.1.style.${field}`);
+      expect(message).toContain("colorBy");
+      expect(resolveSqlDelivery).not.toHaveBeenCalled();
+    }
+  );
+
   it("a spec referencing a column absent from the result → MAP_SPEC_INVALID (row 8)", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
     const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });

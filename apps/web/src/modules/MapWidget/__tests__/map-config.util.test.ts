@@ -433,7 +433,7 @@ describe("resolveColorBy", () => {
 });
 
 describe("layerToMapLibre", () => {
-  it("points → a circle layer with a literal colour", () => {
+  it("points → a circle layer, ignoring a stored literal colour (#1022)", () => {
     const layer = {
       kind: "points",
       source: { latColumn: "lat", lngColumn: "lng" },
@@ -444,7 +444,9 @@ describe("layerToMapLibre", () => {
     });
     expect(layers).toHaveLength(1);
     expect(layers[0].type).toBe("circle");
-    expect(layers[0].paint["circle-color"]).toBe("#123456");
+    // #1022: a stored `color` isn't contrast-checked, so the layer takes its
+    // palette colour instead.
+    expect(layers[0].paint["circle-color"]).toBe(C0);
     // #796: the radius grows while its feature is selected.
     expect(layers[0].paint["circle-radius"]).toEqual([
       "case",
@@ -494,7 +496,7 @@ describe("layerToMapLibre", () => {
     expect(lighter.paint["fill-opacity"]).toBe(0.15);
   });
 
-  it("passes a MapLibre expression through as the colour verbatim", () => {
+  it("ignores a stored colour expression, drawing the palette colour (#1022)", () => {
     const expr = ["case", ["==", ["get", "k"], "v"], "#f00", "#eee"];
     const layer = {
       kind: "polygons",
@@ -502,7 +504,7 @@ describe("layerToMapLibre", () => {
       style: { color: expr },
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, [], { colours: COLOURS });
-    expect(layers[0].paint["fill-color"]).toEqual(expr);
+    expect(layers[0].paint["fill-color"]).toBe(C0);
   });
 
   it("compiles colorBy into a match expression + legend on the primary colour", () => {
@@ -1108,7 +1110,7 @@ describe("selected feature paint (#796)", () => {
 
   // #796 smoke: a white 2px outline only went to 3px white on selection,
   // invisible on a light basemap. The ring now takes the highlight colour.
-  it("rings in the highlight colour, not the author's outline colour", () => {
+  it("rings in the highlight colour; a stored outline colour is ignored (#1022)", () => {
     const paint = paintFor(
       point({ outlineColor: "#ffffff", outlineWidth: 2 }),
       "circle",
@@ -1118,7 +1120,7 @@ describe("selected feature paint (#796)", () => {
       "case",
       SELECTED,
       "#000000",
-      "#ffffff",
+      COLOURS.other,
     ]);
     expect(paint["circle-stroke-width"]).toEqual(["case", SELECTED, 3, 2]);
   });
@@ -1148,7 +1150,7 @@ describe("selected feature paint (#796)", () => {
       "line"
     );
     expect(paint["line-width"]).toEqual(["case", SELECTED, 4, 2]);
-    expect(paint["line-color"]).toBe("#123456");
+    expect(paint["line-color"]).toBe(C0);
   });
 
   it("grows a data-driven radius by expression", () => {
@@ -1391,6 +1393,31 @@ describe("theme colours (#1022)", () => {
         { value: 9, color: "#fde725" },
       ],
     });
+  });
+
+  it("gives each layer without colorBy its own palette colour, by index", () => {
+    const point = {
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
+    } as MapLayer;
+    const colourOf = (i: number) =>
+      layerToMapLibre(point, i, [], { colours: COLOURS }).layers[0].paint[
+        "circle-color"
+      ];
+    expect([colourOf(0), colourOf(1), colourOf(2)]).toEqual([C0, C1, C2]);
+    expect(colourOf(8)).toBe(C0);
+  });
+
+  it("outlines a polygon in its fill colour, whatever outlineColor says", () => {
+    const { layers } = layerToMapLibre(
+      polygons({ outlineColor: "#ffffff", color: "#ffff00" }),
+      1,
+      [],
+      { colours: COLOURS }
+    );
+    const outline = layers.find((l) => l.type === "line")!.paint;
+    expect(layers[0].paint["fill-color"]).toBe(C1);
+    expect((outline["line-color"] as unknown[])[3]).toBe(C1);
   });
 
   it("colours a layer with no colorBy and no colour in the first theme colour", () => {

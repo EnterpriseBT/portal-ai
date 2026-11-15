@@ -190,6 +190,8 @@ export type MapLegend =
   - Point layers keep a full-opacity `circle-color` and gain `circle-stroke-color: colours.other`, `circle-stroke-width: 1`.
   - Fill opacity ceilings (`AGG_FILL_OPACITY`, `RAW_FILL_OPACITY`) are unchanged.
 - `MapWidget` (the container) passes `useTheme().palette.dataViz` to `MapWidgetUI` as `colours`, which hands it to `layerToMapLibre` and `buildLegend`. `colours` is optional on the pure UI: without it, the UI takes the brand theme's `dataViz` for its `mode` (as the selection ring already follows `mode`), so tests and stories need no palette.
+- **Layer colours (closing the code review's gap):** `layerToMapLibre` ignores `style.color` and `style.outlineColor`. A layer without `colorBy` takes `categorical[index % 8]`, and an outline takes its feature's colour. `visualize_map` refuses a spec whose layer style sets either field (`MAP_SPEC_INVALID`, naming each `layers.<i>.style.<field>`, before any SQL runs). Both fields stay in the schema so stored blocks parse.
+- **Unfilled chart text (1.4.3):** the sandbox bootstrap adds `svg text:not([fill]) { fill: <theme.text> }` on init and on every theme message, accepting only a hex or `rgb()` value.
 - A line layer no longer passes `style.opacity` through as `line-opacity`: a line is its own mark, so it stays at full opacity, where its colour is held at 3:1.
 - The legend:
   - shows the column as its heading (`Typography variant="caption" component="p"`, "Colour: <column>");

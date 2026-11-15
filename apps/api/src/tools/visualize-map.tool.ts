@@ -114,7 +114,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
   description =
-    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`; other style values take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
+    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`: the style fields `color` and `outlineColor` are refused. Other style values (radius, width, opacity) take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
 
   get schema() {
     return InputSchema;
@@ -159,6 +159,24 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
               message: specResult.error.issues
                 .map((i) => `${i.path.join(".") || "spec"}: ${i.message}`)
                 .join("; "),
+            },
+          };
+        }
+
+        // #1022: map colours come from the theme's palette, held at 3:1
+        // against the basemap. A literal `color` or `outlineColor` (or a
+        // colour expression) has no such check, so it's refused here, and
+        // the web ignores it on blocks stored before this rule.
+        const colourFields = specResult.data.layers.flatMap((layer, i) =>
+          (["color", "outlineColor"] as const)
+            .filter((field) => layer.style?.[field] !== undefined)
+            .map((field) => `layers.${i}.style.${field}`)
+        );
+        if (colourFields.length > 0) {
+          return {
+            error: {
+              code: ApiCode.MAP_SPEC_INVALID,
+              message: `${colourFields.join(", ")}: map colours come from the theme. Colour features with \`colorBy\` (a column), and leave \`color\` and \`outlineColor\` unset.`,
             },
           };
         }

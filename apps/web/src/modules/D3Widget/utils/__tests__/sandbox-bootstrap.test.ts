@@ -115,6 +115,18 @@ describe("sandbox-bootstrap.js source contract", () => {
       );
     });
 
+    // #1022 (1.4.3): an SVG label with no fill draws black, which fails on
+    // the dark surface. The frame gives such text the theme's text colour;
+    // a label with its own fill attribute or style keeps it.
+    it("gives unfilled SVG text the theme's text colour", () => {
+      const paint = source.slice(
+        source.indexOf("function paintBackground"),
+        source.indexOf('window.addEventListener("message"')
+      );
+      expect(paint).toContain("svg text:not([fill])");
+      expect(paint).toMatch(/theme\.text/);
+    });
+
     it("paints on init and on every theme message", () => {
       const init = source.slice(
         source.indexOf('msg.type === "init"'),

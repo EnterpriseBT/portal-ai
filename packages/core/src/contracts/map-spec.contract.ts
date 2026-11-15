@@ -68,6 +68,8 @@ const styleValue = <T extends z.ZodTypeAny>(literal: T) =>
   z.union([literal, MapExpressionSchema]);
 
 export const MapLayerStyleSchema = z.object({
+  /** Kept so stored blocks parse. Since #1022 `visualize_map` refuses it and
+   *  the renderer ignores it: a layer's colour comes from the theme. */
   color: styleValue(z.string()).optional(),
   /** Sugar over an expression: categorical/threshold colouring keyed to a
    *  result column. The renderer reads this to auto-generate a legend. */
@@ -95,9 +97,11 @@ export const MapLayerStyleSchema = z.object({
   opacity: styleValue(z.number().min(0).max(1)).optional(),
   radius: styleValue(z.number().positive()).optional(),
   width: styleValue(z.number().positive()).optional(),
-  /** Outline colour/width for polygons + lines — expression-capable, which is
-   *  how "highlight the vacant ones" gets a heavier stroke as well as a fill. */
+  /** Kept so stored blocks parse; refused and ignored like `color` (#1022).
+   *  An outline takes its feature's colour. */
   outlineColor: styleValue(z.string()).optional(),
+  /** Expression-capable, which is how "highlight the vacant ones" gets a
+   *  heavier outline. */
   outlineWidth: styleValue(z.number().nonnegative()).optional(),
 });
 export type MapLayerStyle = z.infer<typeof MapLayerStyleSchema>;

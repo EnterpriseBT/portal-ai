@@ -452,10 +452,11 @@ const plus = (base: unknown, extra: number): unknown =>
 
 /**
  * Translate one MapSpec layer into the MapLibre layer(s) it renders as. A
- * `colorBy` compiles to a `match` expression for the primary colour; every
- * other style value is passed through verbatim, so a literal or an
- * agent-authored expression both work. Polygons emit a fill **and** an outline
- * line layer.
+ * `colorBy` compiles to a colour expression from the theme's palette, and a
+ * layer without one takes the palette colour at its index (#1022); stored
+ * `color` and `outlineColor` are ignored. Other style values (radius, width,
+ * opacity) pass through verbatim, a literal or an expression. Polygons emit a
+ * fill **and** an outline line layer.
  */
 export function layerToMapLibre(
   layer: MapLayer,
@@ -477,7 +478,12 @@ export function layerToMapLibre(
   const style = layer.style ?? {};
   let legend: MapLegend | null = null;
 
-  let color: unknown = style.color ?? colours.categorical[0];
+  // #1022: a layer's colours come from the theme. A stored `color` or
+  // `outlineColor` (a literal or an expression, from a block written before
+  // the server refused them) is ignored, since nothing checked its contrast.
+  // A layer without colorBy takes the palette colour at its index, so two
+  // plain layers don't share one colour.
+  let color: unknown = colours.categorical[index % colours.categorical.length];
   if (style.colorBy) {
     const resolved = resolveColorBy(style.colorBy, rows, colours);
     color = resolved.expression;
@@ -501,10 +507,7 @@ export function layerToMapLibre(
           "circle-opacity": style.opacity ?? 0.9,
           // #1022: a full-opacity stroke in `other` gives every point its
           // contrast against the basemap, whatever its fill.
-          "circle-stroke-color": whenSelected(
-            style.outlineColor ?? colours.other,
-            highlight
-          ),
+          "circle-stroke-color": whenSelected(colours.other, highlight),
           "circle-stroke-width": whenSelected(
             style.outlineWidth ?? 1,
             SELECTED_STROKE
@@ -531,7 +534,7 @@ export function layerToMapLibre(
         type: "line",
         source,
         paint: {
-          "line-color": whenSelected(style.outlineColor ?? color, highlight),
+          "line-color": whenSelected(color, highlight),
           // #1022: the fill is translucent, so this full-opacity outline in
           // the category colour is what carries the 3:1 against the basemap.
           "line-width": whenSelected(

@@ -201,6 +201,9 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
 
   it("steers per-feature colour to colorBy and says lines ignore opacity (#1022)", () => {
     expect(tool!.description).toContain("Colour features with `colorBy`");
+    expect(tool!.description).toContain(
+      "`color` and `outlineColor` are refused"
+    );
     const specDesc =
       (
         tool!.parameterSchema.properties as Record<
