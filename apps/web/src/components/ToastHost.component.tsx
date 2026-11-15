@@ -7,11 +7,13 @@ import IconButton from "@mui/material/IconButton";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
 import { MAIN_CONTENT_ID } from "./SkipLinks.component";
 import { getNotificationsRoot } from "../utils/notifications-root.util";
 import { TOAST_ANCHOR } from "../utils/toast.constants";
+import { useToastStackEdge } from "../utils/use-toast-stack-edge.util";
 
 import type { Toast } from "../utils/toast.context";
 
@@ -45,7 +47,12 @@ export interface ToastHostProps {
  * place, else Dismiss all, else `main`, so it never falls to the body.
  *
  * It reports a hold while the pointer or keyboard focus is in the stack, so
- * nothing hides while it's being read (#1021). One hold covers the whole stack:
+ * nothing hides while it's being read (#1021).
+ *
+ * It never covers the focused control (#1024, WCAG 2.4.11): when focus lands
+ * where the stack sits at the bottom right, the stack moves to the top right
+ * until focus is clear of the bottom again (`useToastStackEdge`). Focus inside
+ * the stack never moves it. One hold covers the whole stack:
  * moving between toasts mustn't restart the clock on the one just left.
  */
 export const ToastHost: React.FC<ToastHostProps> = ({
@@ -69,6 +76,9 @@ export const ToastHost: React.FC<ToastHostProps> = ({
    * for the overflow row. Null when focus is outside it.
    */
   const focusedAt = useRef<number | null>(null);
+  const theme = useTheme();
+  const inset = parseFloat(theme.spacing(3));
+  const edge = useToastStackEdge(hostRef, inset, toasts, hiddenCount);
   /** The hold's two halves, and the last value reported. */
   const pointerInside = useRef(false);
   const focusInside = useRef(false);
@@ -165,6 +175,14 @@ export const ToastHost: React.FC<ToastHostProps> = ({
     reportHold();
   });
 
+  // A stack that moves away from a resting pointer gets no pointerleave
+  // until the pointer moves, so a move ends the pointer's hold (#1024).
+  useLayoutEffect(() => {
+    pointerInside.current = false;
+    reportHold();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a move only; reportHold reads refs
+  }, [edge]);
+
   const isUrgent = (t: Toast) =>
     t.severity === "error" || t.severity === "warning";
   const renderToast = (t: Toast) => (
@@ -218,10 +236,11 @@ export const ToastHost: React.FC<ToastHostProps> = ({
       // Dismissal is explicit: per-toast close, or Dismiss all. Nothing
       // here closes on a click elsewhere.
       data-testid={toasts.length > 0 ? "toast-host" : undefined}
+      data-toast-edge={edge}
       sx={(theme) => ({
         position: "fixed",
         zIndex: theme.zIndex.snackbar,
-        [TOAST_ANCHOR.vertical]: theme.spacing(3),
+        [edge === "top" ? "top" : TOAST_ANCHOR.vertical]: theme.spacing(3),
         [TOAST_ANCHOR.horizontal]: theme.spacing(3),
         maxWidth: 480,
       })}
