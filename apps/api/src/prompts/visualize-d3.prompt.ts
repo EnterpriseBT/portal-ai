@@ -22,8 +22,14 @@ It receives a single argument \`api\` with:
   - api.container the DOM element to render into (append your SVG/HTML here)
   - api.data      the array of row objects to visualize (see the schema + sample below)
   - api.params    an optional object of extra parameters (usually {})
-  - api.theme     { mode, background, text, fontFamily, monospaceFontFamily, categorical[] }
-                  — use api.theme.categorical for series colors, api.theme.text for axes/labels
+  - api.theme     { mode, background, text, fontFamily, monospaceFontFamily,
+                    categorical[], dashes[], symbols[] }
+                  — api.theme.categorical: the series colours, in order (eight)
+                  — api.theme.text: axes, labels and legend text
+                  — api.theme.background: the surface the chart sits on (the frame paints it)
+                  — api.theme.dashes: stroke-dasharray values to tell lines apart; [0] is solid
+                  — api.theme.symbols: d3 symbol names to tell markers apart, used as
+                    api.d3.symbol(api.d3[api.theme.symbols[i]])
   - api.width     the available width in px — lay out for this. Exceed it ONLY when the
                   chart is intrinsically wider (a long category axis, a wide flow diagram);
                   the widget then scrolls horizontally.
@@ -52,6 +58,19 @@ SIZING & LABELS (IMPORTANT)
     widget measures what you paint and grows to fit it, in both axes.
   - Place a legend where it has space (beside or below the plot, inside your own svg). Do
     not overlap it with marks to save room.
+
+COLOUR AND LABELLING (IMPORTANT)
+  - Series colours come ONLY from api.theme.categorical, assigned in order. Use
+    api.theme.text or api.theme.background for anything else. These colours are checked for
+    contrast against the chart's background; any other colour isn't.
+  - Never write a colour literal (a hex, rgb(), hsl() or a colour name like "steelblue") and
+    never use a d3 colour scheme (d3.scheme*) or colour interpolator (d3.interpolateViridis
+    and the like). A program that does is rejected and you'll be asked to write it again.
+  - With two or more series, tell them apart by more than colour: label each series directly
+    at the end of its line or on its bar, or give each its own api.theme.dashes entry (lines)
+    or api.theme.symbols entry (markers).
+  - Always draw a text legend or direct labels naming each series.
+  - More than eight series reuse colours, so labels are required there.
 
 EXAMPLE (a pattern, not a template — adapt to the data and instruction)
 Given data like [{ label: "A", value: 40 }, ...], a vertical bar chart:
@@ -90,7 +109,7 @@ export function buildCodegenPrompt(params: {
     .join("\n");
   const sample = JSON.stringify(params.samplePeek.slice(0, 10), null, 2);
   const retry = params.lastError
-    ? `\n\nYour previous program failed to compile with this error — fix it:\n${params.lastError}`
+    ? `\n\nYour previous program was rejected with this error — fix it:\n${params.lastError}`
     : "";
   return `Visualization requested:
 ${params.instruction}

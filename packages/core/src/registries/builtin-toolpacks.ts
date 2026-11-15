@@ -237,7 +237,7 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
     {
       name: "visualize_d3",
       description:
-        "Render an interactive D3 visualization from a SQL query. Describe the chart you want in `instruction` (type, encodings, emphasis) — the render program is generated for you. Do not add a LIMIT; result size is handled automatically (rows stream to the widget via a handle when large). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.",
+        "Render an interactive D3 visualization from a SQL query. Describe the chart you want in `instruction` (type, encodings, emphasis) — the render program is generated for you. Charts use the theme's accessible palette and label their series; you don't choose colours. Do not add a LIMIT; result size is handled automatically (rows stream to the widget via a handle when large). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.",
       parameterSchema: objectSchema(
         {
           sql: stringField("The SQL query whose rows feed the visualization"),

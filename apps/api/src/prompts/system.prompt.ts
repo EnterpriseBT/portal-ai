@@ -311,6 +311,12 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
+        "Don't ask for specific colours: chart colours come from the theme, " +
+          "which keeps them readable, and the chart labels its series. When " +
+          "the chart compares categories, say how many series it should show."
+      );
+      lines.push("");
+      lines.push(
         "Always pass a `summary`: one to three sentences for someone who " +
           "can't see it, saying what the chart shows and its main takeaway " +
           "with the key values, not the colours. It is read aloud to " +

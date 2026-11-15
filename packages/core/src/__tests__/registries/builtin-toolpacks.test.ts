@@ -228,6 +228,12 @@ describe("visualize pack (#269)", () => {
     expect(tool!.description).toContain("80 usage units");
   });
 
+  it("says charts take the theme's palette and label their series (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Charts use the theme's accessible palette and label their series; you don't choose colours."
+    );
+  });
+
   it("exists with exactly the visualize_d3 tool", () => {
     expect(pack).toBeDefined();
     expect(pack!.tools).toHaveLength(1);
