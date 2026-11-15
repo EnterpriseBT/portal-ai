@@ -41,6 +41,44 @@ const disabledLook = (action: Palette["action"]) => ({
 });
 
 /**
+ * MapLibre's popup (#1022 smoke): its stylesheet paints the box and its tip
+ * white, while the text inherits the page's colour, so in Brand Dark it read
+ * light grey on white. Paint all three from the palette. The doubled class
+ * outranks MapLibre's own rules whatever order the stylesheets load in.
+ */
+export function mapPopupRules(
+  palette: Palette
+): Record<string, Record<string, unknown>> {
+  const paper = palette.background.paper;
+  const tips: [string, string][] = [
+    ["top", "Bottom"],
+    ["top-left", "Bottom"],
+    ["top-right", "Bottom"],
+    ["bottom", "Top"],
+    ["bottom-left", "Top"],
+    ["bottom-right", "Top"],
+    ["left", "Right"],
+    ["right", "Left"],
+  ];
+  return {
+    ".maplibregl-popup .maplibregl-popup-content": {
+      backgroundColor: paper,
+      color: palette.text.primary,
+      border: `1px solid ${palette.divider}`,
+    },
+    ".maplibregl-popup .maplibregl-popup-close-button": {
+      color: palette.text.primary,
+    },
+    ...Object.fromEntries(
+      tips.map(([anchor, side]) => [
+        `.maplibregl-popup.maplibregl-popup-anchor-${anchor} .maplibregl-popup-tip`,
+        { [`border${side}Color`]: paper },
+      ])
+    ),
+  };
+}
+
+/**
  * A `HighlightedCode` block (#799), marked `data-code-block`, styled from
  * `palette.code`: its background, its text and each highlight.js token
  * class. The block scrolls, so it's a focusable region, ringed inset (its
@@ -304,6 +342,7 @@ export function a11yComponents(palette: Palette): ThemeOptions {
             ...ring,
             outlineOffset: -FOCUS_RING_WIDTH,
           }),
+          ...mapPopupRules(palette),
         },
       },
       MuiButtonBase: {
