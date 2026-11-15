@@ -1337,6 +1337,40 @@ describe("theme colours (#1022)", () => {
     ]);
   });
 
+  it("bins more than eight numeric values into eight coloured bands (code review)", () => {
+    const categories = Array.from({ length: 20 }, (_, i) => String(i * 10));
+    const { expression, legend } = resolveColorBy(
+      { column: "v", categories },
+      [],
+      COLOURS
+    );
+    const step = (expression as unknown[])[2] as unknown[];
+    // step(input, base, 7 × [break, colour]): eight bands, no grey band.
+    expect(step).toHaveLength(3 + 7 * 2);
+    const colours = [step[2], ...step.slice(4).filter((_, i) => i % 2 === 0)];
+    expect(colours).toEqual(COLOURS.categorical);
+    const breaks = step.slice(3).filter((_, i) => i % 2 === 0) as number[];
+    for (let i = 1; i < breaks.length; i++)
+      expect(breaks[i]).toBeGreaterThan(breaks[i - 1]);
+    expect(legend).toMatchObject({ kind: "swatches", more: 0 });
+    expect(legend?.kind === "swatches" && legend.entries[0].label).toBe("0");
+  });
+
+  it("makes one breakpoint of values that coerce to the same number (code review)", () => {
+    const { expression } = resolveColorBy(
+      { column: "v" },
+      [{ v: 1 }, { v: "1" }, { v: "1.0" }, { v: 2 }],
+      COLOURS
+    );
+    expect((expression as unknown[])[2]).toEqual([
+      "step",
+      ["to-number", ["get", "v"], 0],
+      C0,
+      2,
+      C1,
+    ]);
+  });
+
   it("keeps an interpolate ramp's own colours", () => {
     const { legend } = resolveColorBy(
       {

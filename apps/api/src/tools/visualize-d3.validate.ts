@@ -90,16 +90,6 @@ export const NON_COLOUR_INTERPOLATORS: ReadonlySet<string> = new Set([
   "interpolateBasisClosed",
 ]);
 
-/** The attributes and style properties whose value is a colour. */
-const COLOUR_PROPERTIES = new Set([
-  "fill",
-  "stroke",
-  "color",
-  "stop-color",
-  "background",
-  "background-color",
-]);
-
 /** The CSS named colours (CSS Color 4), lower-cased. `transparent`,
  *  `currentcolor` and `inherit` aren't here, so they pass. */
 const CSS_NAMED_COLOURS = new Set(
@@ -129,44 +119,82 @@ const CSS_NAMED_COLOURS = new Set(
   ).split(" ")
 );
 
-const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi;
+/** A hex colour: the whole string, or after `:`, `(` or `,` (CSS such as
+ *  "fill:#fff" or a gradient). Elsewhere a `#` is text ("Order #1234"). */
+const HEX =
+  /(?:^\s*|[:(,]\s*)(#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4}))(?![\w-])/gi;
 const COLOUR_FUNCTION = /\b(?:rgba?|hsla?)\(/gi;
 const D3_SCHEME = /\b(?:api\.)?d3\.scheme[A-Z]\w*/g;
 const D3_INTERPOLATOR = /\b(?:api\.)?d3\.(interpolate\w*)/g;
-const NAMED_COLOUR_VALUE =
-  /\.(?:attr|style)\(\s*(["'`])([\w-]+)\1\s*,\s*(["'`])([a-z]+)\3/gi;
+
+/** The content of one string literal, or one text segment of a template. */
+interface StringPart {
+  /** Offset of the content's first character in the source. */
+  start: number;
+  text: string;
+}
 
 /**
  * Comments blanked to spaces (newlines kept, so offsets and line numbers
- * hold) and the `[start, end)` spans of string and template literals.
- * Regex literals aren't recognised; a quote inside one can mislead it,
- * which at worst rejects a program into another attempt.
+ * hold) and the content of every string literal. A template's `${…}`
+ * expressions are code, not string content, so a d3 scheme inside one is
+ * still found. Regex literals aren't recognised; a quote inside one can
+ * mislead the scan, which at worst rejects a program into another attempt.
  */
-function scan(src: string): { code: string; strings: [number, number][] } {
+function scan(src: string): { code: string; strings: StringPart[] } {
   const out = src.split("");
-  const strings: [number, number][] = [];
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (c === "/" && next === "/") {
-      while (i < src.length && src[i] !== "\n") out[i++] = " ";
-    } else if (c === "/" && next === "*") {
-      const end = src.indexOf("*/", i + 2);
-      const stop = end === -1 ? src.length : end + 2;
-      for (; i < stop; i++) if (src[i] !== "\n") out[i] = " ";
-    } else if (c === '"' || c === "'" || c === "`") {
-      const start = i++;
-      while (i < src.length && src[i] !== c) {
-        if (src[i] === "\\") i++;
-        else if (c !== "`" && src[i] === "\n") break;
+  const strings: StringPart[] = [];
+  const n = src.length;
+
+  // Scans from `i` (just past an opening quote) to its close; returns the
+  // index past the closing quote. Templates recurse into `${…}`.
+  const readString = (i: number, quote: string): number => {
+    let start = i;
+    while (i < n && src[i] !== quote) {
+      if (src[i] === "\\") {
+        i += 2;
+      } else if (quote !== "`" && src[i] === "\n") {
+        break;
+      } else if (quote === "`" && src[i] === "$" && src[i + 1] === "{") {
+        strings.push({ start, text: src.slice(start, i) });
+        i = readCode(i + 2, "}");
+        start = i;
+      } else {
         i++;
       }
-      strings.push([start, ++i]);
-    } else {
-      i++;
     }
-  }
+    strings.push({ start, text: src.slice(start, i) });
+    return i + 1;
+  };
+
+  // Scans code from `i` until `close` at depth 0 (or the end); returns the
+  // index past it.
+  const readCode = (i: number, close: string | null): number => {
+    let depth = 0;
+    while (i < n) {
+      const c = src[i];
+      const next = src[i + 1];
+      if (c === "/" && next === "/") {
+        while (i < n && src[i] !== "\n") out[i++] = " ";
+      } else if (c === "/" && next === "*") {
+        const end = src.indexOf("*/", i + 2);
+        const stop = end === -1 ? n : end + 2;
+        for (; i < stop; i++) if (src[i] !== "\n") out[i] = " ";
+      } else if (c === '"' || c === "'" || c === "`") {
+        i = readString(i + 1, c);
+      } else {
+        if (c === "{") depth++;
+        else if (c === "}") {
+          if (depth === 0 && close === "}") return i + 1;
+          depth--;
+        }
+        i++;
+      }
+    }
+    return i;
+  };
+
+  readCode(0, null);
   return { code: out.join(""), strings };
 }
 
@@ -174,29 +202,40 @@ function scan(src: string): { code: string; strings: [number, number][] } {
  *  in order of appearance (#1022). */
 export function findColourLiterals(src: string): ColourLiteral[] {
   const { code, strings } = scan(src);
-  const inString = (at: number) => strings.some(([s, e]) => at > s && at < e);
   const found: { at: number; literal: string }[] = [];
-  const each = (re: RegExp, keep: (m: RegExpExecArray) => string | null) => {
-    for (const m of code.matchAll(re)) {
-      const literal = keep(m);
-      if (literal !== null) found.push({ at: m.index ?? 0, literal });
-    }
-  };
 
-  each(HEX, (m) => (inString(m.index ?? 0) ? m[0] : null));
-  each(COLOUR_FUNCTION, (m) => (inString(m.index ?? 0) ? m[0] : null));
-  each(D3_SCHEME, (m) => (inString(m.index ?? 0) ? null : m[0]));
-  each(D3_INTERPOLATOR, (m) =>
-    inString(m.index ?? 0) || NON_COLOUR_INTERPOLATORS.has(m[1]) ? null : m[0]
-  );
-  for (const m of code.matchAll(NAMED_COLOUR_VALUE)) {
-    const [, , property, , value] = m;
-    if (!COLOUR_PROPERTIES.has(property.toLowerCase())) continue;
-    if (!CSS_NAMED_COLOURS.has(value.toLowerCase())) continue;
-    found.push({
-      at: (m.index ?? 0) + m[0].length - value.length - 1,
-      literal: value,
-    });
+  for (const { start, text } of strings) {
+    for (const m of text.matchAll(HEX)) {
+      found.push({
+        at: start + (m.index ?? 0) + m[0].indexOf("#"),
+        literal: m[1],
+      });
+    }
+    for (const m of text.matchAll(COLOUR_FUNCTION)) {
+      found.push({ at: start + (m.index ?? 0), literal: m[0] });
+    }
+    // A string that is exactly a colour name, wherever it's used: an attr
+    // value, a ternary branch, an array of series colours.
+    const word = text.trim();
+    if (CSS_NAMED_COLOURS.has(word.toLowerCase())) {
+      found.push({ at: start + text.indexOf(word), literal: word });
+    }
+  }
+
+  // d3 helpers are code, so string content is blanked before matching them.
+  const chars = code.split("");
+  for (const { start, text } of strings) {
+    for (let i = start; i < start + text.length; i++)
+      if (chars[i] !== "\n") chars[i] = " ";
+  }
+  const bare = chars.join("");
+  for (const m of bare.matchAll(D3_SCHEME)) {
+    found.push({ at: m.index ?? 0, literal: m[0] });
+  }
+  for (const m of bare.matchAll(D3_INTERPOLATOR)) {
+    if (!NON_COLOUR_INTERPOLATORS.has(m[1])) {
+      found.push({ at: m.index ?? 0, literal: m[0] });
+    }
   }
 
   return found

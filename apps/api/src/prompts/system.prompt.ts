@@ -350,7 +350,8 @@ export const PACK_PROMPT_SECTIONS: Record<
           "theme, which keeps them readable on the basemap. The first eight " +
           "categories get distinct colours and the rest share one, so when " +
           "the categories matter, colour by a column with at most eight " +
-          "common values."
+          "common values. Colour features with `colorBy`, not a literal " +
+          "`color` or a colour expression, whose contrast nobody checks."
       );
       lines.push("");
       lines.push(

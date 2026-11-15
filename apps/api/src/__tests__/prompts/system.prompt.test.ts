@@ -242,6 +242,7 @@ describe("buildSystemPrompt — map colours come from the theme (#1022)", () => 
     const text = prompt.slice(start, next === -1 ? undefined : next);
     expect(text).toMatch(/colou?rs come from the theme/i);
     expect(text).toMatch(/at most eight/i);
+    expect(text).toMatch(/colou?r features with `colorBy`/i);
   });
 });
 

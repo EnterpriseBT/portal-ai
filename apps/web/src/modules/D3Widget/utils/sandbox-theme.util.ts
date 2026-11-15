@@ -1,5 +1,7 @@
 import type { Theme } from "@mui/material/styles";
 
+import { THEME_MAP } from "@portalai/core/ui";
+
 /**
  * The serializable theme tokens handed to a sandboxed D3 program as
  * `api.theme` (#268). The iframe cannot inherit MUI context — these
@@ -51,7 +53,15 @@ export function buildSandboxTheme(theme: Theme): D3SandboxTheme {
     monospaceFontFamily:
       (typography as unknown as MonospaceTypography).monospace?.fontFamily ??
       "monospace",
-    categorical: [...palette.dataViz.categorical],
+    // A theme built without `dataViz` (a bare `createTheme`) falls back to
+    // the brand palette for its mode, as MapWidgetUI does, rather than throw.
+    categorical: [
+      ...(
+        palette.dataViz ??
+        THEME_MAP[palette.mode === "dark" ? "brand.dark" : "brand"].palette
+          .dataViz
+      ).categorical,
+    ],
     dashes: [...SANDBOX_DASHES],
     symbols: [...SANDBOX_SYMBOLS],
   };

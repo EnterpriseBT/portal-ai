@@ -38,7 +38,7 @@ const InputSchema = z.object({
       "SQL selecting the rows to map. Select the raw geometry column (aliased `geom`) when the result may be large so it can render as vector tiles; do not add a LIMIT — result size is handled automatically."
     ),
   spec: MapSpecSchema.describe(
-    'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend — set `colorBy.scale` to `"categorical"`, `"step"`, or `"interpolate"`, where `"interpolate"` is a smooth continuous gradient for a numeric column, absent ⇒ inferred), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
+    'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend — set `colorBy.scale` to `"categorical"`, `"step"`, or `"interpolate"`, where `"interpolate"` is a smooth continuous gradient for a numeric column, absent ⇒ inferred; a lines layer ignores `opacity`, so its colour keeps its contrast), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
   ),
   title: z
     .string()
@@ -114,7 +114,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
   description =
-    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
+    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`; other style values take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
 
   get schema() {
     return InputSchema;

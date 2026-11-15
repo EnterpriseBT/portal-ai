@@ -110,12 +110,12 @@ export type ValidateResult =
 
 export function validateProgram(src: string): ValidateResult; // parse, then colours
 ```
-`findColourLiterals` strips `//` and `/* */` comments, then matches, in order of appearance:
-- a hex colour inside a string or template literal: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`;
-- `rgb(`, `rgba(`, `hsl(`, `hsla(` inside a string or template literal;
-- `d3.scheme<Name>` or `api.d3.scheme<Name>`;
-- a colour interpolator: `d3.interpolate<Name>` (or `api.d3.…`) that isn't in the non-colour allowlist below;
-- a CSS named colour passed as the value of `.attr` or `.style` for `fill`, `stroke`, `color`, `stop-color`, `background` or `background-color`. These values are allowed: `none`, `transparent`, `currentColor`, `inherit`.
+`findColourLiterals` blanks `//` and `/* */` comments, reads every string literal (a template's `${…}` expressions are scanned as code, not string), then matches, in order of appearance:
+- a hex colour (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) that is a whole string, or follows `:`, `(` or `,` inside one (`"fill:#fff"`, a gradient). Elsewhere a `#` is text: "Order #1234" passes;
+- `rgb(`, `rgba(`, `hsl(`, `hsla(` inside a string;
+- `d3.scheme<Name>` or `api.d3.scheme<Name>` in code;
+- a colour interpolator in code: `d3.interpolate<Name>` (or `api.d3.…`) that isn't in the non-colour allowlist below;
+- a string whose whole content is a CSS named colour, wherever it's used (an attr value, a ternary branch, an array). `none`, `transparent`, `currentColor` and `inherit` aren't colour names here, so they pass.
 
 The non-colour interpolator allowlist (`NON_COLOUR_INTERPOLATORS`) is `interpolateNumber`, `interpolateRound`, `interpolateString`, `interpolateDate`, `interpolateArray`, `interpolateNumberArray`, `interpolateObject`, `interpolateTransformCss`, `interpolateTransformSvg`, `interpolateZoom`, `interpolateDiscrete`, `interpolateBasis`, `interpolateBasisClosed` and `interpolate`.
 
@@ -179,6 +179,7 @@ export type MapLegend =
   - else the values of `colorBy.stops`, colours ignored, unless `scale === "interpolate"`;
   - else the first-seen values in `rows`.
 - **Colours:** value `i < 8` gets `categorical[i]`; later values share `other`, and `more` counts them.
+- **Step bands:** numeric values are deduped after coercion (`1`, `"1"`, `"1.0"` are one breakpoint). With more than eight, the eight band lower bounds are spread evenly through the sorted values, so every band keeps a colour and `more` is 0.
 - **Unchanged:**
   - numeric inference (step) and its band ordering;
   - the `interpolate` path, and its stops' colours;

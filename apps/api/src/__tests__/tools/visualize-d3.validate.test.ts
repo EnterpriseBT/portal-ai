@@ -98,6 +98,27 @@ describe("the colour check (#1022)", () => {
     ],
     ["a named fill", 'svg.attr("fill", "red");', "red"],
     ["a named style stroke", "svg.style('stroke', 'steelblue');", "steelblue"],
+    [
+      "a named colour in a ternary",
+      "svg.attr('fill', (d) => (d.v > 0 ? 'green' : api.theme.text));",
+      "green",
+    ],
+    [
+      "a named colour in an array",
+      "const c = ['navy', api.theme.text];",
+      "navy",
+    ],
+    [
+      "a scheme inside a template",
+      "svg.attr('fill', `${api.d3.schemeTableau10[0]}`);",
+      "api.d3.schemeTableau10",
+    ],
+    ["a hex in a CSS declaration", 'svg.attr("style", "fill:#fff");', "#fff"],
+    [
+      "a hex in a gradient",
+      'svg.style("background", "linear-gradient(#fff, #000)");',
+      "#fff",
+    ],
   ])("rejects %s", (_kind, line, literal) => {
     const res = validateProgram(program(line));
     expect(res).toEqual({
@@ -138,6 +159,12 @@ describe("the colour check (#1022)", () => {
       'svg.append("text").text("red team vs blue team");',
     ],
     ["a dash pattern", 'svg.attr("stroke-dasharray", api.theme.dashes[1]);'],
+    ["an order number", 'svg.append("text").text("Order #1234");'],
+    [
+      "a rank in a template",
+      "svg.append('text').text(`Rank #123 of ${api.data.length}`);",
+    ],
+    ["a hex-like word in text", "svg.append('text').text('Build #cafe');"],
   ])("allows %s", (_kind, line) => {
     expect(validateProgram(program(line))).toEqual({ ok: true });
   });

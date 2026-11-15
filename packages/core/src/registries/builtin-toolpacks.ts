@@ -278,7 +278,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
     {
       name: "visualize_map",
       description:
-        'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.',
+        'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`; other style values take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.',
       parameterSchema: objectSchema(
         {
           sql: stringField(
@@ -287,7 +287,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
           spec: {
             type: "object",
             description:
-              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend — set `colorBy.scale` ('categorical' | 'step' | 'interpolate') to pick the colour scale, where 'interpolate' is a smooth continuous gradient for a numeric column (absent ⇒ inferred: numeric → banded step, else categorical). Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
+              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend — set `colorBy.scale` ('categorical' | 'step' | 'interpolate') to pick the colour scale, where 'interpolate' is a smooth continuous gradient for a numeric column (absent ⇒ inferred: numeric → banded step, else categorical); a lines layer ignores `opacity`, so its colour keeps its contrast. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
           },
           title: stringField("Optional display title for the map widget"),
           summary: stringField(

@@ -1,6 +1,8 @@
 // @ts-expect-error -- web has no d3 type declarations (the sandbox loads d3
 // untyped, #268); this test only reads the symbol exports.
 import * as d3 from "d3";
+import { createTheme } from "@mui/material/styles";
+
 import { THEME_MAP } from "@portalai/core/ui";
 
 import {
@@ -33,6 +35,17 @@ describe("buildSandboxTheme", () => {
     (name) => {
       expect(buildSandboxTheme(THEME_MAP[name]).background).toBe(
         THEME_MAP[name].palette.background.paper
+      );
+    }
+  );
+
+  it.each(["light", "dark"] as const)(
+    "a %s theme without dataViz falls back to the brand palette for its mode (code review)",
+    (mode) => {
+      const bare = createTheme({ palette: { mode } });
+      const brand = THEME_MAP[mode === "dark" ? "brand.dark" : "brand"];
+      expect(buildSandboxTheme(bare).categorical).toEqual(
+        brand.palette.dataViz.categorical
       );
     }
   );

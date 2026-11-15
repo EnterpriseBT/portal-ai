@@ -42,7 +42,6 @@ import { toSafeAttributions } from "./utils/attribution.util";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
   boundsOf,
-  buildLegend,
   emptyBasemapStyle,
   featuresForLayer,
   isTileBoundGeo,
@@ -235,19 +234,23 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     const data = spec.layers.map((l, i) => featuresForLayer(l, i, rows));
     const perLayer = spec.layers.map((l, i) => ({
       colorBy: l.style?.colorBy?.column,
-      layers: layerToMapLibre(l, i, rows, {
+      ...layerToMapLibre(l, i, rows, {
         tiled: isTile,
         // #796: the selection ring contrasts with the basemap.
         highlightColor: mode === "dark" ? "#ffffff" : "#000000",
         colours,
-      }).layers,
+      }),
     }));
     const layers = perLayer.flatMap((p) => p.layers);
     // #796: what each MapLibre layer's colour encodes, for the list's labels.
     const colorBy = Object.fromEntries(
       perLayer.flatMap((p) => p.layers.map((l) => [l.id, p.colorBy]))
     );
-    const lg: MapLegend[] = buildLegend(spec, rows, colours);
+    // Each layer's legend from the pass above (what `buildLegend` returns),
+    // so a colorBy is resolved once per render.
+    const lg: MapLegend[] = perLayer.flatMap((p) =>
+      p.legend ? [p.legend] : []
+    );
     const truncated = data.filter((d) => d.truncated);
     const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
     const notice =
@@ -833,7 +836,17 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
                       Colour: {lg.column}
                     </Typography>
                     <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                      {lg.entries.map((e) => (
+                      {[
+                        ...lg.entries,
+                        ...(lg.more > 0
+                          ? [
+                              {
+                                label: `+${lg.more} more, listed under Features in view`,
+                                color: colours.other,
+                              },
+                            ]
+                          : []),
+                      ].map((e) => (
                         <Box
                           key={e.label}
                           sx={{
@@ -858,30 +871,6 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
                           <Typography variant="caption">{e.label}</Typography>
                         </Box>
                       ))}
-                      {lg.more > 0 ? (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 0.5,
-                          }}
-                        >
-                          <Box
-                            data-testid="map-widget-legend-swatch"
-                            sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: "2px",
-                              bgcolor: colours.other,
-                              border: 1,
-                              borderColor: "divider",
-                            }}
-                          />
-                          <Typography variant="caption">
-                            +{lg.more} more, listed under Features in view
-                          </Typography>
-                        </Box>
-                      ) : null}
                     </Box>
                   </Box>
                 ) : (

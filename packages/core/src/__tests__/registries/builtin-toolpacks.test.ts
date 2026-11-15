@@ -199,6 +199,18 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
     expect(specDesc.toLowerCase()).toContain("gradient");
   });
 
+  it("steers per-feature colour to colorBy and says lines ignore opacity (#1022)", () => {
+    expect(tool!.description).toContain("Colour features with `colorBy`");
+    const specDesc =
+      (
+        tool!.parameterSchema.properties as Record<
+          string,
+          { description?: string }
+        >
+      ).spec.description ?? "";
+    expect(specDesc).toContain("a lines layer ignores `opacity`");
+  });
+
   it("says categorical colours come from the theme (#1022)", () => {
     expect(tool!.description).toContain(
       "Categorical and banded `colorBy` colours come from the theme"

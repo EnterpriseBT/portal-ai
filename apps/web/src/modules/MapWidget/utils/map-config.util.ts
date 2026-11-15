@@ -240,12 +240,11 @@ export type MapLegend =
 
 /** A column's distinct string or number values, in first-seen order. */
 function distinctValues(values: Iterable<unknown>): Array<string | number> {
-  const seen: Array<string | number> = [];
+  const seen = new Set<string | number>();
   for (const v of values) {
-    if ((typeof v === "string" || typeof v === "number") && !seen.includes(v))
-      seen.push(v);
+    if (typeof v === "string" || typeof v === "number") seen.add(v);
   }
-  return seen;
+  return [...seen];
 }
 
 /**
@@ -342,9 +341,22 @@ export function resolveColorBy(
   // `scale: "categorical"` forces the match path even for numbers.
   const allNumeric = values.every((v) => toFiniteNum(v) != null);
   if (allNumeric && scale !== "categorical") {
-    const sorted = values
-      .map((v) => toFiniteNum(v) as number)
-      .sort((a, b) => a - b);
+    // Deduped after coercion: 1, "1" and "1.0" are one value, and MapLibre
+    // rejects a step whose breakpoints aren't strictly ascending.
+    const distinct = [
+      ...new Set(values.map((v) => toFiniteNum(v) as number)),
+    ].sort((a, b) => a - b);
+    // At most one band per palette colour: past that, the lower bounds are
+    // spread evenly through the sorted values, so every band keeps a colour
+    // instead of the tail going to `other`.
+    const k = colours.categorical.length;
+    const sorted =
+      distinct.length <= k
+        ? distinct
+        : Array.from(
+            { length: k },
+            (_, i) => distinct[Math.floor((i * distinct.length) / k)]
+          );
     // step(input, base, break1, c1, …): a continuous value lands in its band.
     // `to-number` (null/absent → 0) because `step` THROWS on null and
     // MapLibre then paints the WHOLE layer black; ST_AsMVT can emit a
@@ -360,10 +372,11 @@ export function resolveColorBy(
       legend: {
         kind: "swatches",
         column,
-        entries: sorted
-          .slice(0, colours.categorical.length)
-          .map((value, i) => ({ label: String(value), color: colourAt(i) })),
-        more,
+        entries: sorted.map((value, i) => ({
+          label: String(value),
+          color: colourAt(i),
+        })),
+        more: 0,
       },
     };
   }
