@@ -21,7 +21,7 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
 import { visualSummary } from "@portalai/core/utils";
-import { StatusMessage } from "@portalai/core/ui";
+import { StatusMessage, THEME_MAP } from "@portalai/core/ui";
 
 import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
@@ -68,7 +68,7 @@ import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
 import type { InstallBasemap } from "../../utils/runtime-config.util";
 import type { AttributionPart } from "./utils/attribution.util";
-import type { MapLegend } from "./utils/map-config.util";
+import type { MapColours, MapLegend } from "./utils/map-config.util";
 import type {
   QueriedFeature,
   RenderedFeature,
@@ -106,6 +106,9 @@ export interface MapWidgetUIProps {
   spec: MapSpec;
   rows: Record<string, unknown>[];
   mode: "light" | "dark";
+  /** The theme's data colours (#1022). The container passes the live
+   *  theme's `palette.dataViz`; without them, the brand theme's for `mode`. */
+  colours?: MapColours;
   title?: string;
   /** Text alternative (#796), resolved through `visualSummary`. */
   summary: string;
@@ -149,6 +152,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   spec,
   rows,
   mode,
+  colours: coloursProp,
   title,
   summary,
   data,
@@ -172,6 +176,9 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   layout = "stacked",
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
+  const colours =
+    coloursProp ??
+    THEME_MAP[mode === "dark" ? "brand.dark" : "brand"].palette.dataViz;
   // #796: keyboard inspection. The live map, its open popup and highlighted
   // feature, and the list that is the keyboard route into its features.
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
@@ -232,6 +239,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         tiled: isTile,
         // #796: the selection ring contrasts with the basemap.
         highlightColor: mode === "dark" ? "#ffffff" : "#000000",
+        colours,
       }).layers,
     }));
     const layers = perLayer.flatMap((p) => p.layers);
@@ -239,7 +247,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     const colorBy = Object.fromEntries(
       perLayer.flatMap((p) => p.layers.map((l) => [l.id, p.colorBy]))
     );
-    const lg: MapLegend[] = buildLegend(spec, rows);
+    const lg: MapLegend[] = buildLegend(spec, rows, colours);
     const truncated = data.filter((d) => d.truncated);
     const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
     const notice =
@@ -257,7 +265,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       featureCapNotice: notice,
       hasFeatures: data.some((d) => d.collection.features.length > 0),
     };
-  }, [spec, rows, isTile, mode]);
+  }, [spec, rows, isTile, mode, colours]);
 
   const showMap = !error && (isTile || hasFeatures);
 
@@ -818,27 +826,63 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             >
               {legend.map((lg, li) =>
                 lg.kind === "swatches" ? (
-                  <Box
-                    key={li}
-                    data-testid="map-widget-legend"
-                    sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
-                  >
-                    {lg.entries.map((e) => (
-                      <Box
-                        key={e.label}
-                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                      >
+                  <Box key={li} data-testid="map-widget-legend">
+                    {/* #1022: what the colours encode, so the legend reads
+                        without the map. */}
+                    <Typography variant="caption" component="p">
+                      Colour: {lg.column}
+                    </Typography>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                      {lg.entries.map((e) => (
+                        <Box
+                          key={e.label}
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Box
+                            data-testid="map-widget-legend-swatch"
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: "2px",
+                              bgcolor: e.color,
+                              // #1022: an edge, so a swatch reads on the
+                              // surface whatever its colour.
+                              border: 1,
+                              borderColor: "divider",
+                            }}
+                          />
+                          <Typography variant="caption">{e.label}</Typography>
+                        </Box>
+                      ))}
+                      {lg.more > 0 ? (
                         <Box
                           sx={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: "2px",
-                            bgcolor: e.color,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
                           }}
-                        />
-                        <Typography variant="caption">{e.label}</Typography>
-                      </Box>
-                    ))}
+                        >
+                          <Box
+                            data-testid="map-widget-legend-swatch"
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: "2px",
+                              bgcolor: colours.other,
+                              border: 1,
+                              borderColor: "divider",
+                            }}
+                          />
+                          <Typography variant="caption">
+                            +{lg.more} more, listed under Features in view
+                          </Typography>
+                        </Box>
+                      ) : null}
+                    </Box>
                   </Box>
                 ) : (
                   <Box
@@ -918,6 +962,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
 }) => {
   const muiTheme = useTheme();
   const mode = muiTheme.palette.mode === "dark" ? "dark" : "light";
+  const colours = muiTheme.palette.dataViz;
   const { getToken } = useAuth();
   const installBasemap = readInstallBasemapOnce();
 
@@ -954,6 +999,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
         spec={{ layers: [] } as unknown as MapSpec}
         rows={[]}
         mode={mode}
+        colours={colours}
         summary="This map couldn't be read."
         error="Invalid map block content."
         status="error"
@@ -1044,6 +1090,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       spec={parsedContent.spec}
       rows={rows}
       mode={mode}
+      colours={colours}
       title={parsedContent.title}
       summary={summary}
       data={data}

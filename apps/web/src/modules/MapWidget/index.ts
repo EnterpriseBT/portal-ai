@@ -38,6 +38,7 @@ export type {
   GradientStop,
   LayerData,
   LegendEntry,
+  MapColours,
   MapLegend,
 } from "./utils/map-config.util";
 

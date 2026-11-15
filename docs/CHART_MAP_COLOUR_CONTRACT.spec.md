@@ -188,7 +188,8 @@ export type MapLegend =
   - A polygon's outline layer and a line layer take the colour expression at full opacity, `line-width` ≥ 1.5 unless the style sets a width.
   - Point layers keep a full-opacity `circle-color` and gain `circle-stroke-color: colours.other`, `circle-stroke-width: 1`.
   - Fill opacity ceilings (`AGG_FILL_OPACITY`, `RAW_FILL_OPACITY`) are unchanged.
-- `MapWidget.component.tsx` builds `MapColours` from `useTheme().palette.dataViz` and passes it to `layerToMapLibre` and `buildLegend`.
+- `MapWidget` (the container) passes `useTheme().palette.dataViz` to `MapWidgetUI` as `colours`, which hands it to `layerToMapLibre` and `buildLegend`. `colours` is optional on the pure UI: without it, the UI takes the brand theme's `dataViz` for its `mode` (as the selection ring already follows `mode`), so tests and stories need no palette.
+- A line layer no longer passes `style.opacity` through as `line-opacity`: a line is its own mark, so it stays at full opacity, where its colour is held at 3:1.
 - The legend:
   - shows the column as its heading (`Typography variant="caption" component="p"`, "Colour: <column>");
   - gives each swatch a 1px `divider` border;
