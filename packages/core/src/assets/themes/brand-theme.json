@@ -73,6 +73,19 @@
       "meta": "#0b3ec2",
       "literal": "#0b3ec2"
     },
+    "dataViz": {
+      "categorical": [
+        "#1f6fb2",
+        "#c4580a",
+        "#2e7d32",
+        "#b8326a",
+        "#6f4bb0",
+        "#8a6d00",
+        "#00798c",
+        "#a03a2c"
+      ],
+      "other": "#6b7280"
+    },
     "sheet": {
       "gridLine": "#e5e7eb",
       "headerBackground": "#f3f4f6",

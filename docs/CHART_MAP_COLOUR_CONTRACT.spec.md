@@ -49,8 +49,9 @@ Pins the contract that holds agent-generated charts and maps to WCAG 1.4.1 and 1
 /** Colours for data a chart or map draws (#1022). Not status colours. */
 export interface DataVizPalette {
   /** Eight category colours, in assignment order. Each ≥3:1 against both
-   *  theme backgrounds and the theme's CARTO basemap. */
-  categorical: [string, string, string, string, string, string, string, string];
+   *  theme backgrounds and the theme's CARTO basemap. A plain array: the
+   *  theme JSONs infer `string[]`, so the test holds the count to eight. */
+  categorical: string[];
   /** Categories past the eighth, and the "+N more" legend swatch. */
   other: string;
 }
@@ -67,9 +68,9 @@ declare module "@mui/material/styles" {
 ```ts
 /** The land colour of each CARTO basemap the map uses per theme, read from
  *  the style JSON (Positron `background`, Dark Matter `background`). */
-export const BASEMAP_BACKGROUND = { light: "<positron>", dark: "<dark-matter>" } as const;
+export const BASEMAP_BACKGROUND = { light: "#fafaf8", dark: "#0e0e0e" } as const;
 ```
-(The two values are read from the live style JSON in slice 1 and recorded with their source URL.)
+(Read from each style JSON's `background` layer on 2026-11-15; the constant's comment carries the source URLs. The starting palette passed unchanged: ≥4.2:1 light, ≥7:1 dark, closest pair ΔE 25.8.)
 
 ### 2. Chart sandbox — `apps/web/src/modules/D3Widget`
 
