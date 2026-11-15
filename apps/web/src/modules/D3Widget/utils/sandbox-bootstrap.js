@@ -225,6 +225,13 @@
     rafId = window.requestAnimationFrame(renderPass);
   }
 
+  // #1022: the palette is held at 3:1 against the figure's surface, so the
+  // frame paints that surface instead of staying transparent.
+  function paintBackground() {
+    if (!theme || !theme.background) return;
+    document.body.style.background = theme.background;
+  }
+
   window.addEventListener("message", function (event) {
     var msg = event.data;
     if (!msg || typeof msg !== "object" || msg.v !== VERSION) return;
@@ -236,6 +243,7 @@
       nonce = msg.nonce;
       params = msg.params || {};
       theme = msg.theme || null;
+      paintBackground();
       width = (msg.size && msg.size.width) || 0;
       height = (msg.size && msg.size.height) || 0;
       try {
@@ -254,6 +262,7 @@
       scheduleRender();
     } else if (msg.type === "theme" && msg.theme) {
       theme = msg.theme;
+      paintBackground();
       scheduleRender();
     } else if (msg.type === "resize" && msg.size) {
       width = msg.size.width || width;

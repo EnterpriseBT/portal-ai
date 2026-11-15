@@ -5,14 +5,35 @@ import type { Theme } from "@mui/material/styles";
  * `api.theme` (#268). The iframe cannot inherit MUI context — these
  * cross the postMessage bridge, so the shape must stay plain JSON.
  */
+/** stroke-dasharray values that tell lines apart (#1022); the first is solid. */
+export const SANDBOX_DASHES = ["none", "6 3", "2 3", "8 3 2 3", "1 3", "12 4"];
+
+/** d3 symbol types that tell markers apart (#1022), as `api.d3[name]`. */
+export const SANDBOX_SYMBOLS = [
+  "symbolCircle",
+  "symbolSquare",
+  "symbolTriangle",
+  "symbolDiamond",
+  "symbolCross",
+  "symbolStar",
+  "symbolWye",
+];
+
 export interface D3SandboxTheme {
   mode: "light" | "dark";
+  /** The figure's surface (`background.paper`), which the frame paints, so
+   *  the palette's 3:1 is measured against what the chart is drawn on. */
   background: string;
   text: string;
   fontFamily: string;
   monospaceFontFamily: string;
-  /** [primary, secondary, success, warning, error, info] mains, in order. */
+  /** `palette.dataViz.categorical` (#1022): the only colours a series may
+   *  use, in order. Held at 3:1 by core's `theme-contrast.test.ts`. */
   categorical: string[];
+  /** Dash patterns for lines, so series differ by more than colour. */
+  dashes: string[];
+  /** d3 symbol names for markers, so series differ by more than colour. */
+  symbols: string[];
 }
 
 /** The brand themes register a custom `typography.monospace` variant. */
@@ -24,19 +45,14 @@ export function buildSandboxTheme(theme: Theme): D3SandboxTheme {
   const { palette, typography } = theme;
   return {
     mode: palette.mode,
-    background: palette.background.default,
+    background: palette.background.paper,
     text: palette.text.primary,
     fontFamily: typography.fontFamily ?? "sans-serif",
     monospaceFontFamily:
       (typography as unknown as MonospaceTypography).monospace?.fontFamily ??
       "monospace",
-    categorical: [
-      palette.primary.main,
-      palette.secondary.main,
-      palette.success.main,
-      palette.warning.main,
-      palette.error.main,
-      palette.info.main,
-    ],
+    categorical: [...palette.dataViz.categorical],
+    dashes: [...SANDBOX_DASHES],
+    symbols: [...SANDBOX_SYMBOLS],
   };
 }
