@@ -104,6 +104,10 @@ export interface ColourLiteral { literal: string; line: number }
 /** Colour literals and d3 colour helpers in a program, comments ignored. */
 export function findColourLiterals(src: string): ColourLiteral[];
 
+export type ValidateResult =
+  | { ok: true }
+  | { ok: false; error: string; colour?: ColourLiteral }; // colour: set on a colour rejection
+
 export function validateProgram(src: string): ValidateResult; // parse, then colours
 ```
 `findColourLiterals` strips `//` and `/* */` comments, then matches, in order of appearance:
@@ -120,7 +124,7 @@ The non-colour interpolator allowlist (`NON_COLOUR_INTERPOLATORS`) is `interpola
 
 The codegen loop (`visualize-d3.tool.ts`, where `lastError = validation.error`) already feeds `lastError` into the next attempt.
 
-The loop logs a rejection: `logger.info({ tool: "visualize_d3", attempt, literal }, "visualize_d3 colour literal rejected")`, when the error starts with `Colour "`.
+The loop logs a rejection: `logger.info({ tool: "visualize_d3", attempt, literal }, "visualize_d3 colour literal rejected")`, when the result carries `colour`.
 
 ### 4. Agent-facing text — four surfaces
 

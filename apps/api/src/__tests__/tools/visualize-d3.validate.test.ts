@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import {
+  findColourLiterals,
   validateProgram,
   stripProgramFence,
 } from "../../tools/visualize-d3.validate.js";
@@ -63,5 +64,102 @@ describe("stripProgramFence (#281)", () => {
     // After stripping, it's the real function body.
     expect(validateProgram(stripProgramFence(fenced)).ok).toBe(true);
     expect(stripProgramFence(fenced)).not.toContain("```");
+  });
+});
+
+// #1022: series colours come from api.theme (held at 3:1 by the theme), so a
+// program that writes its own colour is rejected and regenerated.
+describe("the colour check (#1022)", () => {
+  const program = (line: string) =>
+    `const svg = api.d3.select(api.container).append("svg");\n${line}`;
+
+  it.each([
+    ["#rgb", 'svg.attr("fill", "#f00");', "#f00"],
+    ["#rgba", 'svg.attr("fill", "#f00a");', "#f00a"],
+    ["#rrggbb", "svg.attr('stroke', '#1f77b4');", "#1f77b4"],
+    ["#rrggbbaa", "svg.attr(`fill`, `#1f77b4cc`);", "#1f77b4cc"],
+    ["rgb()", 'svg.style("fill", "rgb(31, 119, 180)");', "rgb("],
+    ["rgba()", 'const c = "rgba(0,0,0,0.5)";', "rgba("],
+    ["hsl()", 'svg.attr("fill", `hsl(${i * 40}, 60%, 50%)`);', "hsl("],
+    [
+      "a d3 scheme",
+      "const c = d3.scaleOrdinal(d3.schemeCategory10);",
+      "d3.schemeCategory10",
+    ],
+    [
+      "api.d3 scheme",
+      "const c = api.d3.schemeTableau10;",
+      "api.d3.schemeTableau10",
+    ],
+    [
+      "a colour interpolator",
+      "const c = api.d3.interpolateViridis(0.5);",
+      "api.d3.interpolateViridis",
+    ],
+    ["a named fill", 'svg.attr("fill", "red");', "red"],
+    ["a named style stroke", "svg.style('stroke', 'steelblue');", "steelblue"],
+  ])("rejects %s", (_kind, line, literal) => {
+    const res = validateProgram(program(line));
+    expect(res).toEqual({
+      ok: false,
+      error: `Colour "${literal}" on line 2: take series colours from api.theme.categorical, and use api.theme.text or api.theme.background for anything else.`,
+      colour: { literal, line: 2 },
+    });
+  });
+
+  it.each([
+    [
+      "a theme colour",
+      'svg.attr("fill", api.theme.categorical[i % api.theme.categorical.length]);',
+    ],
+    [
+      "none and currentColor",
+      'svg.attr("fill", "none").attr("stroke", "currentColor");',
+    ],
+    [
+      "transparent and inherit",
+      "svg.style('fill', 'transparent').style('color', 'inherit');",
+    ],
+    ["a non-colour interpolator", "const t = api.d3.interpolateNumber(0, 10);"],
+    [
+      "a hex in a line comment",
+      "// was #1f77b4 before #1022\nsvg.attr('fill', api.theme.text);",
+    ],
+    [
+      "a hex in a block comment",
+      "/* fill: #fff */ svg.attr('fill', api.theme.background);",
+    ],
+    [
+      "a # that isn't a colour",
+      'svg.append("text").text("#1 region").attr("id", "#total");',
+    ],
+    [
+      "a colour word in text",
+      'svg.append("text").text("red team vs blue team");',
+    ],
+    ["a dash pattern", 'svg.attr("stroke-dasharray", api.theme.dashes[1]);'],
+  ])("allows %s", (_kind, line) => {
+    expect(validateProgram(program(line))).toEqual({ ok: true });
+  });
+
+  it("a parse error wins over a colour", () => {
+    const res = validateProgram('svg.attr("fill", "#f00") )(');
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).not.toMatch(/^Colour/);
+      expect(res).not.toHaveProperty("colour");
+    }
+  });
+
+  it("finds every literal, in order of appearance", () => {
+    expect(
+      findColourLiterals(
+        'a.attr("fill", "#abc");\nb.style("stroke", "navy");\nc(d3.schemeSet2);'
+      )
+    ).toEqual([
+      { literal: "#abc", line: 1 },
+      { literal: "navy", line: 2 },
+      { literal: "d3.schemeSet2", line: 3 },
+    ]);
   });
 });

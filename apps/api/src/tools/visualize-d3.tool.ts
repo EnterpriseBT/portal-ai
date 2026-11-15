@@ -11,6 +11,7 @@ import { Tool } from "../types/tools.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
 import { AiService } from "../services/ai.service.js";
 import { validateProgram, stripProgramFence } from "./visualize-d3.validate.js";
+import { createLogger } from "../utils/logger.util.js";
 import {
   VISUALIZE_D3_CODEGEN_SYSTEM,
   buildCodegenPrompt,
@@ -41,6 +42,8 @@ const InputSchema = z.object({
       "One to three sentences for someone who can't see the chart: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
     ),
 });
+
+const logger = createLogger({ module: "visualize-d3.tool" });
 
 /** Total codegen attempts = 1 + MAX_CODEGEN_RETRIES. */
 const MAX_CODEGEN_RETRIES = 2;
@@ -194,6 +197,18 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
               pipeline,
               rows: rows ?? [],
             };
+          }
+          if (validation.colour) {
+            // #1022: how often the codegen model writes its own colours, so
+            // the prompt rule's effect is measurable.
+            logger.info(
+              {
+                tool: "visualize_d3",
+                attempt,
+                literal: validation.colour.literal,
+              },
+              "visualize_d3 colour literal rejected"
+            );
           }
           lastError = validation.error;
         }
