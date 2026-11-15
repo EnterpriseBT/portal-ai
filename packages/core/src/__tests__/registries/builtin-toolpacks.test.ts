@@ -198,6 +198,12 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
     expect(specDesc).toContain("scale");
     expect(specDesc.toLowerCase()).toContain("gradient");
   });
+
+  it("says categorical colours come from the theme (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Categorical and banded `colorBy` colours come from the theme"
+    );
+  });
 });
 
 // #796 — both visualization tools require a text alternative, and every

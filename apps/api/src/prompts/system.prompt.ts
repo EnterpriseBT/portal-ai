@@ -346,6 +346,14 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
+        "Don't ask for map colours either: categorical colours come from the " +
+          "theme, which keeps them readable on the basemap. The first eight " +
+          "categories get distinct colours and the rest share one, so when " +
+          "the categories matter, colour by a column with at most eight " +
+          "common values."
+      );
+      lines.push("");
+      lines.push(
         "For a numeric measure, `colorBy` defaults to discrete bands. When the " +
           "user asks for a **smooth gradient** (continuous shading), set " +
           '`colorBy.scale: "interpolate"` — a continuous blend across the ' +

@@ -232,6 +232,19 @@ describe("buildSystemPrompt — chart colours come from the theme (#1022)", () =
   });
 });
 
+describe("buildSystemPrompt — map colours come from the theme (#1022)", () => {
+  it("tells the agent map colours come from the theme, eight distinct", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "gis"] })
+    );
+    const start = prompt.indexOf("### Mapping");
+    const next = prompt.indexOf("\n### ", start + 1);
+    const text = prompt.slice(start, next === -1 ? undefined : next);
+    expect(text).toMatch(/colou?rs come from the theme/i);
+    expect(text).toMatch(/at most eight/i);
+  });
+});
+
 describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
   it("teaches the agent that line layers stay raw + how treatment overrides it", () => {
     const prompt = buildSystemPrompt(

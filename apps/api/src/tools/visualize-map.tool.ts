@@ -62,45 +62,6 @@ export interface VisualizeMapDeps {
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
-/** Base categorical palette (Tableau 10) — the first colours a colorBy uses. */
-const BASE_PALETTE = [
-  "#4e79a7",
-  "#f28e2b",
-  "#e15759",
-  "#76b7b2",
-  "#59a14f",
-  "#edc948",
-  "#b07aa1",
-  "#ff9da7",
-  "#9c755f",
-  "#bab0ac",
-];
-
-/** HSL→hex. `h` in [0,360); `s`,`l` as fractions in [0,1]. */
-function hslToHex(h: number, s: number, l: number): string {
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-    return Math.round(255 * Math.max(0, Math.min(1, c)))
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-/**
- * A distinct colour per category **without a cap** — this is a general-purpose
- * map, so we never assume which categories a user cares about. The Tableau-10
- * palette covers the common small case; beyond it, golden-angle HSL hues give
- * a distinct, well-spread colour for any cardinality (the platform's standard
- * query row cap is the only bound, same as every other query).
- */
-export function categoryColor(i: number): string {
-  if (i < BASE_PALETTE.length) return BASE_PALETTE[i];
-  return hslToHex((i * 137.508) % 360, 0.62, 0.55);
-}
-
 /** Inline rows out of a delivery result (inline path only). */
 function inlineRows(
   delivery: Awaited<ReturnType<typeof defaultResolveSqlDelivery>>
@@ -153,7 +114,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
   description =
-    "Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.";
+    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one, so `palette` and `stops` colours apply only to `scale: "interpolate"`. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
 
   get schema() {
     return InputSchema;
@@ -235,13 +196,13 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           }
         }
 
-        // Populate `colorBy.stops` server-side so a layer coloured by category
-        // renders in BOTH modes: the tile path has no inline rows for the
-        // widget to derive categories from, so without stops its `match`
+        // List a colorBy's categories server-side so a layer coloured by
+        // category renders in BOTH modes: the tile path has no inline rows for
+        // the widget to derive categories from, so without them its `match`
         // expression is empty and every feature paints the fallback colour.
         for (const layer of spec.layers) {
           const cb = layer.style?.colorBy;
-          if (!cb || (cb.stops && cb.stops.length > 0)) continue;
+          if (!cb || cb.stops?.length || cb.categories?.length) continue;
 
           // #336: a smooth gradient needs a continuous ramp, not one anchor per
           // distinct value. Compute MIN/MAX and lay the sequential palette
@@ -272,9 +233,11 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             continue;
           }
 
-          // Every distinct category gets a colour (no cap). Frequency order
-          // just means that if the platform's row cap ever trims the list, the
-          // most common values are kept.
+          // Every distinct category is listed (no cap), most common first: the
+          // web colours the first eight from the viewer's theme and counts the
+          // rest in its legend (#1022). No colour is stored, so a saved map
+          // follows the theme. Frequency order also means that if the
+          // platform's row cap trims the list, the most common values are kept.
           const distinctSql =
             `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${fenceSql(sql)}) _q ` +
             `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ` +
@@ -292,7 +255,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
                 typeof v === "string" || typeof v === "number"
             );
           if (values.length > 0) {
-            cb.stops = values.map((v, i) => [v, categoryColor(i)]);
+            cb.categories = values;
           }
         }
 
