@@ -2,7 +2,7 @@
  * #674: a station's data attachments — curated views (`station_views`) and
  * connector instances (`station_instances`).
  *
- * Attaching is an edit to the **station** (the route checks `resource.write`
+ * Attaching is an edit to the **station** (`loadWritableStation` checks `resource.write`
  * on it); on top of that, every newly attached object must be one the caller
  * can `read`. An update names what to add and what to remove for each kind,
  * never a full set, and the caller only decides about what they can see: an
@@ -15,8 +15,11 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { PermissionService } from "./permission.service.js";
+import type { PermissionContext } from "./permission.service.js";
+import { AuditService } from "./audit.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
+import type { StationSelect } from "../db/schema/zod.js";
 import type { StationAttachmentCounts } from "@portalai/core/content";
 import type { OrgRole } from "@portalai/core/models";
 import type {
@@ -40,6 +43,32 @@ export interface StationAttachmentDiff {
 export interface StationAttachmentChange {
   added: { curatedViewIds: string[]; connectorInstanceIds: string[] };
   removed: { curatedViewIds: string[]; connectorInstanceIds: string[] };
+}
+
+/**
+ * #1036: who an attachment change is recorded against. A plain object so a
+ * route (`auditContextFromRequest`) and an agent tool (`AGENT_AUDIT`) both
+ * supply one.
+ */
+export interface AttachmentAuditContext {
+  userId: string;
+  organizationId: string;
+  sourceIp: string | null;
+  userAgent: string | null;
+}
+
+/** #1036: what {@link StationAttachmentService.attachViews} did. */
+export interface ViewAttachResult {
+  stationId: string;
+  added: string[];
+  alreadyAttached: string[];
+}
+
+/** #1036: what {@link StationAttachmentService.detachViews} did. */
+export interface ViewDetachResult {
+  stationId: string;
+  removed: string[];
+  notAttached: string[];
 }
 
 const NOT_READABLE_MESSAGE =
@@ -285,6 +314,164 @@ export class StationAttachmentService {
         connectorInstanceIds: instances.removed,
       },
     };
+  }
+
+  /**
+   * #674 / #1036: load the station an attach or detach targets and require
+   * `resource.write` on it — attaching is an edit to the station, not to the
+   * view. Missing, in another org or unreadable is 404, as the station GET
+   * answers; readable without write is the set's 403. Shared by the routes and
+   * the agent tools so both refuse identically.
+   */
+  static async loadWritableStation(
+    ctx: PermissionContext,
+    stationId: string,
+    client?: DbClient
+  ): Promise<{ set: PermissionSet; station: StationSelect }> {
+    const station = await DbService.repository.stations.findById(
+      stationId,
+      client
+    );
+    const set = await PermissionService.loadSet(ctx, client);
+    const object = station
+      ? { type: "station", id: station.id, createdBy: station.createdBy }
+      : undefined;
+    if (
+      !station ||
+      station.organizationId !== ctx.organizationId ||
+      !set.can("resource.read", object)
+    ) {
+      throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
+    }
+    set.check("resource.write", object);
+    return { set, station };
+  }
+
+  /**
+   * #1036: attach views to a station, all or nothing. Every requested view
+   * must be readable (already-attached ones included, as the single-view route
+   * always checked), or nothing is written. New links insert in one
+   * transaction with ON CONFLICT DO NOTHING; what was already attached is
+   * reported, not refused. The audit event records only what was added.
+   */
+  static async attachViews(
+    ctx: PermissionContext,
+    args: { stationId: string; curatedViewIds: string[] },
+    audit: AttachmentAuditContext
+  ): Promise<ViewAttachResult> {
+    const { stationId } = args;
+    const { organizationId, userId } = ctx;
+    const ids = unique(args.curatedViewIds);
+    const result = await DbService.transaction(async (tx) => {
+      const { set } = await StationAttachmentService.loadWritableStation(
+        ctx,
+        stationId,
+        tx
+      );
+      await StationAttachmentService.assertAttachable(
+        set,
+        organizationId,
+        { curatedViewIds: ids },
+        tx
+      );
+      const existing = new Set(
+        (
+          await DbService.repository.stationViews.findByStationId(stationId, tx)
+        ).map((r) => r.curatedViewId)
+      );
+      const toAdd = ids.filter((id) => !existing.has(id));
+      const now = Date.now();
+      const rows =
+        await DbService.repository.stationViews.insertManyIgnoreConflicts(
+          toAdd.map((curatedViewId) => ({
+            id: SystemUtilities.id.v4.generate(),
+            created: now,
+            createdBy: userId,
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+            organizationId,
+            stationId,
+            curatedViewId,
+          })),
+          tx
+        );
+      const added = rows.map((r) => r.curatedViewId);
+      const addedSet = new Set(added);
+      return {
+        stationId,
+        added,
+        // A concurrent attach of the same view lost the insert race: it is
+        // attached all the same.
+        alreadyAttached: ids.filter((id) => !addedSet.has(id)),
+      };
+    });
+    await StationAttachmentService.auditViewChange(audit, stationId, {
+      added: result.added,
+      removed: [],
+    });
+    return result;
+  }
+
+  /**
+   * #1036: detach views from a station with station write alone (#674:
+   * detaching edits the station, so the view needn't be readable). An id that
+   * isn't attached is reported, not refused. Audits only what was removed.
+   */
+  static async detachViews(
+    ctx: PermissionContext,
+    args: { stationId: string; curatedViewIds: string[] },
+    audit: AttachmentAuditContext
+  ): Promise<ViewDetachResult> {
+    const { stationId } = args;
+    const ids = unique(args.curatedViewIds);
+    const result = await DbService.transaction(async (tx) => {
+      await StationAttachmentService.loadWritableStation(ctx, stationId, tx);
+      const existing = new Set(
+        (
+          await DbService.repository.stationViews.findByStationId(stationId, tx)
+        ).map((r) => r.curatedViewId)
+      );
+      const removed = ids.filter((id) => existing.has(id));
+      if (removed.length > 0) {
+        await DbService.repository.stationViews.softDeleteByStationAndViews(
+          stationId,
+          removed,
+          ctx.userId,
+          tx
+        );
+      }
+      return {
+        stationId,
+        removed,
+        notAttached: ids.filter((id) => !existing.has(id)),
+      };
+    });
+    await StationAttachmentService.auditViewChange(audit, stationId, {
+      added: [],
+      removed: result.removed,
+    });
+    return result;
+  }
+
+  /** The `station.attachments.change` event for views (post-commit, fail-open). */
+  private static async auditViewChange(
+    audit: AttachmentAuditContext,
+    stationId: string,
+    change: { added: string[]; removed: string[] }
+  ): Promise<void> {
+    if (change.added.length === 0 && change.removed.length === 0) return;
+    await AuditService.record({
+      ...audit,
+      action: "station.attachments.change",
+      targetType: "station",
+      targetId: stationId,
+      metadata: {
+        added: { curatedViewIds: change.added, connectorInstanceIds: [] },
+        removed: { curatedViewIds: change.removed, connectorInstanceIds: [] },
+      },
+    });
   }
 
   /** Whether a change added or removed anything (an empty one isn't audited). */
