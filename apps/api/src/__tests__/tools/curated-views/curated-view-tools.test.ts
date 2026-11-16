@@ -549,10 +549,11 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
     organizationId: "org-1",
     sourceIp: null,
     userAgent: "portal-agent",
+    sourcePortalId: "portal-1",
   };
   const SET = { set: true };
   const view = (id: string, key: string) => ({
-    view: { id, key, label: `${key} label` },
+    view: { id, key, label: "NE" },
     columns: [
       { normalizedKey: "name", pgType: "text", columnName: "c_name" },
       { normalizedKey: "amount", pgType: "numeric", columnName: "c_amount" },
@@ -563,20 +564,8 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
     jest.clearAllMocks();
     resolveGrantedViewColumns.mockResolvedValue({
       set: SET,
-      views: [view("v1", "ne_accounts")],
+      views: [view("v1", "ne_accounts"), view("v-other", "other_view")],
     });
-    listViewsForStations.mockResolvedValue(
-      new Map([
-        [
-          "st-session",
-          [
-            { id: "v1", key: "ne_accounts", label: "NE", canRead: true },
-            { id: "v2", key: "ne_accounts", label: "NE copy", canRead: true },
-            { canRead: false, label: null },
-          ],
-        ],
-      ])
-    );
   });
 
   it("attaches to the session's station by default and makes it queryable this turn", async () => {
@@ -614,7 +603,6 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
           id: "v1",
           key: "ne_accounts",
           label: "NE",
-          queryable: true,
           columns: [
             { key: "name", wideColumnName: "c_name", type: "text" },
             { key: "amount", wideColumnName: "c_amount", type: "numeric" },
@@ -624,27 +612,10 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
     });
   });
 
-  it("reports a view whose key another attached view already uses as not queryable", async () => {
-    attachViews.mockResolvedValue({
-      stationId: "st-session",
-      added: ["v2"],
-      alreadyAttached: [],
-    });
-    const r = (await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
-      curatedViewIds: ["v2"],
-    })) as { views: unknown[] };
-    expect(r.views).toEqual([
-      {
-        id: "v2",
-        key: "ne_accounts",
-        label: "NE copy",
-        queryable: false,
-        reason: "KEY_CONFLICT",
-      },
-    ]);
-  });
-
-  it("doesn't forget the session's views when nothing was added, but still reports them", async () => {
+  it("still forgets and reports a view someone else attached earlier this turn", async () => {
+    // The view came back "already attached", but this turn may have cached
+    // the station's views before that attach: the report reads fresh, so
+    // sql_query must too.
     attachViews.mockResolvedValue({
       stationId: "st-session",
       added: [],
@@ -652,9 +623,27 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
     });
     const r = (await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
       curatedViewIds: ["v1"],
-    })) as { views: unknown[] };
-    expect(forgetSessionViews).not.toHaveBeenCalled();
-    expect(r.views).toHaveLength(1);
+    })) as { views: { id: string }[] };
+    expect(forgetSessionViews).toHaveBeenCalledWith(
+      "st-session",
+      "org-1",
+      "u-1"
+    );
+    expect(r.views.map((v) => v.id)).toEqual(["v1"]);
+  });
+
+  it("reports only the requested views, from one resolution", async () => {
+    attachViews.mockResolvedValue({
+      stationId: "st-session",
+      added: ["v1"],
+      alreadyAttached: [],
+    });
+    const r = (await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1"],
+    })) as { views: { id: string }[] };
+    expect(r.views.map((v) => v.id)).toEqual(["v1"]);
+    expect(resolveGrantedViewColumns).toHaveBeenCalledTimes(1);
+    expect(listViewsForStations).not.toHaveBeenCalled();
   });
 
   it("attaching to another station neither forgets the session's views nor reports columns", async () => {

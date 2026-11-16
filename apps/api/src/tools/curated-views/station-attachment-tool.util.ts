@@ -9,15 +9,20 @@ export interface ViewToolSession {
   portalId: string | null;
 }
 
-/** #1036: the audit context for an agent-made attachment change. */
+/**
+ * #1036: the audit context for an agent-made attachment change: the caller,
+ * the agent's user agent, and the portal session it was made in.
+ */
 export function viewAttachmentAudit(
   ctx: PermissionContext,
-  agent: { sourceIp: null; userAgent: string }
+  agent: { sourceIp: null; userAgent: string },
+  session: ViewToolSession
 ): AttachmentAuditContext {
   return {
     userId: ctx.userId,
     organizationId: ctx.organizationId,
     sourceIp: agent.sourceIp,
     userAgent: agent.userAgent,
+    sourcePortalId: session.portalId,
   };
 }

@@ -415,7 +415,7 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     );
     expect(p).toContain("curated_view_attach");
     expect(p).toContain("can be queried in the same turn");
-    expect(p).toContain("KEY_CONFLICT");
+    expect(p).not.toContain("KEY_CONFLICT");
     expect(p).toContain("curated_view_detach");
   });
 

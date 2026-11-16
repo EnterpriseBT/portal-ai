@@ -126,15 +126,16 @@ input:  z.object({
 result: { success: true; stationId: string; isSessionStation: boolean;
           added: string[]; alreadyAttached: string[];
           // only when isSessionStation: what sql_query can read now, from resolveGrantedViewColumns
-          views?: Array<{ id: string; key: string; label: string; queryable: true; columns: Array<{ key: string; wideColumnName: string; type: string }> }  // columns as station_context reports them
-                        | { id: string; key: string; label: string; queryable: false; reason: "KEY_CONFLICT" }>; }
+          views?: Array<{ id: string; key: string; label: string; columns: Array<{ key: string; wideColumnName: string; type: string }> }>; }  // columns as station_context reports them
 ```
 
-When `isSessionStation` is true and anything was added, the tool:
-1. calls `PortalSqlService.forgetSessionViews(stationId, ctx.organizationId, ctx.userId)`;
-2. resolves the station's granted view columns and reports each attached view.
+When `isSessionStation` is true, the tool:
+1. **always** calls `PortalSqlService.forgetSessionViews(stationId, ctx.organizationId, ctx.userId)`, even when every view was already attached: another user may have attached one after this turn cached the station's views, and the report reads fresh (code review);
+2. resolves the station's granted view columns once and reports the requested views from that resolution.
 
-An attached view that isn't in the resolved set because another attached view already has its key (`portal-sql.service.ts:650-659`) is reported `queryable: false, reason: "KEY_CONFLICT"`.
+View keys are unique per org (`curated_views_org_key_unique`), so every attached, readable view is in the resolution; there is no key-conflict case (code review removed it).
+
+The audit context carries the session's `portalId` as `sourcePortalId`, which `StationAttachmentService` records in the `station.attachments.change` event's `metadata` (the audit table has no column for it).
 
 **`curated-view-detach.tool.ts`** — `curated_view_detach`
 ```ts
@@ -142,7 +143,7 @@ input:  z.object({ curatedViewIds: z.array(z.string().min(1)).min(1).max(25), st
 result: { success: true; stationId: string; isSessionStation: boolean; removed: string[]; notAttached: string[] }
 ```
 
-On the session's own station, it calls `forgetSessionViews` when anything was removed.
+On the session's own station, it calls `forgetSessionViews` when anything was removed. `removed` is what the soft-delete itself removed (`softDeleteByStationAndViews` returns the view ids), not a read before it, so a detach that lost a race to another reports and audits nothing (code review).
 
 **`station-list.tool.ts`** — `station_list`
 ```ts
@@ -200,7 +201,7 @@ It is sorted by `name` ascending. `isSessionStation` compares each station with 
 
 `apps/web/src/utils/portal-stream.util.ts`:
 - `usePortalStream` records each `tool_result` event's `toolName` in a per-stream `Set` ref, cleared on `send`.
-- The `onDone` signature becomes `(clearLocalMessages: () => void, turn: { toolNames: ReadonlySet<string> }) => void`.
+- A second callback, `onTurnEnd(turn: { toolNames: ReadonlySet<string> })`, fires once per turn however it ended: `done`, `stream_error`, a lost connection or a cancel. A tool's write commits when its result arrives, so a turn that failed afterwards still changed what it changed (code review). `onDone` is unchanged.
 
 `apps/web/src/utils/station-attachment-tools.util.ts` (new):
 ```ts
@@ -208,7 +209,7 @@ export const STATION_ATTACHMENT_TOOLS = ["curated_view_attach", "curated_view_de
 export const changedStationAttachments = (toolNames: ReadonlySet<string>): boolean => STATION_ATTACHMENT_TOOLS.some((n) => toolNames.has(n));
 ```
 
-`PortalSession.component.tsx` `handleStreamDone`: additionally `if (changedStationAttachments(turn.toolNames)) queryClient.invalidateQueries({ queryKey: queryKeys.stations.root })`.
+`PortalSession.component.tsx`: a `handleTurnEnd` passed as `onTurnEnd` runs `if (changedStationAttachments(turn.toolNames)) queryClient.invalidateQueries({ queryKey: queryKeys.stations.root })`.
 
 ## Migration
 
@@ -236,7 +237,7 @@ API: `npm run test:unit -- --testPathPattern <file>` / `npm run test:integration
   - `detachViews`: needs write only; reports `notAttached`; audits only `removed`.
   - `listViewsForStations`: one batched read; unreadable views carry no id, key or label.
 - **`__tests__/tools/curated-views/curated-view-tools.test.ts`**
-  - attach: `stationId` defaults to the session; `isSessionStation`; `forgetSessionViews` is called only for the session station and only when something changed; `KEY_CONFLICT`; `STATION_ATTACHMENT_NOT_READABLE` → `TOOL_TARGET_NOT_FOUND`; 403 is re-thrown; 5xx → `CURATED_VIEW_ATTACH_FAILED`; a 26-id batch is refused by the schema.
+  - attach: `stationId` defaults to the session; `isSessionStation`; `forgetSessionViews` is called for the session station on every attach, and on a detach only when something was removed; the report comes from one resolution; `STATION_ATTACHMENT_NOT_READABLE` → `TOOL_TARGET_NOT_FOUND`; 403 is re-thrown; 5xx → `CURATED_VIEW_ATTACH_FAILED`; a 26-id batch is refused by the schema.
   - detach: the equivalent cases.
   - `station_list`: `isSessionStation`, toolpacks, unreadable views, the paging defaults and max.
 - **`__tests__/services/tools.service.test.ts`**
@@ -268,7 +269,7 @@ API: `npm run test:unit -- --testPathPattern <file>` / `npm run test:integration
 
 ### `apps/web`
 
-- **`__tests__/portal-stream.util.test.ts`**: `onDone` receives the turn's tool names, and they're reset per `send`.
+- **`__tests__/portal-stream-tool-steps.test.ts`**: `onTurnEnd` receives the turn's tool names on done, a stream error, a lost connection and a cancel, once per turn, reset per `send`.
 - **`__tests__/station-attachment-tools.util.test.ts`**: `changedStationAttachments`.
 - **`__tests__/PortalSession.test.tsx`**: a turn with `curated_view_attach` invalidates `stations.root`; a turn without it doesn't (spy on `invalidateQueries`).
 

@@ -59,7 +59,7 @@ export class CuratedViewDetachTool extends Tool<typeof InputSchema> {
           const result = await StationAttachmentService.detachViews(
             ctx,
             { stationId, curatedViewIds },
-            viewAttachmentAudit(ctx, AGENT_AUDIT)
+            viewAttachmentAudit(ctx, AGENT_AUDIT, session)
           );
           const isSessionStation = stationId === session.stationId;
           if (isSessionStation && result.removed.length > 0) {

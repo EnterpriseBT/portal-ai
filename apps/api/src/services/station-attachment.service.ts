@@ -55,6 +55,9 @@ export interface AttachmentAuditContext {
   organizationId: string;
   sourceIp: string | null;
   userAgent: string | null;
+  /** #1036: the portal session behind an agent-made change, recorded in the
+   *  event's metadata so it can be traced to the session. Absent on routes. */
+  sourcePortalId?: string | null;
 }
 
 /** #1036: what {@link StationAttachmentService.attachViews} did. */
@@ -437,24 +440,21 @@ export class StationAttachmentService {
     const ids = unique(args.curatedViewIds);
     const result = await DbService.transaction(async (tx) => {
       await StationAttachmentService.loadWritableStation(ctx, stationId, tx);
-      const existing = new Set(
-        (
-          await DbService.repository.stationViews.findByStationId(stationId, tx)
-        ).map((r) => r.curatedViewId)
-      );
-      const removed = ids.filter((id) => existing.has(id));
-      if (removed.length > 0) {
+      // What the delete itself removed, not a read before it: a concurrent
+      // detach of the same link removes it once and is reported (and
+      // audited) once.
+      const removed =
         await DbService.repository.stationViews.softDeleteByStationAndViews(
           stationId,
-          removed,
+          ids,
           ctx.userId,
           tx
         );
-      }
+      const removedSet = new Set(removed);
       return {
         stationId,
         removed,
-        notAttached: ids.filter((id) => !existing.has(id)),
+        notAttached: ids.filter((id) => !removedSet.has(id)),
       };
     });
     await StationAttachmentService.auditViewChange(audit, stationId, {
@@ -519,14 +519,16 @@ export class StationAttachmentService {
     change: { added: string[]; removed: string[] }
   ): Promise<void> {
     if (change.added.length === 0 && change.removed.length === 0) return;
+    const { sourcePortalId, ...actor } = audit;
     await AuditService.record({
-      ...audit,
+      ...actor,
       action: "station.attachments.change",
       targetType: "station",
       targetId: stationId,
       metadata: {
         added: { curatedViewIds: change.added, connectorInstanceIds: [] },
         removed: { curatedViewIds: change.removed, connectorInstanceIds: [] },
+        ...(sourcePortalId ? { sourcePortalId } : {}),
       },
     });
   }

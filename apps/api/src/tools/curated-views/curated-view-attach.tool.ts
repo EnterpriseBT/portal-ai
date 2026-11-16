@@ -35,26 +35,16 @@ const InputSchema = z
   })
   .strict();
 
-/** What a view attached to the session's station reads as in sql_query now. */
-type AttachedViewReport =
-  | {
-      id: string;
-      key: string;
-      label: string;
-      queryable: true;
-      /** As `station_context` reports them: `wideColumnName` is what SQL
-       *  reads; `key` is the column's field key. */
-      columns: { key: string; wideColumnName: string; type: string }[];
-    }
-  | {
-      id: string;
-      key: string;
-      label: string;
-      queryable: false;
-      /** Another view attached here already uses this key, so sql_query
-       *  skips this one. */
-      reason: "KEY_CONFLICT";
-    };
+/** A view attached to the session's station, as sql_query now reads it. */
+interface AttachedViewReport {
+  id: string;
+  /** The table name in sql_query. */
+  key: string;
+  label: string;
+  /** As `station_context` reports them: `wideColumnName` is what SQL reads;
+   *  `key` is the column's field key. */
+  columns: { key: string; wideColumnName: string; type: string }[];
+}
 
 /**
  * #1036: attach views to a station — this session's by default — through
@@ -87,19 +77,20 @@ export class CuratedViewAttachTool extends Tool<typeof InputSchema> {
           const result = await StationAttachmentService.attachViews(
             ctx,
             { stationId, curatedViewIds },
-            viewAttachmentAudit(ctx, AGENT_AUDIT)
+            viewAttachmentAudit(ctx, AGENT_AUDIT, session)
           );
           const isSessionStation = stationId === session.stationId;
           if (!isSessionStation) {
             return { success: true, isSessionStation, ...result };
           }
-          if (result.added.length > 0) {
-            PortalSqlService.forgetSessionViews(
-              stationId,
-              ctx.organizationId,
-              ctx.userId
-            );
-          }
+          // Always, not only when something was added: an "already attached"
+          // view may have been attached by someone else after this turn
+          // cached its view set, and the report below reads fresh.
+          PortalSqlService.forgetSessionViews(
+            stationId,
+            ctx.organizationId,
+            ctx.userId
+          );
           return {
             success: true,
             isSessionStation,
@@ -112,49 +103,31 @@ export class CuratedViewAttachTool extends Tool<typeof InputSchema> {
 }
 
 /**
- * The requested views as the session's `sql_query` now sees them: queryable
- * with their columns, or skipped because another attached view holds the key.
+ * The requested views as the session's `sql_query` now reads them, from one
+ * resolution of the caller's granted views on the station (view keys are
+ * unique per org, so every attached, readable view is in it).
  */
 async function reportSessionViews(
   ctx: PermissionContext,
   stationId: string,
   requestedIds: string[]
 ): Promise<AttachedViewReport[]> {
-  const { set, views } = await PortalSqlService.resolveGrantedViewColumns(
+  const { views } = await PortalSqlService.resolveGrantedViewColumns(
     stationId,
     ctx.organizationId,
     ctx.userId
   );
-  const queryable = new Map(views.map((v) => [v.view.id, v.columns]));
-  const attached =
-    (
-      await StationAttachmentService.listViewsForStations(
-        set,
-        ctx.organizationId,
-        [stationId]
-      )
-    ).get(stationId) ?? [];
   const requested = new Set(requestedIds);
-  const reports: AttachedViewReport[] = [];
-  for (const entry of attached) {
-    if (!entry.canRead || !requested.has(entry.id)) continue;
-    const columns = queryable.get(entry.id);
-    const { id, key, label } = entry;
-    reports.push(
-      columns
-        ? {
-            id,
-            key,
-            label,
-            queryable: true,
-            columns: columns.map((c) => ({
-              key: c.normalizedKey,
-              wideColumnName: c.columnName,
-              type: c.pgType,
-            })),
-          }
-        : { id, key, label, queryable: false, reason: "KEY_CONFLICT" }
-    );
-  }
-  return reports;
+  return views
+    .filter(({ view }) => requested.has(view.id))
+    .map(({ view, columns }) => ({
+      id: view.id,
+      key: view.key,
+      label: view.label,
+      columns: columns.map((c) => ({
+        key: c.normalizedKey,
+        wideColumnName: c.columnName,
+        type: c.pgType,
+      })),
+    }));
 }

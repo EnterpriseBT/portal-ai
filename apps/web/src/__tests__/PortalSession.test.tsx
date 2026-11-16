@@ -540,12 +540,15 @@ describe("PortalSession (container) via PortalSessionUI", () => {
   // #1036: the portal header's view list and the station page read the
   // station through react-query; a turn that changed its views refreshes it.
   it.each([
-    ["curated_view_attach", true],
-    ["curated_view_detach", true],
-    ["sql_query", false],
+    ["curated_view_attach", "done", true],
+    ["curated_view_detach", "done", true],
+    ["sql_query", "done", false],
+    // The attach committed when its result arrived; a later failure doesn't
+    // undo it, so the station still refreshes.
+    ["curated_view_attach", "stream_error", true],
   ])(
-    "a turn that ran %s refreshes stations: %s",
-    async (toolName, refreshes) => {
+    "a turn that ran %s and ended with %s refreshes stations: %s",
+    async (toolName, ending, refreshes) => {
       // `done` refetches the portal, which makeQueryResult doesn't stub.
       mockGetPortal.mockReturnValue({
         ...makeQueryResult([]),
@@ -576,7 +579,14 @@ describe("PortalSession (container) via PortalSessionUI", () => {
           toolName,
           result: { success: true },
         });
-        stream.__emit("done", { type: "done", messageId: "m-1" });
+        if (ending === "done") {
+          stream.__emit("done", { type: "done", messageId: "m-1" });
+        } else {
+          stream.__emit("stream_error", {
+            type: "stream_error",
+            message: "Something failed",
+          });
+        }
       });
 
       const stationsRefreshed = () =>
@@ -586,12 +596,16 @@ describe("PortalSession (container) via PortalSessionUI", () => {
               (filters as { queryKey?: unknown } | undefined)?.queryKey
             ) === JSON.stringify(["stations"])
         );
-      await waitFor(() => {
-        expect(invalidate).toHaveBeenCalledWith({
-          queryKey: ["organizations", "usage"],
+      if (refreshes) {
+        await waitFor(() => expect(stationsRefreshed()).toBe(true));
+      } else {
+        await waitFor(() => {
+          expect(invalidate).toHaveBeenCalledWith({
+            queryKey: ["organizations", "usage"],
+          });
         });
-      });
-      expect(stationsRefreshed()).toBe(refreshes);
+        expect(stationsRefreshed()).toBe(false);
+      }
     }
   );
 

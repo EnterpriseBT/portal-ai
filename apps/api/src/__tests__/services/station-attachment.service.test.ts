@@ -23,7 +23,7 @@ const mockViewInsert =
   jest.fn<
     (rows: { curatedViewId: string }[], tx: unknown) => Promise<unknown[]>
   >();
-const mockViewSoftDelete = jest.fn<(...a: unknown[]) => Promise<number>>();
+const mockViewSoftDelete = jest.fn<(...a: unknown[]) => Promise<string[]>>();
 const mockInstanceInsert =
   jest.fn<
     (rows: { connectorInstanceId: string }[], tx: unknown) => Promise<unknown[]>
@@ -104,7 +104,7 @@ beforeEach(() => {
   mockInstanceLinks.mockResolvedValue([]);
   mockViewInsert.mockImplementation(async (rows) => rows);
   mockInstanceInsert.mockImplementation(async (rows) => rows);
-  mockViewSoftDelete.mockResolvedValue(0);
+  mockViewSoftDelete.mockResolvedValue([]);
   mockInstanceSoftDelete.mockResolvedValue(0);
 });
 
@@ -486,11 +486,8 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
 
   it("detaches with station write alone, reporting what wasn't attached", async () => {
     // v3 is unreadable to the caller; detaching is an edit to the station.
-    mockViewLinks.mockResolvedValue([
-      { curatedViewId: "v1" },
-      { curatedViewId: "v3" },
-    ]);
-    mockViewSoftDelete.mockResolvedValue(2);
+    // The delete reports which links it removed.
+    mockViewSoftDelete.mockResolvedValue(["v1", "v3"]);
     const result = await StationAttachmentService.detachViews(
       CTX,
       { stationId: "st-1", curatedViewIds: ["v1", "v3", "v9"] },
@@ -503,7 +500,7 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
     });
     expect(mockViewSoftDelete).toHaveBeenCalledWith(
       "st-1",
-      ["v1", "v3"],
+      ["v1", "v3", "v9"],
       "user-1",
       TX_HANDLE
     );
@@ -528,8 +525,33 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
       removed: [],
       notAttached: ["v1"],
     });
-    expect(mockViewSoftDelete).not.toHaveBeenCalled();
     expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("a detach that lost a race to another reports and audits nothing", async () => {
+    // Both read the link as attached; only one delete removes it. This one's
+    // delete removed no row, so it reports nothing and audits nothing.
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "v1" }]);
+    mockViewSoftDelete.mockResolvedValue([]);
+    const result = await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      AUDIT
+    );
+    expect(result.removed).toEqual([]);
+    expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("records the portal session in the audit metadata, never as a column", async () => {
+    mockViewSoftDelete.mockResolvedValue(["v1"]);
+    await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      { ...AUDIT, sourcePortalId: "portal-9" }
+    );
+    const event = mockAuditRecord.mock.calls[0]![0] as Record<string, unknown>;
+    expect(event).not.toHaveProperty("sourcePortalId");
+    expect(event.metadata).toMatchObject({ sourcePortalId: "portal-9" });
   });
 });
 

@@ -718,7 +718,6 @@ describe("view_management tools — integration (#645)", () => {
             {
               id: viewId,
               key: "ne_accounts",
-              queryable: true,
               columns: expect.arrayContaining([
                 expect.objectContaining({
                   key: "name",
@@ -769,6 +768,7 @@ describe("view_management tools — integration (#645)", () => {
           userId: ownerId,
           targetId: stationId,
           userAgent: "portal-agent",
+          metadata: expect.objectContaining({ sourcePortalId: portalId }),
         });
       }
     });

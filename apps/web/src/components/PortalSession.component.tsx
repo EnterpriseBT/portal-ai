@@ -342,17 +342,11 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // A turn may have made billable tool calls (the #169 cost gate charges the
   // org's usage mid-stream), so invalidate the usage balance too — that keeps
   // the always-visible usage strip in the session header live without polling.
-  //
-  // #1036: a turn that attached or detached a view changed a station, so the
-  // header's view list (and any station page) refreshes too.
   const handleStreamDone = useCallback(
-    (clear: () => void, turn: PortalStreamTurn) => {
+    (clear: () => void) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.usage(),
       });
-      if (changedStationAttachments(turn.toolNames)) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-      }
       setStreamStartedAt(null);
       portalQuery.refetch().then(() => {
         clear();
@@ -361,7 +355,22 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     [portalQuery, queryClient]
   );
 
-  const [streamState, streamActions] = usePortalStream(handleStreamDone);
+  // #1036: a turn that attached or detached a view changed a station, so the
+  // header's view list (and any station page) refreshes — however the turn
+  // ended, since the attach committed when its result arrived.
+  const handleTurnEnd = useCallback(
+    (turn: PortalStreamTurn) => {
+      if (changedStationAttachments(turn.toolNames)) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+      }
+    },
+    [queryClient]
+  );
+
+  const [streamState, streamActions] = usePortalStream(
+    handleStreamDone,
+    handleTurnEnd
+  );
 
   const chatRef = useRef<ChatWindowHandle>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);

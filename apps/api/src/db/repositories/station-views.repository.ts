@@ -96,14 +96,18 @@ export class StationViewsRepository extends Repository<
       .returning()) as StationViewSelect[];
   }
 
-  /** #674: soft-delete a station's live attachments to the given views. */
+  /**
+   * #674: soft-delete a station's live attachments to the given views.
+   * #1036: returns the view ids whose link this call removed — an already
+   * removed link (a concurrent detach) isn't counted.
+   */
   async softDeleteByStationAndViews(
     stationId: string,
     curatedViewIds: string[],
     deletedBy: string,
     client: DbClient = db
-  ): Promise<number> {
-    if (curatedViewIds.length === 0) return 0;
+  ): Promise<string[]> {
+    if (curatedViewIds.length === 0) return [];
     const rows = await this.updateWhere(
       and(
         eq(stationViews.stationId, stationId),
@@ -112,7 +116,7 @@ export class StationViewsRepository extends Repository<
       { deleted: Date.now(), deletedBy },
       client
     );
-    return rows.length;
+    return rows.map((r) => r.curatedViewId);
   }
 
   /** #802: soft-delete every live attachment of the given views (the view
