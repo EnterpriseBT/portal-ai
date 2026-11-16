@@ -72,6 +72,10 @@ describe("generateTokensCss", () => {
     expect(css).not.toMatch(/--color-sheet-/);
   });
 
+  it("leaves out the app-only chart and map palette (#1022)", () => {
+    expect(css).not.toMatch(/--color-data-viz-/);
+  });
+
   // #798 review: without JS no data-theme is set, and the page had no
   // palette at all. It now follows the system preference.
   it("styles a page without JS from the system preference", () => {

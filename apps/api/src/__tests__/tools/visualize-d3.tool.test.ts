@@ -135,6 +135,41 @@ describe("VisualizeD3Tool.execute (#269)", () => {
     expect(generateCode).toHaveBeenCalledTimes(3); // 1 + 2 retries
   });
 
+  it("a program that writes its own colour is regenerated with the colour error (#1022)", async () => {
+    const generateCode = jest
+      .fn<(a: CodegenArgs) => Promise<string>>()
+      .mockResolvedValueOnce(
+        `${PROGRAM}\napi.d3.select("svg").attr("fill", "#1f77b4");`
+      )
+      .mockResolvedValueOnce(PROGRAM);
+    const exec = buildTool({
+      generateCode: generateCode as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out).toMatchObject({ type: "d3", program: PROGRAM });
+    expect(generateCode).toHaveBeenCalledTimes(2);
+    expect(generateCode.mock.calls[1][0].prompt).toContain(
+      'Colour "#1f77b4" on line 2'
+    );
+  });
+
+  it("a program that keeps writing colours falls back to the data table (#1022)", async () => {
+    const generateCode = jest.fn(
+      async () =>
+        `${PROGRAM}\nconst c = api.d3.scaleOrdinal(api.d3.schemeCategory10);`
+    );
+    const exec = buildTool({
+      generateCode: generateCode as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out.type).toBe("data-table");
+    expect(generateCode).toHaveBeenCalledTimes(3);
+  });
+
   it("codegen provider error → typed tool result, never throws out of execute", async () => {
     const exec = buildTool({
       generateCode: (async () => {

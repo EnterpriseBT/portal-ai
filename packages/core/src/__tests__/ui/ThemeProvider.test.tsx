@@ -565,6 +565,42 @@ describe("accessibility defaults (#797)", () => {
     }
   );
 
+  // #1022 smoke: MapLibre's popup has its own white background, while its
+  // text inherited the page's colour, so in Brand Dark it read light grey on
+  // white. The theme paints the popup, its tip and its close button.
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s paints the map popup from the palette",
+    (name) => {
+      const { palette } = THEME_MAP[name];
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      const popup = ".maplibregl-popup .maplibregl-popup-content";
+      expect(overrides[popup]).toMatchObject({
+        backgroundColor: palette.background.paper,
+        color: palette.text.primary,
+      });
+      expect(
+        overrides[".maplibregl-popup .maplibregl-popup-close-button"]
+      ).toMatchObject({ color: palette.text.primary });
+      for (const [anchor, side] of [
+        ["top", "Bottom"],
+        ["top-left", "Bottom"],
+        ["top-right", "Bottom"],
+        ["bottom", "Top"],
+        ["bottom-left", "Top"],
+        ["bottom-right", "Top"],
+        ["left", "Right"],
+        ["right", "Left"],
+      ]) {
+        expect(
+          overrides[
+            `.maplibregl-popup.maplibregl-popup-anchor-${anchor} .maplibregl-popup-tip`
+          ]
+        ).toEqual({ [`border${side}Color`]: palette.background.paper });
+      }
+    }
+  );
+
   it("names an unnamed CircularProgress 'Loading'", () => {
     render(
       <ThemeProvider>

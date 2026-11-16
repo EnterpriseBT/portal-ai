@@ -1,5 +1,15 @@
+import type { ReactElement } from "react";
+
 import { jest } from "@jest/globals";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import {
+  render as rtlRender,
+  screen,
+  waitFor,
+  fireEvent,
+  type RenderOptions,
+} from "@testing-library/react";
+
+import { ThemeProvider } from "@portalai/core/ui";
 
 import type {
   D3BlockContent,
@@ -7,6 +17,16 @@ import type {
 } from "@portalai/core/contracts";
 import type { HandleSnapshotPayload } from "../../../api/portal-sql.api";
 import type { D3SandboxTheme } from "../utils/sandbox-theme.util";
+
+// The app always renders inside the brand ThemeProvider, whose palette
+// carries `dataViz` (#1022); MUI's default theme doesn't.
+const render = (ui: ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <ThemeProvider defaultTheme="brand">{children}</ThemeProvider>
+    ),
+    ...options,
+  });
 
 // ── SDK mock ─────────────────────────────────────────────────────────
 
@@ -90,6 +110,8 @@ const THEME: D3SandboxTheme = {
   fontFamily: "sans-serif",
   monospaceFontFamily: "monospace",
   categorical: ["#123456"],
+  dashes: ["none"],
+  symbols: ["symbolCircle"],
 };
 
 const PROGRAM = "api.d3.select(api.container);";

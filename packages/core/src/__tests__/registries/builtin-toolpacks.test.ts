@@ -198,6 +198,27 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
     expect(specDesc).toContain("scale");
     expect(specDesc.toLowerCase()).toContain("gradient");
   });
+
+  it("steers per-feature colour to colorBy and says lines ignore opacity (#1022)", () => {
+    expect(tool!.description).toContain("Colour features with `colorBy`");
+    expect(tool!.description).toContain(
+      "`color` and `outlineColor` are refused"
+    );
+    const specDesc =
+      (
+        tool!.parameterSchema.properties as Record<
+          string,
+          { description?: string }
+        >
+      ).spec.description ?? "";
+    expect(specDesc).toContain("a lines layer ignores `opacity`");
+  });
+
+  it("says categorical colours come from the theme (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Categorical and banded `colorBy` colours come from the theme"
+    );
+  });
 });
 
 // #796 — both visualization tools require a text alternative, and every
@@ -226,6 +247,12 @@ describe("visualize pack (#269)", () => {
 
   it("advertises the 80-unit charge in the mirror description (#499)", () => {
     expect(tool!.description).toContain("80 usage units");
+  });
+
+  it("says charts take the theme's palette and label their series (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Charts use the theme's accessible palette and label their series; you don't choose colours."
+    );
   });
 
   it("exists with exactly the visualize_d3 tool", () => {

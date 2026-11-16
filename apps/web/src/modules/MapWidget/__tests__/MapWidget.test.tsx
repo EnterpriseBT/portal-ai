@@ -260,6 +260,115 @@ describe("MapWidgetUI", () => {
     expect(legend).toHaveTextContent("improved");
   });
 
+  // #1022: the legend names what the colours encode, its swatches have an
+  // edge, and categories past the palette are counted, not hidden.
+  describe("legend (#1022)", () => {
+    const swatches = () =>
+      screen
+        .getAllByTestId("map-widget-legend-swatch")
+        .map((el) => getComputedStyle(el).backgroundColor);
+
+    it("is headed by the column it colours by", () => {
+      render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={[poly("vacant"), poly("improved")]}
+          mode="light"
+        />
+      );
+      expect(screen.getByTestId("map-widget-legend")).toHaveTextContent(
+        "Colour: klass"
+      );
+    });
+
+    it("counts categories past the eighth and points to Features in view", () => {
+      const rows = Array.from({ length: 10 }, (_, i) => poly(`c${i}`));
+      render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={rows}
+          mode="light"
+        />
+      );
+      expect(swatches()).toHaveLength(8 + 1);
+      expect(screen.getByTestId("map-widget-legend")).toHaveTextContent(
+        "+2 more, listed under Features in view"
+      );
+    });
+
+    it("gives every swatch a border", () => {
+      render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={[poly("vacant")]}
+          mode="light"
+        />
+      );
+      const [swatch] = screen.getAllByTestId("map-widget-legend-swatch");
+      expect(getComputedStyle(swatch).borderStyle).toBe("solid");
+      expect(getComputedStyle(swatch).borderWidth).toBe("1px");
+    });
+
+    it("recolours with the theme", () => {
+      const rows = [poly("vacant"), poly("improved")];
+      const { unmount } = render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={rows}
+          mode="light"
+        />
+      );
+      const light = swatches();
+      unmount();
+      render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={rows}
+          mode="dark"
+        />
+      );
+      const dark = swatches();
+      expect(light).toHaveLength(2);
+      expect(dark).toHaveLength(2);
+      expect(dark).not.toEqual(light);
+    });
+
+    it("takes the colours it's given", () => {
+      render(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={[poly("vacant")]}
+          mode="light"
+          colours={{
+            categorical: ["#123456"],
+            other: "#654321",
+            sequential: ["#111111", "#222222"],
+          }}
+        />
+      );
+      expect(swatches()).toEqual(["rgb(18, 52, 86)"]);
+    });
+
+    it("has no axe violations with a legend", async () => {
+      const rows = Array.from({ length: 10 }, (_, i) => poly(`c${i}`));
+      const { container } = renderThemed(
+        <MapWidgetUI
+          summary={SUMMARY}
+          spec={polySpec}
+          rows={rows}
+          mode="light"
+        />
+      );
+      await expectNoAxeViolations(container);
+    });
+  });
+
   it("renders a gradient legend bar with min/max labels for an interpolate scale (#336)", () => {
     const gradientSpec = {
       basemap: "carto-light",

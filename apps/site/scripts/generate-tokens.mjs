@@ -52,6 +52,8 @@ function paletteTokens(palette) {
     if (group === "mode") continue;
     // The app's sheet canvas (#996): no site page draws it.
     if (group === "sheet") continue;
+    // Chart and map data colours (#1022): no site page draws either.
+    if (group === "dataViz") continue;
     if (typeof value === "string") {
       out.push([`--color-${kebab(group)}`, value]);
       continue;

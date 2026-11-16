@@ -94,19 +94,11 @@ export const HighlightVacantByExpression: Story = {
       {
         kind: "polygons",
         source: { geometryColumn: "geom" },
+        // #1022: colour comes from colorBy and the theme (a literal `color`
+        // or `outlineColor` is ignored); the highlight is a wider outline.
         style: {
-          color: [
-            "case",
-            ["==", ["get", "prop_class"], "vacant"],
-            "#ff8a00",
-            "#cfd8dc",
-          ],
-          outlineColor: [
-            "case",
-            ["==", ["get", "prop_class"], "vacant"],
-            "#c25e00",
-            "#90a4ae",
-          ],
+          colorBy: { column: "prop_class" },
+          outlineWidth: ["case", ["==", ["get", "prop_class"], "vacant"], 3, 1],
         },
       },
     ]),

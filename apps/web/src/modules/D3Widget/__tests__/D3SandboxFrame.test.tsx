@@ -42,6 +42,8 @@ const THEME: D3SandboxTheme = {
   fontFamily: "sans-serif",
   monospaceFontFamily: "monospace",
   categorical: ["#123456"],
+  dashes: ["none"],
+  symbols: ["symbolCircle"],
 };
 
 const baseProps = {

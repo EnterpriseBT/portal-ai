@@ -81,15 +81,31 @@ export interface CodePalette {
   literal: string;
 }
 
+/** Colours for data a chart or map draws (#1022), not status colours. */
+export interface DataVizPalette {
+  /** Eight category colours, in assignment order. Each is ≥3:1 against both
+   *  theme surfaces and the theme's CARTO basemap. The JSONs are cast to
+   *  `ThemeOptions`, so a tuple type couldn't hold the count:
+   *  `theme-contrast.test.ts` holds it to eight. */
+  categorical: string[];
+  /** Categories past the eighth, and the legend's "+N more" swatch. */
+  other: string;
+  /** A gradient map's ramp, low to high: viridis stops each ≥3:1 against
+   *  both theme surfaces and the theme's basemap (#1022). */
+  sequential: string[];
+}
+
 declare module "@mui/material/styles" {
   interface Palette {
     sheet: SheetPalette;
     code: CodePalette;
+    dataViz: DataVizPalette;
   }
 
   interface PaletteOptions {
     sheet?: SheetPalette;
     code?: CodePalette;
+    dataViz?: DataVizPalette;
   }
 
   interface TypographyVariants {

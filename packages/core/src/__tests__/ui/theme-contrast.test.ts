@@ -12,9 +12,13 @@
  *   decoration labels and the cell text under each overlay tint. Gridlines
  *   and the loading row's "…" are decorative and left out (headers and the
  *   keyboard grid locate a cell; "Loading…" is what's read).
+ * - Chart and map data colours (#1022, 1.4.11): each `dataViz` colour on the
+ *   theme's surfaces and its CARTO basemap, and far enough apart in CIE Lab
+ *   to be told apart.
  */
 import { alpha, decomposeColor, getContrastRatio } from "@mui/material/styles";
 
+import { BASEMAP_BACKGROUND } from "../../constants/map-palette.constants";
 import { THEME_MAP, type ThemeName } from "../../ui/ThemeProvider";
 
 const TEXT = 4.5;
@@ -38,6 +42,27 @@ const keyPaths = (o: object, prefix = ""): string[] =>
       : [`${prefix}${k}`]
   );
 const NON_TEXT = 3;
+/** The least CIE76 distance between two category colours (#1022). */
+const MIN_DELTA_E = 20;
+/** CIE Lab (D65) of an opaque colour, for the distinctness check. */
+const toLab = (color: string): [number, number, number] => {
+  const [r, g, b] = decomposeColor(color)
+    .values.slice(0, 3)
+    .map((v) => {
+      const c = v / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+  const f = (t: number) =>
+    t > 216 / 24389 ? Math.cbrt(t) : (841 / 108) * t + 4 / 29;
+  const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047);
+  const y = f(r * 0.2126 + g * 0.7152 + b * 0.0722);
+  const z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+};
+const deltaE = (a: string, b: string): number => {
+  const [la, lb] = [toLab(a), toLab(b)];
+  return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
+};
 
 const STATUS = [
   "primary",
@@ -248,6 +273,49 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
     );
   });
 
+  describe("chart and map data colours (#1022)", () => {
+    const { categorical, other } = palette.dataViz;
+    const surfaces = {
+      "background.default": palette.background.default,
+      "background.paper": palette.background.paper,
+      basemap: BASEMAP_BACKGROUND[palette.mode],
+    };
+
+    it("has a sequential ramp of at least two distinct stops", () => {
+      const { sequential } = palette.dataViz;
+      expect(sequential.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(sequential).size).toBe(sequential.length);
+    });
+
+    it("has eight distinct categorical colours", () => {
+      expect(categorical).toHaveLength(8);
+      expect(new Set(categorical.map((c) => c.toLowerCase())).size).toBe(8);
+    });
+
+    describe.each(Object.entries(surfaces))("on %s", (_surface, bg) => {
+      // The sequential ramp (a gradient map, adversarial F1) too.
+      it.each([...categorical, other, ...palette.dataViz.sequential])(
+        "%s is visible",
+        (color) => {
+          expect(getContrastRatio(color, bg)).toBeGreaterThanOrEqual(NON_TEXT);
+        }
+      );
+    });
+
+    const pairs = categorical.flatMap((a, i) =>
+      categorical.slice(i + 1).map((b) => [a, b] as const)
+    );
+    it.each(pairs)("%s and %s can be told apart", (a, b) => {
+      expect(deltaE(a, b)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+    });
+
+    it("other can be told apart from every categorical colour", () => {
+      for (const color of categorical) {
+        expect(deltaE(other, color)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+      }
+    });
+  });
+
   it.each(STATUS)(
     "%s.contrastText is readable on its main (filled buttons, chips, alerts)",
     (key) => {
@@ -272,5 +340,13 @@ it("both themes define the same code tokens (#799)", () => {
     keyPaths(t.palette.code).sort()
   );
   expect(first.length).toBe(12);
+  for (const paths of rest) expect(paths).toEqual(first);
+});
+
+it("both themes define the same dataViz tokens (#1022)", () => {
+  const [first, ...rest] = Object.values(THEME_MAP).map((t) =>
+    keyPaths(t.palette.dataViz).sort()
+  );
+  expect(first).toHaveLength(15);
   for (const paths of rest) expect(paths).toEqual(first);
 });

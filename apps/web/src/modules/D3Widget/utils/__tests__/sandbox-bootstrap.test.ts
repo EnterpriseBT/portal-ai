@@ -105,4 +105,39 @@ describe("sandbox-bootstrap.js source contract", () => {
       expect(source).toMatch(/rect\.bottom[^;]*-\s*appliedOffsetY/);
     });
   });
+
+  // #1022: the chart's colours are held at 3:1 against the figure's surface,
+  // so the frame paints that surface rather than leaving it transparent.
+  describe("frame background", () => {
+    it("paints the theme's background on the document body", () => {
+      expect(source).toMatch(
+        /function paintBackground\(\)\s*\{[^}]*document\.body\.style\.background\s*=\s*theme\.background/
+      );
+    });
+
+    // #1022 (1.4.3): an SVG label with no fill draws black, which fails on
+    // the dark surface. The frame gives such text the theme's text colour;
+    // a label with its own fill attribute or style keeps it.
+    it("gives unfilled SVG text the theme's text colour", () => {
+      const paint = source.slice(
+        source.indexOf("function paintBackground"),
+        source.indexOf('window.addEventListener("message"')
+      );
+      expect(paint).toContain("svg text:not([fill])");
+      expect(paint).toMatch(/theme\.text/);
+    });
+
+    it("paints on init and on every theme message", () => {
+      const init = source.slice(
+        source.indexOf('msg.type === "init"'),
+        source.indexOf("Post-init messages")
+      );
+      const themed = source.slice(
+        source.indexOf('msg.type === "theme"'),
+        source.indexOf('msg.type === "resize"')
+      );
+      expect(init).toContain("paintBackground()");
+      expect(themed).toContain("paintBackground()");
+    });
+  });
 });

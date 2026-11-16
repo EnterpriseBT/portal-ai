@@ -16,3 +16,16 @@ export const SEQUENTIAL_PALETTE = [
   "#7ad151",
   "#fde725",
 ] as const;
+
+/**
+ * The land colour of the CARTO basemap each theme's map draws on (#1022):
+ * the `background` layer's `background-color` in
+ * https://basemaps.cartocdn.com/gl/positron-gl-style/style.json (light) and
+ * https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json (dark),
+ * read 2026-11-15. `theme-contrast.test.ts` holds every `dataViz` colour at
+ * ≥3:1 against them; re-read both if CARTO restyles.
+ */
+export const BASEMAP_BACKGROUND = {
+  light: "#fafaf8",
+  dark: "#0e0e0e",
+} as const;

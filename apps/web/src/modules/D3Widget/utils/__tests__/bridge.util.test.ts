@@ -15,6 +15,8 @@ const THEME: D3SandboxTheme = {
   fontFamily: "sans-serif",
   monospaceFontFamily: "monospace",
   categorical: ["#111111", "#222222"],
+  dashes: ["none"],
+  symbols: ["symbolCircle"],
 };
 
 const INIT = {

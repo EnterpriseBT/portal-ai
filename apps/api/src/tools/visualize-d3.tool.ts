@@ -11,6 +11,7 @@ import { Tool } from "../types/tools.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
 import { AiService } from "../services/ai.service.js";
 import { validateProgram, stripProgramFence } from "./visualize-d3.validate.js";
+import { createLogger } from "../utils/logger.util.js";
 import {
   VISUALIZE_D3_CODEGEN_SYSTEM,
   buildCodegenPrompt,
@@ -41,6 +42,8 @@ const InputSchema = z.object({
       "One to three sentences for someone who can't see the chart: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
     ),
 });
+
+const logger = createLogger({ module: "visualize-d3.tool" });
 
 /** Total codegen attempts = 1 + MAX_CODEGEN_RETRIES. */
 const MAX_CODEGEN_RETRIES = 2;
@@ -108,7 +111,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
   slug = "visualize_d3";
   name = "Visualize (D3)";
   description =
-    "Render an interactive D3 visualization from a SQL query. Describe the chart you want (type, encodings, emphasis) in `instruction`; the render program is generated for you. Do not add a LIMIT — result size is handled automatically (large results stream to the widget via a handle). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.";
+    "Render an interactive D3 visualization from a SQL query. Describe the chart you want (type, encodings, emphasis) in `instruction`; the render program is generated for you. Charts use the theme's accessible palette and label their series; you don't choose colours. Do not add a LIMIT — result size is handled automatically (large results stream to the widget via a handle). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.";
 
   get schema() {
     return InputSchema;
@@ -194,6 +197,18 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
               pipeline,
               rows: rows ?? [],
             };
+          }
+          if (validation.colour) {
+            // #1022: how often the codegen model writes its own colours, so
+            // the prompt rule's effect is measurable.
+            logger.info(
+              {
+                tool: "visualize_d3",
+                attempt,
+                literal: validation.colour.literal,
+              },
+              "visualize_d3 colour literal rejected"
+            );
           }
           lastError = validation.error;
         }
