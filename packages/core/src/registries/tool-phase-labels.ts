@@ -119,6 +119,7 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   // #1036
   curated_view_attach: "Attaching the view",
   curated_view_detach: "Detaching the view",
+  station_list: "Listing stations",
 };
 
 /** Truncate to the ceiling, marking the cut so it doesn't read as the name. */

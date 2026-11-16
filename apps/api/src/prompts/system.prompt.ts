@@ -686,7 +686,10 @@ export const PACK_PROMPT_SECTIONS: Record<
           "view attached here already uses that key; say so rather than " +
           "querying it. Attaching needs permission to edit the station; a " +
           "refusal names that permission. `curated_view_detach` removes a " +
-          "view from a station without deleting it."
+          "view from a station without deleting it. To attach to another " +
+          "station, find its id with `station_list` (never guess one); if " +
+          "the user wants to query the view there, check that station has " +
+          "`data_query` in its tool packs."
       );
       lines.push("");
       lines.push(

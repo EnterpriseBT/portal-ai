@@ -53,6 +53,11 @@ jest.unstable_mockModule(
   })
 );
 
+const listForCaller = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+jest.unstable_mockModule("../../../services/station-query.service.js", () => ({
+  StationQueryService: { listForCaller },
+}));
+
 const forgetSessionViews = jest.fn<(...args: unknown[]) => void>();
 const resolveGrantedViewColumns =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -80,6 +85,8 @@ const { CuratedViewAttachTool } =
   await import("../../../tools/curated-views/curated-view-attach.tool.js");
 const { CuratedViewDetachTool } =
   await import("../../../tools/curated-views/curated-view-detach.tool.js");
+const { StationListTool } =
+  await import("../../../tools/curated-views/station-list.tool.js");
 
 const ctx: PermissionContext = {
   userId: "u-1",
@@ -775,4 +782,110 @@ describe("curated_view_attach / curated_view_detach (#1036)", () => {
       ).toBe(true);
     }
   );
+});
+
+describe("station_list (#1036)", () => {
+  const SESSION = { stationId: "st-session", portalId: "portal-1" };
+  const SET = { set: true };
+  const row = (id: string, name: string, write: boolean) => ({
+    id,
+    name,
+    description: `${name} description`,
+    organizationId: "org-1",
+    createdBy: "u-1",
+    enabledToolpacks: ["data_query", "org:tp-1"],
+    capabilities: { read: true, write, delete: write, share: write },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    listForCaller.mockResolvedValue({
+      set: SET,
+      stations: [
+        row("st-session", "Playground", true),
+        row("st-2", "Sales", false),
+      ],
+      total: 2,
+    });
+    listViewsForStations.mockResolvedValue(
+      new Map([
+        [
+          "st-session",
+          [
+            { id: "v1", key: "ne_accounts", label: "NE", canRead: true },
+            { canRead: false, label: null },
+          ],
+        ],
+        ["st-2", []],
+      ])
+    );
+  });
+
+  it("lists readable stations by name with packs, capabilities and attached views", async () => {
+    const r = await exec(new StationListTool().build(ctx, SESSION), {
+      search: "a",
+    });
+    expect(listForCaller).toHaveBeenCalledWith(ctx, {
+      search: "a",
+      limit: 25,
+      offset: 0,
+      sortBy: "name",
+      sortOrder: "asc",
+    });
+    expect(listViewsForStations).toHaveBeenCalledWith(SET, "org-1", [
+      "st-session",
+      "st-2",
+    ]);
+    expect(r).toEqual({
+      stations: [
+        {
+          id: "st-session",
+          name: "Playground",
+          description: "Playground description",
+          isSessionStation: true,
+          capabilities: { read: true, write: true, delete: true, share: true },
+          toolpacks: ["data_query", "org:tp-1"],
+          views: [
+            { id: "v1", key: "ne_accounts", label: "NE" },
+            { unreadable: true },
+          ],
+        },
+        {
+          id: "st-2",
+          name: "Sales",
+          description: "Sales description",
+          isSessionStation: false,
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+          toolpacks: ["data_query", "org:tp-1"],
+          views: [],
+        },
+      ],
+      total: 2,
+      limit: 25,
+      offset: 0,
+    });
+  });
+
+  it("pages up to 100 and refuses more, or unknown keys", () => {
+    const schema = new StationListTool().schema;
+    expect(schema.safeParse({ limit: 100, offset: 50 }).success).toBe(true);
+    expect(schema.safeParse({ limit: 101 }).success).toBe(false);
+    expect(schema.safeParse({ limit: 0 }).success).toBe(false);
+    expect(schema.safeParse({ stationId: "x" }).success).toBe(false);
+  });
+
+  it("hides an unexpected failure behind STATION_LIST_FAILED", async () => {
+    listForCaller.mockRejectedValue(new Error("db-internal"));
+    expect(await exec(new StationListTool().build(ctx, SESSION), {})).toEqual({
+      error: {
+        code: ApiCode.STATION_LIST_FAILED,
+        message: "The curated view operation failed.",
+      },
+    });
+  });
 });

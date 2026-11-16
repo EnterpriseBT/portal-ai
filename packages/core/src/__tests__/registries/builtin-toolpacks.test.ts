@@ -441,6 +441,7 @@ describe("view_management pack (#645)", () => {
       "curated_view_update",
       "curated_view_delete",
       "curated_view_share",
+      "station_list",
       "curated_view_attach",
       "curated_view_detach",
       "member_list",

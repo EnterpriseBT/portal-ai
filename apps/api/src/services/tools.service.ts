@@ -116,6 +116,7 @@ import { CuratedViewDeleteTool } from "../tools/curated-views/curated-view-delet
 import { CuratedViewShareTool } from "../tools/curated-views/curated-view-share.tool.js";
 import { CuratedViewAttachTool } from "../tools/curated-views/curated-view-attach.tool.js";
 import { CuratedViewDetachTool } from "../tools/curated-views/curated-view-detach.tool.js";
+import { StationListTool } from "../tools/curated-views/station-list.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import {
@@ -284,6 +285,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "curated_view_share",
   "curated_view_attach",
   "curated_view_detach",
+  "station_list",
 ]);
 
 export class ToolService {
@@ -927,6 +929,10 @@ export class ToolService {
         permissionContext
       );
       const viewSession = { stationId, portalId: portalId ?? null };
+      tools.station_list = new StationListTool().build(
+        permissionContext,
+        viewSession
+      );
       tools.curated_view_attach = new CuratedViewAttachTool().build(
         permissionContext,
         viewSession

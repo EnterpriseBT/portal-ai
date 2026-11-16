@@ -163,6 +163,7 @@ describe("costHint pin (#184)", () => {
     portfolio_metrics: "free",
     regression: "free",
     resolve_identity: "free",
+    station_list: "free",
     sql_query: "free",
     station_context: "free",
     technical_indicator: "free",

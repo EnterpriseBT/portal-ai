@@ -419,6 +419,12 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     expect(p).toContain("curated_view_detach");
   });
 
+  it("finds another station with station_list and checks it can query (#1036)", () => {
+    const p = prompt();
+    expect(p).toContain("find its id with `station_list`");
+    expect(p).toContain("`data_query`");
+  });
+
   it("explains both refusal codes and says not to retry", () => {
     const p = prompt();
     expect(p).toContain("TOOL_PERMISSION_DENIED");

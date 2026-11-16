@@ -1649,6 +1649,16 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       ),
     },
     {
+      name: "station_list",
+      description:
+        "Lists the stations the user can see, sorted by name: each with its id, name, description, whether it's this session's station, what the user may do to it (write means they can attach views to it), its tool packs (check for data_query before attaching a view the user wants to query there), and the views attached to it. Use it to find a station's id for curated_view_attach or curated_view_detach.",
+      parameterSchema: objectSchema({
+        search: stringField("Match stations whose name contains this text"),
+        limit: integerField("Page size, 1-100 (default 25)"),
+        offset: integerField("Rows to skip (default 0)"),
+      }),
+    },
+    {
       name: "curated_view_attach",
       description:
         "Attaches curated views to a station so portal sessions on it can query them. It attaches to this session's station unless you name another with stationId (from station_list). Attached here, a view can be queried with sql_query in the same turn: the view's key is the table and each column's wideColumnName is the column, as the result returns them. All the views must be ones the user can read, and the user must be allowed to edit the station; otherwise nothing is attached. A view already attached is reported, not an error.",
@@ -2074,6 +2084,7 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // StationAttachmentService (station write + view read).
   curated_view_attach: rbacWrite(),
   curated_view_detach: rbacWrite(),
+  station_list: rbacRead(),
 };
 
 /**

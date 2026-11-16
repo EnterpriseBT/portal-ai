@@ -841,4 +841,113 @@ describe("view_management tools — integration (#645)", () => {
       expect(await attachedTo(stationId)).toHaveLength(0);
     });
   });
+  // -------------------------------------------------------------------------
+  // #1036: station_list
+  // -------------------------------------------------------------------------
+
+  describe("station_list (#1036)", () => {
+    type Listed = {
+      id: string;
+      name: string;
+      isSessionStation: boolean;
+      capabilities: { write: boolean };
+      toolpacks: string[];
+      views: Array<{ id?: string; unreadable?: true }>;
+    };
+    const listed = (r: Result) => r.stations as Listed[];
+
+    async function addStation(name: string, createdBy: string) {
+      const id = generateId();
+      await d.insert(schema.stations).values({
+        id,
+        organizationId: orgId,
+        name,
+        description: null,
+        ...base(createdBy),
+      } as never);
+      return id;
+    }
+
+    async function shareStation(id: string, access: "read" | "read-write") {
+      await GrantService.share(
+        { userId: ownerId, organizationId: orgId, roles: ["owner"] },
+        {
+          resourceType: "station",
+          resourceId: id,
+          grantee: { type: "user", userId: memberId },
+          access,
+        },
+        { sourceIp: null, userAgent: "test" }
+      );
+    }
+
+    it("lists only the stations the caller can read, marking the session's", async () => {
+      const salesId = await addStation("Sales", ownerId);
+      // A member sees nothing the owner hasn't shared, the session's
+      // station included.
+      expect(listed(await asMember("station_list", {}))).toEqual([]);
+
+      await shareStation(salesId, "read");
+      const forMember = listed(await asMember("station_list", {}));
+      expect(forMember.map((s) => s.id)).toEqual([salesId]);
+      expect(forMember[0]).toMatchObject({
+        isSessionStation: false,
+        capabilities: { write: false },
+      });
+
+      const forOwner = listed(await asOwner("station_list", {}));
+      expect(forOwner.map((s) => s.name)).toEqual(["Sales", "Views station"]);
+      expect(forOwner.find((s) => s.id === stationId)).toMatchObject({
+        isSessionStation: true,
+        capabilities: { write: true },
+        toolpacks: ["view_management"],
+      });
+    });
+
+    it("finds another station by name, attaches a view there, and its member sees it next turn", async () => {
+      const viewId = await createView();
+      const salesId = await addStation("Sales", ownerId);
+      await shareWithMember(viewId, "read");
+      await shareStation(salesId, "read");
+
+      const found = listed(await asOwner("station_list", { search: "sale" }));
+      expect(found.map((s) => s.id)).toEqual([salesId]);
+      expect(found[0].views).toEqual([]);
+
+      expect(
+        await asOwner("curated_view_attach", {
+          curatedViewIds: [viewId],
+          stationId: found[0].id,
+        })
+      ).toMatchObject({ added: [viewId], isSessionStation: false });
+
+      // The member's next session on Sales resolves the view.
+      const { PortalSqlService } =
+        await import("../../../services/portal-sql.service.js");
+      const resolved = await PortalSqlService.resolveGrantedViewColumns(
+        salesId,
+        orgId,
+        memberId
+      );
+      expect(resolved.views.map((v) => v.view.id)).toEqual([viewId]);
+
+      // And station_list now shows it attached there.
+      const after = listed(await asMember("station_list", {}));
+      expect(after[0].views).toEqual([expect.objectContaining({ id: viewId })]);
+    });
+
+    it("reports a view the caller can't read without its id", async () => {
+      const viewId = await createView();
+      const salesId = await addStation("Sales", ownerId);
+      await shareStation(salesId, "read");
+      await asOwner("curated_view_attach", {
+        curatedViewIds: [viewId],
+        stationId: salesId,
+      });
+
+      const forMember = listed(await asMember("station_list", {}));
+      expect(forMember[0].views).toEqual([{ unreadable: true }]);
+      expect(JSON.stringify(forMember)).not.toContain(viewId);
+    });
+  });
 });

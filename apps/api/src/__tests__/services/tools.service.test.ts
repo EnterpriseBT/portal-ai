@@ -912,6 +912,7 @@ describe("buildAnalyticsTools()", () => {
     "curated_view_share",
     "curated_view_attach",
     "curated_view_detach",
+    "station_list",
   ];
 
   it("registers the view_management tools on a read-only station", async () => {
