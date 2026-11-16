@@ -149,7 +149,8 @@ function arrowBody(blanked: string, from: number): string {
 
 /**
  * The bodies of the functions `source` declares by name: `function name(…)`,
- * and `const name = …` bound to an arrow function or a `useCallback(…)`.
+ * and `const name = …` bound to an arrow function or a `useCallback(…)`
+ * (bare or `React.useCallback`).
  * Lets a guard follow a callback passed or called by name (#985:
  * `onSuccess: invalidateTags`).
  */
@@ -168,8 +169,9 @@ export function localFunctionBodies(source: string): Map<string, string> {
     /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=(?!=)\s*/g
   )) {
     const start = m.index! + m[0].length;
-    if (blanked.startsWith("useCallback(", start)) {
-      bodies.set(m[1]!, argumentsAt(blanked, start + "useCallback".length));
+    const hook = /^(?:React\.)?useCallback\(/.exec(blanked.slice(start));
+    if (hook) {
+      bodies.set(m[1]!, argumentsAt(blanked, start + hook[0].length - 1));
       continue;
     }
     const arrow = blanked.indexOf("=>", start);

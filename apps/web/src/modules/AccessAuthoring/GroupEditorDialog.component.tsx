@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Button,
@@ -165,6 +166,7 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
   const update = sdk.groups.update(group?.id ?? "");
   const setMembers = sdk.groups.setMembers();
   const toast = useToast();
+  const queryClient = useQueryClient();
   // Seed the Members field from the fetched membership once per open, so a later
   // user edit isn't clobbered when the query resolves.
   const membersSeededRef = React.useRef(false);
@@ -195,38 +197,46 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
 
   const upsert = group ? update : create;
 
-  const finish = () => {
+  // #985: the save chains two writes, so it runs on their promises rather
+  // than in a per-call onSuccess, which React Query skips once the page
+  // unmounts: leaving mid-save would otherwise drop the membership write, the
+  // refresh and the toast.
+  const save = async () => {
+    // Only (re)write membership when `memberIds` is authoritative: on create
+    // always; on edit only after the roster has actually seeded (#637). If a
+    // save somehow arrives before the seed (Save is disabled during load, but
+    // this is the safety net), skip it — else setGroupMembers would diff the
+    // initial [] against the real members and wipe them. Skipping leaves
+    // membership untouched; the name/policy update still lands.
+    const writeMembers = !group || membersSeededRef.current;
+    const groupKeys = [queryKeys.groups.root];
+    let saved;
+    try {
+      saved = await upsert.mutateAsync(
+        { name: name.trim(), description: description || null, policyIds },
+        // Refresh once, after the last write of the save.
+        writeMembers ? undefined : { invalidate: groupKeys }
+      );
+    } catch {
+      return; // The dialog's FormAlert shows `upsert.error`.
+    }
+    if (writeMembers) {
+      try {
+        await setMembers.mutateAsync(
+          { id: saved.group.id, userIds: memberIds },
+          { invalidate: groupKeys }
+        );
+      } catch {
+        // The group itself saved, so its list still refreshes.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.groups.root });
+      }
+    }
     toast.success(group ? "Group updated" : "Group created");
     onClose();
   };
 
   const handleSubmit = () => {
-    upsert.mutate(
-      { name: name.trim(), description: description || null, policyIds },
-      {
-        // #985: the refresh runs from the request, even if the page unmounts.
-        invalidate: [queryKeys.groups.root],
-        onSuccess: (data) => {
-          // Only (re)write membership when `memberIds` is authoritative: on create
-          // always; on edit only after the roster has actually seeded (#637). If a
-          // save somehow reaches here before the seed (Save is disabled during
-          // load, but this is the safety net), skip it — else setGroupMembers would
-          // diff the initial [] against the real members and wipe them. Skipping
-          // leaves membership untouched; the name/policy update still lands.
-          if (!group || membersSeededRef.current) {
-            setMembers
-              .mutateAsync(
-                { id: data.group.id, userIds: memberIds },
-                { invalidate: [queryKeys.groups.root] }
-              )
-              .then(finish)
-              .catch(() => finish());
-          } else {
-            finish();
-          }
-        },
-      }
-    );
+    void save();
   };
 
   return (
@@ -248,7 +258,7 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
       onMemberIdsChange={setMemberIds}
       memberOptions={memberOptions}
       onSubmit={handleSubmit}
-      isPending={upsert.isPending}
+      isPending={upsert.isPending || setMembers.isPending}
       membersLoading={!!group && groupMembersQuery.isLoading}
       membersError={!!group && groupMembersQuery.isError}
       serverError={toServerError(upsert.error)}

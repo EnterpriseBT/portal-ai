@@ -103,7 +103,7 @@ const renderMutation = (
       }),
     { wrapper }
   );
-  return { ...rendered, invalidate };
+  return { ...rendered, invalidate, queryClient };
 };
 
 /** Lets the hook's async token fetch reach `fetch`. */
@@ -137,6 +137,28 @@ describe("useAuthMutation toast and invalidate after unmount (#970)", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["invitations"] });
     // Page-local work never runs on a page the user has left.
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("refreshes every cached query for the empty key (the org switch, #985)", async () => {
+    const { pending } = deferredFetch();
+    const { result, unmount, queryClient } = renderMutation();
+    queryClient.setQueryData(["stations", "list"], []);
+    queryClient.setQueryData(["portals", "get", "p1"], {});
+
+    act(() => result.current.mutate({ id: "s1" }, { invalidate: [[]] }));
+    await flush();
+    unmount();
+    await act(async () => pending[0].ok({ id: "s1" }));
+
+    await waitFor(() =>
+      expect(
+        queryClient
+          .getQueryCache()
+          .getAll()
+          .every((q) => q.state.isInvalidated)
+      ).toBe(true)
+    );
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(2);
   });
 
   it("raises the error toast through serverErrorMessage after the caller unmounts", async () => {

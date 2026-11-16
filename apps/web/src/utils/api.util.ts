@@ -332,7 +332,11 @@ export interface AppCallOptions<TData, TVariables> {
      */
     error?: string | ((error: ApiError, variables: TVariables) => string);
   };
-  /** Query keys invalidated on success. */
+  /**
+   * Query keys invalidated on success, each as a prefix (React Query's
+   * partial match). The empty key `[]` is a prefix of every key, so
+   * `invalidate: [[]]` refreshes every query (the org switch, #985).
+   */
   invalidate?:
     | QueryKey[]
     | ((data: TData, variables: TVariables) => QueryKey[]);

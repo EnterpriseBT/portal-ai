@@ -8,13 +8,18 @@
  * every other page keeps showing the old data. `useAuthMutation`'s
  * `invalidate` option runs from the request's promise, above the page (#970).
  *
- * The guard flags an `invalidateQueries(` call inside the options argument of
- * `.mutate(…)`, `.mutateAsync(…)`, or a call through a name destructured from
- * either. It also follows a name the options pass or call (`onSuccess:
- * invalidateTags`, `onSuccess: () => { refresh(); }`) to a function declared
- * in the same file that invalidates. An invalidation after `await
- * mutateAsync(…)` is fine: the promise settles whether or not the caller is
- * mounted.
+ * The guard flags an `invalidateQueries(` / `refetchQueries(` /
+ * `resetQueries(` call inside the options argument of `.mutate(…)`,
+ * `.mutateAsync(…)`, or a call through a name destructured from either. It
+ * also follows a name the options pass or call (`onSuccess: invalidateTags`,
+ * `onSuccess: () => { refresh(); }`) to a function declared in the same file
+ * that invalidates. An invalidation after `await mutateAsync(…)` is fine: the
+ * promise settles whether or not the caller is mounted.
+ *
+ * What it can't see: a refresh reached through a prop or an imported
+ * function (a dialog's `onSaved` that its parent wires), or a query's own
+ * `.refetch()`. Those stay a review check: a dialog that saves refreshes
+ * through its own call's `invalidate`, and its parent's callback only closes.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -42,7 +47,7 @@ const ALLOWED: Record<string, { count: number; reason: string }> = {
   },
 };
 
-const INVALIDATE_CALL = /\binvalidateQueries\(/;
+const INVALIDATE_CALL = /\b(?:invalidate|refetch|reset)Queries\(/;
 
 /** Local functions that invalidate, directly or through another one. */
 function invalidatingFunctions(source: string): string[] {
@@ -65,10 +70,22 @@ function invalidatingFunctions(source: string): string[] {
   return [...found];
 }
 
-/** Whether `text` uses `name` as a value (not a member, not an object key). */
+/**
+ * Whether `text` uses `name` as a value: not a member (`x.name`), not an
+ * object key (`name:`), and not a shorthand property (`{ name }`), which in
+ * a mutation's options is the option itself (`{ invalidate }`).
+ */
 function mentions(text: string, name: string): boolean {
   const escaped = name.replace(/\$/g, "\\$");
-  return new RegExp(`(?<![\\w$.])${escaped}\\b(?!\\s*:)`).test(text);
+  for (const m of text.matchAll(
+    new RegExp(`(?<![\\w$.])${escaped}\\b(?!\\s*:)`, "g")
+  )) {
+    const before = text.slice(0, m.index);
+    const after = text.slice(m.index! + name.length);
+    const shorthand = /[{,]\s*$/.test(before) && /^\s*[,}]/.test(after);
+    if (!shorthand) return true;
+  }
+  return false;
 }
 
 /** The mutation calls in `source` whose options argument invalidates. */
@@ -166,6 +183,21 @@ describe("mutation cache refreshes go in the call's invalidate option (#985)", (
       ).toBe(true);
     });
 
+    it("follows React.useCallback, and flags refetchQueries and resetQueries", () => {
+      expect(
+        flags(
+          `const refresh = React.useCallback(() => { qc.invalidateQueries(); }, [qc]);
+           m.mutate(v, { onSuccess: refresh });`
+        )
+      ).toBe(true);
+      expect(
+        flags(`m.mutate(v, { onSuccess: () => qc.refetchQueries() });`)
+      ).toBe(true);
+      expect(
+        flags(`m.mutate(v, { onSettled: () => qc.resetQueries() });`)
+      ).toBe(true);
+    });
+
     it("passes the invalidate option, an invalidation after the promise, and unrelated calls", () => {
       expect(
         flags(
@@ -186,6 +218,13 @@ describe("mutation cache refreshes go in the call's invalidate option (#985)", (
         flags(
           `const close = () => setOpen(false);
            m.mutate(v, { onSuccess: close });`
+        )
+      ).toBe(false);
+      // Shorthand for the option itself, even beside a same-named helper.
+      expect(
+        flags(
+          `function invalidate() { qc.invalidateQueries(); }
+           m.mutate(v, { invalidate, onSuccess: () => close() });`
         )
       ).toBe(false);
     });

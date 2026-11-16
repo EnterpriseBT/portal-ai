@@ -121,7 +121,12 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleDeleteStation = useCallback(() => {
     deleteStationMutation.mutate(undefined, {
-      invalidate: [queryKeys.stations.root, queryKeys.portals.root],
+      // A station's portals and their pins go with it (cascade).
+      invalidate: [
+        queryKeys.stations.root,
+        queryKeys.portals.root,
+        queryKeys.portalResults.root,
+      ],
       // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
       // job lock) must surface as a toast rather than fail silently (#621).
       toast: { error: "Could not delete this station." },

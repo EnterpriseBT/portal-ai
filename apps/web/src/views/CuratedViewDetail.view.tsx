@@ -336,12 +336,8 @@ export const CuratedViewDetail: React.FC = () => {
         mode="edit"
         view={view}
         onClose={() => setEditOpen(false)}
-        onSaved={() => {
-          setEditOpen(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.curatedViews.root,
-          });
-        }}
+        // The dialog's save refreshes the views itself (#985).
+        onSaved={() => setEditOpen(false)}
       />
       <DeleteCuratedViewDialog
         open={deleteOpen}

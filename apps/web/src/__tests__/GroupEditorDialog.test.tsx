@@ -5,15 +5,16 @@ import { jest } from "@jest/globals";
 // group's membership on edit-open, and persist via setMembers on BOTH create and
 // edit. Mock the SDK so we drive those hooks directly.
 
-type MutateOpts = { onSuccess?: (d: unknown) => void };
 type MembersQuery = {
   data?: { userIds: string[] };
   isLoading?: boolean;
   isError?: boolean;
 };
 const mockGroupMembers = jest.fn<() => MembersQuery>();
-const mockCreateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
-const mockUpdateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
+const mockCreateMutate =
+  jest.fn<(vars: unknown, opts?: unknown) => Promise<unknown>>();
+const mockUpdateMutate =
+  jest.fn<(vars: unknown, opts?: unknown) => Promise<unknown>>();
 const mockSetMembers =
   jest.fn<(v: unknown, opts?: unknown) => Promise<unknown>>();
 
@@ -30,12 +31,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
     groups: {
       members: mockGroupMembers,
       create: () => ({
-        mutate: mockCreateMutate,
+        mutateAsync: mockCreateMutate,
+        reset: jest.fn(),
         isPending: false,
         error: null,
       }),
       update: () => ({
-        mutate: mockUpdateMutate,
+        mutateAsync: mockUpdateMutate,
+        reset: jest.fn(),
         isPending: false,
         error: null,
       }),
@@ -49,8 +52,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { queryKeys } = await import("../api/keys");
-const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
-  await import("./test-utils");
+const { QueryClient } = await import("@tanstack/react-query");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { GroupEditorDialog, GroupEditorDialogUI } =
   await import("../modules/AccessAuthoring/GroupEditorDialog.component");
 
@@ -71,12 +81,11 @@ beforeEach(() => {
     isError: false,
   });
   mockSetMembers.mockResolvedValue({});
-  mockCreateMutate.mockImplementation((_vars, opts) =>
-    opts?.onSuccess?.({ group: { id: "new-g" } })
-  );
-  mockUpdateMutate.mockImplementation((_vars, opts) =>
-    opts?.onSuccess?.({ group: { id: "g-1" } })
-  );
+  // #985: the save runs on the writes' promises, never a per-call onSuccess
+  // (which React Query skips once the page unmounts), so the fakes only
+  // resolve.
+  mockCreateMutate.mockResolvedValue({ group: { id: "new-g" } });
+  mockUpdateMutate.mockResolvedValue({ group: { id: "g-1" } });
 });
 
 describe("GroupEditorDialog (#637)", () => {
@@ -99,15 +108,51 @@ describe("GroupEditorDialog (#637)", () => {
     await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
-  it("saves membership on edit (setMembers with the group id + ids)", () => {
+  it("saves membership on edit (setMembers with the group id + ids)", async () => {
     mockGroupMembers.mockReturnValue(loaded(["u-1"]));
-    render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
+    const onClose = jest.fn();
+    render(<GroupEditorDialog open onClose={onClose} group={editGroup} />);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mockSetMembers).toHaveBeenCalledWith(
-      { id: "g-1", userIds: ["u-1"] },
-      // #985: the refresh runs from the request, even if the page unmounts.
-      { invalidate: [queryKeys.groups.root] }
+    // #985: the refresh runs once, from the last write, even if the page
+    // unmounts; the group write itself carries none.
+    expect(mockUpdateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: editGroup.name }),
+      undefined
     );
+    await waitFor(() =>
+      expect(mockSetMembers).toHaveBeenCalledWith(
+        { id: "g-1", userIds: ["u-1"] },
+        { invalidate: [queryKeys.groups.root] }
+      )
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("still refreshes the group list and closes when the membership write fails", async () => {
+    mockGroupMembers.mockReturnValue(loaded(["u-1"]));
+    mockSetMembers.mockRejectedValue(new Error("boom"));
+    const queryClient = new QueryClient();
+    const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+    const onClose = jest.fn();
+    render(<GroupEditorDialog open onClose={onClose} group={editGroup} />, {
+      queryClient,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.groups.root,
+    });
+  });
+
+  it("stays open when the group write fails", async () => {
+    mockGroupMembers.mockReturnValue(loaded(["u-1"]));
+    mockUpdateMutate.mockRejectedValue(new Error("refused"));
+    const onClose = jest.fn();
+    render(<GroupEditorDialog open onClose={onClose} group={editGroup} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mockUpdateMutate).toHaveBeenCalled());
+    expect(mockSetMembers).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("disables Save while the group's members are still loading (edit)", () => {
@@ -131,19 +176,24 @@ describe("GroupEditorDialog (#637)", () => {
     // Save is enabled (not loading) but membership never seeded — the name/policy
     // update lands, and setMembers is skipped so the real membership is untouched.
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mockUpdateMutate).toHaveBeenCalled();
+    // With no membership write, the group write carries the refresh.
+    expect(mockUpdateMutate).toHaveBeenCalledWith(expect.anything(), {
+      invalidate: [queryKeys.groups.root],
+    });
     expect(mockSetMembers).not.toHaveBeenCalled();
   });
 
-  it("still saves membership on create (unified path)", () => {
+  it("still saves membership on create (unified path)", async () => {
     render(<GroupEditorDialog open onClose={jest.fn()} group={null} />);
     fireEvent.change(screen.getByRole("textbox", { name: /name/i }), {
       target: { value: "New Team" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mockSetMembers).toHaveBeenCalledWith(
-      { id: "new-g", userIds: [] },
-      { invalidate: [queryKeys.groups.root] }
+    await waitFor(() =>
+      expect(mockSetMembers).toHaveBeenCalledWith(
+        { id: "new-g", userIds: [] },
+        { invalidate: [queryKeys.groups.root] }
+      )
     );
   });
 });

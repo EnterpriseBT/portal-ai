@@ -330,13 +330,15 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     selectedViewIds: string[]
   ) => {
     try {
+      // Refresh once, from the last write of the sequence (#985).
+      const last = selectedViewIds.length - 1;
       await share.mutateAsync(
         { resourceType, resourceId, grantee, access },
-        { invalidate: shareKeys }
+        last < 0 ? { invalidate: shareKeys } : undefined
       );
       // #599: each selected attached view becomes its own read share (the
       // backend composes its field grant). Independent + individually revocable.
-      for (const viewId of selectedViewIds) {
+      for (const [i, viewId] of selectedViewIds.entries()) {
         await share.mutateAsync(
           {
             resourceType: "curated_view",
@@ -344,7 +346,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
             grantee,
             access: "read",
           },
-          { invalidate: [queryKeys.curatedViews.root] }
+          i === last
+            ? { invalidate: [...shareKeys, queryKeys.curatedViews.root] }
+            : undefined
         );
       }
       toast.success(

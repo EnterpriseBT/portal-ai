@@ -401,6 +401,10 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 
 // ── Container ───────────────────────────────────────────────────────
 
+// #985: passed as each call's `invalidate`, which still runs if the page
+// unmounts before the request settles.
+const TOOLPACK_KEYS = [queryKeys.toolpacks.root];
+
 export const Toolpacks: React.FC = () => {
   const [selected, setSelected] = useState<Toolpack | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -444,10 +448,6 @@ export const Toolpacks: React.FC = () => {
   // registration a fresh signing secret; a cancelled attempt keeps its own.
   const [registerDialogKey, setRegisterDialogKey] = useState(0);
 
-  // #985: passed as each call's `invalidate`, which still runs if the page
-  // unmounts before the request settles.
-  const toolpackKeys = [queryKeys.toolpacks.root];
-
   return (
     <>
       <DataResult pageTitle="Toolpacks" results={{ list: listResult }}>
@@ -472,7 +472,7 @@ export const Toolpacks: React.FC = () => {
               refreshMutation.mutate(
                 { id: t.id },
                 {
-                  invalidate: toolpackKeys,
+                  invalidate: TOOLPACK_KEYS,
                   toast: {
                     success: `Refreshed "${t.name}".`,
                     error: (err) =>
@@ -494,7 +494,7 @@ export const Toolpacks: React.FC = () => {
         }}
         onSubmit={(body) => {
           registerMutation.mutate(body, {
-            invalidate: toolpackKeys,
+            invalidate: TOOLPACK_KEYS,
             onSuccess: (data) => {
               setRegisterOpen(false);
               setRegisterDialogKey((k) => k + 1);
@@ -519,7 +519,7 @@ export const Toolpacks: React.FC = () => {
         }}
         onSubmit={(body) => {
           updateMutation.mutate(body, {
-            invalidate: toolpackKeys,
+            invalidate: TOOLPACK_KEYS,
             onSuccess: () => setEditing(null),
           });
         }}
@@ -529,7 +529,7 @@ export const Toolpacks: React.FC = () => {
           refreshMutation.mutate(
             { id: target.id },
             {
-              invalidate: toolpackKeys,
+              invalidate: TOOLPACK_KEYS,
               toast: {
                 success: `Refreshed "${target.name}".`,
                 error: (err) =>
@@ -540,7 +540,7 @@ export const Toolpacks: React.FC = () => {
         }}
         onRotateSecret={() => {
           rotateSecretMutation.mutate(undefined, {
-            invalidate: toolpackKeys,
+            invalidate: TOOLPACK_KEYS,
             onSuccess: (data) => {
               setEditing(null);
               setRevealedSecret(data.signingSecret);
@@ -569,7 +569,7 @@ export const Toolpacks: React.FC = () => {
         }}
         onConfirm={() => {
           deleteMutation.mutate(undefined, {
-            invalidate: [...toolpackKeys, queryKeys.stations.root],
+            invalidate: [...TOOLPACK_KEYS, queryKeys.stations.root],
             onSuccess: () => setDeleting(null),
           });
         }}
