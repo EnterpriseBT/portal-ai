@@ -31,6 +31,19 @@ export class StationViewsRepository extends Repository<
     return this.findMany(eq(stationViews.stationId, stationId), {}, client);
   }
 
+  /** #1036: non-deleted view attachments for many stations, in one query. */
+  async findByStationIds(
+    stationIds: string[],
+    client: DbClient = db
+  ): Promise<StationViewSelect[]> {
+    if (stationIds.length === 0) return [];
+    return this.findMany(
+      inArray(stationViews.stationId, stationIds),
+      {},
+      client
+    );
+  }
+
   /**
    * #827: the entities behind a station's live views, and their connectors,
    * in one query. Deleted attachments, views and entities don't count.

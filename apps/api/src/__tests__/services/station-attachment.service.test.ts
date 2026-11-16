@@ -32,6 +32,12 @@ const mockInstanceSoftDelete = jest.fn<(...a: unknown[]) => Promise<number>>();
 const mockStationFindById =
   jest.fn<(id: string, client?: unknown) => Promise<unknown>>();
 const mockLoadSet = jest.fn<(...a: unknown[]) => Promise<unknown>>();
+const mockViewLinksForStations =
+  jest.fn<(ids: string[], client?: unknown) => Promise<unknown[]>>();
+const mockViewSummaries =
+  jest.fn<
+    (ids: string[], org: string, client?: unknown) => Promise<unknown[]>
+  >();
 const mockAuditRecord = jest.fn<(e: unknown) => Promise<void>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -39,12 +45,16 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     transaction: async <R>(fn: (tx: unknown) => Promise<R>) => fn(TX_HANDLE),
     repository: {
       stations: { findById: mockStationFindById },
-      curatedViews: { findOwnersByIds: mockViewOwners },
+      curatedViews: {
+        findOwnersByIds: mockViewOwners,
+        findSummariesByIds: mockViewSummaries,
+      },
       connectorInstances: { findOwnersByIds: mockInstanceOwners },
       stationViews: {
         findByStationId: mockViewLinks,
         insertManyIgnoreConflicts: mockViewInsert,
         softDeleteByStationAndViews: mockViewSoftDelete,
+        findByStationIds: mockViewLinksForStations,
       },
       stationInstances: {
         findByStationId: mockInstanceLinks,
@@ -520,5 +530,78 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
     });
     expect(mockViewSoftDelete).not.toHaveBeenCalled();
     expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listViewsForStations (#1036)
+// ---------------------------------------------------------------------------
+
+describe("StationAttachmentService.listViewsForStations (#1036)", () => {
+  const summary = (id: string, createdBy = "u") => ({
+    id,
+    key: `${id}_key`,
+    label: `${id} label`,
+    connectorEntityId: "e1",
+    createdBy,
+  });
+
+  it("reads every station's views in one batched lookup", async () => {
+    mockViewLinksForStations.mockResolvedValue([
+      { stationId: "st-1", curatedViewId: "v1" },
+      { stationId: "st-2", curatedViewId: "v1" },
+      { stationId: "st-2", curatedViewId: "v2" },
+    ]);
+    mockViewSummaries.mockResolvedValue([summary("v1"), summary("v2")]);
+
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading("v1", "v2"),
+      ORG,
+      ["st-1", "st-2", "st-3"]
+    );
+
+    expect(mockViewLinksForStations).toHaveBeenCalledTimes(1);
+    expect(mockViewSummaries).toHaveBeenCalledTimes(1);
+    expect(mockViewSummaries).toHaveBeenCalledWith(
+      ["v1", "v2"],
+      ORG,
+      undefined
+    );
+    expect(byStation.get("st-1")).toEqual([
+      { id: "v1", key: "v1_key", label: "v1 label", canRead: true },
+    ]);
+    expect(byStation.get("st-2")).toHaveLength(2);
+    expect(byStation.get("st-3")).toEqual([]);
+  });
+
+  it("gives an unreadable or deleted view no id, key or label", async () => {
+    mockViewLinksForStations.mockResolvedValue([
+      { stationId: "st-1", curatedViewId: "v1" },
+      { stationId: "st-1", curatedViewId: "v-secret" },
+      { stationId: "st-1", curatedViewId: "v-gone" },
+    ]);
+    mockViewSummaries.mockResolvedValue([summary("v1"), summary("v-secret")]);
+
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading("v1"),
+      ORG,
+      ["st-1"]
+    );
+
+    expect(byStation.get("st-1")).toEqual([
+      { id: "v1", key: "v1_key", label: "v1 label", canRead: true },
+      { canRead: false, label: null },
+      { canRead: false, label: null },
+    ]);
+  });
+
+  it("does no lookup for an empty station list", async () => {
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading(),
+      ORG,
+      []
+    );
+    expect(byStation.size).toBe(0);
+    expect(mockViewLinksForStations).not.toHaveBeenCalled();
   });
 });

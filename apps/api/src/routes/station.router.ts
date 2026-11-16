@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, ilike, and, inArray, type SQL } from "drizzle-orm";
+import { eq, and, inArray, type SQL } from "drizzle-orm";
 
 import { StationModelFactory } from "@portalai/core/models";
 import { isBuiltinToolpackSlug } from "@portalai/core/registries";
@@ -21,12 +21,13 @@ import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
+import { StationQueryService } from "../services/station-query.service.js";
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { OrganizationUpdateService } from "../services/organization-update.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
-import { stations, organizations, portalResults } from "../db/schema/index.js";
+import { organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
@@ -205,66 +206,14 @@ stationRouter.get(
     }
     try {
       const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
-      const ctx = req.application!.metadata;
-      const { organizationId } = ctx;
-
-      const filters: SQL[] = [eq(stations.organizationId, organizationId)];
-      if (search) {
-        filters.push(ilike(stations.name, `%${search}%`));
-      }
-      // #621: object-level visibility — AND the caller's read predicate (own +
-      // system + shared) into the list. `undefined` = see-all (owner/admin).
-      const set = await PermissionService.loadSet(ctx);
-      const visibility = set.visibilityPredicate("station", {
-        createdByCol: stations.createdBy,
-        idCol: stations.id,
-      });
-      if (visibility) filters.push(visibility);
-      const where = and(...filters);
-
-      const column = sortBy === "name" ? stations.name : stations.created;
-      const listOpts = {
-        limit,
-        offset,
-        orderBy: { column, direction: sortOrder },
-      };
-
-      const [data, total] = await Promise.all([
-        DbService.repository.stations.findMany(where, listOpts),
-        DbService.repository.stations.count(where),
-      ]);
-
-      // Hydrate enabledToolpacks for each station via a single grouped lookup.
-      const stationIds = data.map((s) => s.id);
-      const toolpackRows =
-        await DbService.repository.stationToolpacks.findByStationIds(
-          stationIds
-        );
-      const toolpacksByStationId = new Map<string, string[]>();
-      for (const row of toolpackRows) {
-        const ref =
-          row.builtinSlug !== null
-            ? row.builtinSlug
-            : row.organizationToolpackId !== null
-              ? `org:${row.organizationToolpackId}`
-              : null;
-        if (ref === null) continue;
-        const arr = toolpacksByStationId.get(row.stationId) ?? [];
-        arr.push(ref);
-        toolpacksByStationId.set(row.stationId, arr);
-      }
-      const stationsWithToolpacks = data.map((s) => ({
-        ...s,
-        enabledToolpacks: toolpacksByStationId.get(s.id) ?? [],
-      }));
+      // #1036: the same listing the agent's station_list tool reads.
+      const { stations: rows, total } = await StationQueryService.listForCaller(
+        req.application!.metadata,
+        { limit, offset, sortBy, sortOrder, search }
+      );
 
       return HttpService.success<StationListResponsePayload>(res, {
-        // #688: each row with the caller's capabilities on it.
-        stations: ObjectCapabilitiesService.attach(
-          set,
-          "station",
-          stationsWithToolpacks
-        ) as unknown as StationListResponsePayload["stations"],
+        stations: rows as unknown as StationListResponsePayload["stations"],
         total,
         limit,
         offset,

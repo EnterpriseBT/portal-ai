@@ -64,6 +64,15 @@ export interface ViewAttachResult {
   alreadyAttached: string[];
 }
 
+/**
+ * #1036: one view attached to a station, as {@link
+ * StationAttachmentService.listViewsForStations} reports it. A view the caller
+ * can't read (or that is gone) carries no id, key or label.
+ */
+export type StationViewEntry =
+  | { id: string; key: string; label: string; canRead: true }
+  | { canRead: false; label: null };
+
 /** #1036: what {@link StationAttachmentService.detachViews} did. */
 export interface ViewDetachResult {
   stationId: string;
@@ -453,6 +462,54 @@ export class StationAttachmentService {
       removed: result.removed,
     });
     return result;
+  }
+
+  /**
+   * #1036: the views attached to each of `stationIds`, in two batched reads
+   * (links, then view summaries) however many stations there are. A view the
+   * caller can't read, or one that's gone, is reported without its id, key or
+   * label: unlike the station page's chips, this feeds the agent, whose answer
+   * can travel further than the user who asked.
+   */
+  static async listViewsForStations(
+    set: PermissionSet,
+    organizationId: string,
+    stationIds: string[],
+    client?: DbClient
+  ): Promise<Map<string, StationViewEntry[]>> {
+    const byStation = new Map<string, StationViewEntry[]>(
+      stationIds.map((id) => [id, []])
+    );
+    if (stationIds.length === 0) return byStation;
+    const repo = DbService.repository;
+    const links = await repo.stationViews.findByStationIds(stationIds, client);
+    const summaries = new Map(
+      (
+        await repo.curatedViews.findSummariesByIds(
+          unique(links.map((l) => l.curatedViewId)),
+          organizationId,
+          client
+        )
+      ).map((v) => [v.id, v])
+    );
+    for (const link of links) {
+      const v = summaries.get(link.curatedViewId);
+      const readable =
+        !!v &&
+        set.can("resource.read", {
+          type: "curated_view",
+          id: v.id,
+          createdBy: v.createdBy,
+        });
+      byStation
+        .get(link.stationId)
+        ?.push(
+          readable
+            ? { id: v.id, key: v.key, label: v.label, canRead: true }
+            : { canRead: false, label: null }
+        );
+    }
+    return byStation;
   }
 
   /** The `station.attachments.change` event for views (post-commit, fail-open). */
