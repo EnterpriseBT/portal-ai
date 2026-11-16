@@ -18,18 +18,19 @@ To file a bug, open an issue on `EnterpriseBT/portal-ai`, set its type to `Bug`,
 - [ ] `npm install && npm run build`. The branch changes `packages/core` (the pack mirror and the help content), so the API and web need the rebuilt core dist. **There is no migration.**
 - [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`). If the API dev server was already running, touch a file in `apps/api/src` so nodemon picks up the new core.
 - [ ] The e2e sessions are fresh: `npm run --workspace @portalai/e2e e2e:auth:all`, then `npm run --workspace @portalai/e2e e2e:seed` (re-applies `--all-toolpacks`, so the fixture station has `curated_view_attach`, `curated_view_detach` and `station_list`).
+- [ ] **Agent-turn budget.** The walk takes about 15 owner turns and 5 member turns. The fixture org's plan has a daily agent-turn limit, and the first walk hit it at §4 ("You've reached your plan's agent-turn limit for today."). Start with the day's allowance unused, or walk §4–§5 after the reset at midnight UTC.
 
 ### Fixtures (in the `e2e-fixture` org, as the owner)
 
 | Alias | What | How |
 |---|---|---|
-| **Lab** | The fixture station. It has every built-in pack, including `data_query`, `entity_management` and `view_management`, and has the **Sandbox** connector attached | Already seeded. On Stations → Lab, check that the Sandbox connector chip is present, and attach it in Edit if it isn't |
+| **Lab** | The seeded fixture station, named **My Station** in the app. It has every built-in pack, including `data_query`, `entity_management` and `view_management`, and has the **Sandbox** connector attached | Already seeded. On Stations → My Station, check that the Sandbox connector chip is present, and attach it in Edit if it isn't |
 | **Smoke Sales** | A second station with only `data_query` and no views | Stations → Create station: name "Smoke Sales", toolpack Data Query |
 | **member** | The e2e member identity | Lab and Smoke Sales are both shared with the member at **Read** (station Share dialog). This gives read, not write |
 
 ### Reset between runs
 
-- [ ] Delete the `smoke_widgets` entity and the `smoke_*` views the previous run created: Views page → delete, then Entities → delete `smoke_widgets`. Alternatively, run every prompt with a fresh suffix (`smoke2_…`).
+- [ ] Delete the `smoke_widgets` entity and the `smoke_*` views (smoke_ne, smoke_all, smoke_sw) the previous run created: Views page → delete, then Entities → delete `smoke_widgets`. Alternatively, run every prompt with a fresh suffix (`smoke2_…`).
 
 ---
 
@@ -37,7 +38,7 @@ To file a bug, open an issue on `EnterpriseBT/portal-ai`, set its type to `Bug`,
 
 As the **owner**, open a portal on **Lab**.
 
-- [ ] Prompt: **"Create an entity called smoke_widgets on the Sandbox connector with columns name (text) and region (text). Add three records: Acme/NE, Bolt/SW, Cog/NE. Then create a view called smoke_ne over it showing name and region where region is NE, attach it to this station, and list the rows in it."**
+- [ ] Prompt: **"Create an entity called smoke_widgets on the Sandbox connector with columns name (text) and region (text). Add three records: Acme/ne, Bolt/sw, Cog/ne. Then create a view called smoke_ne over it showing name and region where region is ne, attach it to this station, and list the rows in it."** (Keep the region values lowercase. The agent may map `region` to the org's `tag` column definition, which stores values lowercase, so an uppercase filter value matches nothing: the first walk got 0 rows that way.)
 - [ ] The tool activity strip shows **"Attaching the view"** while `curated_view_attach` runs. The raw tool name never shows.
 - [ ] The tool calls run in this order within **one turn**: `connector_entity_create` … `curated_view_create` → `curated_view_attach` (with no `stationId`) → `sql_query`. The attach result shows `isSessionStation: true`, `added: [<view id>]`, and `views[0].columns` with `wideColumnName` values like `c_name`.
 - [ ] The answer lists **Acme** and **Cog** and not Bolt, and it comes in the same turn, without asking the user to send another message.
@@ -61,16 +62,20 @@ As the **owner**, create a second view that is **not** shared with the member, a
 
 - [ ] In the Lab portal, prompt: **"Create a view called smoke_all over smoke_widgets showing all rows, and attach it to Smoke Sales."** It succeeds.
 
-As the **member**, in a Smoke Sales portal:
+As the **member**, in a **Lab** portal (Smoke Sales has only Data Query, so `station_list` isn't available there):
 
 - [ ] Prompt: **"List the stations I can see and the views on each."**
 - [ ] The answer lists only **Lab** and **Smoke Sales**, both read-only for the member, with the stations' tool packs. For Smoke Sales it names **smoke_ne** and says there is **one view the member can't read**, without naming it. The `station_list` tool result (in the transcript or the network panel) contains `{ "unreadable": true }` and **no** `smoke_all` id, key or label.
 
 ## §4 — Refusals (criteria 3, 4 and 5)
 
+As the **owner**, in the Lab portal, first make a view the member can read that isn't attached anywhere (smoke_ne is already on Lab, and the first walk's agent answered "already attached" without calling the tool):
+
+- [ ] Prompt: **"Create a view called smoke_sw over smoke_widgets where region is sw, share it with the member at read access, and don't attach it to any station."**
+
 As the **member**, in a **Lab** portal (Lab is readable, not writable):
 
-- [ ] Prompt: **"Attach the smoke_ne view to this station."** The answer says the member lacks permission to edit the station, naming the permission rather than a role. The tool result's code is `TOOL_PERMISSION_DENIED`. Lab's header shows no new chip.
+- [ ] Prompt: **"Attach the smoke_sw view to this station."** The answer says the member lacks permission to edit the station, naming the permission rather than a role. The tool result's code is `TOOL_PERMISSION_DENIED`. Lab's header shows no smoke_sw chip.
 - [ ] Prompt: **"Detach smoke_ne from Smoke Sales."** It is refused the same way (`TOOL_PERMISSION_DENIED`), and Smoke Sales still shows smoke_ne.
 
 As the **owner**, in the Lab portal:
