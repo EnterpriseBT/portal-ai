@@ -40,6 +40,12 @@ export interface PortalStreamState {
   toolSteps: ToolStep[];
 }
 
+/** #1036: what a finished turn did, passed to `onDone`. */
+export interface PortalStreamTurn {
+  /** Every tool whose result arrived during the turn. */
+  toolNames: ReadonlySet<string>;
+}
+
 export interface PortalStreamActions {
   send: (portalId: string) => Promise<void>;
   cancel: () => void;
@@ -82,10 +88,11 @@ export function streamingBlockFor(
  *
  * @param onDone - Optional callback invoked after a stream completes.
  *   Receives `clearLocalMessages` so the caller can clear optimistic messages
- *   after refetching server data without a circular dependency.
+ *   after refetching server data without a circular dependency, and the turn
+ *   (#1036: the tools it ran, so the caller can refresh what they changed).
  */
 export const usePortalStream = (
-  onDone?: (clearLocalMessages: () => void) => void
+  onDone?: (clearLocalMessages: () => void, turn: PortalStreamTurn) => void
 ): [PortalStreamState, PortalStreamActions] => {
   const createSSEConnection = sse.create();
 
@@ -102,6 +109,8 @@ export const usePortalStream = (
   // Keep a ref to the latest streaming blocks so the done handler can
   // read the current value without stale closure issues.
   const streamingBlocksRef = useRef<PortalMessageBlock[]>([]);
+  // #1036: the tools this turn ran, reported to onDone.
+  const turnToolNamesRef = useRef<Set<string>>(new Set());
   const esRef = useRef<EventSource | null>(null);
   const onDoneRef = useRef(onDone);
 
@@ -144,6 +153,7 @@ export const usePortalStream = (
       }
 
       streamingBlocksRef.current = [];
+      turnToolNamesRef.current = new Set();
       setStreamingBlocks([]);
       setIsStreaming(true);
       setToolSteps([]);
@@ -192,6 +202,7 @@ export const usePortalStream = (
       es.addEventListener("tool_result", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as ToolResultEvent;
         const result = data.result as Record<string, unknown> | null;
+        turnToolNamesRef.current.add(data.toolName);
 
         const block = streamingBlockFor(data.toolName, result);
 
@@ -228,7 +239,9 @@ export const usePortalStream = (
         setIsStreaming(false);
         setToolSteps([]);
 
-        onDoneRef.current?.(clearLocalMessages);
+        onDoneRef.current?.(clearLocalMessages, {
+          toolNames: turnToolNamesRef.current,
+        });
       });
 
       es.addEventListener("stream_error", (e: MessageEvent) => {

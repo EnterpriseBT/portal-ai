@@ -194,4 +194,45 @@ describe("usePortalStream — tool step tracking (#279)", () => {
 
     expect(harness.result.current[0].toolSteps).toEqual([]);
   });
+
+  // #1036: the caller learns which tools the turn ran, so it can refresh what
+  // they changed (a station's views after curated_view_attach).
+  describe("onDone tool names (#1036)", () => {
+    const result = (toolName: string) => ({
+      type: "tool_result",
+      toolCallId: `tc-${toolName}`,
+      toolName,
+      result: { success: true },
+    });
+
+    it("passes the turn's tool_result tool names to onDone, reset per send", async () => {
+      const onDone =
+        jest.fn<
+          (clear: () => void, turn: { toolNames: ReadonlySet<string> }) => void
+        >();
+      const harness = renderHook(() => usePortalStream(onDone));
+
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const first = MockEventSource.lastInstance!;
+      act(() => first.__emit("tool_result", result("curated_view_attach")));
+      act(() => first.__emit("tool_result", result("sql_query")));
+      act(() => first.__emit("done", { type: "done", messageId: "m-1" }));
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect([...onDone.mock.calls[0]![1].toolNames].sort()).toEqual([
+        "curated_view_attach",
+        "sql_query",
+      ]);
+
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const second = MockEventSource.lastInstance!;
+      act(() => second.__emit("done", { type: "done", messageId: "m-2" }));
+
+      expect([...onDone.mock.calls[1]![1].toolNames]).toEqual([]);
+    });
+  });
 });

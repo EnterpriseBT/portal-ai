@@ -22,6 +22,8 @@ import { FAQCategory } from "@portalai/core/content";
 import { sdk, queryKeys } from "../api/sdk";
 import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
+import type { PortalStreamTurn } from "../utils/portal-stream.util";
+import { changedStationAttachments } from "../utils/station-attachment-tools.util";
 import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
@@ -340,11 +342,17 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // A turn may have made billable tool calls (the #169 cost gate charges the
   // org's usage mid-stream), so invalidate the usage balance too — that keeps
   // the always-visible usage strip in the session header live without polling.
+  //
+  // #1036: a turn that attached or detached a view changed a station, so the
+  // header's view list (and any station page) refreshes too.
   const handleStreamDone = useCallback(
-    (clear: () => void) => {
+    (clear: () => void, turn: PortalStreamTurn) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.usage(),
       });
+      if (changedStationAttachments(turn.toolNames)) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+      }
       setStreamStartedAt(null);
       portalQuery.refetch().then(() => {
         clear();

@@ -109,6 +109,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portals: {
       get: (id: string) => ["portals", "get", id],
     },
+    // #1036: handleStreamDone refreshes usage, and stations after a turn
+    // that attached or detached a view.
+    organizations: {
+      usage: () => ["organizations", "usage"],
+    },
+    stations: {
+      root: ["stations"],
+    },
   },
 }));
 
@@ -134,6 +142,8 @@ jest.unstable_mockModule("react-markdown", () => ({
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 // ── Imports ──────────────────────────────────────────────────────────
+
+const { QueryClient } = await import("@tanstack/react-query");
 
 const { expectNoAxeViolations, render, screen, fireEvent, waitFor, act } =
   await import("./test-utils");
@@ -526,6 +536,64 @@ describe("PortalSession (container) via PortalSessionUI", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  // #1036: the portal header's view list and the station page read the
+  // station through react-query; a turn that changed its views refreshes it.
+  it.each([
+    ["curated_view_attach", true],
+    ["curated_view_detach", true],
+    ["sql_query", false],
+  ])(
+    "a turn that ran %s refreshes stations: %s",
+    async (toolName, refreshes) => {
+      // `done` refetches the portal, which makeQueryResult doesn't stub.
+      mockGetPortal.mockReturnValue({
+        ...makeQueryResult([]),
+        refetch: jest.fn(async () => ({})),
+      });
+      mockSendMessage.mockResolvedValue(undefined);
+      const queryClient = new QueryClient();
+      const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+
+      const { PortalSession } =
+        await import("../components/PortalSession.component");
+      render(<PortalSession portalId="portal-1" />, { queryClient });
+
+      fireEvent.change(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER), {
+        target: { value: "Attach it here" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+      const stream = await waitFor(() => {
+        const es = MockEventSource.findByUrl("/stream");
+        expect(es).toBeDefined();
+        return es!;
+      });
+      await act(async () => {
+        stream.__emit("tool_result", {
+          type: "tool_result",
+          toolCallId: "tc-1",
+          toolName,
+          result: { success: true },
+        });
+        stream.__emit("done", { type: "done", messageId: "m-1" });
+      });
+
+      const stationsRefreshed = () =>
+        invalidate.mock.calls.some(
+          ([filters]) =>
+            JSON.stringify(
+              (filters as { queryKey?: unknown } | undefined)?.queryKey
+            ) === JSON.stringify(["stations"])
+        );
+      await waitFor(() => {
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["organizations", "usage"],
+        });
+      });
+      expect(stationsRefreshed()).toBe(refreshes);
+    }
+  );
 
   it("loads history on mount — messages from query appear", async () => {
     const messages = [
