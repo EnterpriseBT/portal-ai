@@ -137,34 +137,30 @@ export const ColumnDefinitionDetailView: React.FC<
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
+      invalidate: [queryKeys.columnDefinitions.root],
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.columnDefinitions.root,
-        });
         navigate({ to: "/column-definitions" });
       },
     });
-  }, [deleteMutation, queryClient, navigate]);
+  }, [deleteMutation, navigate]);
 
   const handleUpdate = useCallback(
     (body: ColumnDefinitionUpdateRequestBody) => {
       updateMutation.mutate(body, {
+        invalidate: [
+          queryKeys.columnDefinitions.root,
+          queryKeys.columnDefinitions.get(columnDefinitionId),
+        ],
         onSuccess: (data) => {
           setUpdateWarnings(data.warnings ?? []);
           if (!data.warnings?.length) {
             setEditDialogOpen(false);
           }
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.columnDefinitions.root,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.columnDefinitions.get(columnDefinitionId),
-          });
         },
       });
     },
-    [updateMutation, queryClient, columnDefinitionId]
+    [updateMutation, columnDefinitionId]
   );
 
   // #829: a mapping is part of its entity, so creating one needs write on
@@ -183,52 +179,37 @@ export const ColumnDefinitionDetailView: React.FC<
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {
       fmCreateMutation.mutate(body, {
-        onSuccess: () => {
-          setCreateFieldMappingOpen(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.fieldMappings.root,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.columnDefinitions.root,
-          });
-        },
+        invalidate: [
+          queryKeys.fieldMappings.root,
+          queryKeys.columnDefinitions.root,
+        ],
+        onSuccess: () => setCreateFieldMappingOpen(false),
       });
     },
-    [fmCreateMutation, queryClient]
+    [fmCreateMutation]
   );
 
   const handleFieldMappingUpdate = useCallback(
     (body: FieldMappingUpdateRequestBody) => {
       fmUpdateMutation.mutate(body, {
-        onSuccess: () => {
-          setEditingFieldMapping(null);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.fieldMappings.root,
-          });
-          if (body.columnDefinitionId) {
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.columnDefinitions.root,
-            });
-          }
-        },
+        invalidate: body.columnDefinitionId
+          ? [queryKeys.fieldMappings.root, queryKeys.columnDefinitions.root]
+          : [queryKeys.fieldMappings.root],
+        onSuccess: () => setEditingFieldMapping(null),
       });
     },
-    [fmUpdateMutation, queryClient]
+    [fmUpdateMutation]
   );
 
   const handleFieldMappingDelete = useCallback(() => {
     fmDeleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        setDeletingFieldMapping(null);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.fieldMappings.root,
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.columnDefinitions.root,
-        });
-      },
+      invalidate: [
+        queryKeys.fieldMappings.root,
+        queryKeys.columnDefinitions.root,
+      ],
+      onSuccess: () => setDeletingFieldMapping(null),
     });
-  }, [fmDeleteMutation, queryClient]);
+  }, [fmDeleteMutation]);
 
   const mappingsPagination = usePagination({
     sortFields: [

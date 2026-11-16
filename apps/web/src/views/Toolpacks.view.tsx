@@ -22,7 +22,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 
 import DataResult from "../components/DataResult.component";
 import {
@@ -402,8 +401,11 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 
 // ── Container ───────────────────────────────────────────────────────
 
+// #985: passed as each call's `invalidate`, which still runs if the page
+// unmounts before the request settles.
+const TOOLPACK_KEYS = [queryKeys.toolpacks.root];
+
 export const Toolpacks: React.FC = () => {
-  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Toolpack | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editing, setEditing] = useState<Toolpack | null>(null);
@@ -446,10 +448,6 @@ export const Toolpacks: React.FC = () => {
   // registration a fresh signing secret; a cancelled attempt keeps its own.
   const [registerDialogKey, setRegisterDialogKey] = useState(0);
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.toolpacks.root });
-  };
-
   return (
     <>
       <DataResult pageTitle="Toolpacks" results={{ list: listResult }}>
@@ -474,7 +472,7 @@ export const Toolpacks: React.FC = () => {
               refreshMutation.mutate(
                 { id: t.id },
                 {
-                  onSuccess: invalidate,
+                  invalidate: TOOLPACK_KEYS,
                   toast: {
                     success: `Refreshed "${t.name}".`,
                     error: (err) =>
@@ -496,10 +494,10 @@ export const Toolpacks: React.FC = () => {
         }}
         onSubmit={(body) => {
           registerMutation.mutate(body, {
+            invalidate: TOOLPACK_KEYS,
             onSuccess: (data) => {
               setRegisterOpen(false);
               setRegisterDialogKey((k) => k + 1);
-              invalidate();
               if (data.signingSecret) {
                 setRevealedSecret(data.signingSecret);
               }
@@ -521,10 +519,8 @@ export const Toolpacks: React.FC = () => {
         }}
         onSubmit={(body) => {
           updateMutation.mutate(body, {
-            onSuccess: () => {
-              setEditing(null);
-              invalidate();
-            },
+            invalidate: TOOLPACK_KEYS,
+            onSuccess: () => setEditing(null),
           });
         }}
         onRefresh={() => {
@@ -533,7 +529,7 @@ export const Toolpacks: React.FC = () => {
           refreshMutation.mutate(
             { id: target.id },
             {
-              onSuccess: invalidate,
+              invalidate: TOOLPACK_KEYS,
               toast: {
                 success: `Refreshed "${target.name}".`,
                 error: (err) =>
@@ -544,8 +540,8 @@ export const Toolpacks: React.FC = () => {
         }}
         onRotateSecret={() => {
           rotateSecretMutation.mutate(undefined, {
+            invalidate: TOOLPACK_KEYS,
             onSuccess: (data) => {
-              invalidate();
               setEditing(null);
               setRevealedSecret(data.signingSecret);
             },
@@ -573,13 +569,8 @@ export const Toolpacks: React.FC = () => {
         }}
         onConfirm={() => {
           deleteMutation.mutate(undefined, {
-            onSuccess: () => {
-              setDeleting(null);
-              invalidate();
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.stations.root,
-              });
-            },
+            invalidate: [...TOOLPACK_KEYS, queryKeys.stations.root],
+            onSuccess: () => setDeleting(null),
           });
         }}
         isPending={deleteMutation.isPending}

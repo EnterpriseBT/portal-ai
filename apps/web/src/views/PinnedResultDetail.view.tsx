@@ -282,16 +282,12 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
       renameMutation.mutate(
         { name },
         {
-          onSuccess: () => {
-            setRenameOpen(false);
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.portalResults.root,
-            });
-          },
+          invalidate: [queryKeys.portalResults.root],
+          onSuccess: () => setRenameOpen(false),
         }
       );
     },
-    [renameMutation, queryClient]
+    [renameMutation]
   );
 
   const handleDeleteConfirm = useCallback(async () => {

@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
 
 import { queryKeys } from "../api/keys";
 
@@ -7,37 +7,32 @@ import { queryKeys } from "../api/keys";
  * the instance and its entities, mappings, records, tags and group members,
  * unlinks it from its stations, and deletes the curated views over its
  * entities, detaching those from their stations too (#802).
+ *
+ * Pass it as the delete call's `invalidate` option (#985), which still runs
+ * when the page unmounts before the request settles.
  */
-export function invalidateAfterConnectorInstanceDelete(
-  queryClient: QueryClient
-): void {
-  for (const queryKey of [
+export function connectorInstanceDeleteKeys(): QueryKey[] {
+  return [
     queryKeys.connectorInstances.root,
     queryKeys.connectorEntities.root,
     queryKeys.fieldMappings.root,
     queryKeys.stations.root,
     queryKeys.curatedViews.root,
-  ]) {
-    queryClient.invalidateQueries({ queryKey });
-  }
+  ];
 }
 
 /**
  * What a successful entity delete makes stale: the entity and everything that
  * cascades from it, including its curated views and their station
- * attachments (#802).
+ * attachments (#802). Pass it as the call's `invalidate` option (#985).
  */
-export function invalidateAfterConnectorEntityDelete(
-  queryClient: QueryClient
-): void {
-  for (const queryKey of [
+export function connectorEntityDeleteKeys(): QueryKey[] {
+  return [
     queryKeys.connectorEntities.root,
     queryKeys.entityRecords.root,
     queryKeys.fieldMappings.root,
     queryKeys.entityGroups.root,
     queryKeys.stations.root,
     queryKeys.curatedViews.root,
-  ]) {
-    queryClient.invalidateQueries({ queryKey });
-  }
+  ];
 }

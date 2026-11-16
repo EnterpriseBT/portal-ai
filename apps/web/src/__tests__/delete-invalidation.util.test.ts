@@ -3,36 +3,26 @@
  * views over the deleted entities and detaches them from their stations, so
  * both lists go stale with the entity. Each delete's list lives in one util
  * the views call, rather than four hand-copied blocks that had already drifted
- * (the entity deletes never refreshed stations).
+ * (the entity deletes never refreshed stations). Each util returns keys for
+ * the call's `invalidate` option (#985), which still runs when the page
+ * unmounts before the request settles.
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { jest } from "@jest/globals";
-import { QueryClient } from "@tanstack/react-query";
-
 import { queryKeys } from "../api/keys";
 import {
-  invalidateAfterConnectorInstanceDelete,
-  invalidateAfterConnectorEntityDelete,
+  connectorInstanceDeleteKeys,
+  connectorEntityDeleteKeys,
 } from "../utils/delete-invalidation.util";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-function invalidatedKeys(run: (qc: QueryClient) => void): unknown[] {
-  const queryClient = new QueryClient();
-  const spy = jest.spyOn(queryClient, "invalidateQueries");
-  run(queryClient);
-  return spy.mock.calls.map(
-    ([filters]) => (filters as { queryKey: unknown }).queryKey
-  );
-}
-
-describe("invalidateAfterConnectorInstanceDelete", () => {
+describe("connectorInstanceDeleteKeys", () => {
   it("refreshes the instance, its entities, mappings, stations and views", () => {
-    expect(invalidatedKeys(invalidateAfterConnectorInstanceDelete)).toEqual(
+    expect(connectorInstanceDeleteKeys()).toEqual(
       expect.arrayContaining([
         queryKeys.connectorInstances.root,
         queryKeys.connectorEntities.root,
@@ -44,9 +34,9 @@ describe("invalidateAfterConnectorInstanceDelete", () => {
   });
 });
 
-describe("invalidateAfterConnectorEntityDelete", () => {
+describe("connectorEntityDeleteKeys", () => {
   it("refreshes the entity, its records, mappings, groups, stations and views", () => {
-    expect(invalidatedKeys(invalidateAfterConnectorEntityDelete)).toEqual(
+    expect(connectorEntityDeleteKeys()).toEqual(
       expect.arrayContaining([
         queryKeys.connectorEntities.root,
         queryKeys.entityRecords.root,
@@ -59,17 +49,14 @@ describe("invalidateAfterConnectorEntityDelete", () => {
   });
 });
 
-describe("delete success handlers use the shared invalidation", () => {
+describe("delete calls invalidate through the shared keys", () => {
   it.each([
-    ["views/Connector.view.tsx", "invalidateAfterConnectorInstanceDelete"],
-    [
-      "views/ConnectorInstance.view.tsx",
-      "invalidateAfterConnectorInstanceDelete",
-    ],
-    ["views/Entities.view.tsx", "invalidateAfterConnectorEntityDelete"],
-    ["views/EntityDetail.view.tsx", "invalidateAfterConnectorEntityDelete"],
+    ["views/Connector.view.tsx", "connectorInstanceDeleteKeys"],
+    ["views/ConnectorInstance.view.tsx", "connectorInstanceDeleteKeys"],
+    ["views/Entities.view.tsx", "connectorEntityDeleteKeys"],
+    ["views/EntityDetail.view.tsx", "connectorEntityDeleteKeys"],
   ])("%s calls %s", (file, helper) => {
     const source = readFileSync(join(here, "..", file), "utf8");
-    expect(source).toContain(`${helper}(queryClient)`);
+    expect(source).toContain(`invalidate: ${helper}()`);
   });
 });

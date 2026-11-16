@@ -31,7 +31,6 @@ import {
 import { createEmptyGroup } from "../utils/advanced-filter-builder.util";
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
-import { useQueryClient } from "@tanstack/react-query";
 import { toServerError, type ServerError } from "../utils/api.util";
 import {
   validateWithSchema,
@@ -325,7 +324,6 @@ const EditorContainer: React.FC<{
   onClose: () => void;
   onSaved: () => void;
 }> = ({ mode, view, connectorEntityId, onClose, onSaved }) => {
-  const queryClient = useQueryClient();
   const [label, setLabel] = useState(view?.label ?? "");
   const [keyValue, setKeyValue] = useState(view?.key ?? "");
   const [description, setDescription] = useState(view?.description ?? "");
@@ -484,12 +482,8 @@ const EditorContainer: React.FC<{
         return;
       }
       createMut.mutate(body, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.curatedViews.root,
-          });
-          onSaved();
-        },
+        invalidate: [queryKeys.curatedViews.root],
+        onSuccess: () => onSaved(),
       });
       return;
     }
@@ -512,12 +506,8 @@ const EditorContainer: React.FC<{
       return;
     }
     updateMut?.mutate(body, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.curatedViews.root,
-        });
-        onSaved();
-      },
+      invalidate: [queryKeys.curatedViews.root],
+      onSuccess: () => onSaved(),
     });
   };
 

@@ -151,11 +151,11 @@ export const useConnectorInstanceSync = (
   const onSync = useCallback(() => {
     setMutationError(null);
     syncMutation.mutate(undefined, {
+      // Bump the jobs list so any open page picks up the new pending row.
+      invalidate: [queryKeys.jobs.root],
       onSuccess: ({ jobId: newJobId }) => {
         setSeeded(true);
         setJobId(newJobId);
-        // Bump the jobs list so any open page picks up the new pending row.
-        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
       },
       onError: (err: ApiError) => {
         // Single-flight: if a sync is already running for this instance,
@@ -172,7 +172,7 @@ export const useConnectorInstanceSync = (
         setMutationError(err.message);
       },
     });
-  }, [syncMutation, queryClient, setSeeded]);
+  }, [syncMutation, setSeeded]);
 
   const onDismissResult = useCallback(() => {
     setMutationError(null);

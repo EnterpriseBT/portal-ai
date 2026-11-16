@@ -41,7 +41,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { invalidateAfterConnectorEntityDelete } from "../utils/delete-invalidation.util";
+import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
@@ -796,77 +796,70 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     });
   }, [clearRecordsMutation, queryClient, entityId, toast, connectSseForLock]);
 
-  const invalidateTags = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.entityTagAssignments.listByEntity(entityId),
-    });
-  }, [queryClient, entityId]);
-
   const handleAssignTag = useCallback(
     (entityTagId: string) => {
-      assignMutation.mutate({ entityTagId }, { onSuccess: invalidateTags });
+      assignMutation.mutate(
+        { entityTagId },
+        {
+          invalidate: [queryKeys.entityTagAssignments.listByEntity(entityId)],
+        }
+      );
     },
-    [assignMutation, invalidateTags]
+    [assignMutation, entityId]
   );
 
   const handleUnassignTag = useCallback(
     (assignmentId: string) => {
-      unassignMutation.mutate({ assignmentId }, { onSuccess: invalidateTags });
+      unassignMutation.mutate(
+        { assignmentId },
+        {
+          invalidate: [queryKeys.entityTagAssignments.listByEntity(entityId)],
+        }
+      );
     },
-    [unassignMutation, invalidateTags]
+    [unassignMutation, entityId]
   );
 
   const handleUpdate = useCallback(
     (body: ConnectorEntityPatchRequestBody) => {
       updateMutation.mutate(body, {
-        onSuccess: () => {
-          setEditDialogOpen(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorEntities.root,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorEntities.get(entityId),
-          });
-        },
+        invalidate: [
+          queryKeys.connectorEntities.root,
+          queryKeys.connectorEntities.get(entityId),
+        ],
+        onSuccess: () => setEditDialogOpen(false),
       });
     },
-    [updateMutation, queryClient, entityId]
+    [updateMutation, entityId]
   );
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
+      invalidate: connectorEntityDeleteKeys(),
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        invalidateAfterConnectorEntityDelete(queryClient);
         navigate({ to: "/entities" });
       },
     });
-  }, [deleteMutation, queryClient, navigate]);
+  }, [deleteMutation, navigate]);
 
   const handleRevalidate = useCallback(() => {
     revalidateMutation.mutate(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityRecords.root,
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
-      },
+      invalidate: [queryKeys.entityRecords.root, queryKeys.jobs.root],
     });
-  }, [revalidateMutation, queryClient]);
+  }, [revalidateMutation]);
 
   const handleCreateRecord = useCallback(
     (body: EntityRecordCreateRequestBody) => {
       createRecordMutation.mutate(body, {
+        invalidate: [queryKeys.entityRecords.root],
         onSuccess: () => {
           setCreateRecordDialogOpen(false);
           createRecordMutation.reset();
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.entityRecords.root,
-          });
         },
       });
     },
-    [createRecordMutation, queryClient]
+    [createRecordMutation]
   );
 
   return (

@@ -498,42 +498,31 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const handleUpdate = useCallback(
     (body: EntityRecordPatchRequestBody) => {
       updateMutation.mutate(body, {
-        onSuccess: () => {
-          setEditDialogOpen(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.entityRecords.root,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.entityRecords.get(entityId, recordId),
-          });
-        },
+        invalidate: [
+          queryKeys.entityRecords.root,
+          queryKeys.entityRecords.get(entityId, recordId),
+        ],
+        onSuccess: () => setEditDialogOpen(false),
       });
     },
-    [updateMutation, queryClient, entityId, recordId]
+    [updateMutation, entityId, recordId]
   );
 
   const handleRevalidate = useCallback(() => {
     revalidateMutation.mutate(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityRecords.root,
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
-      },
+      invalidate: [queryKeys.entityRecords.root, queryKeys.jobs.root],
     });
-  }, [revalidateMutation, queryClient]);
+  }, [revalidateMutation]);
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
+      invalidate: [queryKeys.entityRecords.root],
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.entityRecords.root,
-        });
         navigate({ to: `/entities/${entityId}` });
       },
     });
-  }, [deleteMutation, queryClient, navigate, entityId]);
+  }, [deleteMutation, navigate, entityId]);
 
   return (
     <DataResult

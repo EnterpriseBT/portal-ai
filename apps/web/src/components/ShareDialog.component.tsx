@@ -6,7 +6,6 @@ import Chip from "@mui/material/Chip";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Divider from "@mui/material/Divider";
-import { useQueryClient } from "@tanstack/react-query";
 
 import {
   GatedButton,
@@ -300,7 +299,6 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
   const share = sdk.grants.share();
   const revoke = sdk.grants.revoke();
   const toast = useToast();
-  const queryClient = useQueryClient();
 
   const memberOptions = (membersQuery.data?.members ?? []).map((m) => ({
     value: m.userId,
@@ -315,19 +313,16 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
         }))
       : undefined;
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.grants.list(resourceType, resourceId),
-    });
-    queryClient.invalidateQueries({
-      queryKey:
-        resourceType === "station"
-          ? queryKeys.stations.root
-          : resourceType === "curated_view"
-            ? queryKeys.curatedViews.root
-            : queryKeys.portalResults.root,
-    });
-  };
+  // What a share or revoke makes stale. #985: passed as each call's
+  // `invalidate`, which still runs if the dialog unmounts mid-request.
+  const shareKeys = [
+    queryKeys.grants.list(resourceType, resourceId),
+    resourceType === "station"
+      ? queryKeys.stations.root
+      : resourceType === "curated_view"
+        ? queryKeys.curatedViews.root
+        : queryKeys.portalResults.root,
+  ];
 
   const handleShare = async (
     grantee: ShareGrantee,
@@ -335,22 +330,26 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     selectedViewIds: string[]
   ) => {
     try {
-      await share.mutateAsync({ resourceType, resourceId, grantee, access });
+      // Refresh once, from the last write of the sequence (#985).
+      const last = selectedViewIds.length - 1;
+      await share.mutateAsync(
+        { resourceType, resourceId, grantee, access },
+        last < 0 ? { invalidate: shareKeys } : undefined
+      );
       // #599: each selected attached view becomes its own read share (the
       // backend composes its field grant). Independent + individually revocable.
-      for (const viewId of selectedViewIds) {
-        await share.mutateAsync({
-          resourceType: "curated_view",
-          resourceId: viewId,
-          grantee,
-          access: "read",
-        });
-      }
-      invalidate();
-      if (selectedViewIds.length > 0) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.curatedViews.root,
-        });
+      for (const [i, viewId] of selectedViewIds.entries()) {
+        await share.mutateAsync(
+          {
+            resourceType: "curated_view",
+            resourceId: viewId,
+            grantee,
+            access: "read",
+          },
+          i === last
+            ? { invalidate: [...shareKeys, queryKeys.curatedViews.root] }
+            : undefined
+        );
       }
       toast.success(
         selectedViewIds.length > 0
@@ -366,7 +365,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     revoke.mutate(
       { id },
       {
-        onSuccess: invalidate,
+        invalidate: shareKeys,
         toast: { success: "Share revoked", error: "Failed to revoke" },
       }
     );

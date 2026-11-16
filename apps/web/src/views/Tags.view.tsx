@@ -19,7 +19,6 @@ import {
 } from "@portalai/core/ui";
 import type { ActionGate } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { TagCardUI } from "../components/TagCard.component";
@@ -160,7 +159,6 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const TagsView: React.FC = () => {
-  const queryClient = useQueryClient();
   // #708: Create decides from the create route's own check.
   const createGate = useCreateGate("tag", "Ask for access to create tags");
 
@@ -174,10 +172,6 @@ export const TagsView: React.FC = () => {
   const createMutation = sdk.entityTags.create();
   const updateMutation = sdk.entityTags.update(editingTag?.id ?? "");
   const deleteMutation = sdk.entityTags.delete(deletingTag?.id ?? "");
-
-  const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.entityTags.root });
-  }, [queryClient]);
 
   // Create
   const handleOpenCreate = useCallback(() => {
@@ -200,21 +194,17 @@ export const TagsView: React.FC = () => {
     (body: EntityTagCreateRequestBody | EntityTagUpdateRequestBody) => {
       if (editingTag) {
         updateMutation.mutate(body as EntityTagUpdateRequestBody, {
-          onSuccess: () => {
-            handleFormClose();
-            invalidate();
-          },
+          invalidate: [queryKeys.entityTags.root],
+          onSuccess: handleFormClose,
         });
       } else {
         createMutation.mutate(body as EntityTagCreateRequestBody, {
-          onSuccess: () => {
-            handleFormClose();
-            invalidate();
-          },
+          invalidate: [queryKeys.entityTags.root],
+          onSuccess: handleFormClose,
         });
       }
     },
-    [editingTag, updateMutation, createMutation, handleFormClose, invalidate]
+    [editingTag, updateMutation, createMutation, handleFormClose]
   );
 
   // Delete
@@ -230,12 +220,10 @@ export const TagsView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        handleDeleteClose();
-        invalidate();
-      },
+      invalidate: [queryKeys.entityTags.root],
+      onSuccess: handleDeleteClose,
     });
-  }, [deleteMutation, handleDeleteClose, invalidate]);
+  }, [deleteMutation, handleDeleteClose]);
 
   const activeMutation = editingTag ? updateMutation : createMutation;
 

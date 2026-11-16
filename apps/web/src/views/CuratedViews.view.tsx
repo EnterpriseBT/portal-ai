@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 
 import type { CuratedViewListResponsePayload } from "@portalai/core/contracts";
 import { isSessionGenerated } from "@portalai/core/models";
@@ -218,7 +217,6 @@ export const CuratedViews: React.FC = () => {
     Object.values(pagination.filters).some((v) => v.length > 0)
   );
 
-  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);
   const [shareTarget, setShareTarget] = useState<CuratedViewRow | null>(null);
@@ -256,12 +254,8 @@ export const CuratedViews: React.FC = () => {
         open={createOpen}
         mode="create"
         onClose={() => setCreateOpen(false)}
-        onSaved={() => {
-          setCreateOpen(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.curatedViews.root,
-          });
-        }}
+        // The dialog's save refreshes the views itself (#985).
+        onSaved={() => setCreateOpen(false)}
       />
       <DeleteCuratedViewDialog
         open={deleteTarget !== null}

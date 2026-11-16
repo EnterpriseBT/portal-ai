@@ -20,11 +20,10 @@ import type {
   ConnectorInstanceApi,
   ConnectorInstanceListRequestQuery,
 } from "@portalai/core/contracts";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk } from "../api/sdk";
-import { invalidateAfterConnectorInstanceDelete } from "../utils/delete-invalidation.util";
+import { connectorInstanceDeleteKeys } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import {
@@ -70,7 +69,6 @@ const WORKFLOW_REGISTRY: Record<
 export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { canOnResource, capabilitiesKnown } = useCapabilities();
 
   // #630: the two tabs stay visible; each is gated by the **object read** of the
@@ -108,13 +106,13 @@ export const ConnectorView = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
+      invalidate: connectorInstanceDeleteKeys(),
       onSuccess: () => {
         setDeleteDialogOpen(false);
         setDeleteTarget(null);
-        invalidateAfterConnectorInstanceDelete(queryClient);
       },
     });
-  }, [deleteMutation, queryClient]);
+  }, [deleteMutation]);
 
   const { data: orgData } = sdk.organizations.current();
   const organizationId = orgData?.organization.id ?? "";
