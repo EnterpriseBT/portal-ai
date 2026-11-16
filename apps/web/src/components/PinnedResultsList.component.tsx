@@ -1,7 +1,14 @@
 import React from "react";
 
 import type { PortalResultListResponsePayload } from "@portalai/core/contracts";
-import { Box, DetailCard, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  CardList,
+  DetailCard,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
+import Link from "@mui/material/Link";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
@@ -11,6 +18,7 @@ import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import PushPinIcon from "@mui/icons-material/PushPin";
 
 import DataResult from "./DataResult.component";
+import { RouterLink } from "./RouterLink.component";
 import { sdk } from "../api/sdk";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
 import { decideActionGate } from "../utils/action-gate.util";
@@ -37,14 +45,15 @@ function ResultTypeIcon({ type }: { type: string }) {
 
 export interface PinnedResultCardUIProps {
   result: PinnedResultRow;
-  onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
   result,
-  onResultClick,
   onUnpin,
+  headingLevel,
 }) => {
   const actions: ActionSuiteItem[] = [
     {
@@ -60,7 +69,10 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
     <DetailCard
       title={result.name}
       icon={<ResultTypeIcon type={result.type} />}
-      onClick={() => onResultClick(result.id)}
+      // #794: the card opens its result through its title's link.
+      href={`/portal-results/${result.id}`}
+      linkComponent={RouterLink}
+      headingLevel={headingLevel}
       actions={actions}
       data-testid={`pinned-result-row-${result.id}`}
     >
@@ -92,16 +104,12 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
 
 export interface PinnedResultsListUIProps {
   results: PinnedResultRow[];
-  onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
-  onViewAll: () => void;
 }
 
 export const PinnedResultsListUI: React.FC<PinnedResultsListUIProps> = ({
   results,
-  onResultClick,
   onUnpin,
-  onViewAll,
 }) => {
   if (results.length === 0) {
     return (
@@ -119,24 +127,25 @@ export const PinnedResultsListUI: React.FC<PinnedResultsListUIProps> = ({
 
   return (
     <Stack spacing={1}>
-      {results.map((result) => (
-        <PinnedResultCardUI
-          key={result.id}
-          result={result}
-          onResultClick={onResultClick}
-          onUnpin={onUnpin}
-        />
-      ))}
+      <CardList aria-label="Pinned results">
+        {results.map((result) => (
+          <PinnedResultCardUI
+            key={result.id}
+            result={result}
+            onUnpin={onUnpin}
+          />
+        ))}
+      </CardList>
       <Box sx={{ textAlign: "right" }}>
-        <Typography
+        {/* #794: navigation is a link a keyboard reaches. */}
+        <Link
+          component={RouterLink}
+          href="/portal-results"
           variant="body2"
-          color="primary"
-          sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
-          onClick={onViewAll}
           data-testid="view-all-pinned-results"
         >
           View All
-        </Typography>
+        </Link>
       </Box>
     </Stack>
   );
@@ -162,14 +171,12 @@ const PinnedResultsData: React.FC<PinnedResultsDataProps> = ({ children }) => {
 // ── Connected ───────────────────────────────────────────────────────
 
 export interface PinnedResultsListConnectedProps {
-  onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
-  onViewAll: () => void;
 }
 
 export const PinnedResultsListConnected: React.FC<
   PinnedResultsListConnectedProps
-> = ({ onResultClick, onUnpin, onViewAll }) => (
+> = ({ onUnpin }) => (
   <PinnedResultsData>
     {(result) => (
       <DataResult results={{ pinned: result }}>
@@ -178,9 +185,7 @@ export const PinnedResultsListConnected: React.FC<
           return (
             <PinnedResultsListUI
               results={payload.portalResults as unknown as PinnedResultRow[]}
-              onResultClick={onResultClick}
               onUnpin={onUnpin}
-              onViewAll={onViewAll}
             />
           );
         }}

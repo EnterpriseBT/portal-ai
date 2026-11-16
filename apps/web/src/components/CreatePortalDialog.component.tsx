@@ -6,7 +6,7 @@ import {
   type OrganizationGetResponse,
   type StationListResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
@@ -67,6 +67,8 @@ const StationPicker: React.FC<StationPickerProps> = ({
           <Autocomplete
             options={options}
             getOptionLabel={(o) => o.label}
+            // By id: two stations can share a name (#986).
+            getOptionKey={(o) => o.value}
             isOptionEqualToValue={(a, b) => a.value === b.value}
             value={selectedOption}
             onChange={(_, newValue) => onChange(newValue?.value ?? null)}
@@ -146,22 +148,22 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Creating..." : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

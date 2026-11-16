@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { DeferredTextInput } from "../../ui/DeferredTextInput";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("DeferredTextInput", () => {
   it("renders with label and value", () => {
@@ -112,5 +113,11 @@ describe("DeferredTextInput", () => {
       />
     );
     expect(screen.getByText("Enter your name")).toBeInTheDocument();
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <DeferredTextInput label="Name" value="Alice" onChange={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

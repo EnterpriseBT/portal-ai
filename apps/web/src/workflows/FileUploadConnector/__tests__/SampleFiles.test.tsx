@@ -1,8 +1,17 @@
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { SampleFiles } from "../SampleFiles.component";
 
 describe("SampleFiles", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<SampleFiles />);
+    await expectNoAxeViolations(container);
+  });
+
   it("renders a prompt explaining what the links are", () => {
     render(<SampleFiles />);
     expect(screen.getByText(/recommended layout/i)).toBeInTheDocument();

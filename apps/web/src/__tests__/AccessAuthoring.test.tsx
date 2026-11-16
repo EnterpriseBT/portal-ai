@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, expectNoAxeViolations } from "./test-utils";
 import { AccessAuthoringUI } from "../modules/AccessAuthoring/AccessAuthoring.component";
 
 const baseProps = {
@@ -29,6 +29,32 @@ const rows = [
 ];
 
 describe("AccessAuthoringUI (#622)", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <AccessAuthoringUI
+        {...baseProps}
+        rows={[
+          ...rows,
+          {
+            id: "ses-1",
+            name: "Session",
+            system: false,
+            detail: "1 statement(s)",
+            sessionGenerated: true,
+          },
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations when empty", async () => {
+    const { container } = render(
+      <AccessAuthoringUI {...baseProps} rows={[]} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("lists items and offers New", () => {
     render(<AccessAuthoringUI {...baseProps} rows={rows} />);
     expect(screen.getByText("FullAccess")).toBeInTheDocument();

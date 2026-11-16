@@ -169,7 +169,7 @@ export const TableWidgetUI: React.FC<TableWidgetUIProps> = ({
         renderer registry maps `data-table` to this very widget, so re-entering
         it (as the retired QueryResultDataBlock did) is infinite recursion.
       */}
-      <DataTableBlock columns={columns} rows={rows} />
+      <DataTableBlock label="Query results" columns={columns} rows={rows} />
     </>
   );
 };

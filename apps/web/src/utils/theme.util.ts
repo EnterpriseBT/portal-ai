@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { ThemeName, THEME_MAP, useTheme } from "@portalai/core/ui";
-import { useStorage } from "./storage.util";
 import { Theme } from "@mui/material";
 
-const THEME_STORAGE_KEY = "portalai-theme";
+import { THEME_STORAGE_KEY } from "@portalai/core/constants";
+import { ThemeName, THEME_MAP, useTheme } from "@portalai/core/ui";
+
+import { useStorage } from "./storage.util";
 
 /**
  * Type guard to validate if a value is a valid ThemeName

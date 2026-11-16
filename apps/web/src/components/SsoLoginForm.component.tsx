@@ -13,6 +13,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ServerError } from "../utils/api.util";
 
 export interface SsoLoginFormUIProps {
@@ -42,6 +43,7 @@ export const SsoLoginFormUI: React.FC<SsoLoginFormUIProps> = ({
   serverError,
   onEmailChange,
 }) => {
+  const emailRef = useDialogAutoFocus(true);
   const [email, setEmail] = useState("");
   const [touched, setTouched] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -105,7 +107,9 @@ export const SsoLoginFormUI: React.FC<SsoLoginFormUIProps> = ({
         autoComplete="email"
         required
         fullWidth
-        autoFocus
+        // Focus moves here because "Sign in with SSO", the button the user
+        // just pressed, is gone. An effect rather than autoFocus (#793).
+        inputRef={emailRef}
         value={email}
         onChange={handleChange}
         onBlur={blurUnlessDialogControl(handleBlur)}

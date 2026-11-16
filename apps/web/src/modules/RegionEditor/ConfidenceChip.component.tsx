@@ -1,10 +1,7 @@
 import React from "react";
 import { Box, Typography } from "@portalai/core/ui";
 
-import {
-  confidenceBand,
-  CONFIDENCE_BAND_COLOR,
-} from "./utils/region-editor-colors.util";
+import { confidenceBand } from "./utils/region-editor-colors.util";
 
 export interface ConfidenceChipUIProps {
   label: string;
@@ -19,6 +16,8 @@ export const ConfidenceChipUI: React.FC<ConfidenceChipUIProps> = ({
   if (band === "none") return null;
   return (
     <Box
+      data-sheet-part="confidence-chip"
+      data-confidence={band}
       sx={{
         display: "inline-flex",
         alignItems: "center",
@@ -26,9 +25,8 @@ export const ConfidenceChipUI: React.FC<ConfidenceChipUIProps> = ({
         px: 0.75,
         py: 0.125,
         borderRadius: 8,
-        backgroundColor: `${CONFIDENCE_BAND_COLOR[band]}1A`,
-        border: "1px solid",
-        borderColor: CONFIDENCE_BAND_COLOR[band],
+        borderWidth: 1,
+        borderStyle: "solid",
         fontSize: 11,
       }}
     >

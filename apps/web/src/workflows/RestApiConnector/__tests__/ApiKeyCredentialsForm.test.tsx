@@ -3,7 +3,11 @@ import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 import { waitFor } from "@testing-library/react";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { ApiKeyCredentialsFormUI } from "../ApiKeyCredentialsForm.component";
 import type { ApiKeyCredentialsFormUIProps } from "../ApiKeyCredentialsForm.component";
@@ -98,5 +102,28 @@ describe("ApiKeyCredentialsFormUI", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/header or query name/i)).toHaveFocus();
     });
+  });
+});
+
+describe("ApiKeyCredentialsFormUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ApiKeyCredentialsFormUI
+        {...makeProps({ keyName: "X-API-Key", value: "secret" })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with field errors showing", async () => {
+    const { container } = render(
+      <ApiKeyCredentialsFormUI
+        {...makeProps({
+          errors: { keyName: "Key name is required", value: "Required" },
+          touched: { keyName: true, value: true },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { render, screen, expectNoAxeViolations } from "./test-utils";
 import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.component";
 
 describe("EntityRecordFieldValue", () => {
@@ -61,5 +61,16 @@ describe("EntityRecordFieldValue", () => {
     const pre = container.querySelector("pre");
     expect(pre).toBeTruthy();
     expect(pre!.textContent).toContain('"id-1"');
+  });
+
+  it("has no axe violations for scalar and code-block values", async () => {
+    const { container } = render(
+      <>
+        <EntityRecordFieldValue value={null} type="string" />
+        <EntityRecordFieldValue value="hello" type="string" />
+        <EntityRecordFieldValue value={{ id: 1, name: "Alice" }} type="json" />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

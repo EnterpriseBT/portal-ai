@@ -5,6 +5,7 @@ import type { StepConfig } from "@portalai/core/ui";
 import { DriftBannerUI } from "./DriftBanner.component";
 import { RegionDrawingStepUI } from "./RegionDrawingStep.component";
 import { ReviewStepUI } from "./ReviewStep.component";
+import type { ReviewStepUIProps } from "./ReviewStep.component";
 import type { LoadSliceFn } from "./SheetCanvas.component";
 import type { LocatorOption } from "./utils/identity-locator-options.util";
 import type {
@@ -18,7 +19,24 @@ import type { RegionEditorErrors } from "./utils/region-editor-validation.util";
 
 export type RegionEditorStep = 0 | 1;
 
-export interface RegionEditorUIProps {
+/**
+ * The review step's binding editor (#795), forwarded verbatim. With
+ * `onUpdateBinding`, `onToggleBindingExcluded` and `columnDefinitionSearch`
+ * a chip opens the editor; without them it falls back to `onEditBinding`.
+ */
+type ReviewBindingEditorProps = Pick<
+  ReviewStepUIProps,
+  | "onUpdateBinding"
+  | "onToggleBindingExcluded"
+  | "columnDefinitionSearch"
+  | "resolveReferenceOptions"
+  | "resolveReferenceFieldOptions"
+  | "resolveColumnDefinitionType"
+  | "resolveColumnDefinitionDescription"
+  | "resolveColumnLabel"
+>;
+
+export interface RegionEditorUIProps extends ReviewBindingEditorProps {
   step: RegionEditorStep;
   stepConfigs: StepConfig[];
   workbook: Workbook;
@@ -61,7 +79,7 @@ export interface RegionEditorUIProps {
 
   overallConfidence?: number;
   onJumpToRegion: (regionId: string) => void;
-  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  onEditBinding?: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
   onBack: () => void;
   isCommitting?: boolean;
@@ -124,6 +142,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   loadSlice,
   resolveIdentityLocatorOptions,
   onIdentityUpdate,
+  ...bindingEditor
 }) => {
   return (
     <Box
@@ -178,6 +197,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
             commitDisabledReason={commitDisabledReason}
             resolveIdentityLocatorOptions={resolveIdentityLocatorOptions}
             onIdentityUpdate={onIdentityUpdate}
+            {...bindingEditor}
           />
         </StepPanel>
       </Stepper>

@@ -262,3 +262,13 @@ describe("PortalView session mount (#971)", () => {
     expect(screen.queryByTestId("portal-session")).toBeNull();
   });
 });
+
+describe("PortalView page title (#797 smoke)", () => {
+  it("keeps an h1 while the portal loads", () => {
+    mockPortalsGet.mockReturnValue(loading());
+    render(<PortalView portalId="portal-1" />);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Portal" })
+    ).toBeInTheDocument();
+  });
+});

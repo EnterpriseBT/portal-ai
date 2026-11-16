@@ -120,7 +120,8 @@ interface ReviewChip {
    * editing those slots — they render as a static chip with the same shape.
    */
   onClick?: (anchorEl: HTMLElement) => void;
-  ariaLabel: string;
+  /** What editing the chip edits; its name adds the source and state. */
+  editLabel: string;
 }
 
 function buildChips(
@@ -149,11 +150,7 @@ function buildChips(
       confidence: binding.confidence,
       errorMessage,
       onClick: (anchor) => onEditBinding(binding.sourceLocator, anchor),
-      ariaLabel: excluded
-        ? `Excluded — click to edit: ${sourceLabel}`
-        : invalid
-          ? `Invalid — click to edit: ${sourceLabel}`
-          : `Edit binding: ${sourceLabel}`,
+      editLabel: "Edit binding",
     });
   }
 
@@ -177,11 +174,7 @@ function buildChips(
         excluded,
         invalid: !excluded && !id,
         onClick: (anchor) => onEditBinding(sourceLocator, anchor),
-        ariaLabel: excluded
-          ? `Excluded — click to edit pivot axis "${seg.axisName}"`
-          : id
-            ? `Edit pivot axis "${seg.axisName}" — bound to ${label ?? id}`
-            : `Edit pivot axis "${seg.axisName}" — unbound`,
+        editLabel: "Edit pivot axis",
       });
     }
   }
@@ -210,11 +203,7 @@ function buildChips(
         excluded,
         invalid: !excluded && !colDefId,
         onClick: (anchor) => onEditBinding(sourceLocator, anchor),
-        ariaLabel: excluded
-          ? `Excluded — click to edit intersection cell value "${field.name}"`
-          : colDefId
-            ? `Edit intersection cell value "${field.name}" — bound to ${label ?? colDefId}`
-            : `Edit intersection cell value "${field.name}" — unbound`,
+        editLabel: "Edit intersection cell value",
       });
     }
   } else if (region.cellValueField) {
@@ -231,11 +220,7 @@ function buildChips(
       excluded,
       invalid: !excluded && !id,
       onClick: (anchor) => onEditBinding(sourceLocator, anchor),
-      ariaLabel: excluded
-        ? `Excluded — click to edit cell value "${region.cellValueField.name}"`
-        : id
-          ? `Edit cell value "${region.cellValueField.name}" — bound to ${label ?? id}`
-          : `Edit cell value "${region.cellValueField.name}" — unbound`,
+      editLabel: "Edit cell value",
     });
   }
 
@@ -415,7 +400,14 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
               No fields match.
             </Typography>
           ) : (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Stack
+              direction="row"
+              spacing={1}
+              flexWrap="wrap"
+              useFlexGap
+              role="group"
+              aria-label={`Column bindings for ${region.proposedLabel ?? formatBounds(region.bounds)}`}
+            >
               {filteredChips.map((chip) => {
                 const interactive = chip.onClick !== undefined;
                 // Resolve the chip's status — drives the leading icon (the
@@ -452,6 +444,16 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                         : "success.main";
                 const targetLabel =
                   chip.columnDefinitionLabel ?? chip.columnDefinitionId ?? null;
+                // The chip says its state in words (#795), not only by icon.
+                const stateText =
+                  stateName === "excluded"
+                    ? "excluded"
+                    : stateName === "invalid"
+                      ? `invalid: ${chip.errorMessage ?? "needs a fix"}`
+                      : stateName === "unbound"
+                        ? "unbound"
+                        : `bound to ${targetLabel ?? "a column definition"}`;
+                const chipName = `${chip.editLabel}: ${chip.source} (${stateText})`;
                 const confidencePct =
                   chip.confidence !== undefined
                     ? Math.round(chip.confidence * 100)
@@ -526,7 +528,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                     <Box
                       component="button"
                       type="button"
-                      aria-label={chip.ariaLabel}
+                      aria-label={chipName}
                       onClick={(e) =>
                         chip.onClick!(e.currentTarget as HTMLElement)
                       }
@@ -537,7 +539,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                   </Tooltip>
                 ) : (
                   <Tooltip key={chip.key} title={tooltipCopy} arrow>
-                    <Box role="status" aria-label={chip.ariaLabel} sx={sx}>
+                    <Box role="status" aria-label={chipName} sx={sx}>
                       {inner}
                     </Box>
                   </Tooltip>

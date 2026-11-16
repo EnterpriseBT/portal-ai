@@ -142,7 +142,7 @@ export const fieldMappings = {
     return { ...rest, getById: loadSelectedOption };
   },
 
-  /** Search field mappings with `include=columnDefinition` — label shows columnDefinition label or sourceField. */
+  /** Search field mappings with `include=columnDefinition` — label shows `columnDefinitionLabel (key)`, or the sourceField without one. */
   searchWithColumnDefinition: <TOption extends SelectOption = SelectOption>(
     options?: SearchHookOptions<FieldMappingWithColumnDefinition, TOption>
   ) => {
@@ -151,7 +151,11 @@ export const fieldMappings = {
       fm: FieldMappingWithColumnDefinition
     ): SelectOption => ({
       value: fm.id,
-      label: fm.columnDefinition?.label ?? fm.sourceField,
+      // An entity can map several fields to one column definition ("Enum"),
+      // so the key, unique per entity, tells them apart (#986).
+      label: fm.columnDefinition
+        ? `${fm.columnDefinition.label} (${fm.normalizedKey})`
+        : fm.sourceField,
     });
     const mapFn = (options?.mapItem ?? defaultMap) as (
       item: FieldMappingWithColumnDefinition

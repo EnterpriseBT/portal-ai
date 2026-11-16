@@ -34,14 +34,12 @@ import { toServerError } from "../utils/api.util";
 export interface StationsViewUIProps {
   onCreateStation: () => void;
   onSetDefault: (station: Station) => void;
-  onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
 }
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
   onSetDefault,
-  onOpen,
   onDelete,
 }) => {
   const navigate = useNavigate();
@@ -86,7 +84,6 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             query={pagination.queryParams as StationListRequestQuery}
             setTotal={pagination.setTotal}
             onSetDefault={onSetDefault}
-            onOpen={onOpen}
             onDelete={onDelete}
             hasActiveFilters={
               !!(
@@ -105,7 +102,6 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 
 export const StationsView: React.FC = () => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -199,20 +195,11 @@ export const StationsView: React.FC = () => {
     queryClient,
   ]);
 
-  // Open station detail
-  const handleOpen = useCallback(
-    (station: Station) => {
-      navigate({ to: `/stations/${station.id}` });
-    },
-    [navigate]
-  );
-
   return (
     <>
       <StationsViewUI
         onCreateStation={handleOpenCreate}
         onSetDefault={handleSetDefault}
-        onOpen={handleOpen}
         onDelete={handleOpenDelete}
       />
 

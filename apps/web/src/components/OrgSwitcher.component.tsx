@@ -1,6 +1,8 @@
 import React from "react";
 
-import { Select, Typography, Box } from "@portalai/core/ui";
+import ListSubheader from "@mui/material/ListSubheader";
+
+import { MenuItem } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk } from "../api/sdk";
@@ -11,72 +13,71 @@ export interface OrgSwitcherUIProps {
   memberships: UserMembership[];
   onSwitch: (organizationId: string) => void;
   isSwitching?: boolean;
+  /** Set by MUI's MenuList on its first child when the menu opens. This
+   *  component is that child, so it hands them to the current org's item;
+   *  dropped, no item would take focus and the arrow keys would do nothing
+   *  (#797 review). */
+  autoFocus?: boolean;
+  tabIndex?: number;
 }
 
-const orgNameSx = (theme: { spacing: (...n: number[]) => string }) => ({
-  padding: theme.spacing(1, 2),
-});
-
 /**
- * Pure UI: the account menu's organization indicator + switcher.
+ * Pure UI: the account menu's organization indicator + switcher (#201),
+ * following the APG menu-radio pattern (#797).
  *
  * - 0 orgs → nothing.
- * - 1 org  → the org name as a plain label (nothing to switch to).
- * - 2+ orgs → a compact dropdown whose value is the current org; picking a
- *   different one switches. No "switch" label — a dropdown showing the current
- *   org is self-evidently switchable, and it stays one row tall no matter how
- *   many orgs the user has.
- *
- * Wrapped in a click-stopping Box so interacting with the dropdown doesn't
- * bubble to the parent account `<Menu onClick={close}>` and close it.
+ * - 1+ orgs → one `menuitemradio` per org, the current one checked (with
+ *   several, under a visual "Organization" label). Choosing another org
+ *   switches; choosing the current one does nothing. The account menu
+ *   closes on the click, as for any of its items, so `isSwitching` is
+ *   rarely seen there; the switch's outcome shows in the page reloading its
+ *   data. A `Select` inside a menu broke the pattern: a combobox isn't a
+ *   menu item.
  */
 export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
   memberships,
   onSwitch,
   isSwitching,
+  autoFocus,
+  tabIndex,
 }) => {
   if (memberships.length === 0) {
     return null;
   }
 
-  if (memberships.length === 1) {
-    return (
-      <Typography
-        variant="subtitle2"
-        sx={(theme) => ({
-          color: theme.palette.text.secondary,
-          ...orgNameSx(theme),
-        })}
-      >
-        {memberships[0].organization.name}
-      </Typography>
-    );
-  }
+  // MenuList's own roving focus, handed on to the current org. It's spread
+  // rather than written as an autoFocus attribute: jsx-a11y's no-autofocus
+  // targets focus stolen on page load, and this is the focus a menu owes the
+  // item it opens on (the APG menu pattern).
+  const menuFocus = { autoFocus, tabIndex };
 
-  const currentId = memberships.find((m) => m.isCurrent)?.organization.id ?? "";
+  const items = memberships.map((m) => (
+    <MenuItem
+      key={m.organization.id}
+      role="menuitemradio"
+      aria-checked={m.isCurrent}
+      selected={m.isCurrent}
+      disabled={isSwitching}
+      {...(m.isCurrent ? menuFocus : {})}
+      onClick={() => {
+        if (!m.isCurrent) onSwitch(m.organization.id);
+      }}
+    >
+      {m.organization.name}
+    </MenuItem>
+  ));
 
-  return (
-    <Box sx={orgNameSx} onClick={(e) => e.stopPropagation()}>
-      <Select
-        fullWidth
-        variant="standard"
-        value={currentId}
-        disabled={isSwitching}
-        aria-label="Organization"
-        // Drop the standard-variant underline — the account menu's Divider
-        // below already separates this row, so the underline is redundant.
-        slotProps={{ input: { disableUnderline: true } }}
-        options={memberships.map((m) => ({
-          value: m.organization.id,
-          label: m.organization.name,
-        }))}
-        onChange={(e) => {
-          const id = e.target.value;
-          if (id && id !== currentId) onSwitch(id);
-        }}
-      />
-    </Box>
-  );
+  if (memberships.length === 1) return items;
+
+  return [
+    // A visual group label. A menu may only own menu items, groups and
+    // separators, and each radio already names its org, so it's hidden
+    // from assistive tech.
+    <ListSubheader key="label" aria-hidden sx={{ lineHeight: 2.5 }}>
+      Organization
+    </ListSubheader>,
+    ...items,
+  ];
 };
 
 /**
@@ -86,7 +87,9 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
  * against the request's current org). The rare legitimate broad
  * invalidation. (#201)
  */
-export const OrgSwitcher: React.FC = () => {
+export const OrgSwitcher: React.FC<
+  Pick<OrgSwitcherUIProps, "autoFocus" | "tabIndex">
+> = (menuFocus) => {
   const queryClient = useQueryClient();
   const { data } = sdk.organizations.memberships();
   const { mutate, isPending } = sdk.organizations.switch();
@@ -109,6 +112,7 @@ export const OrgSwitcher: React.FC = () => {
       memberships={memberships}
       onSwitch={handleSwitch}
       isSwitching={isPending}
+      {...menuFocus}
     />
   );
 };

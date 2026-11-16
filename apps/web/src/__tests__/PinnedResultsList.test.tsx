@@ -4,7 +4,8 @@ import type { PortalResultListResponsePayload } from "@portalai/core/contracts";
 type PortalResultWithIncludes =
   PortalResultListResponsePayload["portalResults"][number];
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { PinnedResultCardUI, PinnedResultsListUI } =
   await import("../components/PinnedResultsList.component");
 
@@ -61,7 +62,6 @@ const result2 = makePinnedResult({
 describe("PinnedResultCardUI", () => {
   const defaultCardProps = {
     result: result1,
-    onResultClick: jest.fn(),
     onUnpin: jest.fn(),
   };
 
@@ -75,13 +75,12 @@ describe("PinnedResultCardUI", () => {
     expect(screen.getByText("1h ago")).toBeInTheDocument();
   });
 
-  it("should call onResultClick with result id when card is clicked", () => {
-    const onResultClick = jest.fn();
-    render(
-      <PinnedResultCardUI {...defaultCardProps} onResultClick={onResultClick} />
-    );
-    fireEvent.click(screen.getByText("Revenue Summary"));
-    expect(onResultClick).toHaveBeenCalledWith("result-1");
+  // #794: the card opens its result through its title's link.
+  it("links its title to the result", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} />);
+    expect(
+      screen.getByRole("link", { name: "Revenue Summary" })
+    ).toHaveAttribute("href", "/portal-results/result-1");
   });
 
   it("should call onUnpin with result id when unpin button is clicked", () => {
@@ -91,19 +90,11 @@ describe("PinnedResultCardUI", () => {
     expect(onUnpin).toHaveBeenCalledWith("result-1");
   });
 
-  it("should not trigger card click when unpin button is clicked", () => {
-    const onResultClick = jest.fn();
-    const onUnpin = jest.fn();
-    render(
-      <PinnedResultCardUI
-        {...defaultCardProps}
-        onResultClick={onResultClick}
-        onUnpin={onUnpin}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
-    expect(onUnpin).toHaveBeenCalledWith("result-1");
-    expect(onResultClick).not.toHaveBeenCalled();
+  it("describes Unpin by the card's title", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} />);
+    expect(
+      screen.getByRole("button", { name: "Unpin" })
+    ).toHaveAccessibleDescription("Revenue Summary");
   });
 
   // #640: a shared pin shows its definer's data.
@@ -115,7 +106,6 @@ describe("PinnedResultCardUI", () => {
           viewerIsDefiner: false,
           definer: { id: "u-9", displayName: "Ada Lovelace" },
         })}
-        onResultClick={jest.fn()}
         onUnpin={jest.fn()}
       />
     );
@@ -128,7 +118,6 @@ describe("PinnedResultCardUI", () => {
     const { rerender } = render(
       <PinnedResultCardUI
         result={makePinnedResult({ type: "data-table", viewerIsDefiner: true })}
-        onResultClick={jest.fn()}
         onUnpin={jest.fn()}
       />
     );
@@ -136,7 +125,6 @@ describe("PinnedResultCardUI", () => {
     rerender(
       <PinnedResultCardUI
         result={makePinnedResult({ type: "text", viewerIsDefiner: false })}
-        onResultClick={jest.fn()}
         onUnpin={jest.fn()}
       />
     );
@@ -145,37 +133,19 @@ describe("PinnedResultCardUI", () => {
 
   it("should render portal name when portalName is provided", () => {
     const result = makePinnedResult({ portalName: "Research Portal" });
-    render(
-      <PinnedResultCardUI
-        result={result}
-        onResultClick={jest.fn()}
-        onUnpin={jest.fn()}
-      />
-    );
+    render(<PinnedResultCardUI result={result} onUnpin={jest.fn()} />);
     expect(screen.getByText("from Research Portal")).toBeInTheDocument();
   });
 
   it("should not render portal name when portalName is null", () => {
     const result = makePinnedResult({ portalName: null });
-    render(
-      <PinnedResultCardUI
-        result={result}
-        onResultClick={jest.fn()}
-        onUnpin={jest.fn()}
-      />
-    );
+    render(<PinnedResultCardUI result={result} onUnpin={jest.fn()} />);
     expect(screen.queryByText(/from/)).not.toBeInTheDocument();
   });
 
   it("should not render portal name when portalName is absent", () => {
     const result = makePinnedResult();
-    render(
-      <PinnedResultCardUI
-        result={result}
-        onResultClick={jest.fn()}
-        onUnpin={jest.fn()}
-      />
-    );
+    render(<PinnedResultCardUI result={result} onUnpin={jest.fn()} />);
     expect(screen.queryByText(/from/)).not.toBeInTheDocument();
   });
 
@@ -196,9 +166,7 @@ describe("PinnedResultCardUI", () => {
 describe("PinnedResultsListUI", () => {
   const defaultListProps = {
     results: [result1, result2],
-    onResultClick: jest.fn(),
     onUnpin: jest.fn(),
-    onViewAll: jest.fn(),
   };
 
   beforeEach(() => {
@@ -223,11 +191,16 @@ describe("PinnedResultsListUI", () => {
     expect(screen.getByText("View All")).toBeInTheDocument();
   });
 
-  it("should call onViewAll when View All is clicked", () => {
-    const onViewAll = jest.fn();
-    render(<PinnedResultsListUI {...defaultListProps} onViewAll={onViewAll} />);
-    fireEvent.click(screen.getByTestId("view-all-pinned-results"));
-    expect(onViewAll).toHaveBeenCalled();
+  // #794: View All navigates, so it's a link, in a named list's footer.
+  it("links View All to the pinned results page, after a named list", () => {
+    render(<PinnedResultsListUI {...defaultListProps} />);
+    expect(screen.getByRole("link", { name: "View All" })).toHaveAttribute(
+      "href",
+      "/portal-results"
+    );
+    expect(
+      screen.getByRole("list", { name: "Pinned results" })
+    ).toBeInTheDocument();
   });
 
   it("should not render View All link in empty state", () => {
@@ -241,11 +214,7 @@ describe("PinnedResultsListUI", () => {
 describe("PinnedResultCardUI gates (#690)", () => {
   it("shows Unpin on a pin the caller may delete", () => {
     render(
-      <PinnedResultCardUI
-        result={makePinnedResult()}
-        onResultClick={jest.fn()}
-        onUnpin={jest.fn()}
-      />
+      <PinnedResultCardUI result={makePinnedResult()} onUnpin={jest.fn()} />
     );
     expect(screen.getByRole("button", { name: "Unpin" })).toBeInTheDocument();
   });
@@ -261,10 +230,46 @@ describe("PinnedResultCardUI gates (#690)", () => {
             share: false,
           },
         })}
-        onResultClick={jest.fn()}
         onUnpin={jest.fn()}
       />
     );
     expect(screen.queryByRole("button", { name: "Unpin" })).toBeNull();
+  });
+});
+
+describe("PinnedResultsListUI accessibility", () => {
+  it("has no axe violations with mixed pins", async () => {
+    const { container } = render(
+      <PinnedResultsListUI
+        results={[
+          result1,
+          result2,
+          d3Result,
+          makePinnedResult({
+            id: "result-geo-shared",
+            name: "Parcel Map",
+            type: "geo",
+            content: { layers: [] },
+            viewerIsDefiner: false,
+            definer: { id: "user-2", displayName: "Other User" },
+            capabilities: {
+              read: true,
+              write: false,
+              delete: false,
+              share: false,
+            },
+          }),
+        ]}
+        onUnpin={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations when empty", async () => {
+    const { container } = render(
+      <PinnedResultsListUI results={[]} onUnpin={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

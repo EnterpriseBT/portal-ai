@@ -9,7 +9,8 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { DynamicRecordField } =
   await import("../components/DynamicRecordField.component");
@@ -397,6 +398,45 @@ describe("DynamicRecordField — validation and accessibility", () => {
       />
     );
     expect(screen.getByRole("checkbox")).not.toBeRequired();
+  });
+
+  it.each([
+    ["string", col("name", "string", { required: true }), ""],
+    ["number", col("age", "number"), "42"],
+    ["boolean", col("active", "boolean"), true],
+    ["date", col("born", "date"), ""],
+    ["datetime", col("seen", "datetime"), ""],
+    [
+      "enum",
+      col("status", "enum", { enumValues: ["active", "inactive"] }),
+      "active",
+    ],
+    ["json", col("meta", "json"), ""],
+    ["geometry", col("shape", "geometry"), ""],
+    ["array", col("tags", "array"), ""],
+    ["reference", col("owner", "reference"), ""],
+    ["reference-array", col("contacts", "reference-array"), ""],
+  ] as const)(
+    "has no axe violations for a %s field",
+    async (_t, column, value) => {
+      const { container } = render(
+        <DynamicRecordField column={column} value={value} onChange={noop} />
+      );
+      await expectNoAxeViolations(container);
+    }
+  );
+
+  it("has no axe violations showing a field error", async () => {
+    const { container } = render(
+      <DynamicRecordField
+        column={col("name", "string", { required: true })}
+        value=""
+        onChange={noop}
+        error="Name is required"
+        touched={true}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });
 

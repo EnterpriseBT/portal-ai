@@ -3,6 +3,7 @@ import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 
 export interface SearchableSelectProps extends SelectBaseProps {
   options: SelectOption[];
@@ -35,6 +36,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
       }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
+      getOptionKey={selectOptionKey}
       disabled={disabled}
       size={size}
       fullWidth={fullWidth}

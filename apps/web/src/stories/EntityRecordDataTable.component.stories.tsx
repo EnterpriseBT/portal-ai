@@ -110,14 +110,13 @@ export const LiveSource: Story = {
   },
 };
 
-export const WithRowClick: Story = {
+export const WithRowLinks: Story = {
   args: {
     connectorEntityId: "entity-1",
     rows,
     columns,
     source: "cache",
-    onRowClick: (row: Record<string, unknown>) =>
-      console.log("Row clicked:", row),
+    rowHref: (row: Record<string, unknown>) => `#record-${String(row.id)}`,
   },
 };
 

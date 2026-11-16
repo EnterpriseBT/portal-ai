@@ -517,6 +517,21 @@ describe("Header", () => {
 });
 ```
 
+### Accessibility
+
+`expectNoAxeViolations(container)` from `src/__tests__/test-utils.tsx` asserts that a render has no axe violations against WCAG 2.2 AA and best practice. jsdom can't measure colour contrast or landmarks, so those two rules are off; core's `theme-contrast.test.ts` holds the palettes at AA instead. `component-axe.guard.test.ts` fails CI on a component whose own test doesn't call it, and jsx-a11y's strict rules gate `npm run lint` (#799).
+
+```typescript
+import { render, expectNoAxeViolations } from "./test-utils";
+
+it("has no accessibility violations", async () => {
+  const { container } = render(<HeaderUI title="Test" />);
+  await expectNoAxeViolations(container);
+});
+```
+
+**The shell (#797).** Each layout starts with a skip link and wraps the page in `main#main-content`. `useRouteAnnouncer()` (`src/utils/route-announcer.util.ts`) sets the tab title from the page's `h1` and moves focus to it after a navigation. To test a page's title or focus behaviour, render it inside a router with a `main#main-content` and call `resetRouteAnnouncer()` in `beforeEach`. The first page of a test counts as a first load, so wait for it to render before navigating (`src/__tests__/route-announcer.util.test.tsx` shows the pattern). Toasts render into the Notifications region on `<body>`, outside a test's container. Find them by `data-testid="toast-<severity>"`, since they carry no `alert` role of their own.
+
 ### Test Coverage
 
 Minimum coverage thresholds are configured at 60% for:

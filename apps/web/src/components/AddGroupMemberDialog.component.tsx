@@ -3,10 +3,11 @@ import React from "react";
 import type { EntityGroupMemberOverlapResponsePayload } from "@portalai/core/contracts";
 import {
   AsyncSearchableSelect,
-  Button,
+  GatedButton,
   Modal,
-  Stack,
+  pendingGate,
   type SelectOption,
+  Stack,
 } from "@portalai/core/ui";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -65,24 +66,25 @@ export const AddGroupMemberDialog: React.FC<AddGroupMemberDialogProps> = ({
       pending={isAdding}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isAdding}
+            gate={pendingGate(isAdding, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={() => {
               if (!addDisabled) onAddMember();
             }}
+            gate={pendingGate(isAdding)}
             disabled={addDisabled}
           >
             Submit
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

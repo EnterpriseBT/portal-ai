@@ -35,12 +35,20 @@ const { current } = Astro.props as { current?: string };
     </nav>
 
     <div class="site-header__actions">
+      {
+        /* An APG toggle button (#798): a stable name and aria-pressed, which
+          the theme script keeps in step with the resolved theme. Shown only
+          once the head script marks the page data-js (before first paint, so
+          no reflow): with JS off it can't switch anything, so it stays out of
+          the tab order. */
+      }
       <button
         type="button"
         class="theme-toggle"
         data-theme-toggle
-        aria-label="Toggle colour theme"
-        title="Toggle colour theme"
+        aria-label="Dark theme"
+        aria-pressed="false"
+        title="Switch to dark theme"
       >
         {
           /* Both icons ship; CSS shows the one matching the resolved theme —
@@ -110,6 +118,11 @@ const { current } = Astro.props as { current?: string };
   .site-header__nav a {
     color: var(--color-text-secondary);
     text-decoration: none;
+    /* WCAG 2.5.8 (#798, KB-10): a text link is ~17px tall; every nav target
+      is at least 24px, including the rows the nav wraps into. */
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 24px;
   }
 
   .site-header__nav a:hover,
@@ -135,6 +148,12 @@ const { current } = Astro.props as { current?: string };
     border-radius: var(--radius-base);
     padding: calc(var(--space-unit) * 0.5);
     line-height: 0;
+  }
+
+  /* With JS off the toggle can't work (#798): hide it. The head script sets
+    data-js before first paint, so with JS on it's there from the start. */
+  :global(html:not([data-js])) .theme-toggle {
+    display: none;
   }
 
   .theme-toggle:hover {

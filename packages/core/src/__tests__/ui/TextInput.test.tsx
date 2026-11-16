@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { TextInput } from "../../ui/TextInput";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("TextInput Component", () => {
   describe("Rendering", () => {
@@ -76,5 +77,14 @@ describe("TextInput Component", () => {
         container.querySelector(".MuiInputBase-sizeSmall")
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("TextInput accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <TextInput label="Email" error helperText="Invalid email" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

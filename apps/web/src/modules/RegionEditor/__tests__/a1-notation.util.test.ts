@@ -5,6 +5,7 @@ import {
   formatCell,
   letterToColIndex,
   normalizeBounds,
+  parseRange,
 } from "../utils/a1-notation.util";
 
 describe("colIndexToLetter", () => {
@@ -77,4 +78,67 @@ describe("coordInBounds", () => {
     expect(coordInBounds({ row: 4, col: 2 }, bounds)).toBe(false);
     expect(coordInBounds({ row: 2, col: 5 }, bounds)).toBe(false);
   });
+});
+
+describe("parseRange (#795)", () => {
+  const sheet = { rowCount: 200, colCount: 26 };
+
+  test("parses a rectangle", () => {
+    expect(parseRange("A1:D20", sheet)).toEqual({
+      ok: true,
+      bounds: { startRow: 0, endRow: 19, startCol: 0, endCol: 3 },
+    });
+  });
+
+  test("normalizes a reversed rectangle", () => {
+    expect(parseRange("D20:A1", sheet)).toEqual(parseRange("A1:D20", sheet));
+  });
+
+  test("parses a single cell", () => {
+    expect(parseRange("B3", sheet)).toEqual({
+      ok: true,
+      bounds: { startRow: 2, endRow: 2, startCol: 1, endCol: 1 },
+    });
+  });
+
+  test("parses full-height columns", () => {
+    expect(parseRange("A:D", sheet)).toEqual({
+      ok: true,
+      bounds: { startRow: 0, endRow: 199, startCol: 0, endCol: 3 },
+    });
+  });
+
+  test("parses full-width rows", () => {
+    expect(parseRange("3:10", sheet)).toEqual({
+      ok: true,
+      bounds: { startRow: 2, endRow: 9, startCol: 0, endCol: 25 },
+    });
+  });
+
+  test("ignores case and surrounding whitespace", () => {
+    expect(parseRange("  b2 : c4 ", sheet)).toEqual({
+      ok: true,
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
+    });
+  });
+
+  test.each(["", "   ", "hello", "A0", "A1:", "1A", "A1:B2:C3", "A:3"])(
+    "rejects %j with the format hint",
+    (input) => {
+      expect(parseRange(input, sheet)).toEqual({
+        ok: false,
+        error: "Enter a range like A1:D20",
+      });
+    }
+  );
+
+  test.each(["A1:AA1", "A1:A201", "AB:AC", "199:201"])(
+    "rejects %j as outside the sheet",
+    (input) => {
+      expect(parseRange(input, sheet)).toEqual({
+        ok: false,
+        error: "Outside the sheet (A1:Z200)",
+      });
+    }
+  );
 });

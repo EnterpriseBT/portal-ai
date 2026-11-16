@@ -40,7 +40,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntitiesViewUI } = await import("../views/Entities.view");
 
@@ -132,6 +132,22 @@ describe("EntitiesView", () => {
     render(<EntitiesViewUI {...sharedProps} />);
     expect(screen.getByText("Contacts")).toBeInTheDocument();
     expect(screen.getByText("Deals")).toBeInTheDocument();
+  });
+
+  // #794: a named list of cards, each an h2 linking to its entity, whose
+  // Delete is described by the card's title.
+  it("lists the entities as cards linking to each entity", () => {
+    render(<EntitiesViewUI {...sharedProps} />);
+    const list = screen.getByRole("list", { name: "Entities" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    const link = screen.getByRole("link", { name: "Contacts" });
+    expect(link).toHaveAttribute("href", "/entities/ent-1");
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Contacts" })
+    ).toContainElement(link);
+    expect(
+      screen.getAllByRole("button", { name: "Delete" })[0]
+    ).toHaveAccessibleDescription("Contacts");
   });
 
   it("renders connector instance name on entity cards", () => {

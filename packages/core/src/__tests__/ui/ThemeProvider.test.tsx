@@ -2,7 +2,15 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
+import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import MenuItem from "@mui/material/MenuItem";
 import {
+  a11yComponents,
+  FOCUS_RING_WIDTH,
   ThemeProvider,
   useTheme,
   ThemeContext,
@@ -10,6 +18,7 @@ import {
   THEME_MAP,
   type ThemeName,
 } from "../../ui/ThemeProvider";
+import { expectNoAxeViolations } from "../axe.util";
 
 // Test component that uses the theme context
 const ThemeConsumer: React.FC<{
@@ -503,5 +512,314 @@ describe("ThemeProvider Component", () => {
         "brand.dark"
       );
     });
+  });
+});
+
+describe("accessibility defaults (#797)", () => {
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s draws a 2px focus ring on a keyboard-focused ButtonBase",
+    (name) => {
+      const overrides = THEME_MAP[name].components?.MuiButtonBase
+        ?.styleOverrides?.root as Record<string, Record<string, unknown>>;
+      expect(overrides["&.Mui-focusVisible"]).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${THEME_MAP[name].palette.primary.main}`,
+        outlineOffset: 2,
+      });
+    }
+  );
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s rings a keyboard-focused grid cell and keeps the JSON's baseline (#795)",
+    (name) => {
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      expect(overrides['[role="gridcell"]:focus-visible']).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${THEME_MAP[name].palette.primary.main}`,
+        outlineOffset: -FOCUS_RING_WIDTH,
+      });
+      expect(overrides.body).toEqual({ backgroundImage: "none" });
+    }
+  );
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s colours a code block from palette.code and rings it on focus (#799)",
+    (name) => {
+      const { palette } = THEME_MAP[name];
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      const block = "[data-code-block][data-code-block]";
+      expect(overrides[block]).toEqual({
+        backgroundColor: palette.code.background,
+        color: palette.code.text,
+      });
+      expect(overrides[`${block} .hljs-number`]).toEqual({
+        color: palette.code.number,
+      });
+      expect(overrides[`${block} .hljs-meta`]).toEqual({
+        color: palette.code.meta,
+      });
+      expect(overrides[`${block}:focus-visible`]).toEqual({
+        outline: `${FOCUS_RING_WIDTH}px solid ${palette.primary.main}`,
+        outlineOffset: -FOCUS_RING_WIDTH,
+      });
+    }
+  );
+
+  // #1022 smoke: MapLibre's popup has its own white background, while its
+  // text inherited the page's colour, so in Brand Dark it read light grey on
+  // white. The theme paints the popup, its tip and its close button.
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s paints the map popup from the palette",
+    (name) => {
+      const { palette } = THEME_MAP[name];
+      const overrides = THEME_MAP[name].components?.MuiCssBaseline
+        ?.styleOverrides as Record<string, Record<string, unknown>>;
+      const popup = ".maplibregl-popup .maplibregl-popup-content";
+      expect(overrides[popup]).toMatchObject({
+        backgroundColor: palette.background.paper,
+        color: palette.text.primary,
+      });
+      expect(
+        overrides[".maplibregl-popup .maplibregl-popup-close-button"]
+      ).toMatchObject({ color: palette.text.primary });
+      for (const [anchor, side] of [
+        ["top", "Bottom"],
+        ["top-left", "Bottom"],
+        ["top-right", "Bottom"],
+        ["bottom", "Top"],
+        ["bottom-left", "Top"],
+        ["bottom-right", "Top"],
+        ["left", "Right"],
+        ["right", "Left"],
+      ]) {
+        expect(
+          overrides[
+            `.maplibregl-popup.maplibregl-popup-anchor-${anchor} .maplibregl-popup-tip`
+          ]
+        ).toEqual({ [`border${side}Color`]: palette.background.paper });
+      }
+    }
+  );
+
+  it("names an unnamed CircularProgress 'Loading'", () => {
+    render(
+      <ThemeProvider>
+        <CircularProgress />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Loading" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a caller's own name", () => {
+    render(
+      <ThemeProvider>
+        <CircularProgress aria-label="Saving" />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Saving" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the JSON's own overrides for the same component", () => {
+    expect(
+      THEME_MAP.brand.components?.MuiCircularProgress?.defaultProps
+    ).toMatchObject({
+      thickness: 3.6,
+      "aria-label": "Loading",
+    });
+    expect(
+      a11yComponents(THEME_MAP.brand.palette).components?.MuiButtonBase
+    ).toBeDefined();
+  });
+});
+
+describe("linear progress name (#797)", () => {
+  it("names an unnamed LinearProgress 'Progress'", () => {
+    render(
+      <ThemeProvider>
+        <LinearProgress value={40} variant="determinate" />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole("progressbar", { name: "Progress" })
+    ).toBeInTheDocument();
+  });
+});
+
+describe("subtitles aren't headings (#793)", () => {
+  it.each(["brand", "brand.dark"] as const)(
+    "renders subtitle1/subtitle2 as paragraphs in %s, other variants unchanged",
+    (name) => {
+      render(
+        <ThemeProvider defaultTheme={name}>
+          <Typography variant="subtitle1">s1</Typography>
+          <Typography variant="subtitle2">s2</Typography>
+          <Typography variant="h2">h</Typography>
+          <Typography variant="body1">b</Typography>
+        </ThemeProvider>
+      );
+      expect(screen.getByText("s1").tagName).toBe("P");
+      expect(screen.getByText("s2").tagName).toBe("P");
+      expect(screen.getByText("h").tagName).toBe("H2");
+      expect(screen.getByText("b").tagName).toBe("P");
+      expect(screen.queryAllByRole("heading")).toHaveLength(1);
+    }
+  );
+});
+
+describe("the aria-disabled look comes from the theme (#793)", () => {
+  const theme = THEME_MAP.brand;
+  const disabledColor = theme.palette.action.disabled;
+
+  it.each(["brand", "brand.dark"] as const)(
+    "styles aria-disabled buttons, icon buttons and menu items in %s",
+    (name) => {
+      render(
+        <ThemeProvider defaultTheme={name}>
+          <Button variant="contained" aria-disabled="true">
+            contained
+          </Button>
+          <Button variant="outlined" aria-disabled="true">
+            outlined
+          </Button>
+          <IconButton aria-label="icon" aria-disabled="true">
+            x
+          </IconButton>
+          <MenuItem aria-disabled="true">item</MenuItem>
+        </ThemeProvider>
+      );
+      const color = THEME_MAP[name].palette.action.disabled;
+      for (const el of [
+        screen.getByRole("button", { name: "contained" }),
+        screen.getByRole("button", { name: "outlined" }),
+        screen.getByRole("button", { name: "icon" }),
+      ]) {
+        expect(el).toHaveStyle({ cursor: "not-allowed", color });
+      }
+      expect(screen.getByRole("button", { name: "contained" })).toHaveStyle({
+        backgroundColor: THEME_MAP[name].palette.action.disabledBackground,
+      });
+      expect(screen.getByRole("menuitem", { name: "item" })).toHaveStyle({
+        cursor: "not-allowed",
+        opacity: String(THEME_MAP[name].palette.action.disabledOpacity),
+      });
+    }
+  );
+
+  it("leaves an enabled button alone", () => {
+    render(
+      <ThemeProvider>
+        <Button variant="contained">ok</Button>
+      </ThemeProvider>
+    );
+    expect(screen.getByRole("button", { name: "ok" })).not.toHaveStyle({
+      color: disabledColor,
+    });
+  });
+});
+
+describe("the a11y layer merges with the JSON (#793)", () => {
+  it("keeps the JSON's MuiButton root alongside the aria-disabled rule", () => {
+    const root = THEME_MAP.brand.components?.MuiButton?.styleOverrides
+      ?.root as Record<string, unknown>;
+    expect(root).toMatchObject({ borderRadius: 8, textTransform: "none" });
+    expect(root['&[aria-disabled="true"]']).toBeDefined();
+  });
+});
+
+describe("sheet canvas rules (#996)", () => {
+  const baseline = (name: ThemeName) =>
+    THEME_MAP[name].components?.MuiCssBaseline?.styleOverrides as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s styles the canvas from its own palette.sheet",
+    (name) => {
+      const rules = baseline(name);
+      const { sheet } = THEME_MAP[name].palette;
+      expect(
+        rules['[data-sheet-part][data-sheet-part="row-header"]']
+      ).toMatchObject({
+        backgroundColor: sheet.headerBackground,
+        color: sheet.headerText,
+      });
+      expect(
+        rules[
+          '[data-sheet-part][data-sheet-part="segment-chip"][data-kind="pivot"]'
+        ]
+      ).toEqual({
+        backgroundColor: sheet.segment.pivot.chip,
+        color: sheet.chipText,
+      });
+      expect(
+        rules[
+          '[data-sheet-part][data-sheet-part="intersection"][data-kind="skip-mixed"]'
+        ]
+      ).toMatchObject({
+        backgroundColor: sheet.intersection.skipMixed.fill,
+        borderColor: sheet.intersection.skipMixed.border,
+      });
+      expect(
+        rules['[data-sheet-part][data-sheet-part="region-badge"]']
+      ).toEqual({
+        backgroundColor: sheet.badgeBackground,
+        color: "var(--region-color)",
+      });
+    }
+  );
+
+  it.each(Object.keys(THEME_MAP) as ThemeName[])(
+    "%s maps each entity slot to its own palette colour",
+    (name) => {
+      const rules = baseline(name);
+      const { sheet } = THEME_MAP[name].palette;
+      sheet.entities.forEach((colour, slot) => {
+        expect(rules[`[data-entity="${slot}"]`]).toEqual({
+          "--region-color": colour,
+        });
+      });
+      expect(rules['[data-entity="none"]']).toEqual({
+        "--region-color": sheet.entityFallback,
+      });
+    }
+  );
+
+  it("rings an editable intersection like a cell", () => {
+    expect(
+      baseline("brand")[
+        '[data-sheet-part][data-sheet-part="intersection"][data-editable]:focus-visible'
+      ]
+    ).toMatchObject({ outlineOffset: -FOCUS_RING_WIDTH });
+  });
+
+  it("refuses a theme without a sheet palette", () => {
+    const { sheet: _sheet, ...palette } = THEME_MAP.brand.palette;
+    expect(() =>
+      a11yComponents(palette as typeof THEME_MAP.brand.palette)
+    ).toThrow(/palette\.sheet/);
+  });
+
+  it("keeps the gridcell focus ring beside the canvas rules", () => {
+    expect(baseline("brand")['[role="gridcell"]:focus-visible']).toBeDefined();
+  });
+});
+
+describe("ThemeProvider accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ThemeProvider>
+        <Typography variant="h1">Settings</Typography>
+        <Button>Save</Button>
+        <IconButton aria-label="Close">x</IconButton>
+        <CircularProgress />
+        <LinearProgress aria-label="Uploading" />
+      </ThemeProvider>
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
 import { ConnectorInstanceCreateRequestBodySchema } from "@portalai/core/contracts";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../../api/sdk";
@@ -61,22 +61,22 @@ export const SandboxConnectorWorkflowUI: React.FC<
       onSubmit={onSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={onSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Connecting..." : "Connect"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

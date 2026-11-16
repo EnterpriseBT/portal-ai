@@ -1,8 +1,13 @@
-import { useState } from "react";
-import { render, screen } from "./test-utils";
+import { jest } from "@jest/globals";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+  expectNoAxeViolations,
+} from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import { SidebarNavUI } from "../components/SidebarNav.component";
-import { Box, Typography } from "@portalai/core/ui";
+import { SidebarNav, SidebarNavUI } from "../components/SidebarNav.component";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 
@@ -90,129 +95,116 @@ describe("SidebarNavUI", () => {
       .closest(".MuiDrawer-root")?.parentElement;
     expect(wrapper).not.toHaveStyle({ display: "none" });
   });
+
+  // Adversarial walk F2: the open mobile drawer ignored Escape.
+  describe("Escape (#797)", () => {
+    it("calls onEscape for an Escape pressed inside the drawer", async () => {
+      const onEscape = jest.fn();
+      render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores other keys, and Escape without an onEscape", async () => {
+      const onEscape = jest.fn();
+      const { rerender } = render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Enter}");
+      expect(onEscape).not.toHaveBeenCalled();
+      rerender(
+        <SidebarNavUI {...defaultProps}>
+          <a href="/help">Help</a>
+        </SidebarNavUI>
+      );
+      screen.getByRole("link", { name: "Help" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).not.toHaveBeenCalled();
+    });
+
+    it("leaves an Escape inside a dialog the drawer opened to that dialog", async () => {
+      const onEscape = jest.fn();
+      render(
+        <SidebarNavUI {...defaultProps} onEscape={onEscape}>
+          <Dialog open>
+            <DialogContent>
+              <button type="button">Inside</button>
+            </DialogContent>
+          </Dialog>
+        </SidebarNavUI>
+      );
+      screen.getByRole("button", { name: "Inside" }).focus();
+      await userEvent.keyboard("{Escape}");
+      expect(onEscape).not.toHaveBeenCalled();
+    });
+  });
 });
 
-const VersionFooter = ({
-  collapsed,
-  version = "dev-abc123",
-  sha = "abc123",
-}: {
-  collapsed: boolean;
-  version?: string;
-  sha?: string;
-}) => {
-  const [versionOpen, setVersionOpen] = useState(false);
-  return (
-    <>
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        onClick={() => setVersionOpen(true)}
-        sx={{ cursor: "pointer" }}
-      >
-        {collapsed
-          ? `\u00A9 ${new Date().getFullYear()}`
-          : `Portalsai \u00A9 ${new Date().getFullYear()}`}
-      </Typography>
-      <Dialog
-        open={versionOpen}
-        onClose={() => setVersionOpen(false)}
-        maxWidth="xs"
-      >
-        <DialogContent>
-          <Typography variant="body2">App version</Typography>
-          <Box component="code">
-            {version} ({sha})
-          </Box>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-};
-
-describe("Version footer", () => {
-  it("displays copyright with 'Portalsai' prefix when expanded", () => {
-    render(
-      <SidebarNavUI
-        collapsed={false}
-        hidden={false}
-        footer={<VersionFooter collapsed={false} />}
-      >
-        <div>Nav</div>
-      </SidebarNavUI>
-    );
-
-    const year = new Date().getFullYear();
-    expect(screen.getByText(`Portalsai \u00A9 ${year}`)).toBeInTheDocument();
-  });
-
-  it("displays copyright without prefix when collapsed", () => {
-    render(
-      <SidebarNavUI
-        collapsed={true}
-        hidden={false}
-        footer={<VersionFooter collapsed={true} />}
-      >
-        <div>Nav</div>
-      </SidebarNavUI>
-    );
-
-    const year = new Date().getFullYear();
-    expect(screen.getByText(`\u00A9 ${year}`)).toBeInTheDocument();
-  });
-
-  it("does not show version dialog by default", () => {
-    render(
-      <SidebarNavUI
-        collapsed={false}
-        hidden={false}
-        footer={<VersionFooter collapsed={false} />}
-      >
-        <div>Nav</div>
-      </SidebarNavUI>
-    );
-
-    expect(screen.queryByText("App version")).not.toBeInTheDocument();
-  });
-
-  it("opens version dialog on copyright click", async () => {
+// The shipped dialog, opened from the real caption (#983). These replace
+// tests of a hand-built copy that rendered MUI's raw Dialog.
+describe("Version dialog", () => {
+  const openVersionDialog = async () => {
     const user = userEvent.setup();
-    render(
-      <SidebarNavUI
-        collapsed={false}
-        hidden={false}
-        footer={
-          <VersionFooter collapsed={false} version="dev-abc123" sha="abc123" />
-        }
-      >
-        <div>Nav</div>
-      </SidebarNavUI>
-    );
+    render(<SidebarNav />);
+    await user.click(screen.getByRole("button", { name: /app version/ }));
+    return {
+      user,
+      dialog: await screen.findByRole("dialog", { name: "App version" }),
+    };
+  };
 
-    const year = new Date().getFullYear();
-    await user.click(screen.getByText(`Portalsai \u00A9 ${year}`));
-
-    expect(screen.getByText("App version")).toBeInTheDocument();
-    expect(screen.getByText("dev-abc123 (abc123)")).toBeInTheDocument();
+  it("is closed until the caption is pressed", () => {
+    render(<SidebarNav />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("displays version and SHA in the dialog", async () => {
-    const user = userEvent.setup();
-    render(
-      <SidebarNavUI
-        collapsed={false}
-        hidden={false}
-        footer={
-          <VersionFooter collapsed={false} version="v1.2.3" sha="deadbeef" />
-        }
-      >
-        <div>Nav</div>
-      </SidebarNavUI>
+  it("shows a visible title and the build's version and SHA", async () => {
+    const { dialog } = await openVersionDialog();
+    expect(
+      within(dialog).getByRole("heading", { name: "App version" })
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText("App version")).toHaveLength(1);
+    // Jest has no Vite env, so the build's version and SHA fall back.
+    expect(dialog.querySelector("code")).toHaveTextContent(/^dev \(local\)$/);
+  });
+
+  it("holds a focusable close button that Tab reaches", async () => {
+    const { user, dialog } = await openVersionDialog();
+    const close = within(dialog).getByRole("button", { name: "close" });
+    // Focus opens on the dialog itself, not already on Close.
+    const root = dialog.closest(".MuiDialog-root");
+    expect(root).toContainElement(document.activeElement as HTMLElement);
+    expect(close).not.toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
+  });
+
+  it("closes from the close button", async () => {
+    const { user, dialog } = await openVersionDialog();
+    await user.click(within(dialog).getByRole("button", { name: "close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
+  });
 
-    const year = new Date().getFullYear();
-    await user.click(screen.getByText(`Portalsai \u00A9 ${year}`));
+  it("has no axe violations when open (#793)", async () => {
+    const { dialog } = await openVersionDialog();
+    await expectNoAxeViolations(dialog);
+  });
 
-    expect(screen.getByText("v1.2.3 (deadbeef)")).toBeInTheDocument();
+  it("still closes on Escape", async () => {
+    const { user } = await openVersionDialog();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
   });
 });

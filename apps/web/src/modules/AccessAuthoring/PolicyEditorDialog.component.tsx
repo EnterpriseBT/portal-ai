@@ -2,7 +2,14 @@ import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
 
-import { Button, MetadataList, Modal, Stack } from "@portalai/core/ui";
+import {
+  Button,
+  GatedButton,
+  MetadataList,
+  Modal,
+  pendingGate,
+  Stack,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import {
   PolicyUpsertRequestSchema,
@@ -77,14 +84,15 @@ export const PolicyEditorDialogUI: React.FC<PolicyEditorDialogUIProps> = ({
             {readOnly ? "Close" : "Cancel"}
           </Button>
           {!readOnly && (
-            <Button
+            <GatedButton
               type="button"
               variant="contained"
               onClick={onSubmit}
-              disabled={isPending || !name.trim()}
+              gate={pendingGate(isPending)}
+              disabled={!name.trim()}
             >
               {isPending ? "Saving…" : "Save"}
-            </Button>
+            </GatedButton>
           )}
         </Stack>
       }

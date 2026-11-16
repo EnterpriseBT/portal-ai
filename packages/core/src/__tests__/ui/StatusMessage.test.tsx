@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StatusMessage } from "../../ui/StatusMessage";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("StatusMessage Component", () => {
   describe("Rendering", () => {
@@ -91,6 +92,72 @@ describe("StatusMessage Component", () => {
     it("should not render tooltip when tooltip prop is not provided", () => {
       render(<StatusMessage message="No tooltip" />);
       expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("StatusMessage accessibility (#797)", () => {
+  it("announces an error assertively", () => {
+    render(<StatusMessage variant="error" message="Could not load" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load");
+  });
+
+  it.each(["info", "warning", "success"] as const)(
+    "announces %s politely",
+    (variant) => {
+      render(<StatusMessage variant={variant} message="Saved" />);
+      expect(screen.getByRole("status")).toHaveTextContent("Saved");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+  );
+
+  it("announces loading politely and names its spinner by the message", () => {
+    render(<StatusMessage loading message="Loading records" />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Loading records" })
+    ).toBeInTheDocument();
+  });
+
+  it("names a message-less spinner 'Loading'", () => {
+    render(<StatusMessage loading />);
+    expect(
+      screen.getByRole("progressbar", { name: "Loading" })
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["loading", { loading: true, message: "Loading" }],
+    ["error", { variant: "error" as const, message: "Failed" }],
+  ])("has no axe violations (%s)", async (_label, props) => {
+    const { container } = render(<StatusMessage {...props} />);
+    await expectNoAxeViolations(container);
+  });
+
+  // #794: a screen-reader-only region, mounted for its owner's lifetime so a
+  // change of text is announced.
+  describe("visuallyHidden", () => {
+    it("renders only a status with its text, no icon", () => {
+      const { container } = render(
+        <StatusMessage visuallyHidden message="12 results" />
+      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("12 results");
+      expect(container.querySelector("svg")).toBeNull();
+    });
+
+    it("is present with no text, so a later message is announced", () => {
+      const { rerender } = render(<StatusMessage visuallyHidden message="" />);
+      const status = screen.getByRole("status");
+      expect(status).toBeEmptyDOMElement();
+      rerender(<StatusMessage visuallyHidden message="No results found" />);
+      expect(screen.getByRole("status")).toBe(status);
+      expect(status).toHaveTextContent("No results found");
+    });
+
+    it("is an alert for an error", () => {
+      render(<StatusMessage visuallyHidden variant="error" message="Failed" />);
+      expect(screen.getByRole("alert")).toHaveTextContent("Failed");
     });
   });
 });

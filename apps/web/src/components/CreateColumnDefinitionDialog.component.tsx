@@ -4,7 +4,13 @@ import { z } from "zod";
 import { keyField, nameField } from "@portalai/core/contracts";
 import type { ColumnDefinitionCreateRequestBody } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Button, Modal, Stack, Select } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Select,
+  Stack,
+} from "@portalai/core/ui";
 import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 
@@ -188,22 +194,22 @@ export const CreateColumnDefinitionDialog: React.FC<
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Creating..." : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

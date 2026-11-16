@@ -29,20 +29,14 @@ import { useToast } from "../utils/toast.context";
 
 export interface DashboardViewUIProps {
   onNewPortal: () => void;
-  onPortalClick: (portalId: string) => void;
   onDeletePortal: (portalId: string, portalName: string) => void;
-  onResultClick: (resultId: string) => void;
   onUnpin: (resultId: string) => void;
-  onViewAllResults: () => void;
 }
 
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onNewPortal,
-  onPortalClick,
   onDeletePortal,
-  onResultClick,
   onUnpin,
-  onViewAllResults,
 }) => (
   <Box>
     <Stack spacing={4}>
@@ -70,10 +64,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
             title="Recent Portals"
             icon={<Icon name={IconName.Portal} />}
           >
-            <RecentPortalsListConnected
-              onPortalClick={onPortalClick}
-              onDeletePortal={onDeletePortal}
-            />
+            <RecentPortalsListConnected onDeletePortal={onDeletePortal} />
           </PageSection>
         </PageGridItem>
 
@@ -82,11 +73,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
             title="Pinned Results"
             icon={<Icon name={IconName.PushPin} />}
           >
-            <PinnedResultsListConnected
-              onResultClick={onResultClick}
-              onUnpin={onUnpin}
-              onViewAll={onViewAllResults}
-            />
+            <PinnedResultsListConnected onUnpin={onUnpin} />
           </PageSection>
         </PageGridItem>
       </PageGrid>
@@ -166,22 +153,6 @@ export const DashboardView: React.FC = () => {
     });
   }, [deleteTarget, deletePortal, queryClient]);
 
-  // ── Portal click ────────────────────────────────────────────
-  const handlePortalClick = useCallback(
-    (portalId: string) => {
-      navigate({ to: `/portals/${portalId}` });
-    },
-    [navigate]
-  );
-
-  // ── Pinned results ──────────────────────────────────────────
-  const handleResultClick = useCallback(
-    (resultId: string) => {
-      navigate({ to: `/portal-results/${resultId}` });
-    },
-    [navigate]
-  );
-
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
   // SDK; failures raise a persistent toast with Retry (Toast Pattern).
   const handleUnpin = useCallback(
@@ -200,19 +171,12 @@ export const DashboardView: React.FC = () => {
     [removeMutation, queryClient, toast]
   );
 
-  const handleViewAllResults = useCallback(() => {
-    navigate({ to: "/portal-results" });
-  }, [navigate]);
-
   return (
     <>
       <DashboardViewUI
         onNewPortal={handleNewPortal}
-        onPortalClick={handlePortalClick}
         onDeletePortal={handleDeletePortal}
-        onResultClick={handleResultClick}
         onUnpin={handleUnpin}
-        onViewAllResults={handleViewAllResults}
       />
 
       <CreatePortalDialog

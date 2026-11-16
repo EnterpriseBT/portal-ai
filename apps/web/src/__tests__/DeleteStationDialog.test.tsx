@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteStationDialog } =
   await import("../components/DeleteStationDialog.component");
 
@@ -35,6 +36,27 @@ describe("DeleteStationDialog", () => {
   it("should render 'Delete Station' title", () => {
     render(<DeleteStationDialog {...defaultProps} />);
     expect(screen.getByText("Delete Station")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteStationDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<DeleteStationDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteStationDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should display station name in the confirmation message", () => {
@@ -81,8 +103,14 @@ describe("DeleteStationDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeleteStationDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should not render content when open is false", () => {

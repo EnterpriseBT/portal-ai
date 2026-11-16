@@ -55,7 +55,7 @@ export const ThemeSwitcherUI: React.FC<ThemeSwitcherUIProps> = ({
         color="inherit"
         aria-label="Select theme"
         aria-controls={open ? "theme-menu" : undefined}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open ? "true" : undefined}
         sx={(theme) => ({
           borderRadius: `${theme.shape.borderRadius}px`,
@@ -74,6 +74,9 @@ export const ThemeSwitcherUI: React.FC<ThemeSwitcherUIProps> = ({
         {availableThemes.map((theme) => (
           <MenuItem
             key={theme.themeName}
+            // One theme is always chosen: the APG menu-radio pattern (#797).
+            role="menuitemradio"
+            aria-checked={theme.themeName === currentThemeName}
             selected={theme.themeName === currentThemeName}
             onClick={() => handleThemeSelect(theme.themeName)}
             sx={{ mb: 0.5, "&:last-of-type": { mb: 0 } }}

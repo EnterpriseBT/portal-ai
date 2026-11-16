@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { SectionHelpUI } from "../SectionHelp.component";
 
 describe("SectionHelpUI", () => {
@@ -44,5 +45,13 @@ describe("SectionHelpUI", () => {
     const tooltip = screen.getByRole("tooltip");
     expect(tooltip).toHaveTextContent(/Bold:/);
     expect(tooltip.querySelector("strong")).not.toBeNull();
+  });
+
+  test("has no axe violations, closed and with its tooltip showing", async () => {
+    render(<SectionHelpUI title="Helpful tip" ariaLabel="What is this?" />);
+    await expectNoAxeViolations(document.body);
+    fireEvent.mouseOver(screen.getByLabelText("What is this?"));
+    await screen.findByRole("tooltip");
+    await expectNoAxeViolations(document.body);
   });
 });

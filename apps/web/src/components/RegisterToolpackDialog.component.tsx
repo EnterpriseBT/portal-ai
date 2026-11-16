@@ -5,7 +5,14 @@ import {
   RegisterToolpackBodySchema,
   type RegisterToolpackBody,
 } from "@portalai/core/contracts";
-import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -260,22 +267,22 @@ export const RegisterToolpackDialogUI: React.FC<
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Registering..." : "Register"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >
@@ -480,6 +487,7 @@ export const RegisterToolpackDialogUI: React.FC<
           </Typography>
           <TabbedSnippetAccordion
             testId="register-toolpack-endpoint-shapes"
+            name="Endpoint shapes"
             summary="See expected request / response shapes per endpoint"
             tabs={[
               {
@@ -521,6 +529,7 @@ export const RegisterToolpackDialogUI: React.FC<
           />
           <TabbedSnippetAccordion
             testId="register-toolpack-verify-snippets"
+            name="Signature verification"
             summary="See how to verify our signed requests on your server"
             tabs={[
               {
@@ -795,9 +804,12 @@ interface SnippetTab {
 
 const TabbedSnippetAccordion: React.FC<{
   testId: string;
+  /** Prefixes each code block's name, so the blocks of two accordions on
+   *  one tab never share a region name (#799). */
+  name: string;
   summary: string;
   tabs: SnippetTab[];
-}> = ({ testId, summary, tabs }) => {
+}> = ({ testId, name, summary, tabs }) => {
   const [active, setActive] = useState(0);
   const current = tabs[active] ?? tabs[0];
   return (
@@ -809,7 +821,12 @@ const TabbedSnippetAccordion: React.FC<{
         backgroundColor: "transparent",
       }}
     >
+      {/* The id and aria-controls let MUI name the details region by this
+          summary (#799); unnamed, two open accordions were identical
+          landmarks (axe landmark-unique). */}
       <AccordionSummary
+        id={`${testId}-header`}
+        aria-controls={`${testId}-content`}
         expandIcon={<ExpandMoreIcon fontSize="small" />}
         data-testid={`${testId}-summary`}
         sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
@@ -855,7 +872,16 @@ const TabbedSnippetAccordion: React.FC<{
                       {b.label}
                     </Typography>
                   )}
-                  <HighlightedCode code={b.example} language={b.language} />
+                  <HighlightedCode
+                    label={`${name}, ${current.label}: ${
+                      b.label ||
+                      (current.blocks.length > 1
+                        ? `example ${i + 1}`
+                        : "example")
+                    }`}
+                    code={b.example}
+                    language={b.language}
+                  />
                 </Box>
               ))}
             </Stack>

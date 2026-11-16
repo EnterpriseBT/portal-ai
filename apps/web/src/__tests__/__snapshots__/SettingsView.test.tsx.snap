@@ -58,7 +58,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
         <button
           aria-controls="tabpanel-0"
           aria-selected="true"
-          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary Mui-selected css-5xls38-MuiButtonBase-root-MuiTab-root"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary Mui-selected css-1c71oz4-MuiButtonBase-root-MuiTab-root"
           id="tab-0"
           role="tab"
           tabindex="0"
@@ -69,7 +69,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
         <button
           aria-controls="tabpanel-1"
           aria-selected="false"
-          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-5xls38-MuiButtonBase-root-MuiTab-root"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-1c71oz4-MuiButtonBase-root-MuiTab-root"
           id="tab-1"
           role="tab"
           tabindex="-1"
@@ -80,7 +80,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
         <button
           aria-controls="tabpanel-2"
           aria-selected="false"
-          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-5xls38-MuiButtonBase-root-MuiTab-root"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-1c71oz4-MuiButtonBase-root-MuiTab-root"
           id="tab-2"
           role="tab"
           tabindex="-1"
@@ -128,8 +128,10 @@ exports[`SettingsView Component should match snapshot 1`] = `
           >
             <div
               class="MuiStack-root css-1n7fu9l-MuiStack-root"
+              role="status"
             >
               <span
+                aria-label="Loading..."
                 class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
                 role="progressbar"
                 style="width: 20px; height: 20px;"
@@ -171,8 +173,10 @@ exports[`SettingsView Component should match snapshot 1`] = `
     >
       <div
         class="MuiStack-root css-1n7fu9l-MuiStack-root"
+        role="status"
       >
         <span
+          aria-label="Loading..."
           class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
           role="progressbar"
           style="width: 20px; height: 20px;"

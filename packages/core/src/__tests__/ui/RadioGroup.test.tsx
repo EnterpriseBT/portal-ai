@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { RadioGroup } from "../../ui/RadioGroup";
+import { expectNoAxeViolations } from "../axe.util";
 
 const options = [
   { value: "a", label: "Option A" },
@@ -72,5 +73,19 @@ describe("RadioGroup Component", () => {
       render(<RadioGroup ref={ref} options={options} />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+});
+
+describe("RadioGroup accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <RadioGroup
+        label="Pick one"
+        options={options}
+        value="b"
+        helperText="Choose wisely"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

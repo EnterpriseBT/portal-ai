@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { Typography } from "../../ui/Typography";
 import type { TypographyProps } from "../../ui/Typography";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Typography Component", () => {
   describe("Rendering", () => {
@@ -59,5 +60,14 @@ describe("Typography Component", () => {
       expect(ref.current).toBeInstanceOf(HTMLHeadingElement);
       expect(ref.current?.textContent).toBe("H1 Ref Test");
     });
+  });
+});
+
+describe("Typography accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <Typography variant="h1">Hello World</Typography>
+    );
+    await expectNoAxeViolations(container);
   });
 });

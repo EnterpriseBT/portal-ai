@@ -2,11 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 
 import type { BlockRef } from "@portalai/core";
 
-import {
-  readTileStatus,
-  renderPopupTemplate,
-  tilePath,
-} from "../utils/tile-source.util";
+import { readTileStatus, popupText, tilePath } from "../utils/tile-source.util";
 
 const headers = (h: Record<string, string>) => ({
   get: (k: string) => h[k] ?? null,
@@ -121,18 +117,40 @@ describe("readTileStatus", () => {
   });
 });
 
-describe("renderPopupTemplate", () => {
+// #1016: a popup is text. Field values are data, inserted verbatim; the
+// agent-written template's own markup is dropped. Nothing is parsed as HTML.
+describe("popupText", () => {
   it("substitutes present fields", () => {
     expect(
-      renderPopupTemplate("{{address}} — {{prop_class}}", {
+      popupText("{{address}} — {{prop_class}}", {
         address: "100 S Main",
         prop_class: "vacant",
       })
     ).toBe("100 S Main — vacant");
   });
+
   it("marks an unresolved field rather than leaving a blank (row 10)", () => {
+    expect(popupText("{{address}} — {{missing}}", { address: "X" })).toBe(
+      "X — ⟨missing⟩"
+    );
+  });
+
+  it("keeps a value's markup as literal text", () => {
     expect(
-      renderPopupTemplate("{{address}} — {{missing}}", { address: "X" })
-    ).toBe("X — ⟨missing⟩");
+      popupText("{{name}}", { name: "<img src=x onerror=alert(1)>Evil site" })
+    ).toBe("<img src=x onerror=alert(1)>Evil site");
+  });
+
+  it("drops the template's own tags, script/style bodies and emphasis markers", () => {
+    expect(
+      popupText("<script>alert(1)</script><b>**{{name}}**</b> __({{kind}})__", {
+        name: "Seattle",
+        kind: "warehouse",
+      })
+    ).toBe("Seattle (warehouse)");
+  });
+
+  it("doesn't treat a value's text as template markup", () => {
+    expect(popupText("**{{name}}**", { name: "a **b** c" })).toBe("a **b** c");
   });
 });

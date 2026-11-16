@@ -1,8 +1,14 @@
 import { jest } from "@jest/globals";
 import type { Toolpack } from "@portalai/core/contracts";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { EditToolpackDialogUI } =
   await import("../components/EditToolpackDialog.component");
 
@@ -58,6 +64,22 @@ describe("EditToolpackDialogUI", () => {
     expect(
       (screen.getByLabelText(/Schema endpoint/) as HTMLInputElement).value
     ).toBe("https://example.com/schema");
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<EditToolpackDialogUI {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <EditToolpackDialogUI
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open is false", () => {
@@ -190,8 +212,14 @@ describe("EditToolpackDialogUI", () => {
 
   it("disables actions while saving", () => {
     render(<EditToolpackDialogUI {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: /Saving/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Saving/ })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   // Phase 6: rotate signing secret button

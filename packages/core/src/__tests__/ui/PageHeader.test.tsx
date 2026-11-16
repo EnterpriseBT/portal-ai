@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { PageHeader } from "../../ui/PageHeader";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("PageHeader Component", () => {
   describe("Rendering", () => {
@@ -216,5 +217,37 @@ describe("PageHeader Component", () => {
         screen.getByRole("button", { name: "More actions" })
       ).toBeInTheDocument();
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <PageHeader
+        title="Details"
+        breadcrumbs={[{ label: "Home", href: "/" }, { label: "Details" }]}
+        icon={<span>icon</span>}
+        primaryAction={<button>Create</button>}
+        secondaryActions={[{ label: "Edit", onClick: () => {} }]}
+      >
+        <p>Some metadata</p>
+      </PageHeader>
+    );
+    await expectNoAxeViolations(container);
+  });
+  it("has no axe violations with the secondary actions menu open", async () => {
+    render(
+      <PageHeader
+        title="Stations"
+        secondaryActions={[
+          { label: "Edit", onClick: () => {} },
+          {
+            label: "Delete",
+            onClick: () => {},
+            gate: { kind: "disable", reason: "An import is running" },
+          },
+        ]}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    await screen.findByRole("menu");
+    await expectNoAxeViolations(document.body);
   });
 });

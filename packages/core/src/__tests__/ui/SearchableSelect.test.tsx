@@ -1,11 +1,18 @@
 import React from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { SearchableSelect } from "../../ui/searchable-select/SearchableSelect";
 import { AsyncSearchableSelect } from "../../ui/searchable-select/AsyncSearchableSelect";
 import { InfiniteScrollSelect } from "../../ui/searchable-select/InfiniteScrollSelect";
 import type { SelectOption } from "../../ui/searchable-select/types";
+import { expectNoAxeViolations } from "../axe.util";
 
 const OPTIONS: SelectOption[] = [
   { value: "apple", label: "Apple" },
@@ -821,4 +828,248 @@ describe("InfiniteScrollSelect", () => {
     // Still only one call
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
+});
+
+// ── #793: the selection and loading reach assistive tech ─────────────────────
+
+describe("AsyncSearchableSelect accessibility (#793)", () => {
+  const renderSelected = async (props: { required?: boolean } = {}) => {
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value="banana"
+          onChange={() => {}}
+          onSearch={async () => OPTIONS}
+          loadSelectedOption={async () => OPTIONS[1] ?? null}
+          {...props}
+        />
+      );
+    });
+    await screen.findByText("Banana");
+  };
+
+  it("describes the combobox with its current selection", async () => {
+    await renderSelected();
+    expect(
+      screen.getByRole("combobox", { name: "Fruit" })
+    ).toHaveAccessibleDescription("Selected: Banana");
+  });
+
+  it("keeps the helper text in the description", async () => {
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value="banana"
+          helperText="Pick one"
+          onChange={() => {}}
+          onSearch={async () => OPTIONS}
+          loadSelectedOption={async () => OPTIONS[1] ?? null}
+        />
+      );
+    });
+    await screen.findByText("Banana");
+    expect(
+      screen.getByRole("combobox", { name: "Fruit" })
+    ).toHaveAccessibleDescription("Selected: Banana Pick one");
+  });
+
+  it("is required while nothing is selected", async () => {
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value={null}
+          required
+          onChange={() => {}}
+          onSearch={async () => OPTIONS}
+        />
+      );
+    });
+    expect(screen.getByRole("combobox", { name: /Fruit/ })).toBeRequired();
+  });
+
+  it("removes the selection from its chip with Delete, which it describes", async () => {
+    const onChange = jest.fn();
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value="banana"
+          onChange={onChange}
+          onSearch={async () => OPTIONS}
+          loadSelectedOption={async () => OPTIONS[1] ?? null}
+        />
+      );
+    });
+    const chip = await screen.findByRole("button", { name: "Banana" });
+    expect(chip).toHaveAccessibleDescription(
+      "Press Backspace or Delete to remove"
+    );
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    // A click on the chip itself doesn't clear it.
+    expect(onChange).not.toHaveBeenCalled();
+    chip.focus();
+    await act(async () => {
+      fireEvent.keyDown(chip, { key: "Delete" });
+      fireEvent.keyUp(chip, { key: "Delete" });
+    });
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("moves focus to the field when its chip is removed, keeping the consumer's inputRef", async () => {
+    const inputRef = React.createRef<HTMLInputElement>();
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value="banana"
+          onChange={() => {}}
+          onSearch={async () => OPTIONS}
+          loadSelectedOption={async () => OPTIONS[1] ?? null}
+          inputRef={inputRef}
+        />
+      );
+    });
+    const chip = await screen.findByRole("button", { name: "Banana" });
+    chip.focus();
+    await act(async () => {
+      fireEvent.keyDown(chip, { key: "Backspace" });
+      fireEvent.keyUp(chip, { key: "Backspace" });
+    });
+    const combobox = screen.getByRole("combobox", { name: "Fruit" });
+    expect(screen.queryByRole("button", { name: "Banana" })).toBeNull();
+    expect(combobox).toHaveFocus();
+    expect(inputRef.current).toBe(combobox);
+  });
+
+  it("stays required with a selection (the asterisk doesn't flicker)", async () => {
+    await renderSelected({ required: true });
+    expect(screen.getByRole("combobox", { name: /Fruit/ })).toBeRequired();
+  });
+
+  it("announces loading in the open list", async () => {
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value={null}
+          onChange={() => {}}
+          onSearch={() => new Promise<SelectOption[]>(() => {})}
+        />
+      );
+    });
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("combobox", { name: "Fruit" }));
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Loading…");
+  });
+
+  it("has no axe violations with a selection", async () => {
+    const { container } = await act(async () =>
+      render(
+        <AsyncSearchableSelect
+          label="Fruit"
+          value="banana"
+          onChange={() => {}}
+          onSearch={async () => OPTIONS}
+          loadSelectedOption={async () => OPTIONS[1] ?? null}
+        />
+      )
+    );
+    await screen.findByText("Banana");
+    await expectNoAxeViolations(container);
+  });
+});
+
+// ── Options with equal labels (#986) ─────────────────────────────────────────
+// MUI keys an option by its label unless told otherwise, so two equal labels
+// shared a React key: React logged it, and could drop or duplicate one.
+
+describe("options with the same label (#986)", () => {
+  const SAME_LABEL: SelectOption[] = [
+    { value: "region", label: "Enum" },
+    { value: "segment", label: "Enum" },
+  ];
+  let consoleError: jest.SpiedFunction<typeof console.error>;
+  const realObserver = globalThis.IntersectionObserver;
+
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.IntersectionObserver = jest.fn(() => ({
+      observe: jest.fn(),
+      disconnect: jest.fn(),
+      unobserve: jest.fn(),
+    })) as unknown as typeof IntersectionObserver;
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+    globalThis.IntersectionObserver = realObserver;
+  });
+
+  const duplicateKeyErrors = () =>
+    consoleError.mock.calls.filter((args) =>
+      args.some((a) => String(a).includes("same key"))
+    );
+
+  const cases: [
+    string,
+    (onChange: (v: string | null) => void) => React.ReactElement,
+  ][] = [
+    [
+      "SearchableSelect",
+      (onChange) => (
+        <SearchableSelect
+          label="Field"
+          options={SAME_LABEL}
+          value={null}
+          onChange={onChange}
+        />
+      ),
+    ],
+    [
+      "AsyncSearchableSelect",
+      (onChange) => (
+        <AsyncSearchableSelect
+          label="Field"
+          value={null}
+          onChange={onChange}
+          onSearch={async () => SAME_LABEL}
+          debounceMs={0}
+        />
+      ),
+    ],
+    [
+      "InfiniteScrollSelect",
+      (onChange) => (
+        <InfiniteScrollSelect
+          label="Field"
+          value={null}
+          onChange={onChange}
+          fetchPage={async () => ({ options: SAME_LABEL, hasMore: false })}
+          debounceMs={0}
+        />
+      ),
+    ],
+  ];
+
+  it.each(cases)(
+    "%s lists both, keys them apart, and picks the second",
+    async (_name, renderSelect) => {
+      const onChange = jest.fn<(v: string | null) => void>();
+      render(renderSelect(onChange));
+
+      await userEvent.click(screen.getByRole("combobox"));
+      const options = await screen.findAllByRole("option", { name: "Enum" });
+      expect(options).toHaveLength(2);
+      expect(duplicateKeyErrors()).toHaveLength(0);
+
+      await userEvent.click(options[1]);
+      expect(onChange).toHaveBeenCalledWith("segment");
+    }
+  );
 });

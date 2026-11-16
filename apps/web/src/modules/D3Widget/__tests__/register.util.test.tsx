@@ -1,5 +1,13 @@
+import type { ReactElement } from "react";
+
 import { jest } from "@jest/globals";
-import { render, screen } from "@testing-library/react";
+import {
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from "@testing-library/react";
+
+import { ThemeProvider } from "@portalai/core/ui";
 
 // D3Widget reaches the SDK through the progressive hook; the registry
 // test only exercises the inline path, so a call-asserting stub suffices.
@@ -8,6 +16,12 @@ const refreshMutate = jest.fn();
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
+      // #796: the "Show data" table's paged read.
+      handleSnapshot: () => ({
+        data: undefined,
+        error: null,
+        isFetching: false,
+      }),
       handleSnapshotPage: () => ({ mutateAsync }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
@@ -27,6 +41,16 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
 const { ContentBlockRenderer, hasBlockRenderer } =
   await import("@portalai/core");
 const { registerD3BlockRenderer } = await import("../utils/register.util");
+
+// The app always renders inside the brand ThemeProvider, whose palette
+// carries `dataViz` (#1022); MUI's default theme doesn't.
+const render = (ui: ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <ThemeProvider defaultTheme="brand">{children}</ThemeProvider>
+    ),
+    ...options,
+  });
 
 describe("registerD3BlockRenderer (spec case 25)", () => {
   it("registers the d3 renderer into the open registry, idempotently", () => {

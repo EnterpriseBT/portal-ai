@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { StatusBadge } from "../../ui/StatusBadge";
 import type { StatusBadgeVariant } from "../../ui/StatusBadge";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("StatusBadge Component", () => {
   describe("Rendering", () => {
@@ -50,5 +51,12 @@ describe("StatusBadge Component", () => {
       render(<StatusBadge data-testid="status-badge" status="failed" />);
       expect(screen.getByTestId("status-badge")).toBeInTheDocument();
     });
+  });
+});
+
+describe("StatusBadge accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<StatusBadge status="active" />);
+    await expectNoAxeViolations(container);
   });
 });

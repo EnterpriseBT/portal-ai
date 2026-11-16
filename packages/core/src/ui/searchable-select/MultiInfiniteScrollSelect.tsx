@@ -8,6 +8,7 @@ import type {
   FetchPageParams,
   FetchPageResult,
 } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 import {
   InfiniteListboxComponent,
   SentinelRefContext,
@@ -171,6 +172,7 @@ export const MultiInfiniteScrollSelect: React.FC<
             }}
             isOptionEqualToValue={(option, val) => option.value === val.value}
             getOptionLabel={(option) => option.label}
+            getOptionKey={selectOptionKey}
             filterOptions={(x) => x}
             disabled={disabled}
             size={size}

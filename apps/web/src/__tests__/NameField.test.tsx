@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { PolicyUpsertRequestSchema } from "@portalai/core/contracts";
 import { Modal } from "@portalai/core/ui";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { NameField } =
   await import("../modules/AccessAuthoring/NameField.component");
 
@@ -28,6 +28,20 @@ const renderInDialog = (value: string) =>
 // #789: the editors' name field validates against the contract and shows its
 // error once touched, with aria-invalid; leaving it for Cancel isn't touching.
 describe("NameField", () => {
+  it("has no axe violations", async () => {
+    renderInDialog("Analysts");
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations while showing an error", async () => {
+    const user = userEvent.setup();
+    renderInDialog("   ");
+    await user.click(screen.getByRole("textbox", { name: /^name/i }));
+    await user.click(screen.getByLabelText("Description"));
+    await screen.findByText("Name is required");
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("marks the field required", () => {
     renderInDialog("");
     expect(screen.getByRole("textbox", { name: /^name/i })).toBeRequired();

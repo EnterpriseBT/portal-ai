@@ -2,10 +2,7 @@ import { describe, it, expect, jest } from "@jest/globals";
 
 import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
-import {
-  VisualizeMapTool,
-  categoryColor,
-} from "../../tools/visualize-map.tool.js";
+import { VisualizeMapTool } from "../../tools/visualize-map.tool.js";
 import type { VisualizeMapDeps } from "../../tools/visualize-map.tool.js";
 import { validatePortalSql } from "../../services/portal-sql-validation.util.js";
 
@@ -42,7 +39,10 @@ type ExecArgs = {
   sql: string;
   spec: Record<string, unknown>;
   title?: string;
+  summary?: string;
 };
+
+const SUMMARY = "Parcels by class; most are residential.";
 
 function buildTool(
   deps: VisualizeMapDeps
@@ -58,20 +58,8 @@ function buildTool(
       built as unknown as {
         execute: (a: ExecArgs) => Promise<Record<string, unknown>>;
       }
-    ).execute(args);
+    ).execute({ summary: SUMMARY, ...args });
 }
-
-describe("categoryColor (#314 — uncapped categorical colours)", () => {
-  it("returns a valid #rrggbb for any index, palette then generated HSL", () => {
-    const hex = /^#[0-9a-f]{6}$/;
-    for (const i of [0, 1, 9, 10, 11, 25, 60, 200, 499]) {
-      expect(categoryColor(i)).toMatch(hex);
-    }
-    // First ten are the base palette; beyond that, generated + distinct.
-    expect(categoryColor(0)).toBe("#4e79a7");
-    expect(categoryColor(10)).not.toBe(categoryColor(11));
-  });
-});
 
 describe("VisualizeMapTool.execute (#314)", () => {
   it("inline delivery + valid spec → geo block with inline rows + durable pipeline", async () => {
@@ -159,16 +147,16 @@ describe("VisualizeMapTool.execute (#314)", () => {
       type: "Point",
       coordinates: [-111.9, 40.7],
     });
-    // colorBy stops were computed server-side (so tile mode colours too).
-    const layer0 = (
+    // The categories were listed server-side (so tile mode colours too),
+    // in the GROUP BY's frequency order, with no colours (#1022): the web
+    // colours them from the viewer's theme.
+    const colorBy = (
       out.spec as {
-        layers: Array<{ style: { colorBy: { stops: unknown[] } } }>;
+        layers: Array<{ style: { colorBy: Record<string, unknown> } }>;
       }
-    ).layers[0];
-    expect(layer0.style.colorBy.stops).toEqual([
-      ["alpha", expect.any(String)],
-      ["beta", expect.any(String)],
-    ]);
+    ).layers[0].style.colorBy;
+    expect(colorBy.categories).toEqual(["alpha", "beta"]);
+    expect(colorBy.stops).toBeUndefined();
     // A display query re-projected the geometry column to GeoJSON.
     const calls = sqlQuery.mock.calls as unknown as Array<[{ sql: string }]>;
     const displaySql = calls
@@ -296,6 +284,39 @@ describe("VisualizeMapTool.execute (#314)", () => {
     expect(cb.stops ?? []).toEqual([]);
   });
 
+  it.each([
+    ["stops", { stops: [["vacant", "#4e79a7"]] }],
+    ["categories", { categories: ["vacant"] }],
+  ])(
+    "a colorBy that already has %s isn't back-filled (#1022)",
+    async (_k, given) => {
+      const sqlQuery = jest.fn(async () => ({ rows: [] }));
+      const out = await buildTool({
+        resolveSqlDelivery: (async () => inlineDelivery) as never,
+        sqlQuery: sqlQuery as never,
+      })({
+        sql: "SELECT lat, lng, prop_class FROM t",
+        spec: {
+          layers: [
+            {
+              kind: "points",
+              source: { latColumn: "lat", lngColumn: "lng" },
+              style: { colorBy: { column: "prop_class", ...given } },
+            },
+          ],
+        },
+      });
+      const sent = (
+        sqlQuery.mock.calls as unknown as Array<[{ sql: string }]>
+      ).map((c) => c[0].sql);
+      expect(sent.some((q) => q.includes("GROUP BY"))).toBe(false);
+      expect(
+        (out.spec as { layers: Array<{ style: { colorBy: object } }> })
+          .layers[0].style.colorBy
+      ).toEqual({ column: "prop_class", ...given });
+    }
+  );
+
   it("handle delivery (large result) → geo block carrying the envelope, no inline rows", async () => {
     const resolveSqlDelivery = jest.fn(async () => handleDelivery);
     const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });
@@ -329,6 +350,40 @@ describe("VisualizeMapTool.execute (#314)", () => {
     // Fail fast before touching the sink.
     expect(resolveSqlDelivery).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["color", "#ffff00"],
+    ["color", ["match", ["get", "prop_class"], "vacant", "#ff8a00", "#eeeeee"]],
+    ["outlineColor", "#ffffff"],
+  ])(
+    "a layer style setting %s is refused before any SQL runs (#1022)",
+    async (field, value) => {
+      const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+      const out = await buildTool({
+        resolveSqlDelivery: resolveSqlDelivery as never,
+      })({
+        sql: "SELECT lat, lng, prop_class FROM t",
+        spec: {
+          layers: [
+            {
+              kind: "points",
+              source: { latColumn: "lat", lngColumn: "lng" },
+            },
+            {
+              kind: "points",
+              source: { latColumn: "lat", lngColumn: "lng" },
+              style: { [field]: value },
+            },
+          ],
+        },
+      });
+      expect(out.error).toMatchObject({ code: "MAP_SPEC_INVALID" });
+      const message = (out.error as { message: string }).message;
+      expect(message).toContain(`layers.1.style.${field}`);
+      expect(message).toContain("colorBy");
+      expect(resolveSqlDelivery).not.toHaveBeenCalled();
+    }
+  );
 
   it("a spec referencing a column absent from the result → MAP_SPEC_INVALID (row 8)", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
@@ -484,5 +539,46 @@ describe("VisualizeMapTool input limits", () => {
     expect(titleIssues("t".repeat(121))).toEqual([
       "Title must be 120 characters or fewer",
     ]);
+  });
+});
+
+// #796: every map carries an agent-written text alternative.
+describe("VisualizeMapTool summary (#796)", () => {
+  const summaryIssues = (input: Record<string, unknown>) =>
+    (
+      new VisualizeMapTool().schema.safeParse({ sql: "SELECT 1", ...input })
+        .error?.issues ?? []
+    )
+      .filter((i) => i.path[0] === "summary")
+      .map((i) => i.message);
+
+  it("refuses a missing or blank summary, and one over 2000 characters", () => {
+    expect(summaryIssues({})).toHaveLength(1);
+    expect(summaryIssues({ summary: "   " })).toEqual(["Summary is required"]);
+    expect(summaryIssues({ summary: "s".repeat(2001) })).toEqual([
+      "Summary must be 2000 characters or fewer",
+    ]);
+  });
+
+  it("puts the summary on the inline block", async () => {
+    const exec = buildTool({
+      resolveSqlDelivery: jest.fn(async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "SELECT lat, lng FROM t", spec: validSpec });
+    expect(out).toMatchObject({ type: "geo", summary: SUMMARY });
+  });
+
+  it("puts the summary on the handle block", async () => {
+    const exec = buildTool({
+      resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
+      sqlQuery: jest.fn(async () => ({ rows: [] })) as never,
+    });
+    const out = await exec({
+      sql: "SELECT geom FROM parcels",
+      spec: {
+        layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+      },
+    });
+    expect(out).toMatchObject({ type: "geo", summary: SUMMARY });
   });
 });

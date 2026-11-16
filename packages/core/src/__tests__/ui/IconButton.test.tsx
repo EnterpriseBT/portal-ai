@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { IconButton } from "../../ui/IconButton";
 import { IconName } from "../../ui/Icon";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("IconButton Component", () => {
   describe("Rendering", () => {
@@ -36,5 +37,11 @@ describe("IconButton Component", () => {
       expect(ref.current).toBeInstanceOf(HTMLButtonElement);
       expect(ref.current?.getAttribute("type")).toBe("button");
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <IconButton icon={IconName.Home} aria-label="home button" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

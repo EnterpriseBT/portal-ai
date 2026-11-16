@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { RecordsPreviewDialogUI } from "../RecordsPreviewDialog.component";
 import type { PreviewResult } from "../utils/preview-records.util";
@@ -28,6 +29,18 @@ describe("RecordsPreviewDialogUI", () => {
     );
     expect(screen.getByText("Preview records — Contact")).toBeInTheDocument();
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(
+      <RecordsPreviewDialogUI
+        open
+        onClose={jest.fn()}
+        preview={preview}
+        entityLabel="Contact"
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {

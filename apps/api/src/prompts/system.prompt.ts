@@ -310,6 +310,19 @@ export const PACK_PROMPT_SECTIONS: Record<
           "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
       );
       lines.push("");
+      lines.push(
+        "Don't ask for specific colours: chart colours come from the theme, " +
+          "which keeps them readable, and the chart labels its series. When " +
+          "the chart compares categories, say how many series it should show."
+      );
+      lines.push("");
+      lines.push(
+        "Always pass a `summary`: one to three sentences for someone who " +
+          "can't see it, saying what the chart shows and its main takeaway " +
+          "with the key values, not the colours. It is read aloud to " +
+          "screen-reader users and shown under the chart."
+      );
+      lines.push("");
       return lines;
     },
   },
@@ -330,6 +343,16 @@ export const PACK_PROMPT_SECTIONS: Record<
           "`spec`: layers bound to a geometry column or a lat/lng pair, styled " +
           "with literals or MapLibre expressions (`colorBy` also draws a " +
           "legend). Large results tile automatically — don't add a LIMIT."
+      );
+      lines.push("");
+      lines.push(
+        "Don't ask for map colours either: categorical colours come from the " +
+          "theme, which keeps them readable on the basemap. The first eight " +
+          "categories get distinct colours and the rest share one, so when " +
+          "the categories matter, colour by a column with at most eight " +
+          "common values. Colour features with `colorBy`: a layer's " +
+          "`color` and `outlineColor` are refused. Highlight with a wider " +
+          "`outlineWidth` instead."
       );
       lines.push("");
       lines.push(
@@ -356,6 +379,13 @@ export const PACK_PROMPT_SECTIONS: Record<
           'per layer with `aggregation.treatment`: `"bins"` forces grid bins, ' +
           '`"none"` keeps any layer raw at all zooms. Omit it to use the ' +
           "per-kind default."
+      );
+      lines.push("");
+      lines.push(
+        "Always pass a `summary`: one to three sentences for someone who " +
+          "can't see it, saying what the map shows and its main takeaway " +
+          "with the key values, not the colours. It is read aloud to " +
+          "screen-reader users and shown under the map."
       );
       lines.push("");
       lines.push(...geocodingGuidance(ctx));

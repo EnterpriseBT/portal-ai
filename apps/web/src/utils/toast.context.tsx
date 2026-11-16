@@ -52,6 +52,17 @@ export interface ToastApi {
   dismissAll(): void;
 }
 
+/**
+ * How many toasts are on screen (#797). Separate from `ToastContext` so the
+ * API object keeps its identity while the count changes; the skip links read
+ * it to offer "Skip to notifications" only while there's something there.
+ */
+export const ToastPresenceContext = createContext(0);
+
+export function useToastPresence(): number {
+  return useContext(ToastPresenceContext);
+}
+
 /** `null` ⇒ no provider mounted (Storybook, unit tests) — see `useToast`. */
 export const ToastContext = createContext<ToastApi | null>(null);
 

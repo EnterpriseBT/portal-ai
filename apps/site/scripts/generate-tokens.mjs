@@ -50,6 +50,10 @@ function paletteTokens(palette) {
   const out = [];
   for (const [group, value] of Object.entries(palette ?? {})) {
     if (group === "mode") continue;
+    // The app's sheet canvas (#996): no site page draws it.
+    if (group === "sheet") continue;
+    // Chart and map data colours (#1022): no site page draws either.
+    if (group === "dataViz") continue;
     if (typeof value === "string") {
       out.push([`--color-${kebab(group)}`, value]);
       continue;
@@ -108,16 +112,32 @@ function layoutTokens(theme) {
   return out;
 }
 
-function blockFor(themeName, theme) {
+function tokenBody(theme) {
   const tokens = [
     ...paletteTokens(theme.palette),
     ...typographyTokens(theme.typography),
     ...layoutTokens(theme),
   ];
-  const body = tokens
-    .map(([name, value]) => `  ${name}: ${value};`)
-    .join("\n");
-  return `:root[data-theme="${themeName}"] {\n${body}\n}`;
+  return tokens.map(([name, value]) => `  ${name}: ${value};`).join("\n");
+}
+
+function blockFor(themeName, theme) {
+  return `:root[data-theme="${themeName}"] {\n${tokenBody(theme)}\n}`;
+}
+
+/**
+ * Without JS the head script never sets `data-theme`, and every token would
+ * be unset (#798): the page falls back to the system preference instead.
+ */
+function noScriptFallback(themes) {
+  return [
+    `:root:not([data-theme]) {\n${tokenBody(themes.light)}\n}`,
+    "",
+    `@media (prefers-color-scheme: dark) {\n  :root:not([data-theme]) {\n${tokenBody(themes.dark)
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n")}\n  }\n}`,
+  ].join("\n");
 }
 
 export function generateTokensCss(themes) {
@@ -130,6 +150,8 @@ export function generateTokensCss(themes) {
     blockFor("light", themes.light),
     "",
     blockFor("dark", themes.dark),
+    "",
+    noScriptFallback(themes),
     "",
   ].join("\n");
 }

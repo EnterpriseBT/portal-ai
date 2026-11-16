@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { HelpSearchBar } = await import("../components/HelpSearchBar.component");
 
@@ -58,5 +58,14 @@ describe("HelpSearchBar", () => {
     expect(
       screen.queryByRole("button", { name: "Clear search" })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("HelpSearchBar accessibility", () => {
+  it("has no axe violations with a value and its clear button", async () => {
+    const { container } = render(
+      <HelpSearchBar value="hello" onChange={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

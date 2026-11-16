@@ -16,12 +16,13 @@ export const DriftBannerUI: React.FC<DriftBannerUIProps> = ({ report }) => {
         : "info.main";
   return (
     <Box
+      data-sheet-part="drift-banner"
+      data-severity={report.severity}
       sx={{
         p: 1.5,
         borderRadius: 1,
         border: "1px solid",
         borderColor: severityColor,
-        backgroundColor: `${report.severity === "blocker" ? "#fee2e2" : "#fef3c7"}`,
       }}
     >
       <Box sx={{ fontWeight: 600, mb: 0.5 }}>

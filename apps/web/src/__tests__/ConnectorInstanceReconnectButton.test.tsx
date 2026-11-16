@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { ConnectorInstanceReconnectButtonUI } =
   await import("../components/ConnectorInstanceReconnectButton.component");
 
@@ -90,5 +91,16 @@ describe("ConnectorInstanceReconnectButtonUI", () => {
     );
     const btn = container.querySelector("button");
     expect(btn?.className ?? "").toMatch(/MuiButton-contained/);
+  });
+
+  it("has no axe violations with the button and its error alert", async () => {
+    const { container } = render(
+      <ConnectorInstanceReconnectButtonUI
+        {...baseProps}
+        status="error"
+        errorMessage="Popup blocked"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

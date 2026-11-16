@@ -66,7 +66,6 @@ function baseProps(createGate: ActionGate = HIDE) {
     createGate,
     hasActiveFilters: false,
     paginationToolbar: <div data-testid="pagination-toolbar" />,
-    onOpen: jest.fn(),
     onCreate: jest.fn(),
     onShare: jest.fn(),
     onDelete: jest.fn(),

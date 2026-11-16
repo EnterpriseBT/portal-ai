@@ -1,6 +1,7 @@
 import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
+import { expectNoAxeViolations } from "../axe.util";
 
 jest.unstable_mockModule("react-markdown", () => ({
   default: ({ children }: { children: string }) => (
@@ -86,6 +87,23 @@ describe("ContentBlockRenderer", () => {
       <ContentBlockRenderer block={{ type: "unknown", content: "data" }} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <>
+        <ContentBlockRenderer block={{ type: "text", content: "Hello" }} />
+        <ContentBlockRenderer
+          block={{
+            type: "data-table",
+            content: {
+              columns: ["id", "name"],
+              rows: [{ id: 1, name: "Alice" }],
+            },
+          }}
+        />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });
 

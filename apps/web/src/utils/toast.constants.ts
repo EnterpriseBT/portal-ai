@@ -18,15 +18,17 @@ export const TOAST_QUEUE_CAP = 20;
 /**
  * Auto-hide per severity; `null` persists until dismissed.
  *
- * The asymmetry is deliberate and is the contract: an `error` is a long-lived
- * occupant the user must act on, while other severities are passing
- * confirmations. Adopted from `Toolpacks.view`, the best-considered of the
- * ad-hoc implementations this replaces.
+ * Only a success hides itself (#1021, WCAG 2.2.1): it confirms an outcome the
+ * page already shows, so nothing is lost when it goes, and the provider holds
+ * it while the pointer or focus is in the stack. `info` and `warning` carry
+ * something the user needs to read, so they wait for the user like an
+ * `error`. A notice whose relevance has a known end passes `autoHideMs`
+ * instead (the rate-limit warning, #747).
  */
 export const TOAST_AUTO_HIDE_MS: Record<ToastSeverity, number | null> = {
   success: 4_000,
-  info: 6_000,
-  warning: 6_000,
+  info: null,
+  warning: null,
   error: null,
 };
 

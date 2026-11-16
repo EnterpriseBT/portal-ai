@@ -1,5 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Modal, Button, TextInput, Stack } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  TextInput,
+} from "@portalai/core/ui";
 import { z } from "zod";
 import { KEY_MAX_LENGTH, keyField, nameField } from "@portalai/core/contracts";
 
@@ -171,22 +177,22 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
       onSubmit={handleSubmit}
       actions={
         <>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={checking}
+            gate={pendingGate(checking, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={checking}
+            gate={pendingGate(checking)}
           >
             {checking ? "Checking..." : "Create"}
-          </Button>
+          </GatedButton>
         </>
       }
     >

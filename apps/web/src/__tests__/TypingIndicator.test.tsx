@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 
 import { TypingIndicator } from "../components/TypingIndicator.component";
 
@@ -67,5 +67,15 @@ describe("TypingIndicator", () => {
         screen.queryByTestId("typing-indicator-elapsed")
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("has no axe violations, idle and naming a phase", async () => {
+    const { container, unmount } = render(<TypingIndicator />);
+    await expectNoAxeViolations(container);
+    unmount();
+    const phase = render(
+      <TypingIndicator label="Querying your data" elapsedSeconds={18} />
+    );
+    await expectNoAxeViolations(phase.container);
   });
 });

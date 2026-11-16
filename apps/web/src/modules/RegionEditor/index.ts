@@ -64,10 +64,9 @@ export {
 } from "./utils/a1-notation.util";
 
 export {
-  ENTITY_COLOR_PALETTE,
-  colorForEntity,
+  ENTITY_SLOT_COUNT,
+  entitySlot,
   confidenceBand,
-  CONFIDENCE_BAND_COLOR,
 } from "./utils/region-editor-colors.util";
 
 export {
@@ -88,9 +87,7 @@ export type {
 } from "./utils/region-editor-validation.util";
 
 export {
-  DECORATION_COLOR,
   DECORATION_LABEL,
-  DECORATION_BACKGROUND_IMAGE,
   computeRegionDecorations,
   activeDecorationKinds,
 } from "./utils/region-editor-decorations.util";

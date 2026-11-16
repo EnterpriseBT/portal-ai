@@ -4,6 +4,7 @@ import { tool } from "ai";
 import {
   MapSpecSchema,
   NAME_MAX_LENGTH,
+  descriptionField,
   tooLongMessage,
 } from "@portalai/core/contracts";
 import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
@@ -37,12 +38,18 @@ const InputSchema = z.object({
       "SQL selecting the rows to map. Select the raw geometry column (aliased `geom`) when the result may be large so it can render as vector tiles; do not add a LIMIT — result size is handled automatically."
     ),
   spec: MapSpecSchema.describe(
-    'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend — set `colorBy.scale` to `"categorical"`, `"step"`, or `"interpolate"`, where `"interpolate"` is a smooth continuous gradient for a numeric column, absent ⇒ inferred), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
+    'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend — set `colorBy.scale` to `"categorical"`, `"step"`, or `"interpolate"`, where `"interpolate"` is a smooth continuous gradient for a numeric column, absent ⇒ inferred; a lines layer ignores `opacity`, so its colour keeps its contrast), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
   ),
   title: z
     .string()
     .max(NAME_MAX_LENGTH, tooLongMessage("Title", NAME_MAX_LENGTH))
     .optional(),
+  summary: descriptionField("Summary")
+    .trim()
+    .min(1, "Summary is required")
+    .describe(
+      "One to three sentences for someone who can't see the map: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+    ),
 });
 
 /** Injectable dependencies (test seam; mirrors the DI style used elsewhere). */
@@ -54,45 +61,6 @@ export interface VisualizeMapDeps {
 }
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
-
-/** Base categorical palette (Tableau 10) — the first colours a colorBy uses. */
-const BASE_PALETTE = [
-  "#4e79a7",
-  "#f28e2b",
-  "#e15759",
-  "#76b7b2",
-  "#59a14f",
-  "#edc948",
-  "#b07aa1",
-  "#ff9da7",
-  "#9c755f",
-  "#bab0ac",
-];
-
-/** HSL→hex. `h` in [0,360); `s`,`l` as fractions in [0,1]. */
-function hslToHex(h: number, s: number, l: number): string {
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-    return Math.round(255 * Math.max(0, Math.min(1, c)))
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-/**
- * A distinct colour per category **without a cap** — this is a general-purpose
- * map, so we never assume which categories a user cares about. The Tableau-10
- * palette covers the common small case; beyond it, golden-angle HSL hues give
- * a distinct, well-spread colour for any cardinality (the platform's standard
- * query row cap is the only bound, same as every other query).
- */
-export function categoryColor(i: number): string {
-  if (i < BASE_PALETTE.length) return BASE_PALETTE[i];
-  return hslToHex((i * 137.508) % 360, 0.62, 0.55);
-}
 
 /** Inline rows out of a delivery result (inline path only). */
 function inlineRows(
@@ -146,7 +114,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
   description =
-    "Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.";
+    'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`: the style fields `color` and `outlineColor` are refused. Other style values (radius, width, opacity) take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one; a gradient (`scale: "interpolate"`) uses the theme\'s sequential ramp. `palette` and `stops` colours are ignored. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.';
 
   get schema() {
     return InputSchema;
@@ -175,10 +143,12 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           sql,
           spec: rawSpec,
           title,
+          summary,
         } = input as {
           sql: string;
           spec: unknown;
           title?: string;
+          summary: string;
         };
 
         const specResult = MapSpecSchema.safeParse(rawSpec);
@@ -189,6 +159,24 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
               message: specResult.error.issues
                 .map((i) => `${i.path.join(".") || "spec"}: ${i.message}`)
                 .join("; "),
+            },
+          };
+        }
+
+        // #1022: map colours come from the theme's palette, held at 3:1
+        // against the basemap. A literal `color` or `outlineColor` (or a
+        // colour expression) has no such check, so it's refused here, and
+        // the web ignores it on blocks stored before this rule.
+        const colourFields = specResult.data.layers.flatMap((layer, i) =>
+          (["color", "outlineColor"] as const)
+            .filter((field) => layer.style?.[field] !== undefined)
+            .map((field) => `layers.${i}.style.${field}`)
+        );
+        if (colourFields.length > 0) {
+          return {
+            error: {
+              code: ApiCode.MAP_SPEC_INVALID,
+              message: `${colourFields.join(", ")}: map colours come from the theme. Colour features with \`colorBy\` (a column), and leave \`color\` and \`outlineColor\` unset.`,
             },
           };
         }
@@ -226,17 +214,18 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           }
         }
 
-        // Populate `colorBy.stops` server-side so a layer coloured by category
-        // renders in BOTH modes: the tile path has no inline rows for the
-        // widget to derive categories from, so without stops its `match`
+        // List a colorBy's categories server-side so a layer coloured by
+        // category renders in BOTH modes: the tile path has no inline rows for
+        // the widget to derive categories from, so without them its `match`
         // expression is empty and every feature paints the fallback colour.
         for (const layer of spec.layers) {
           const cb = layer.style?.colorBy;
-          if (!cb || (cb.stops && cb.stops.length > 0)) continue;
+          if (!cb || cb.stops?.length || cb.categories?.length) continue;
 
           // #336: a smooth gradient needs a continuous ramp, not one anchor per
           // distinct value. Compute MIN/MAX and lay the sequential palette
-          // evenly across the range — one cheap aggregate, cheaper than the
+          // evenly across the range (since #1022 the web reads only the
+          // stops' range and draws the theme's ramp) — one cheap aggregate, cheaper than the
           // categorical GROUP BY. A non-numeric / empty / flat column yields no
           // stops (the widget falls back to a solid colour).
           if (cb.scale === "interpolate") {
@@ -263,9 +252,11 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             continue;
           }
 
-          // Every distinct category gets a colour (no cap). Frequency order
-          // just means that if the platform's row cap ever trims the list, the
-          // most common values are kept.
+          // Every distinct category is listed (no cap), most common first: the
+          // web colours the first eight from the viewer's theme and counts the
+          // rest in its legend (#1022). No colour is stored, so a saved map
+          // follows the theme. Frequency order also means that if the
+          // platform's row cap trims the list, the most common values are kept.
           const distinctSql =
             `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${fenceSql(sql)}) _q ` +
             `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ` +
@@ -283,11 +274,13 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
                 typeof v === "string" || typeof v === "number"
             );
           if (values.length > 0) {
-            cb.stops = values.map((v, i) => [v, categoryColor(i)]);
+            cb.categories = values;
           }
         }
 
         const titleField = title ? { title } : {};
+        // #796: the agent-written text alternative rides every map block.
+        const summaryField = { summary };
         // The tile path (#316) re-runs the pipeline SQL and needs a raw geometry
         // column named `geom`. A geometry-column layer exposes it directly; a
         // lat/lng layer (#520) has none, so synthesize a point from the pair —
@@ -356,6 +349,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             type: "geo",
             spec,
             ...titleField,
+            ...summaryField,
             pipeline,
             ...delivery.envelope,
           };
@@ -372,7 +366,14 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           { stationId, organizationId, userId },
           { sqlQuery }
         );
-        return { type: "geo", spec, ...titleField, pipeline, rows };
+        return {
+          type: "geo",
+          spec,
+          ...titleField,
+          ...summaryField,
+          pipeline,
+          rows,
+        };
       },
     });
   }

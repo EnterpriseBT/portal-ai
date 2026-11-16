@@ -9,6 +9,7 @@ import {
   waitFor,
   fireEvent,
   pressEnter,
+  expectNoAxeViolations,
 } from "../../../__tests__/test-utils";
 
 import {
@@ -31,6 +32,11 @@ describe("ApiEndpointForm — bodyTemplate visibility", () => {
   it("hides the body template field when method is GET", () => {
     render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
     expect(screen.queryByLabelText(/body template/i)).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("shows the body template field when method is switched to POST", async () => {

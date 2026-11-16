@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { PageGrid, PageGridItem } from "../../ui/PageGrid";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("PageGrid Component", () => {
   describe("Rendering", () => {
@@ -142,5 +143,18 @@ describe("PageGridItem Component", () => {
       );
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <PageGrid>
+        <PageGridItem>
+          <div>Cell A</div>
+        </PageGridItem>
+        <PageGridItem>
+          <div>Cell B</div>
+        </PageGridItem>
+      </PageGrid>
+    );
+    await expectNoAxeViolations(container);
   });
 });

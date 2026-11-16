@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { SigningSecretRevealDialogUI } =
   await import("../components/SigningSecretRevealDialog.component");
 
@@ -23,6 +24,17 @@ describe("SigningSecretRevealDialogUI (phase 6)", () => {
     ) as HTMLInputElement;
     expect(input.value).toBe("whsec_test_abc123");
     expect(input.readOnly).toBe(true);
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(
+      <SigningSecretRevealDialogUI
+        open
+        signingSecret="whsec_test_abc123"
+        onClose={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when open is false", () => {

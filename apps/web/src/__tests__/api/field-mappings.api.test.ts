@@ -11,10 +11,13 @@ jest.unstable_mockModule("../../utils/api.util", () => ({
   useAuthFetch: () => ({ fetchWithAuth: jest.fn() }),
 }));
 
+const mockUseAsyncFilterOptions = jest.fn((_config: unknown) => ({}));
+
 jest.unstable_mockModule("@portalai/core/ui", () => ({
-  useAsyncFilterOptions: jest.fn(),
+  useAsyncFilterOptions: mockUseAsyncFilterOptions,
 }));
 
+const { renderHook } = await import("@testing-library/react");
 const { fieldMappings } = await import("../../api/field-mappings.api");
 const { queryKeys } = await import("../../api/keys");
 
@@ -73,6 +76,41 @@ describe("field-mappings.api", () => {
         undefined,
         undefined
       );
+    });
+  });
+
+  // #986: two mappings on one entity can share a column definition, so the
+  // option names the mapping's key too ("Enum (region)", "Enum (segment)").
+  describe("searchWithColumnDefinition option label", () => {
+    const mapItem = () => {
+      mockUseAsyncFilterOptions.mockClear();
+      renderHook(() => fieldMappings.searchWithColumnDefinition());
+      const config = mockUseAsyncFilterOptions.mock.calls[0][0] as {
+        mapItem: (fm: unknown) => unknown;
+      };
+      return config.mapItem;
+    };
+
+    it("pairs the column definition's label with the mapping's key", () => {
+      expect(
+        mapItem()({
+          id: "fm-1",
+          sourceField: "Region",
+          normalizedKey: "region",
+          columnDefinition: { label: "Enum" },
+        })
+      ).toEqual({ value: "fm-1", label: "Enum (region)" });
+    });
+
+    it("falls back to the source field with no column definition", () => {
+      expect(
+        mapItem()({
+          id: "fm-2",
+          sourceField: "Region",
+          normalizedKey: "region",
+          columnDefinition: null,
+        })
+      ).toEqual({ value: "fm-2", label: "Region" });
     });
   });
 

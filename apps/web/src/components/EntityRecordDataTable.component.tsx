@@ -28,6 +28,7 @@ import { ApiError } from "../utils";
 import { Formatter } from "../utils/format.util";
 import { useStorage } from "../utils/storage.util";
 import { EntityRecordCellCode } from "./EntityRecordCellCode.component";
+import { RouterLink } from "./RouterLink.component";
 
 /**
  * Soft cap on inline cell width so a 4kB note doesn't blow the
@@ -82,9 +83,10 @@ const VALID_COLUMN: DataTableColumn = {
   sortable: false,
   render: (value: unknown) =>
     value === false ? (
-      <CancelIcon fontSize="small" color="error" />
+      // #794: the state is text to a screen reader, not only a colour.
+      <CancelIcon fontSize="small" color="error" titleAccess="Invalid" />
     ) : (
-      <CheckCircleIcon fontSize="small" color="success" />
+      <CheckCircleIcon fontSize="small" color="success" titleAccess="Valid" />
     ),
 };
 
@@ -158,7 +160,8 @@ export interface EntityRecordDataTableUIProps {
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   onSort?: (column: string) => void;
-  onRowClick?: (row: Record<string, unknown>) => void;
+  /** Where a row leads (#794): its first cell links there, through the router. */
+  rowHref?: (row: Record<string, unknown>) => string;
 }
 
 export const EntityRecordDataTableUI: React.FC<
@@ -173,7 +176,7 @@ export const EntityRecordDataTableUI: React.FC<
   sortColumn,
   sortDirection,
   onSort,
-  onRowClick,
+  rowHref,
 }) => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
@@ -196,9 +199,25 @@ export const EntityRecordDataTableUI: React.FC<
     defaultVisibleCount: isSmallScreen ? 5 : 8,
   });
 
+  // The first visible cell can be empty, "—" or a JSON block, so the link
+  // names the record: its first value when that's text, else its row number
+  // (code review, #794). The visible text stays in the name (WCAG 2.5.3).
+  const firstVisibleKey = columnConfig.find((c) => c.visible)?.key;
+  const recordLinkLabel = (row: Record<string, unknown>) => {
+    const value = firstVisibleKey ? row[firstVisibleKey] : undefined;
+    const text =
+      typeof value === "string" || typeof value === "number"
+        ? String(value).trim()
+        : "";
+    return text
+      ? `Open record ${text}`
+      : `Open record ${rows.indexOf(row) + 1}`;
+  };
+
   return (
     <Stack spacing={1}>
       <DataTable
+        label="Records"
         header={
           source ? (
             <Chip
@@ -217,11 +236,9 @@ export const EntityRecordDataTableUI: React.FC<
         emptyMessage="No records found"
         columnConfig={columnConfig}
         onColumnConfigChange={setColumnConfig}
-        onRowClick={
-          onRowClick
-            ? (row: Record<string, unknown>) => onRowClick(row)
-            : undefined
-        }
+        rowHref={rowHref}
+        rowLinkLabel={recordLinkLabel}
+        linkComponent={RouterLink}
       />
     </Stack>
   );

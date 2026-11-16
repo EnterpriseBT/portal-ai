@@ -406,10 +406,14 @@ describe("EntityRecordDetailViewUI", () => {
     await openMenu();
     const edit = await screen.findByRole("menuitem", { name: /edit/i });
     expect(edit).toHaveAttribute("aria-disabled", "true");
+    // #793: the reason is its description, and its tooltip on hover.
+    expect(edit).toHaveAccessibleDescription(
+      "Writes are disabled on this connector"
+    );
     await userEvent.hover(edit);
-    expect(
-      await screen.findByText("Writes are disabled on this connector")
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Writes are disabled on this connector"
+    );
   });
 
   it("shows the lock alert and disables Edit and Delete while a job runs", async () => {

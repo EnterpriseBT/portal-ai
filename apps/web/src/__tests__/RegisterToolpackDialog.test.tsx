@@ -1,7 +1,13 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor, pressEnter } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  pressEnter,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const { RegisterToolpackDialogUI, appendAuthHeaderBoilerplate } =
   await import("../components/RegisterToolpackDialog.component");
 
@@ -49,6 +55,43 @@ describe("RegisterToolpackDialogUI", () => {
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Schema endpoint/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Runtime endpoint/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <RegisterToolpackDialogUI
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("names each open reference accordion's region by its summary, so the two aren't identical landmarks (#799)", async () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    for (const id of [
+      "register-toolpack-endpoint-shapes",
+      "register-toolpack-verify-snippets",
+    ]) {
+      fireEvent.click(screen.getByTestId(`${id}-summary`));
+    }
+    expect(
+      screen.getByRole("region", {
+        name: "See expected request / response shapes per endpoint",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", {
+        name: "See how to verify our signed requests on your server",
+      })
+    ).toBeInTheDocument();
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("renders a single tabbed accordion at the bottom for each endpoint's expected shape", () => {
@@ -359,8 +402,14 @@ describe("RegisterToolpackDialogUI", () => {
 
   it("disables actions when isPending", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} isPending />);
-    expect(screen.getByRole("button", { name: /Registering/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Registering/ })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("renders FormAlert when serverError is supplied", () => {

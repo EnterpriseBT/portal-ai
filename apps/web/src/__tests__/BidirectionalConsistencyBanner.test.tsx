@@ -12,7 +12,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { BidirectionalConsistencyBannerUI, BidirectionalConsistencyBanner } =
   await import("../components/BidirectionalConsistencyBanner.component");
 
@@ -43,6 +43,17 @@ describe("BidirectionalConsistencyBannerUI", () => {
       />
     );
     expect(screen.getByText(/1 of 1 record\b/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <BidirectionalConsistencyBannerUI
+        sourceField="related_contacts"
+        inconsistentRecordCount={3}
+        totalChecked={10}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });
 

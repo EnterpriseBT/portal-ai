@@ -411,4 +411,38 @@ describe("JobDetailView", () => {
     expect(screen.getByText("Result")).toBeInTheDocument();
     expect(screen.getByText(/recordsSynced/)).toBeInTheDocument();
   });
+
+  it("names the Result and Metadata code blocks as focusable regions when they scroll (#799)", () => {
+    // jsdom has no layout; give every element content taller than its box.
+    const scroll = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      "scrollHeight"
+    )!;
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 500,
+    });
+    const job = makeJob({
+      result: { recordsSynced: 42 },
+      metadata: { connectorInstanceId: "ci-1" },
+    });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    try {
+      render(<JobDetailView jobId="job-1" />);
+      for (const name of ["Result", "Metadata"]) {
+        expect(screen.getByRole("region", { name })).toHaveAttribute(
+          "tabindex",
+          "0"
+        );
+      }
+    } finally {
+      Object.defineProperty(Element.prototype, "scrollHeight", scroll);
+    }
+  });
 });

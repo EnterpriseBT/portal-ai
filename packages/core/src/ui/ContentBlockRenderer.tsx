@@ -67,7 +67,7 @@ const renderDataTable: BlockRenderer = (block) => {
   };
   const columns = raw.columns ?? [];
   const rows = raw.rows ?? [];
-  return <DataTableBlock columns={columns} rows={rows} />;
+  return <DataTableBlock label="Query results" columns={columns} rows={rows} />;
 };
 
 const renderMutationResult: BlockRenderer = (block) => (

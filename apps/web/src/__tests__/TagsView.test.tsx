@@ -70,6 +70,17 @@ describe("TagsViewUI", () => {
     );
   });
 
+  // #794: tags are a named list of h2 cards; a tag card has no link (Edit
+  // opens a dialog).
+  it("lists the tags as h2 cards", () => {
+    render(<TagsViewUI {...props} />);
+    expect(screen.getByRole("list", { name: "Tags" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Mine" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Mine" })).toBeNull();
+  });
+
   it("offers Edit and Delete only on the tags the caller may change", () => {
     render(<TagsViewUI {...props} />);
     expect(screen.getAllByRole("button", { name: /^edit$/i })).toHaveLength(1);

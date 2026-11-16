@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { SyncTotal } from "../components/SyncTotal.component";
 
 describe("SyncTotal", () => {
@@ -59,5 +59,14 @@ describe("SyncTotal", () => {
       </SyncTotal>
     );
     expect(setTotal).toHaveBeenCalledWith(0);
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <SyncTotal total={10} setTotal={jest.fn()}>
+        <div>child content</div>
+      </SyncTotal>
+    );
+    await expectNoAxeViolations(container);
   });
 });

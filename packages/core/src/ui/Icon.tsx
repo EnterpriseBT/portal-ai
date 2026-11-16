@@ -16,6 +16,8 @@ import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import MenuIcon from "@mui/icons-material/Menu";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import GoogleIcon from "@mui/icons-material/Google";
@@ -68,6 +70,8 @@ export enum IconName {
   Close = "close",
   ArrowBack = "arrow_back",
   ArrowForward = "arrow_forward",
+  ArrowUpward = "arrow_upward",
+  ArrowDownward = "arrow_downward",
   Menu = "menu",
   MoreVert = "more_vert",
   Heart = "heart",
@@ -146,6 +150,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <ArrowBackIcon ref={ref} {...props} />;
       case IconName.ArrowForward:
         return <ArrowForwardIcon ref={ref} {...props} />;
+      case IconName.ArrowUpward:
+        return <ArrowUpwardIcon ref={ref} {...props} />;
+      case IconName.ArrowDownward:
+        return <ArrowDownwardIcon ref={ref} {...props} />;
       case IconName.Menu:
         return <MenuIcon ref={ref} {...props} />;
       case IconName.MoreVert:

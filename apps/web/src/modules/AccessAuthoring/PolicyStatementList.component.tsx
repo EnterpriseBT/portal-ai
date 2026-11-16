@@ -26,6 +26,7 @@ export const PolicyStatementListUI: React.FC<PolicyStatementListUIProps> = ({
 }) => (
   <div data-testid="policy-statement-list">
     <DataTable
+      label="Policy statements"
       columns={COLUMNS}
       rows={statements.map((s, i) => ({
         id: String(i),

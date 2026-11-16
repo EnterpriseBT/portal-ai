@@ -210,6 +210,7 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
       {
         key: "__actions",
         label: "",
+        headerLabel: "Actions",
         render: (_value, row) => {
           const r = row as TableRow;
           return (
@@ -237,7 +238,11 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
 
   return (
     <Stack spacing={1} sx={{ minWidth: 0 }}>
+      {/* #794: inline edits in every row, so an APG grid: one Tab stop, arrows
+          between cells, Enter into a field and Escape back out. */}
       <DataTable
+        label="Inferred columns"
+        variant="grid"
         columns={columns}
         rows={tableRows}
         emptyMessage="No columns yet. Click Add column below to add one."

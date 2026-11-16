@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Icon,
   IconName,
@@ -8,6 +9,7 @@ import {
   Collapse,
   List,
   ClickAwayListener,
+  Tooltip,
 } from "@portalai/core/ui";
 import { useLayout } from "../utils";
 
@@ -20,6 +22,10 @@ export interface SidebarNavChildItem {
 export interface SidebarNavItemUIProps {
   icon: IconName;
   label: string;
+  /** The route this item goes to. With one, the item is a link (#797): it
+   *  navigates, so it's announced as a link, opens in a new tab, and marks
+   *  the current page. Without one (Logout, a parent) it stays a button. */
+  href?: string;
   collapsed: boolean;
   children?: React.ReactNode;
   items?: SidebarNavChildItem[];
@@ -33,6 +39,7 @@ export interface SidebarNavItemUIProps {
 export const SidebarNavItemUI = ({
   icon,
   label,
+  href,
   collapsed,
   children,
   items,
@@ -52,8 +59,22 @@ export const SidebarNavItemUI = ({
     }
   };
 
-  const button = (
+  const isLink = Boolean(href) && !hasChildren;
+  const semantics = isLink
+    ? {
+        component: Link,
+        to: href,
+        "aria-current": selected ? ("page" as const) : undefined,
+      }
+    : hasChildren
+      ? { "aria-expanded": open }
+      : {};
+
+  const item = (
     <ListItemButton
+      {...semantics}
+      // Collapsed, the label isn't rendered, so it names the item instead.
+      aria-label={collapsed ? label : undefined}
       selected={selected}
       onClick={handleClick}
       sx={(theme) => ({
@@ -74,12 +95,21 @@ export const SidebarNavItemUI = ({
     </ListItemButton>
   );
 
+  const button = collapsed ? (
+    <Tooltip title={label} placement="right">
+      {item}
+    </Tooltip>
+  ) : (
+    item
+  );
+
   const content = (
     <>
       {button}
       {hasChildren && (
         <Collapse in={open && !collapsed}>
-          <List disablePadding>
+          {/* A div, not a ul: its children are buttons, not list items. */}
+          <List disablePadding component="div">
             {items?.map((item) => (
               <ListItemButton
                 key={item.label}
@@ -111,6 +141,7 @@ export const SidebarNavItemUI = ({
 export const SidebarNavItem = ({
   icon,
   label,
+  href,
   children,
   items,
   onClick,
@@ -126,6 +157,7 @@ export const SidebarNavItem = ({
     <SidebarNavItemUI
       icon={icon}
       label={label}
+      href={href}
       collapsed={isCollapsed}
       open={open}
       onToggle={() => setOpen((prev) => !prev)}

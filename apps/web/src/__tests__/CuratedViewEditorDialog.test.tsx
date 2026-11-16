@@ -48,7 +48,8 @@ jest.unstable_mockModule("../utils/use-action-gate.util", () => ({
   }),
 }));
 
-const { render, screen, pressEnter } = await import("./test-utils");
+const { render, screen, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CuratedViewEditorUI, CuratedViewEditorDialog } =
   await import("../components/CuratedViewEditorDialog.component");
@@ -113,6 +114,22 @@ describe("CuratedViewEditorUI (pure form)", () => {
     expect(label).toBeRequired();
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    render(<CuratedViewEditorUI {...baseProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <CuratedViewEditorUI
+        {...baseProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("calls onSubmit on Save and onClose on Cancel", async () => {
     const onSubmit = jest.fn();
     const onClose = jest.fn();
@@ -131,7 +148,10 @@ describe("CuratedViewEditorUI (pure form)", () => {
 
   it("shows the loading state when pending", () => {
     render(<CuratedViewEditorUI {...baseProps} isPending />);
-    expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /saving/i })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("shows a field-level error + aria-invalid when touched", () => {
@@ -159,6 +179,39 @@ describe("CuratedViewEditorUI (pure form)", () => {
       />
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Boom");
+  });
+});
+
+// #986: MUI keyed options by label, so two entities (or columns) with the
+// same label shared a React key and one could be dropped or duplicated.
+describe("CuratedViewEditorUI options with the same label (#986)", () => {
+  it("lists both and picks the one chosen", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const onEntityChange = jest.fn();
+    render(
+      <CuratedViewEditorUI
+        {...baseProps}
+        showEntitySelect
+        selectedEntityId=""
+        onEntityChange={onEntityChange}
+        entityOptions={[
+          { id: "ent-a", label: "Sheet1" },
+          { id: "ent-b", label: "Sheet1" },
+        ]}
+      />
+    );
+    await userEvent.click(screen.getByRole("combobox", { name: /entity/i }));
+    const options = await screen.findAllByRole("option", { name: "Sheet1" });
+    expect(options).toHaveLength(2);
+    const duplicateKeyErrors = consoleError.mock.calls.filter((args) =>
+      args.some((a) => String(a).includes("same key"))
+    );
+    consoleError.mockRestore();
+    expect(duplicateKeyErrors).toHaveLength(0);
+    await userEvent.click(options[1]);
+    expect(onEntityChange).toHaveBeenCalledWith("ent-b");
   });
 });
 

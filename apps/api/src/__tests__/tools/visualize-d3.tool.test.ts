@@ -33,7 +33,14 @@ const handleEnvelope = {
 };
 const handleDelivery = { kind: "handle" as const, envelope: handleEnvelope };
 
-type ExecArgs = { sql: string; instruction: string; title?: string };
+type ExecArgs = {
+  sql: string;
+  instruction: string;
+  title?: string;
+  summary?: string;
+};
+
+const SUMMARY = "Revenue by month; it peaks in February.";
 
 type CodegenArgs = { system: string; prompt: string };
 
@@ -51,7 +58,7 @@ function buildTool(
       built as unknown as {
         execute: (a: ExecArgs) => Promise<Record<string, unknown>>;
       }
-    ).execute(args);
+    ).execute({ summary: SUMMARY, ...args });
 }
 
 describe("VisualizeD3Tool.execute (#269)", () => {
@@ -126,6 +133,41 @@ describe("VisualizeD3Tool.execute (#269)", () => {
     expect(out.rows).toHaveLength(2);
     expect(typeof out.message).toBe("string");
     expect(generateCode).toHaveBeenCalledTimes(3); // 1 + 2 retries
+  });
+
+  it("a program that writes its own colour is regenerated with the colour error (#1022)", async () => {
+    const generateCode = jest
+      .fn<(a: CodegenArgs) => Promise<string>>()
+      .mockResolvedValueOnce(
+        `${PROGRAM}\napi.d3.select("svg").attr("fill", "#1f77b4");`
+      )
+      .mockResolvedValueOnce(PROGRAM);
+    const exec = buildTool({
+      generateCode: generateCode as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out).toMatchObject({ type: "d3", program: PROGRAM });
+    expect(generateCode).toHaveBeenCalledTimes(2);
+    expect(generateCode.mock.calls[1][0].prompt).toContain(
+      'Colour "#1f77b4" on line 2'
+    );
+  });
+
+  it("a program that keeps writing colours falls back to the data table (#1022)", async () => {
+    const generateCode = jest.fn(
+      async () =>
+        `${PROGRAM}\nconst c = api.d3.scaleOrdinal(api.d3.schemeCategory10);`
+    );
+    const exec = buildTool({
+      generateCode: generateCode as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out.type).toBe("data-table");
+    expect(generateCode).toHaveBeenCalledTimes(3);
   });
 
   it("codegen provider error → typed tool result, never throws out of execute", async () => {
@@ -255,6 +297,7 @@ describe("VisualizeD3Tool input limits", () => {
       new VisualizeD3Tool().schema.safeParse({
         sql: "SELECT 1",
         instruction: "bar chart",
+        summary: SUMMARY,
         title,
       }).error?.issues ?? []
     ).map((i) => i.message);
@@ -264,5 +307,53 @@ describe("VisualizeD3Tool input limits", () => {
     expect(titleIssues("t".repeat(121))).toEqual([
       "Title must be 120 characters or fewer",
     ]);
+  });
+});
+
+// #796: every chart carries an agent-written text alternative.
+describe("VisualizeD3Tool summary (#796)", () => {
+  const summaryIssues = (input: Record<string, unknown>) =>
+    (
+      new VisualizeD3Tool().schema.safeParse({
+        sql: "SELECT 1",
+        instruction: "bar chart",
+        ...input,
+      }).error?.issues ?? []
+    )
+      .filter((i) => i.path[0] === "summary")
+      .map((i) => i.message);
+
+  it("refuses a missing or blank summary", () => {
+    expect(summaryIssues({})).toHaveLength(1);
+    expect(summaryIssues({ summary: "   " })).toEqual(["Summary is required"]);
+  });
+
+  it("accepts 2000 characters and refuses 2001", () => {
+    expect(summaryIssues({ summary: "s".repeat(2000) })).toEqual([]);
+    expect(summaryIssues({ summary: "s".repeat(2001) })).toEqual([
+      "Summary must be 2000 characters or fewer",
+    ]);
+  });
+
+  it("puts the summary on the inline and handle blocks", async () => {
+    const generateCode = jest.fn(async () => PROGRAM);
+    for (const delivery of [inlineDelivery, handleDelivery]) {
+      const exec = buildTool({
+        generateCode: generateCode as never,
+        resolveSqlDelivery: jest.fn(async () => delivery) as never,
+      });
+      const out = await exec({ sql: "s", instruction: "bar chart" });
+      expect(out).toMatchObject({ type: "d3", summary: SUMMARY });
+    }
+  });
+
+  it("leaves the summary off the data-table fallback", async () => {
+    const exec = buildTool({
+      generateCode: jest.fn(async () => "not a program(") as never,
+      resolveSqlDelivery: jest.fn(async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "s", instruction: "bar chart" });
+    expect(out.type).toBe("data-table");
+    expect(out.summary).toBeUndefined();
   });
 });

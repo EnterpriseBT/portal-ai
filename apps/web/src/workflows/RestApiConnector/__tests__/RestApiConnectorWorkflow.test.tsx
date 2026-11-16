@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import type { SearchResult } from "../../../api/types";
 import {
@@ -82,6 +86,24 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
     expect(onStepChange).toHaveBeenCalledWith(1);
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    const onStepChange = jest.fn();
+    render(<RestApiConnectorWorkflowUI {...makeProps({ onStepChange })} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    const onStepChange = jest.fn();
+    render(
+      <RestApiConnectorWorkflowUI
+        {...makeProps({ onStepChange })}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("does not advance on Enter when the step can't", async () => {
     const user = userEvent.setup();
     const onStepChange = jest.fn();
@@ -115,8 +137,14 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
       />
     );
     await user.keyboard("{Escape}");
-    expect(screen.getByLabelText("close")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByLabelText("close")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -128,7 +156,10 @@ describe("RestApiConnectorWorkflowUI — Enter and commit", () => {
         {...makeProps({ step: 3, onCommit, isCommitting: true })}
       />
     );
-    expect(screen.getByRole("button", { name: "Committing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Committing…" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     await user.keyboard("{Enter}");
     expect(onCommit).not.toHaveBeenCalled();
   });

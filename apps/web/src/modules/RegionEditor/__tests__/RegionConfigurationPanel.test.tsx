@@ -3,6 +3,7 @@ import { useState } from "react";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
 import type { EntityOption, RegionDraft } from "../utils/region-editor.types";
 
@@ -37,6 +38,78 @@ describe("RegionConfigurationPanelUI", () => {
     expect(
       screen.getByText(/Draw a region on the canvas/i)
     ).toBeInTheDocument();
+  });
+
+  test("the empty state creates a region from a typed range (#795)", () => {
+    const onCreate = jest.fn();
+    render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        activeSheet={{ rowCount: 10, colCount: 5 }}
+        onCreateRegionFromRange={onCreate}
+      />
+    );
+    expect(
+      screen.getByText(/Draw a region on the sheet, or type its range/i)
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Range" }), {
+      target: { value: "B2:C4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add region" }));
+    expect(onCreate).toHaveBeenCalledWith({
+      startRow: 1,
+      endRow: 3,
+      startCol: 1,
+      endCol: 2,
+    });
+  });
+
+  test("after a range creates a region, focus moves into its form (#795)", () => {
+    function Harness() {
+      const [region, setRegion] = useState<RegionDraft | null>(null);
+      return (
+        <RegionConfigurationPanelUI
+          region={region}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+          activeSheet={{ rowCount: 10, colCount: 5 }}
+          onCreateRegionFromRange={(bounds) =>
+            setRegion(baseRegion({ bounds }))
+          }
+        />
+      );
+    }
+    render(<Harness />);
+    const field = screen.getByRole("textbox", { name: "Range" });
+    fireEvent.change(field, { target: { value: "B2:C4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add region" }));
+    expect(field).not.toBeInTheDocument();
+    // The first field, never the Delete button that leads the panel.
+    expect(screen.getByRole("spinbutton", { name: "Start row" })).toHaveFocus();
+  });
+
+  test("the empty state has no Range field without a create handler", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Range" })
+    ).not.toBeInTheDocument();
   });
 
   test("renders region label and bounds caption", () => {
@@ -978,5 +1051,52 @@ describe("RegionConfigurationPanelUI", () => {
         screen.queryByRole("region", { name: "Past the sheet" })
       ).toBeNull();
     });
+  });
+});
+
+describe("RegionConfigurationPanelUI — accessibility", () => {
+  test("has no axe violations in the empty state", async () => {
+    const { container } = render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        activeSheet={{ rowCount: 10, colCount: 5 }}
+        onCreateRegionFromRange={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations for a segmented region with a pivot", async () => {
+    const { container } = render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              { kind: "field", positionCount: 2 },
+              {
+                kind: "pivot",
+                id: "p1",
+                axisName: "Quarter",
+                axisNameSource: "user",
+                positionCount: 2,
+              },
+            ],
+          },
+          cellValueField: { name: "value", nameSource: "user" },
+        })}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

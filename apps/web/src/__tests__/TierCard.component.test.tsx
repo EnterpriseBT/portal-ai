@@ -6,7 +6,7 @@
 import { jest } from "@jest/globals";
 import type { BillingTier } from "@portalai/core/contracts";
 
-const { render, screen } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TierCardUI } = await import("../components/TierCard.component");
 import { SUPPORT_MAILTO } from "../utils/contact.util";
@@ -239,5 +239,17 @@ describe("TierCardUI — none (free default)", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     // No blurb paragraph (description is null).
     expect(screen.queryByText("Tailored to Acme.")).not.toBeInTheDocument();
+  });
+});
+
+describe("TierCardUI — accessibility", () => {
+  it("has no axe violations, as a subscribe tier and a contact tier", async () => {
+    const { container } = render(
+      <>
+        <TierCardUI {...base} tier={subscribeTier} />
+        <TierCardUI {...base} tier={contactTier} />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

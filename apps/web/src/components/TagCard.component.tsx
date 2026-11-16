@@ -14,12 +14,15 @@ export interface TagCardUIProps {
   tag: EntityTag & { capabilities: ObjectCapabilities };
   onEdit: (tag: EntityTag) => void;
   onDelete: (tag: EntityTag) => void;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const TagCardUI: React.FC<TagCardUIProps> = ({
   tag,
   onEdit,
   onDelete,
+  headingLevel,
 }) => {
   const actions: ActionSuiteItem[] = [
     {
@@ -40,6 +43,7 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
   return (
     <DetailCard
       title={tag.name}
+      headingLevel={headingLevel}
       icon={
         tag.color ? (
           <Box

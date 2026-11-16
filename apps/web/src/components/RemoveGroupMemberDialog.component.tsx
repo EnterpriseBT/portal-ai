@@ -1,6 +1,12 @@
 import React from "react";
 
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -19,6 +25,7 @@ export const RemoveGroupMemberDialog: React.FC<
   RemoveGroupMemberDialogProps
 > = ({ open, onClose, onConfirm, isPending, serverError }) => (
   <Modal
+    describeContent
     open={open}
     onClose={onClose}
     title="Remove Member"
@@ -29,23 +36,23 @@ export const RemoveGroupMemberDialog: React.FC<
     pending={isPending}
     actions={
       <Stack direction="row" spacing={1}>
-        <Button
+        <GatedButton
           type="button"
           variant="outlined"
           onClick={onClose}
-          disabled={isPending}
+          gate={pendingGate(isPending, "Wait for this to finish")}
         >
           Cancel
-        </Button>
-        <Button
+        </GatedButton>
+        <GatedButton
           type="button"
           color="error"
           variant="contained"
           onClick={onConfirm}
-          disabled={isPending}
+          gate={pendingGate(isPending, "Removing…")}
         >
           {isPending ? "Removing..." : "Remove"}
-        </Button>
+        </GatedButton>
       </Stack>
     }
   >

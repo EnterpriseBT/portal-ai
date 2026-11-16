@@ -171,6 +171,7 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
           exclusive
           onChange={handleCombinatorChange}
           size="small"
+          aria-label="Match"
         >
           <ToggleButton
             value="and"
@@ -220,6 +221,7 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
           return (
             <FilterConditionEditor
               key={index}
+              position={index + 1}
               condition={item}
               onChange={(updated) => handleConditionChange(index, updated)}
               onRemove={() => handleRemoveCondition(index)}
@@ -257,6 +259,8 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
 // ── FilterConditionEditor ───────────────────────────────────────────
 
 interface FilterConditionEditorProps {
+  /** 1-based, to name the condition for assistive tech (#793). */
+  position: number;
   condition: FilterCondition;
   onChange: (condition: FilterCondition) => void;
   onRemove: () => void;
@@ -264,6 +268,7 @@ interface FilterConditionEditorProps {
 }
 
 const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
+  position,
   condition,
   onChange,
   onRemove,
@@ -301,13 +306,20 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
   const isBetween = condition.operator === "between";
 
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+    // #793: each condition is a named group, so "Column", "Operator" and
+    // "Value" read in context.
+    <Box
+      role="group"
+      aria-label={`Condition ${position}`}
+      sx={{ display: "flex", alignItems: "center", gap: 1 }}
+    >
       {/* Column select */}
       <FormControl size="small" sx={{ minWidth: 130 }}>
         <Select
           value={condition.field}
           onChange={(e) => handleFieldChange(e.target.value)}
           displayEmpty
+          inputProps={{ "aria-label": "Column" }}
         >
           {columnDefinitions.map((col) => (
             <MenuItem key={col.normalizedKey} value={col.normalizedKey}>
@@ -321,6 +333,7 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
       <FormControl size="small" sx={{ minWidth: 120 }}>
         <Select
           value={condition.operator}
+          inputProps={{ "aria-label": "Operator" }}
           onChange={(e) =>
             handleOperatorChange(e.target.value as FilterOperator)
           }
@@ -397,6 +410,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             <TextField
               size="small"
+              slotProps={{ htmlInput: { "aria-label": "Minimum" } }}
               type="number"
               placeholder="Min"
               value={arr[0] ?? ""}
@@ -411,6 +425,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
             <Typography variant="body2">-</Typography>
             <TextField
               size="small"
+              slotProps={{ htmlInput: { "aria-label": "Maximum" } }}
               type="number"
               placeholder="Max"
               value={arr[1] ?? ""}
@@ -428,6 +443,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
       return (
         <TextField
           size="small"
+          slotProps={{ htmlInput: { "aria-label": "Value" } }}
           type="number"
           fullWidth
           placeholder="Value"
@@ -454,7 +470,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
                 })
               }
               sx={{ flex: 1 }}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { "aria-label": "Minimum" },
+              }}
             />
             <Typography variant="body2">-</Typography>
             <TextField
@@ -468,7 +487,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
                 })
               }
               sx={{ flex: 1 }}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { "aria-label": "Maximum" },
+              }}
             />
           </Box>
         );
@@ -480,7 +502,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
           fullWidth
           value={String(condition.value ?? "")}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          slotProps={{ inputLabel: { shrink: true } }}
+          slotProps={{
+            inputLabel: { shrink: true },
+            htmlInput: { "aria-label": "Value" },
+          }}
         />
       );
 
@@ -500,7 +525,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
                 })
               }
               sx={{ flex: 1 }}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { "aria-label": "Minimum" },
+              }}
             />
             <Typography variant="body2">-</Typography>
             <TextField
@@ -514,7 +542,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
                 })
               }
               sx={{ flex: 1 }}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                htmlInput: { "aria-label": "Maximum" },
+              }}
             />
           </Box>
         );
@@ -526,7 +557,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
           fullWidth
           value={String(condition.value ?? "")}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          slotProps={{ inputLabel: { shrink: true } }}
+          slotProps={{
+            inputLabel: { shrink: true },
+            htmlInput: { "aria-label": "Value" },
+          }}
         />
       );
 
@@ -539,6 +573,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
         return (
           <TextField
             size="small"
+            slotProps={{ htmlInput: { "aria-label": "Value" } }}
             fullWidth
             placeholder="value1, value2, ..."
             value={arr.join(", ")}
@@ -555,6 +590,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
       return (
         <TextField
           size="small"
+          slotProps={{ htmlInput: { "aria-label": "Value" } }}
           fullWidth
           placeholder="Value"
           value={String(condition.value ?? "")}
@@ -568,6 +604,7 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
       return (
         <TextField
           size="small"
+          slotProps={{ htmlInput: { "aria-label": "Value" } }}
           fullWidth
           placeholder="Value"
           value={String(condition.value ?? "")}

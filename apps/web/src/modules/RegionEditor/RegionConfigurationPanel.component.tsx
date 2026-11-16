@@ -25,6 +25,7 @@ import { CellPositionInputUI } from "./CellPositionInput.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { RecordAxisTerminatorPopoverUI } from "./RecordAxisTerminatorPopover.component";
 import { RecordsPreviewDialogUI } from "./RecordsPreviewDialog.component";
+import { RegionRangeInputUI } from "./RegionRangeInput.component";
 import { SectionHelpUI } from "./SectionHelp.component";
 import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
 import { SegmentStripUI } from "./SegmentStrip.component";
@@ -33,17 +34,16 @@ import { colIndexToLetter, formatBounds } from "./utils/a1-notation.util";
 import { regionOverhang } from "./utils/region-overhang.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
 import { resizeSegment } from "./utils/segment-ops.util";
+import { entitySlot, confidenceBand } from "./utils/region-editor-colors.util";
 import {
-  colorForEntity,
-  confidenceBand,
-  CONFIDENCE_BAND_COLOR,
-} from "./utils/region-editor-colors.util";
-import {
-  DECORATION_COLOR,
   DECORATION_LABEL,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
-import type { EntityOption, RegionDraft } from "./utils/region-editor.types";
+import type {
+  CellBounds,
+  EntityOption,
+  RegionDraft,
+} from "./utils/region-editor.types";
 import {
   isDraftCrosstab,
   isDraftPivoted,
@@ -78,6 +78,13 @@ export interface RegionConfigurationPanelUIProps {
    * sheet data isn't available — the button is hidden.
    */
   regionSheet?: import("./utils/region-editor.types").SheetPreview;
+  /**
+   * The sheet on show, and the handler that creates a region on it from a
+   * typed range (#795). With both, the no-selection state offers the Range
+   * field: the keyboard's way to create a region.
+   */
+  activeSheet?: { rowCount: number; colCount: number };
+  onCreateRegionFromRange?: (bounds: CellBounds) => void;
   /**
    * Lock the region's entity association. When `true`, the
    * Target-Entity Select and the Label TextField render disabled and
@@ -221,6 +228,8 @@ export const RegionConfigurationPanelUI: React.FC<
   claimedEntityKeys,
   validateEntityKey,
   regionSheet,
+  activeSheet,
+  onCreateRegionFromRange,
 }) => {
   const boundsCaptionRef = useRef<HTMLSpanElement>(null);
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
@@ -250,6 +259,28 @@ export const RegionConfigurationPanelUI: React.FC<
     }, 50);
     return () => clearTimeout(timer);
   }, [cellValueFieldFocusToken]);
+
+  // A region made from the Range field replaces that field with this
+  // form, so focus would fall to the page; it moves to the form's first
+  // field instead (#795).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const focusAfterCreateRef = useRef(false);
+  const regionId = region?.id ?? null;
+  useEffect(() => {
+    if (!regionId || !focusAfterCreateRef.current) return;
+    focusAfterCreateRef.current = false;
+    // The first field (Start row), not the first control: the panel leads
+    // with Delete region, and Enter there would undo what was just made.
+    panelRef.current
+      ?.querySelector<HTMLElement>(
+        "input:not([disabled]):not([type=hidden]):not([aria-hidden=true])"
+      )
+      ?.focus();
+  }, [regionId]);
+  const handleCreateFromRange = (bounds: CellBounds) => {
+    focusAfterCreateRef.current = true;
+    onCreateRegionFromRange?.(bounds);
+  };
 
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
@@ -283,10 +314,25 @@ export const RegionConfigurationPanelUI: React.FC<
           textAlign: "center",
         }}
       >
-        <Typography variant="body2" color="text.secondary">
-          Draw a region on the canvas, or select an existing region, to
-          configure it here.
-        </Typography>
+        {activeSheet && onCreateRegionFromRange ? (
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Draw a region on the sheet, or type its range:
+            </Typography>
+            <RegionRangeInputUI
+              sheet={activeSheet}
+              onCreate={handleCreateFromRange}
+            />
+            <Typography variant="body2" color="text.secondary">
+              Select an existing region to configure it here.
+            </Typography>
+          </>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Draw a region on the canvas, or select an existing region, to
+            configure it here.
+          </Typography>
+        )}
       </Stack>
     );
   }
@@ -298,7 +344,7 @@ export const RegionConfigurationPanelUI: React.FC<
   const headerAxes = region.headerAxes ?? [];
   const canAddSecondAxis = headerAxes.length === 1;
   const canPreview = !!regionSheet;
-  const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
+  const slot = entitySlot(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
   // #1009: a stored region can outlast its sheet (rows or columns deleted at
@@ -597,6 +643,13 @@ export const RegionConfigurationPanelUI: React.FC<
 
   return (
     <Box
+      ref={panelRef}
+      // Named and focusable (not tabbable) so focus has somewhere to go
+      // when a control here unmounts, e.g. "+ Add row axis" (#795).
+      role="group"
+      aria-label={`Region ${formatBounds(region.bounds)} settings`}
+      tabIndex={-1}
+      data-region-panel=""
       sx={{
         width: "100%",
         minWidth: 0,
@@ -623,13 +676,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ minWidth: 0 }}
         >
           <Box
-            sx={{
-              width: 14,
-              height: 14,
-              borderRadius: "50%",
-              backgroundColor: color,
-              flexShrink: 0,
-            }}
+            data-sheet-part="entity-dot"
+            data-entity={slot}
+            sx={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0 }}
           />
           <Typography
             variant="subtitle2"
@@ -695,18 +744,16 @@ export const RegionConfigurationPanelUI: React.FC<
                 sx={{ minWidth: 0 }}
               >
                 <Box
+                  data-sheet-part="decoration"
+                  data-kind={kind}
+                  data-swatch=""
                   sx={{
                     width: 12,
                     height: 12,
-                    backgroundColor: DECORATION_COLOR[kind],
                     borderRadius: 0.5,
                     border: "1px solid",
                     borderColor: "divider",
                     flexShrink: 0,
-                    backgroundImage:
-                      kind === "skipped"
-                        ? "repeating-linear-gradient(45deg, rgba(100,116,139,0.45) 0 3px, transparent 3px 6px)"
-                        : undefined,
                   }}
                 />
                 <Typography variant="caption" color="text.secondary">
@@ -1107,12 +1154,12 @@ export const RegionConfigurationPanelUI: React.FC<
             if (rowPivots.length === 0 || colPivots.length === 0) {
               return (
                 <Box
+                  data-sheet-part="intersection-note"
                   sx={{
                     p: 1.5,
                     borderRadius: 1,
-                    backgroundColor: "rgba(217, 119, 6, 0.08)",
-                    border: "1px dashed",
-                    borderColor: "rgba(180, 83, 9, 0.55)",
+                    borderWidth: 1,
+                    borderStyle: "dashed",
                   }}
                 >
                   <Typography
@@ -1158,22 +1205,20 @@ export const RegionConfigurationPanelUI: React.FC<
                         direction="row"
                         spacing={1}
                         alignItems="center"
+                        data-sheet-part="intersection-note"
                         sx={{
                           p: 1,
                           borderRadius: 1,
-                          backgroundColor: "rgba(217, 119, 6, 0.06)",
-                          border: "1px dashed",
-                          borderColor: "rgba(180, 83, 9, 0.45)",
+                          borderWidth: 1,
+                          borderStyle: "dashed",
                         }}
                       >
                         <MuiChip
                           size="small"
                           label={`${rowName} × ${colName}`}
-                          sx={{
-                            backgroundColor: "rgba(180, 83, 9, 0.85)",
-                            color: "#fff",
-                            fontWeight: 700,
-                          }}
+                          data-sheet-part="intersection-chip"
+                          data-kind="pivot-pivot"
+                          sx={{ fontWeight: 700 }}
                         />
                         <TextInput
                           size="small"
@@ -1396,12 +1441,9 @@ export const RegionConfigurationPanelUI: React.FC<
           sx={{ gridColumn: "1 / -1" }}
         >
           <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: CONFIDENCE_BAND_COLOR[band],
-            }}
+            data-sheet-part="confidence-dot"
+            data-confidence={band}
+            sx={{ width: 8, height: 8, borderRadius: "50%" }}
           />
           <Typography variant="caption" color="text.secondary">
             Confidence:{" "}

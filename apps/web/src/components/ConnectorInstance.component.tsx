@@ -18,6 +18,7 @@ import { upperFirst } from "lodash-es";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
+import { RouterLink } from "./RouterLink.component";
 
 export interface ConnectorInstanceDataListProps {
   query: ConnectorInstanceListRequestQuery;
@@ -80,15 +81,19 @@ export interface ConnectorInstanceCardUIProps {
     capabilities: ObjectCapabilities;
   };
   connectorDefinition?: ConnectorDefinition;
-  onClick?: (connectorInstance: ConnectorInstanceApi) => void;
+  /** Where the card leads (#794): its title links there. */
+  href?: string;
   onDelete?: (connectorInstance: ConnectorInstanceApi) => void;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const ConnectorInstanceCardUI = ({
   connectorInstance: ci,
   connectorDefinition: cd,
-  onClick,
+  href,
   onDelete,
+  headingLevel,
 }: ConnectorInstanceCardUIProps) => {
   const actions: ActionSuiteItem[] = [];
   if (onDelete && ci.capabilities.delete) {
@@ -126,7 +131,9 @@ export const ConnectorInstanceCardUI = ({
           {ci.name.charAt(0).toUpperCase()}
         </Avatar>
       }
-      onClick={onClick ? () => onClick(ci) : undefined}
+      href={href}
+      linkComponent={RouterLink}
+      headingLevel={headingLevel}
       actions={actions.length > 0 ? actions : undefined}
     >
       <MetadataList

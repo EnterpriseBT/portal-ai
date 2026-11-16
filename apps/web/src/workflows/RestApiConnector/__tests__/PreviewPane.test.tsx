@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import { waitFor, screen } from "@testing-library/react";
 
-import { render } from "../../../__tests__/test-utils";
+import { render, expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { PreviewPaneUI } from "../PreviewPane.component";
 import type { PreviewPaneUIProps } from "../PreviewPane.component";
@@ -249,5 +249,22 @@ describe("PreviewPaneUI", () => {
     expect(screen.getByTestId("preview-extracted")).toHaveTextContent(
       /enter a jsonata expression/i
     );
+  });
+});
+
+describe("PreviewPaneUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const response = { data: { items: [{ id: 1, name: "Alice" }] } };
+    const { container } = render(
+      <PreviewPaneUI {...makeProps({ response, recordsPath: "data.items" })} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with an error showing", async () => {
+    const { container } = render(
+      <PreviewPaneUI {...makeProps({ error: "Network unreachable" })} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

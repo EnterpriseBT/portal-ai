@@ -1,13 +1,18 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
 import AnchorIcon from "@mui/icons-material/Anchor";
-import { Box } from "@portalai/core/ui";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Box, VisuallyHidden } from "@portalai/core/ui";
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type Range,
+} from "@tanstack/react-virtual";
 
 import {
   COL_HEADER_HEIGHT,
@@ -19,23 +24,18 @@ import {
 import {
   colIndexToLetter,
   coordInBounds,
+  formatBounds,
   normalizeBounds,
 } from "./utils/a1-notation.util";
 import {
-  DECORATION_BACKGROUND_IMAGE,
-  DECORATION_COLOR,
-  INTERSECTION_OVERLAY_BACKGROUND_IMAGE,
-  INTERSECTION_OVERLAY_BORDER,
-  INTERSECTION_OVERLAY_COLOR,
-  SEGMENT_OVERLAY_BACKGROUND_IMAGE,
-  SEGMENT_OVERLAY_BORDER,
-  SEGMENT_OVERLAY_COLOR,
   computeIntersectionOverlays,
   computeRegionDecorations,
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
 import { regionOverhang } from "./utils/region-overhang.util";
 import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
+import { SHEET_LAYER } from "./utils/sheet-layers.util";
+import { useSheetKeyboard } from "./utils/use-sheet-keyboard.util";
 import type {
   CellBounds,
   CellCoord,
@@ -107,6 +107,22 @@ export interface SheetCanvasUIProps {
    * whose cells were inlined in the parse response.
    */
   loadSlice?: LoadSliceFn;
+  /** The keyboard selection changed (#795); the step announces its extent. */
+  onSelectionChange?: (bounds: CellBounds | null) => void;
+  /** Enter on the sheet with nothing to create or open (#795). */
+  onKeyboardHint?: () => void;
+  /**
+   * The corner button drafted the whole sheet from a key or a screen
+   * reader's tap (#795); the step moves focus into the new region's form.
+   */
+  onCornerDraft?: () => void;
+  /**
+   * One description per region, read with each of its cells (#795).
+   * Default: "Region <label>, <A1:D20>".
+   */
+  regionDescriptions?: Record<string, string>;
+  /** Regions with validation errors; their tabs say "Needs attention". */
+  invalidRegionIds?: readonly string[];
 }
 
 const DEFAULT_CELL_WIDTH = 96;
@@ -204,11 +220,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   cellSize,
   maxHeight = 420,
   loadSlice,
+  onSelectionChange,
+  onKeyboardHint,
+  onCornerDraft,
+  regionDescriptions,
+  invalidRegionIds,
 }) => {
   const cellWidth = cellSize?.width ?? DEFAULT_CELL_WIDTH;
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
 
   const gridRef = useRef<HTMLDivElement | null>(null);
+  // When the corner last drafted the whole sheet, so the click that follows
+  // a pointer press, or a quick repeat of a key press, doesn't draft a
+  // second region. A time, not a flag: a press whose click never arrives
+  // mustn't swallow a later key press.
+  const cornerDraftedAtRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
@@ -381,6 +407,22 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   // Always-current tick callback — the ref is only invoked inside
   // `requestAnimationFrame` handlers, so writing it in a layout-less effect
   // (which runs after commit) is safe and avoids a ref-during-render lint error.
+  // The corner button's keyboard activation reads the latest props through a
+  // ref, so the memoized header row needn't rebuild for every parent render.
+  const selectWholeSheetRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    selectWholeSheetRef.current = () => {
+      if (readOnly) return;
+      onRegionDraft({
+        startRow: 0,
+        endRow: sheet.rowCount - 1,
+        startCol: 0,
+        endCol: sheet.colCount - 1,
+      });
+      onCornerDraft?.();
+    };
+  }, [readOnly, onRegionDraft, onCornerDraft, sheet.rowCount, sheet.colCount]);
+
   const runAutoScrollTickRef = useRef<() => void>(() => {});
   useEffect(() => {
     runAutoScrollTickRef.current = () => {
@@ -478,6 +520,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     ) => {
       if (readOnly) return;
       if (target?.closest("[data-corner-header]")) {
+        cornerDraftedAtRef.current = Date.now();
         onRegionDraft({
           startRow: 0,
           endRow: sheet.rowCount - 1,
@@ -877,9 +920,73 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({ width: gridWidth, height: initialRectHeight }),
     [gridWidth, initialRectHeight]
   );
+  // The keyboard grid (#795). The virtualizer is built after it, so a move
+  // reaches the virtualizer through a ref.
+  const scrollToRowRef = useRef<(row: number) => void>(() => {});
+  const scrollToRow = useCallback(
+    (row: number) => scrollToRowRef.current(row),
+    []
+  );
+  const pageRows = useCallback(() => {
+    const height = scrollRef.current?.clientHeight || initialRectHeight;
+    return Math.max(1, Math.floor((height - COL_HEADER_HEIGHT) / cellHeight));
+  }, [initialRectHeight, cellHeight]);
+  const regionAt = useCallback(
+    (coord: CellCoord) => {
+      // The last-drawn region sits on top, as on screen.
+      for (let i = visibleRegions.length - 1; i >= 0; i--) {
+        if (coordInBounds(coord, visibleRegions[i].bounds)) {
+          return visibleRegions[i].id;
+        }
+      }
+      return null;
+    },
+    [visibleRegions]
+  );
+  const keyboard = useSheetKeyboard({
+    rowCount: sheet.rowCount,
+    colCount: sheet.colCount,
+    pageRows,
+    scrollToRow,
+    gridRef,
+    regionAt,
+    onCreate: onRegionDraft,
+    onSelectRegion: onRegionSelect,
+    onSelectionChange,
+    onHint: onKeyboardHint,
+    readOnly,
+  });
+  // One marquee: a pointer gesture replaces the keyboard's selection.
+  const { setSelection: setKeyboardSelection } = keyboard;
+  const pointerOpKind = activeOp?.kind;
+  useEffect(() => {
+    if (pointerOpKind) setKeyboardSelection(null);
+  }, [pointerOpKind, setKeyboardSelection]);
+  // Another sheet: a selection made on the last one doesn't carry over.
+  useEffect(() => {
+    setKeyboardSelection(null);
+  }, [sheet.id, setKeyboardSelection]);
+  const marqueeBounds = pendingBounds ?? keyboard.selection;
+  const activeRow = keyboard.active.row;
+
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const rows = defaultRangeExtractor(range);
+      if (activeRow < sheet.rowCount && !rows.includes(activeRow)) {
+        rows.push(activeRow);
+        rows.sort((a, b) => a - b);
+      }
+      return rows;
+    },
+    [activeRow, sheet.rowCount]
+  );
+
   // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
   const rowVirtualizer = useVirtualizer({
     count: sheet.rowCount,
+    // The active cell's row always renders, so the grid keeps its tab stop
+    // and a key press has a cell to focus however far it scrolled (#795).
+    rangeExtractor,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => cellHeight,
     overscan: 8,
@@ -902,10 +1009,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     },
   });
 
+  useEffect(() => {
+    scrollToRowRef.current = (row) =>
+      rowVirtualizer.scrollToIndex(row, { align: "auto" });
+  }, [rowVirtualizer]);
+
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const firstVisibleRow = virtualItems[0]?.index ?? 0;
+  // The viewport's own rows, not the rendered list: that also holds the
+  // active cell's row (#795), which may be far away, and fetching from it
+  // to the viewport would ask for most of the sheet.
+  const firstVisibleRow =
+    rowVirtualizer.range?.startIndex ?? virtualItems[0]?.index ?? 0;
   const lastVisibleRow =
-    virtualItems[virtualItems.length - 1]?.index ?? firstVisibleRow;
+    rowVirtualizer.range?.endIndex ??
+    virtualItems[virtualItems.length - 1]?.index ??
+    firstVisibleRow;
 
   // Fetch cells for visible rows whose data isn't already inline or cached.
   // The fetched rectangle spans the full column range — users scan rows much
@@ -972,15 +1090,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({
       width: cellWidth,
       height: COL_HEADER_HEIGHT,
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       flex: "0 0 auto",
       fontSize: 11,
       fontWeight: 600,
-      color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
       // Headers are deliberate draw-this-band targets; the local override
@@ -996,17 +1111,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       height: cellHeight,
       position: "sticky",
       left: 0,
-      zIndex: 2,
-      background: "#f3f4f6",
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
+      zIndex: SHEET_LAYER.rowHeader,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       flex: "0 0 auto",
       fontSize: 11,
       fontWeight: 600,
-      color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
       // See colHeaderStyle — draw-row-band engages immediately on touch.
@@ -1018,8 +1129,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({
       width: cellWidth,
       height: cellHeight,
-      borderRight: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       paddingLeft: 6,
@@ -1040,53 +1149,103 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     const cells: React.ReactElement[] = [];
     for (let col = 0; col < sheet.colCount; col++) {
       cells.push(
-        <div key={col} data-col-header={col} style={colHeaderStyle}>
+        <div
+          key={col}
+          role="columnheader"
+          aria-colindex={col + 2}
+          data-col-header={col}
+          data-sheet-part="col-header"
+          style={colHeaderStyle}
+        >
           {colIndexToLetter(col)}
         </div>
       );
     }
     return (
       <div
+        role="row"
+        aria-rowindex={1}
+        data-sheet-part="header-row"
         style={{
           display: "flex",
           flexDirection: "row",
           position: "sticky",
           top: 0,
-          zIndex: 3,
-          background: "#f3f4f6",
+          zIndex: SHEET_LAYER.headerRow,
           width: gridWidth,
         }}
       >
         <div
+          role="columnheader"
+          aria-colindex={1}
           data-corner-header=""
+          data-sheet-part="corner"
           style={{
             width: ROW_HEADER_WIDTH,
             height: COL_HEADER_HEIGHT,
-            borderRight: "1px solid #e5e7eb",
-            borderBottom: "1px solid #e5e7eb",
             flex: "0 0 auto",
             boxSizing: "border-box",
             cursor: headerCursor,
             position: "sticky",
             left: 0,
-            zIndex: 4,
-            background: "#f3f4f6",
+            zIndex: SHEET_LAYER.corner,
             // Same rationale as col/row headers — engage the
             // whole-sheet selection immediately on touch.
             touchAction: "none",
           }}
-          aria-label="Select entire sheet"
-        />
+        >
+          {/* The pointer gesture drafts the sheet from the container's
+              handler (data-corner-header); this click covers the keyboard,
+              whose activation is a click with no pointer behind it. */}
+          <button
+            type="button"
+            aria-label="Select entire sheet"
+            disabled={readOnly}
+            onClick={() => {
+              // The pointer path already drafted this press, or this is a
+              // repeat of one (a burst of Enters made duplicate whole-sheet
+              // regions, #795). Any other activation drafts here.
+              if (Date.now() - cornerDraftedAtRef.current < 1000) return;
+              cornerDraftedAtRef.current = Date.now();
+              selectWholeSheetRef.current();
+            }}
+            style={{
+              width: "100%",
+              height: "100%",
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              cursor: "inherit",
+            }}
+          />
+        </div>
         {cells}
       </div>
     );
-  }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor]);
+  }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor, readOnly]);
 
-  const placeholderCellStyle: React.CSSProperties = useMemo(
-    () => ({ ...cellStyle, color: "rgba(0,0,0,0.25)" }),
-    [cellStyle]
+  const { cellProps } = keyboard;
+  // Each region's description renders once, hidden; its cells point at it.
+  const descIdPrefix = useId();
+  const descId = useCallback(
+    (regionId: string) => `${descIdPrefix}-region-${regionId}`,
+    [descIdPrefix]
   );
-
+  // The regions crossing a row, found once per row rather than per cell.
+  const describedByForRow = useCallback(
+    (row: number) => {
+      const rowRegions = visibleRegions.filter(
+        (r) => row >= r.bounds.startRow && row <= r.bounds.endRow
+      );
+      return (col: number) => {
+        const ids = rowRegions
+          .filter((r) => col >= r.bounds.startCol && col <= r.bounds.endCol)
+          .map((r) => descId(r.id));
+        return ids.length ? ids.join(" ") : undefined;
+      };
+    },
+    [visibleRegions, descId]
+  );
   const renderRow = useCallback(
     (rowIndex: number, top: number, size: number): React.ReactElement => {
       const inlineRow = sheet.cells[rowIndex];
@@ -1098,6 +1257,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         cachedRow === undefined &&
         Boolean(loadSlice);
       const cellEls: React.ReactElement[] = [];
+      const describedBy = describedByForRow(rowIndex);
       for (let col = 0; col < sheet.colCount; col++) {
         let display = "";
         if (inlineRow !== undefined) {
@@ -1108,23 +1268,33 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           const raw = cachedRow[col];
           display =
             raw === null || raw === undefined || raw === "" ? "" : String(raw);
-        } else if (rowIsUnloaded) {
-          display = "…";
         }
         cellEls.push(
           <div
             key={col}
             data-testid={`cell-${rowIndex}-${col}`}
-            style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
+            {...cellProps({ row: rowIndex, col })}
+            aria-describedby={describedBy(col)}
+            data-sheet-part="cell"
+            style={cellStyle}
             aria-busy={rowIsUnloaded || undefined}
           >
-            {display}
+            {rowIsUnloaded ? (
+              <>
+                <span aria-hidden>…</span>
+                <VisuallyHidden>Loading…</VisuallyHidden>
+              </>
+            ) : (
+              display
+            )}
           </div>
         );
       }
       return (
         <div
           key={rowIndex}
+          role="row"
+          aria-rowindex={rowIndex + 2}
           style={{
             position: "absolute",
             top,
@@ -1135,7 +1305,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             flexDirection: "row",
           }}
         >
-          <div data-row-header={rowIndex} style={rowHeaderStyle}>
+          <div
+            role="rowheader"
+            aria-colindex={1}
+            data-row-header={rowIndex}
+            data-sheet-part="row-header"
+            style={rowHeaderStyle}
+          >
             {rowIndex + 1}
           </div>
           {cellEls}
@@ -1146,11 +1322,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       sheet.cells,
       sheet.colCount,
       cellStyle,
-      placeholderCellStyle,
       rowHeaderStyle,
       gridWidth,
       sliceCache,
       loadSlice,
+      cellProps,
+      describedByForRow,
     ]
   );
 
@@ -1197,6 +1374,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       >
         <div
           ref={gridRef}
+          // Where Delete and Backspace act on the selected region (#795).
+          data-sheet-surface=""
           onPointerDown={handleGridPointerDown}
           style={{
             position: "relative",
@@ -1206,10 +1385,25 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             height: rowVirtualizer.getTotalSize(),
           }}
         >
-          {colHeaderRow}
-          {rowVirtualizer
-            .getVirtualItems()
-            .map((v) => renderRow(v.index, v.start, v.size))}
+          {/* The grid holds only rows (#795); the overlays below are its
+              siblings, so the editable intersection's button isn't a child
+              a grid can't own. Both share this wrapper's origin. */}
+          <div
+            {...keyboard.gridProps}
+            aria-label={sheet.name}
+            style={{ position: "absolute", inset: 0 }}
+          >
+            {colHeaderRow}
+            {rowVirtualizer
+              .getVirtualItems()
+              .map((v) => renderRow(v.index, v.start, v.size))}
+          </div>
+          {visibleRegions.map((r) => (
+            <span key={r.id} id={descId(r.id)} hidden>
+              {regionDescriptions?.[r.id] ??
+                `Region ${r.proposedLabel ?? r.targetEntityLabel ?? "unbound"}, ${formatBounds(r.bounds)}`}
+            </span>
+          ))}
 
           {(() => {
             const selectedRegion = visibleRegions.find(
@@ -1278,16 +1472,16 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`deco-${i}`}
                   title={d.label}
+                  data-sheet-part="decoration"
+                  data-kind={d.kind}
                   sx={{
                     position: "absolute",
                     left: dLeft,
                     top: dTop,
                     width: dWidth,
                     height: dHeight,
-                    backgroundColor: DECORATION_COLOR[d.kind],
-                    backgroundImage: DECORATION_BACKGROUND_IMAGE[d.kind],
                     pointerEvents: "none",
-                    zIndex: 4,
+                    zIndex: SHEET_LAYER.decoration,
                     display: showInlineLabel ? "flex" : "block",
                     // Anchor the chip to the top-left of its band so that on large
                     // regions all overlay labels cluster near the region's corner
@@ -1302,6 +1496,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   {showInlineLabel && (
                     <Box
                       component="span"
+                      data-sheet-part="deco-chip"
                       sx={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -1312,8 +1507,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                         px: 0.5,
                         py: 0.25,
                         borderRadius: 0.5,
-                        backgroundColor: "rgba(255,255,255,0.85)",
-                        color: "text.primary",
                         whiteSpace: "nowrap",
                         textOverflow: "ellipsis",
                         overflow: "hidden",
@@ -1324,7 +1517,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     >
                       {d.kind === "axisNameAnchor" && (
                         <AnchorIcon
-                          sx={{ fontSize: 11, color: "rgba(194, 65, 12, 1)" }}
+                          data-sheet-part="anchor-icon"
+                          sx={{ fontSize: 11 }}
                         />
                       )}
                       {d.label}
@@ -1363,23 +1557,21 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`seg-${o.axis}-${o.segmentIndex}`}
                   data-testid={`segment-overlay-${o.axis}-${o.segmentIndex}`}
+                  data-sheet-part="segment"
+                  data-kind={o.kind}
                   title={titleParts.join(" — ")}
-                  aria-label={titleParts.join(" — ")}
+                  aria-hidden
                   sx={{
                     position: "absolute",
                     left: sLeft,
                     top: sTop,
                     width: sWidth,
                     height: sHeight,
-                    backgroundColor: SEGMENT_OVERLAY_COLOR[o.kind],
-                    backgroundImage: SEGMENT_OVERLAY_BACKGROUND_IMAGE[o.kind],
                     border: "1.5px solid",
-                    borderColor: SEGMENT_OVERLAY_BORDER[o.kind],
                     pointerEvents: "none",
-                    // Sit above the generic header decorations (z=4) so the
-                    // per-segment colour wins visually, but below the region
-                    // overlay/chrome (z=5+).
-                    zIndex: 4.5 as unknown as number,
+                    // Above the generic header decorations so the
+                    // per-segment colour wins, below the region overlay.
+                    zIndex: SHEET_LAYER.segment,
                     display: "flex",
                     alignItems: isRow ? "flex-start" : "flex-end",
                     justifyContent: isRow ? "flex-end" : "flex-start",
@@ -1388,6 +1580,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 >
                   <Box
                     component="span"
+                    data-sheet-part="segment-chip"
+                    data-kind={o.kind}
                     sx={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -1402,8 +1596,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       ml: isRow ? 0 : "2px",
                       px: "4px",
                       borderRadius: "3px",
-                      backgroundColor: SEGMENT_OVERLAY_BORDER[o.kind],
-                      color: "#fff",
                       fontSize: 10,
                       fontWeight: 700,
                       lineHeight: 1,
@@ -1488,6 +1680,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 <Box
                   key={`intersection-${o.id}`}
                   data-testid={`intersection-overlay-${previewRegion.id}-${o.id}`}
+                  data-sheet-part="intersection"
+                  data-kind={o.kind}
+                  data-editable={isEditable || undefined}
                   role={isEditable ? "button" : undefined}
                   tabIndex={isEditable ? 0 : undefined}
                   // Drive editing from pointer-down rather than click — the
@@ -1544,27 +1739,26 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       : undefined
                   }
                   title={titleParts.join(" — ")}
-                  aria-label={titleParts.join(" — ")}
+                  // An editable intersection is a button named by its
+                  // summary; a read-only one is decoration (#795).
+                  aria-label={isEditable ? titleParts.join(" — ") : undefined}
+                  aria-hidden={isEditable ? undefined : true}
                   sx={{
                     position: "absolute",
                     left: iLeft,
                     top: iTop,
                     width: iWidth,
                     height: iHeight,
-                    backgroundColor: INTERSECTION_OVERLAY_COLOR[o.kind],
-                    backgroundImage:
-                      INTERSECTION_OVERLAY_BACKGROUND_IMAGE[o.kind],
                     border: "1.5px dashed",
-                    borderColor: INTERSECTION_OVERLAY_BORDER[o.kind],
                     pointerEvents: isEditable ? "auto" : "none",
                     cursor: isEditable ? "pointer" : "default",
-                    // Editable intersection blocks must sit above the
-                    // region overlay (z=5 unselected, 6 selected) so their
-                    // pointer-down/click reaches the popover handler
-                    // instead of triggering a region drag. Non-editable
-                    // tints stay below the segment chrome (z=4.5) and
-                    // above generic decorations (z=4).
-                    zIndex: (isEditable ? 6.5 : 4.4) as unknown as number,
+                    // Editable blocks sit above the region overlay, selected
+                    // or not, so their click reaches the popover handler
+                    // instead of starting a region drag. Non-editable tints
+                    // sit between the decorations and the segment chrome.
+                    zIndex: isEditable
+                      ? SHEET_LAYER.editableIntersection
+                      : SHEET_LAYER.intersection,
                     display: "flex",
                     alignItems: "flex-start",
                     justifyContent: "center",
@@ -1574,17 +1768,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     // pointerEvents: "none" already, so the value is
                     // moot for them.
                     touchAction: isEditable ? "none" : undefined,
-                    "&:hover, &:focus-visible": isEditable
-                      ? {
-                          backgroundColor: "rgba(217, 119, 6, 0.32)",
-                          outline: "none",
-                        }
-                      : undefined,
                   }}
                 >
                   {o.kind === "pivot-pivot" && o.label && (
                     <Box
                       component="span"
+                      data-sheet-part="intersection-chip"
+                      data-kind={o.kind}
                       sx={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -1593,8 +1783,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                         px: "5px",
                         py: "1px",
                         borderRadius: "3px",
-                        backgroundColor: INTERSECTION_OVERLAY_BORDER[o.kind],
-                        color: "#fff",
                         fontSize: 10,
                         fontWeight: 700,
                         lineHeight: 1.1,
@@ -1611,10 +1799,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                           component="span"
                           sx={{
                             fontWeight: 600,
+                            // Italic marks an inherited name; no fade, which
+                            // took the chip's text under AA (#996).
                             fontStyle: o.cellValueOverridden
                               ? "normal"
                               : "italic",
-                            opacity: o.cellValueOverridden ? 1 : 0.85,
                           }}
                         >
                           : {o.cellValueName}
@@ -1691,7 +1880,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   <Box
                     key={`divider-${axis}-${i}`}
                     data-testid={`segment-divider-${axis}-${i}`}
-                    aria-label={`Resize ${axis} segments ${i + 1} and ${i + 2}`}
+                    data-sheet-part="divider"
+                    aria-hidden
                     onPointerDown={handleSegmentDividerPointerDown({
                       regionId: previewRegion.id,
                       axis,
@@ -1708,25 +1898,18 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       width: hitWidth,
                       height: hitHeight,
                       cursor: axis === "row" ? "ew-resize" : "ns-resize",
-                      // Must sit above the selected-region overlay (z=6) so
+                      // Must sit above the selected-region overlay so
                       // hover cursor and pointerdown land on the divider
                       // instead of the overlay that covers the header band.
-                      zIndex: 8,
+                      zIndex: SHEET_LAYER.divider,
                       // Local "none" so an in-flight drag is never reinterpreted
                       // as a pan even though the surrounding scroll surface uses
                       // `pan-x pan-y`.
                       touchAction: "none",
-                      "& > .divider-tint": {
-                        backgroundColor: "rgba(37, 99, 235, 0.28)",
-                      },
-                      "&:hover > .divider-tint, &:focus-visible > .divider-tint":
-                        {
-                          backgroundColor: "rgba(37, 99, 235, 0.75)",
-                        },
                     }}
                   >
                     <Box
-                      className="divider-tint"
+                      data-sheet-part="divider-tint"
                       aria-hidden
                       sx={{ ...tintStyle, pointerEvents: "none" }}
                     />
@@ -1780,6 +1963,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               <RegionOverlayUI
                 key={region.id}
                 region={region}
+                invalid={invalidRegionIds?.includes(region.id)}
                 bounds={previewBounds}
                 entityOrder={entityOrder}
                 selected={region.id === selectedRegionId}
@@ -1823,23 +2007,25 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             />
           )}
 
-          {pendingBounds && (
+          {marqueeBounds && (
             <Box
+              data-testid="selection-marquee"
+              data-sheet-part="marquee"
+              aria-hidden
               sx={{
                 position: "absolute",
-                left: ROW_HEADER_WIDTH + pendingBounds.startCol * cellWidth,
-                top: COL_HEADER_HEIGHT + pendingBounds.startRow * cellHeight,
+                left: ROW_HEADER_WIDTH + marqueeBounds.startCol * cellWidth,
+                top: COL_HEADER_HEIGHT + marqueeBounds.startRow * cellHeight,
                 width:
-                  (pendingBounds.endCol - pendingBounds.startCol + 1) *
+                  (marqueeBounds.endCol - marqueeBounds.startCol + 1) *
                   cellWidth,
                 height:
-                  (pendingBounds.endRow - pendingBounds.startRow + 1) *
+                  (marqueeBounds.endRow - marqueeBounds.startRow + 1) *
                   cellHeight,
                 border: "2px dashed",
                 borderColor: "primary.main",
-                backgroundColor: "rgba(37,99,235,0.08)",
                 pointerEvents: "none",
-                zIndex: 4,
+                zIndex: SHEET_LAYER.marquee,
               }}
             />
           )}

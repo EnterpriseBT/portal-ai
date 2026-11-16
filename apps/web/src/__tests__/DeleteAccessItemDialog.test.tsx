@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeleteAccessItemDialogUI } =
   await import("../components/DeleteAccessItemDialog.component");
 
@@ -23,6 +24,27 @@ describe("DeleteAccessItemDialogUI (#691)", () => {
     expect(screen.getByText(/Analysts/)).toBeInTheDocument();
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeleteAccessItemDialogUI {...props} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<DeleteAccessItemDialogUI {...props} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeleteAccessItemDialogUI
+        {...props}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("does not render when closed", () => {
     render(<DeleteAccessItemDialogUI {...props} open={false} />);
     expect(screen.queryByText("Delete group")).toBeNull();
@@ -43,10 +65,13 @@ describe("DeleteAccessItemDialogUI (#691)", () => {
   it("shows the pending state and can't fire twice", () => {
     render(<DeleteAccessItemDialogUI {...props} isPending />);
     const del = screen.getByRole("button", { name: "Deleting..." });
-    expect(del).toBeDisabled();
+    expect(del).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(del);
     expect(props.onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("can't be dismissed (Escape) while the delete is in flight", () => {

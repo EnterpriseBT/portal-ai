@@ -8,14 +8,14 @@ import type {
   EntityTagUpdateRequestBody,
 } from "@portalai/core/contracts";
 import {
-  Button,
-  Modal,
-  Stack,
   ColorPicker,
   DEFAULT_COLOR_SAMPLES,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
 } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -162,22 +162,22 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Saving..." : isEdit ? "Update" : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >
@@ -196,20 +196,15 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           required
           fullWidth
         />
-        <Stack spacing={0.5}>
-          <ColorPicker
-            label="Color"
-            value={form.color}
-            onChange={(color) => handleChange("color", color)}
-            samples={DEFAULT_COLOR_SAMPLES}
-            wheelSize={120}
-          />
-          {touched.color && errors.color && (
-            <Typography variant="caption" color="error">
-              {errors.color}
-            </Typography>
-          )}
-        </Stack>
+        <ColorPicker
+          label="Color"
+          value={form.color}
+          onChange={(color) => handleChange("color", color)}
+          samples={DEFAULT_COLOR_SAMPLES}
+          wheelSize={120}
+          error={!!(touched.color && errors.color)}
+          helperText={touched.color ? errors.color : undefined}
+        />
         <TextField
           label="Description"
           value={form.description}

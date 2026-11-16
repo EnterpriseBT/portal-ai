@@ -68,17 +68,26 @@ const styleValue = <T extends z.ZodTypeAny>(literal: T) =>
   z.union([literal, MapExpressionSchema]);
 
 export const MapLayerStyleSchema = z.object({
+  /** Kept so stored blocks parse. Since #1022 `visualize_map` refuses it and
+   *  the renderer ignores it: a layer's colour comes from the theme. */
   color: styleValue(z.string()).optional(),
   /** Sugar over an expression: categorical/threshold colouring keyed to a
    *  result column. The renderer reads this to auto-generate a legend. */
   colorBy: z
     .object({
       column: z.string().min(1),
+      /** Kept so stored blocks parse; ignored (#1022). Every scale takes its
+       *  colours from the theme. */
       palette: z.array(z.string()).optional(),
-      /** Explicit value→colour pairs; omitted ⇒ palette assigned in sort order. */
+      /** Value→colour pairs. The values order the categories (or give an
+       *  interpolate's range); the colours are ignored (#1022). */
       stops: z
         .array(z.tuple([z.union([z.string(), z.number()]), z.string()]))
         .optional(),
+      /** The column's values in assignment order (#1022), back-filled by the
+       *  server for categorical and step colouring. The renderer colours them
+       *  from the theme; no colour is stored. */
+      categories: z.array(z.union([z.string(), z.number()])).optional(),
       /** Colour scale (#336). Absent ⇒ inferred (string stops → categorical,
        *  numeric → step). "interpolate" is a smooth continuous blend across the
        *  value range; a present value forces that mode against the inference. */
@@ -88,9 +97,11 @@ export const MapLayerStyleSchema = z.object({
   opacity: styleValue(z.number().min(0).max(1)).optional(),
   radius: styleValue(z.number().positive()).optional(),
   width: styleValue(z.number().positive()).optional(),
-  /** Outline colour/width for polygons + lines — expression-capable, which is
-   *  how "highlight the vacant ones" gets a heavier stroke as well as a fill. */
+  /** Kept so stored blocks parse; refused and ignored like `color` (#1022).
+   *  An outline takes its feature's colour. */
   outlineColor: styleValue(z.string()).optional(),
+  /** Expression-capable, which is how "highlight the vacant ones" gets a
+   *  heavier outline. */
   outlineWidth: styleValue(z.number().nonnegative()).optional(),
 });
 export type MapLayerStyle = z.infer<typeof MapLayerStyleSchema>;
@@ -196,6 +207,10 @@ export type MapSpec = z.infer<typeof MapSpecSchema>;
 export const GeoBaseContentSchema = z.object({
   spec: MapSpecSchema,
   title: z.string().optional(),
+  /** Agent-written text alternative (#796): what it shows and the takeaway.
+   *  Optional so pre-#796 blocks and pins parse; the widget derives one when
+   *  absent. No length limit here: limits live on request contracts only. */
+  summary: z.string().optional(),
   /** Durable re-executable pipeline (shared with d3). */
   pipeline: VizPipelineSchema.optional(),
   /**

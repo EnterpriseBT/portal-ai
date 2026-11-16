@@ -2,7 +2,11 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { EndpointsStepUI } from "../EndpointsStep.component";
 import type { EndpointsStepUIProps } from "../EndpointsStep.component";
@@ -100,5 +104,25 @@ describe("EndpointsStepUI — error surface", () => {
       />
     );
     expect(screen.getByText(/at least one endpoint/i)).toBeInTheDocument();
+  });
+});
+
+describe("EndpointsStepUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <EndpointsStepUI
+        {...makeProps({
+          endpoints: [ROW, { ...ROW, key: "posts", label: "Posts" }],
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the empty state", async () => {
+    const { container } = render(
+      <EndpointsStepUI {...makeProps({ endpoints: [] })} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

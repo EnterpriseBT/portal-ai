@@ -5,6 +5,8 @@ export type {
   FetchPageResult,
 } from "./types.js";
 
+export { selectOptionKey } from "./option-key.js";
+
 export { SearchableSelect } from "./SearchableSelect.js";
 export type { SearchableSelectProps } from "./SearchableSelect.js";
 

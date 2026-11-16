@@ -1,3 +1,4 @@
+import React from "react";
 /**
  * #649: the container's wiring when a view goes away under the open page.
  * The records query 404s while the view's own query is still cached; the
@@ -60,6 +61,9 @@ const useRecordsQuery = (id: string, params: unknown) =>
 jest.unstable_mockModule("@tanstack/react-router", () => ({
   useParams: () => ({ viewId: "cv-1" }),
   useNavigate: () => jest.fn(),
+  // #794: the records table's row links render through RouterLink.
+  Link: ({ to, children }: { to: string; children?: React.ReactNode }) =>
+    React.createElement("a", { href: to }, children),
 }));
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -110,6 +114,33 @@ describe("CuratedViewDetail (container)", () => {
     expect(await screen.findByText("View not found")).toBeInTheDocument();
     expect(fetchView).toHaveBeenCalledTimes(2);
     expect(screen.queryAllByText("NE Accounts")).toHaveLength(0);
+  });
+
+  // #982: the page keeps its one h1 before the view arrives and once it's
+  // gone, so a screen reader lands on it and the tab is titled from it.
+  it("keeps exactly one h1, View, on View not found", async () => {
+    fetchView.mockRejectedValue(notFound());
+    fetchRecords.mockRejectedValue(notFound());
+
+    renderPage();
+
+    expect(await screen.findByText("View not found")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "View" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps exactly one h1, View, while the view loads", () => {
+    fetchView.mockReturnValue(new Promise(() => {}));
+    fetchRecords.mockReturnValue(new Promise(() => {}));
+
+    renderPage();
+
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "View" })
+    ).toBeInTheDocument();
   });
 
   it("doesn't refetch the view for a records error that isn't a 404", async () => {

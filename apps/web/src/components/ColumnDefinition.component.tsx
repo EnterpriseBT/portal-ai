@@ -17,6 +17,7 @@ import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { columnDefinitionActionGates } from "../utils/column-definition-actions.util";
+import { RouterLink } from "./RouterLink.component";
 
 // ── Data Components ─────────────────────────────────────────────────
 
@@ -53,14 +54,18 @@ export const ColumnDefinitionDataItem = (
 export interface ColumnDefinitionCardUIProps {
   /** A list row, with the caller's `capabilities` on it (#689). */
   columnDefinition: ColumnDefinition & { capabilities: ObjectCapabilities };
-  onClick?: (columnDefinition: ColumnDefinition) => void;
+  /** Where the card leads (#794): its title links there. */
+  href?: string;
   onDelete?: (columnDefinition: ColumnDefinition) => void;
+  /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
+  headingLevel?: 2 | 3;
 }
 
 export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   columnDefinition: cd,
-  onClick,
+  href,
   onDelete,
+  headingLevel,
 }) => {
   const gates = columnDefinitionActionGates({
     capabilities: cd.capabilities,
@@ -81,7 +86,9 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   return (
     <DetailCard
       title={cd.label}
-      onClick={onClick ? () => onClick(cd) : undefined}
+      href={href}
+      linkComponent={RouterLink}
+      headingLevel={headingLevel}
       actions={actions}
     >
       <MetadataList

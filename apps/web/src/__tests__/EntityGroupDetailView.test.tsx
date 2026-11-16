@@ -179,16 +179,44 @@ describe("EntityGroupDetailViewUI", () => {
     expect(screen.getByText("contact_email")).toBeInTheDocument();
   });
 
+  // #794: a member row opens its entity through a link.
+  it("names the members table and links each member to its entity", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} />);
+    screen.getByRole("table", { name: "Members" });
+    expect(screen.getByRole("link", { name: "CRM Customers" })).toHaveAttribute(
+      "href",
+      "/entities/ent-1"
+    );
+    expect(
+      screen.getByRole("link", { name: "Billing Contacts" })
+    ).toHaveAttribute("href", "/entities/ent-2");
+  });
+
+  // #794: each member's actions name the member.
+  it("names each member's remove action by its entity", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} />);
+    expect(
+      screen.getByRole("button", { name: "Remove CRM Customers" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove Billing Contacts" })
+    ).toBeInTheDocument();
+  });
+
   it("shows filled star for primary member and outline star for non-primary", () => {
     render(<EntityGroupDetailViewUI {...defaultProps} />);
-    expect(screen.getByLabelText("Remove as primary")).toBeInTheDocument();
-    expect(screen.getByLabelText("Set as primary")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Remove CRM Customers as primary")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Set Billing Contacts as primary")
+    ).toBeInTheDocument();
   });
 
   it("clicking star icon on non-primary member triggers primary update", async () => {
     const user = userEvent.setup();
     render(<EntityGroupDetailViewUI {...defaultProps} />);
-    await user.click(screen.getByLabelText("Set as primary"));
+    await user.click(screen.getByLabelText("Set Billing Contacts as primary"));
     expect(defaultProps.onPromoteMember).toHaveBeenCalledWith("mem-2");
   });
 
@@ -221,7 +249,9 @@ describe("EntityGroupDetailViewUI", () => {
   it("remove member triggers delete confirmation dialog", async () => {
     const user = userEvent.setup();
     render(<EntityGroupDetailViewUI {...defaultProps} />);
-    const removeButtons = screen.getAllByLabelText("Remove member");
+    const removeButtons = screen.getAllByLabelText(
+      /^Remove (CRM Customers|Billing Contacts)$/
+    );
     await user.click(removeButtons[0]);
     expect(
       screen.getByText(
@@ -233,7 +263,9 @@ describe("EntityGroupDetailViewUI", () => {
   it("confirming remove member calls onRemoveMember", async () => {
     const user = userEvent.setup();
     render(<EntityGroupDetailViewUI {...defaultProps} />);
-    const removeButtons = screen.getAllByLabelText("Remove member");
+    const removeButtons = screen.getAllByLabelText(
+      /^Remove (CRM Customers|Billing Contacts)$/
+    );
     await user.click(removeButtons[0]);
     await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(defaultProps.onRemoveMember).toHaveBeenCalledWith("mem-1");
@@ -250,7 +282,9 @@ describe("EntityGroupDetailViewUI", () => {
         onRemoveMember={onRemoveMember}
       />
     );
-    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    await user.click(
+      screen.getAllByLabelText(/^Remove (CRM Customers|Billing Contacts)$/)[0]
+    );
     await user.click(screen.getByRole("button", { name: "Remove" }));
     rerender(
       <EntityGroupDetailViewUI
@@ -275,7 +309,9 @@ describe("EntityGroupDetailViewUI", () => {
         onRemoveMember={onRemoveMember}
       />
     );
-    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    await user.click(
+      screen.getAllByLabelText(/^Remove (CRM Customers|Billing Contacts)$/)[0]
+    );
     screen.getByRole("button", { name: "Remove" }).focus();
     await user.keyboard("{Enter}");
     expect(onRemoveMember).toHaveBeenCalledTimes(1);
@@ -290,7 +326,9 @@ describe("EntityGroupDetailViewUI", () => {
         onRemoveMemberDialogOpen={onRemoveMemberDialogOpen}
       />
     );
-    await user.click(screen.getAllByLabelText("Remove member")[0]);
+    await user.click(
+      screen.getAllByLabelText(/^Remove (CRM Customers|Billing Contacts)$/)[0]
+    );
     expect(onRemoveMemberDialogOpen).toHaveBeenCalledTimes(1);
   });
 

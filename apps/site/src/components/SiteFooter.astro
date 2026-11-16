@@ -54,6 +54,14 @@ const year = 2026;
     color: var(--color-text-secondary);
   }
 
+  /* WCAG 2.5.8 (#798, KB-10): every footer nav target is at least 24px tall.
+    The contact addresses sit inside a sentence, which 2.5.8 exempts. */
+  .site-footer nav a {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 24px;
+  }
+
   .site-footer__contact,
   .site-footer__legal {
     color: var(--color-text-secondary);

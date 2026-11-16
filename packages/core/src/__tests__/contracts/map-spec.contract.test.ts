@@ -175,6 +175,28 @@ describe("MapLayerStyleSchema (via MapSpecSchema)", () => {
     ).toBe(true);
   });
 
+  it("accepts colorBy.categories of strings and numbers, with no colours (#1022)", () => {
+    const parsed = withStyle({
+      colorBy: { column: "prop_class", categories: ["vacant", 2, "improved"] },
+    });
+    expect(parsed.success).toBe(true);
+    expect(
+      withStyle({ colorBy: { column: "c", categories: [{ x: 1 }] } }).success
+    ).toBe(false);
+  });
+
+  it("still parses a pre-#1022 block whose stops carry hex colours", () => {
+    expect(
+      withStyle({
+        colorBy: {
+          column: "prop_class",
+          palette: ["#4e79a7"],
+          stops: [["vacant", "#4e79a7"]],
+        },
+      }).success
+    ).toBe(true);
+  });
+
   it("accepts colorBy without a scale (absent ⇒ inferred — #336)", () => {
     expect(withStyle({ colorBy: { column: "market_value" } }).success).toBe(
       true
@@ -331,6 +353,19 @@ describe("Geo block content", () => {
       program: "someReservedProgram()",
     });
     expect(res.success).toBe(true);
+  });
+
+  it("keeps the #796 summary and still parses without one", () => {
+    const summary = "Most parcels are residential.";
+    expect(
+      GeoBlockContentSchema.parse({ spec, rows: [], summary }).summary
+    ).toBe(summary);
+    expect(
+      GeoBlockContentSchema.parse({ spec, ...handleEnvelope, summary }).summary
+    ).toBe(summary);
+    expect(GeoInlineContentSchema.safeParse({ spec, rows: [] }).success).toBe(
+      true
+    );
   });
 });
 

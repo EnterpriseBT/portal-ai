@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 
 import {
+  CardList,
   Icon,
   IconName,
   PageEmptyState,
@@ -55,13 +56,6 @@ export const PinnedResultsListView: React.FC = () => {
     defaultSortBy: "created",
     defaultSortOrder: "desc",
   });
-
-  const handleResultClick = useCallback(
-    (id: string) => {
-      navigate({ to: `/portal-results/${id}` });
-    },
-    [navigate]
-  );
 
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
   // SDK; failures raise a persistent toast with Retry (Toast Pattern).
@@ -122,16 +116,16 @@ export const PinnedResultsListView: React.FC = () => {
                     );
                   }
                   return (
-                    <Stack spacing={1}>
+                    <CardList aria-label="Pinned results">
                       {results.map((result) => (
                         <PinnedResultCardUI
                           key={result.id}
                           result={result}
-                          onResultClick={handleResultClick}
+                          headingLevel={2}
                           onUnpin={handleUnpin}
                         />
                       ))}
-                    </Stack>
+                    </CardList>
                   );
                 }}
               </DataResult>

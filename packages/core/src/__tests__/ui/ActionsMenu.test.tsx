@@ -1,8 +1,10 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { ActionsMenu } from "../../ui/ActionsMenu";
+import { Modal } from "../../ui/Modal";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("ActionsMenu Component", () => {
   const items = [
@@ -222,5 +224,114 @@ describe("ActionsMenu Component", () => {
         menuItem.querySelector(".MuiListItemIcon-root")
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+// #793: a dialog opened from a menu item returns focus to the menu's button
+// when it closes; the item it was opened from is gone by then.
+describe("ActionsMenu focus (#793)", () => {
+  const Harness = () => {
+    const [open, setOpen] = React.useState(false);
+    return (
+      <>
+        <ActionsMenu
+          items={[{ label: "Rename", onClick: () => setOpen(true) }]}
+        />
+        <Modal open={open} onClose={() => setOpen(false)} title="Rename">
+          <p>Body</p>
+        </Modal>
+      </>
+    );
+  };
+
+  it("returns focus to the menu button after a dialog it opened closes", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const dialog = await screen.findByRole("dialog", { name: "Rename" });
+    await user.click(within(dialog).getByRole("button", { name: "close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("returns focus to the menu button with the keyboard too", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("menuitem", { name: "Rename" });
+    await user.keyboard("{Enter}");
+    await screen.findByRole("dialog", { name: "Rename" });
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+});
+
+/** The text of the elements an aria-describedby names (#793): the reason
+ *  must be a permanent description, not the tooltip's `title` fallback. */
+const describedByText = (el: HTMLElement) =>
+  (el.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+
+describe("ActionsMenu reasons (#793)", () => {
+  const items = [
+    {
+      label: "Sync",
+      onClick: () => {},
+      gate: { kind: "disable", reason: "A sync is already running" },
+    },
+    {
+      label: "Export",
+      onClick: () => {},
+      gate: {
+        kind: "upsell",
+        reason: "Exports are on a higher plan",
+        onUpgrade: () => {},
+      },
+    },
+    { label: "Rename", onClick: () => {} },
+  ] as const;
+
+  const openMenu = async () => {
+    render(<ActionsMenu items={[...items]} />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+  };
+
+  it("describes each gated item by its reason, keeping its name", async () => {
+    await openMenu();
+    const sync = screen.getByRole("menuitem", { name: "Sync" });
+    const exportItem = screen.getByRole("menuitem", { name: "Export" });
+    expect(describedByText(sync)).toBe("A sync is already running");
+    expect(describedByText(exportItem)).toBe("Exports are on a higher plan");
+    expect(sync).toHaveAccessibleDescription("A sync is already running");
+    expect(
+      screen.getByRole("menuitem", { name: "Rename" })
+    ).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("a disabled item adds no styles of its own (the theme owns the look)", async () => {
+    await openMenu();
+    const sync = screen.getByRole("menuitem", { name: "Sync" });
+    const rename = screen.getByRole("menuitem", { name: "Rename" });
+    // Same Emotion rule as an ungated item: no sx. (Focus state aside.)
+    const emotion = (el: HTMLElement) =>
+      [...el.classList].filter((c) => c.startsWith("css-"));
+    expect(emotion(sync)).toEqual(emotion(rename));
+  });
+
+  it("has no axe violations when open", async () => {
+    await openMenu();
+    await expectNoAxeViolations(screen.getByRole("menu"));
   });
 });

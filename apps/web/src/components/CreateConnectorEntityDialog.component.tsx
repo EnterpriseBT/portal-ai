@@ -3,7 +3,13 @@ import React, { useState } from "react";
 import { z } from "zod";
 import { keyField, nameField } from "@portalai/core/contracts";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
-import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
+import {
+  AsyncSearchableSelect,
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+} from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
 import { sdk } from "../api/sdk";
@@ -132,22 +138,22 @@ export const CreateConnectorEntityDialog: React.FC<
       onSubmit={handleSubmit}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             onClick={handleSubmit}
-            disabled={isPending}
+            gate={pendingGate(isPending)}
           >
             {isPending ? "Creating..." : "Create"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

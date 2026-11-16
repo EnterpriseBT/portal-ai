@@ -20,6 +20,8 @@ export interface PendingInvitationListUIProps {
   isPending?: boolean;
   /** Current epoch ms, injected for test determinism; defaults to now. */
   now?: number;
+  /** A visible heading that names the table (#794); else it's "Pending invitations". */
+  "aria-labelledby"?: string;
 }
 
 /**
@@ -31,7 +33,14 @@ export interface PendingInvitationListUIProps {
  */
 export const PendingInvitationListUI: React.FC<
   PendingInvitationListUIProps
-> = ({ invitations, onResend, onRevoke, isPending = false, now }) => {
+> = ({
+  invitations,
+  onResend,
+  onRevoke,
+  isPending = false,
+  now,
+  "aria-labelledby": labelledBy,
+}) => {
   const columns: DataTableColumn[] = [
     { key: "email", label: "Email", render: (v) => (v ? String(v) : "—") },
     {
@@ -60,6 +69,7 @@ export const PendingInvitationListUI: React.FC<
     {
       key: "actions",
       label: "",
+      headerLabel: "Actions",
       render: (_v, row) => {
         const invitation = row as unknown as InvitationResponse;
         return (
@@ -97,6 +107,9 @@ export const PendingInvitationListUI: React.FC<
 
   return (
     <DataTable
+      {...(labelledBy
+        ? { "aria-labelledby": labelledBy }
+        : { label: "Pending invitations" })}
       columns={columns}
       rows={invitations as unknown as Record<string, unknown>[]}
       emptyMessage="No pending invitations."

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { Select } from "../../ui/Select";
+import { expectNoAxeViolations } from "../axe.util";
 
 const options = [
   { value: "a", label: "Option A" },
@@ -106,5 +107,20 @@ describe("Select Component", () => {
       render(<Select ref={ref} label="Choice" options={options} value="" />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+});
+
+describe("Select accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <Select
+        label="Choice"
+        options={options}
+        value="a"
+        error
+        helperText="Required"
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

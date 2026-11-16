@@ -522,7 +522,7 @@ describe("ColumnDefinitionDetailView", () => {
       setupWithCapability({ write: false });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      for (const label of ["Edit field mapping", "Delete field mapping"]) {
+      for (const label of [/^Edit mapping /, /^Delete mapping /]) {
         expect(screen.getByLabelText(label)).toHaveAttribute(
           "aria-disabled",
           "true"
@@ -549,7 +549,7 @@ describe("ColumnDefinitionDetailView", () => {
         "aria-disabled",
         "true"
       );
-      for (const label of ["Edit field mapping", "Delete field mapping"]) {
+      for (const label of [/^Edit mapping /, /^Delete mapping /]) {
         expect(screen.getByLabelText(label)).toHaveAttribute(
           "aria-disabled",
           "true"
@@ -558,14 +558,37 @@ describe("ColumnDefinitionDetailView", () => {
       expect(screen.getByText("Revalidation is running")).toBeInTheDocument();
     });
 
+    // #794: the mapping's entity opens through a link, in a named table.
+    it("names the field mappings table and links each mapping's entity", () => {
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      screen.getByRole("table", { name: "Field mappings" });
+      expect(screen.getByRole("link", { name: "Contacts" })).toHaveAttribute(
+        "href",
+        "/entities/ce-1"
+      );
+    });
+
+    // #794: each row action names the mapping it acts on.
+    it("names each mapping action by its source field and entity", () => {
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      expect(
+        screen.getByRole("button", { name: "Edit mapping email in Contacts" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Delete mapping email in Contacts" })
+      ).toBeInTheDocument();
+    });
+
     it("shows field mapping edit/delete buttons when write is enabled", () => {
       setupWithCapability({ write: true });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(screen.getByLabelText("Edit field mapping")).not.toHaveAttribute(
+      expect(screen.getByLabelText(/^Edit mapping /)).not.toHaveAttribute(
         "aria-disabled"
       );
-      expect(screen.getByLabelText("Delete field mapping")).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Delete mapping /)).toBeInTheDocument();
     });
 
     it("hides field mapping edit/delete the caller can't perform on the row (#689)", () => {
@@ -575,11 +598,9 @@ describe("ColumnDefinitionDetailView", () => {
       );
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
+      expect(screen.queryByLabelText(/^Edit mapping /)).not.toBeInTheDocument();
       expect(
-        screen.queryByLabelText("Edit field mapping")
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByLabelText("Delete field mapping")
+        screen.queryByLabelText(/^Delete mapping /)
       ).not.toBeInTheDocument();
     });
 

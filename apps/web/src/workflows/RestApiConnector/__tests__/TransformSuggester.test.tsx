@@ -3,7 +3,7 @@ import { jest } from "@jest/globals";
 import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { render } from "../../../__tests__/test-utils";
+import { render, expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { TransformSuggesterUI } from "../TransformSuggester.component";
 
@@ -186,5 +186,37 @@ describe("TransformSuggesterUI — serverError", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/haiku timed out/i);
     expect(alert).toHaveTextContent(/rest_api_transform_suggest_failed/i);
+  });
+});
+
+describe("TransformSuggesterUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <TransformSuggesterUI
+        promptHint="just id and email"
+        onPromptHintChange={jest.fn()}
+        onSuggest={jest.fn()}
+        isSuggesting={false}
+        disabled={false}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with a serverError showing", async () => {
+    const { container } = render(
+      <TransformSuggesterUI
+        promptHint=""
+        onPromptHintChange={jest.fn()}
+        onSuggest={jest.fn()}
+        isSuggesting={false}
+        disabled={false}
+        serverError={{
+          message: "Haiku timed out",
+          code: "REST_API_TRANSFORM_SUGGEST_FAILED",
+        }}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

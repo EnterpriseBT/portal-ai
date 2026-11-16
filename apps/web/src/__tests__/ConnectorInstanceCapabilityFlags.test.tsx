@@ -5,7 +5,8 @@
  */
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { ConnectorInstanceCapabilityFlagsUI } =
   await import("../components/ConnectorInstanceCapabilityFlags.component");
 
@@ -24,6 +25,23 @@ describe("ConnectorInstanceCapabilityFlagsUI", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(4);
     expect(screen.getByRole("checkbox", { name: "Sync" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Write" })).not.toBeChecked();
+  });
+
+  // #1019: at 320px the row ran past the page edge (WCAG 1.4.10 Reflow).
+  it("wraps the editable row of flags", () => {
+    render(<ConnectorInstanceCapabilityFlagsUI {...baseProps} />);
+    const row = screen.getByRole("checkbox", { name: "Sync" }).closest("label")
+      ?.parentElement as HTMLElement;
+    expect(row).toHaveStyle({ flexWrap: "wrap" });
+  });
+
+  it("wraps the read-only row of flags", () => {
+    render(
+      <ConnectorInstanceCapabilityFlagsUI {...baseProps} canEdit={false} />
+    );
+    const row = screen.getByText("Sync").closest(".MuiChip-root")
+      ?.parentElement as HTMLElement;
+    expect(row).toHaveStyle({ flexWrap: "wrap" });
   });
 
   it("reports a toggle through onChange", () => {
@@ -70,5 +88,22 @@ describe("ConnectorInstanceCapabilityFlagsUI", () => {
   it("disables the controls while an update is pending", () => {
     render(<ConnectorInstanceCapabilityFlagsUI {...baseProps} isPending />);
     expect(screen.getByRole("checkbox", { name: "Write" })).toBeDisabled();
+  });
+
+  it("has no axe violations as controls and while locked", async () => {
+    const { container } = render(
+      <ConnectorInstanceCapabilityFlagsUI
+        {...baseProps}
+        lockedReason="Sync is running on this connector — try again when it finishes."
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations as read-only text", async () => {
+    const { container } = render(
+      <ConnectorInstanceCapabilityFlagsUI {...baseProps} canEdit={false} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -13,7 +13,8 @@ jest.unstable_mockModule("../../../modules/RegionEditor", () => ({
   ),
 }));
 
-const { render, screen } = await import("../../../__tests__/test-utils");
+const { render, screen, expectNoAxeViolations } =
+  await import("../../../__tests__/test-utils");
 const { GoogleSheetsRegionDrawingStep } =
   await import("../GoogleSheetsRegionDrawingStep.component");
 type GoogleSheetsRegionDrawingStepUIProps = React.ComponentProps<
@@ -60,5 +61,16 @@ describe("GoogleSheetsRegionDrawingStep", () => {
       <GoogleSheetsRegionDrawingStep {...makeProps({ serverError: null })} />
     );
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("has no axe violations with a server error", async () => {
+    const { container } = render(
+      <GoogleSheetsRegionDrawingStep
+        {...makeProps({
+          serverError: { message: "interpret failed", code: "X" },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

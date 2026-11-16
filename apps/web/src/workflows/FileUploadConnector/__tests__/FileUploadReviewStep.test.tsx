@@ -1,6 +1,11 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, within } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  within,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { FileUploadReviewStepUI } from "../FileUploadReviewStep.component";
@@ -24,6 +29,25 @@ function makeProps(
 }
 
 describe("FileUploadReviewStepUI — rendering", () => {
+  test("has no axe violations", async () => {
+    const { container } = render(<FileUploadReviewStepUI {...makeProps()} />);
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations with a server error", async () => {
+    const { container } = render(
+      <FileUploadReviewStepUI
+        {...makeProps({
+          serverError: {
+            message: "Commit failed — downstream service unavailable.",
+            code: "COMMIT_FAILED",
+          },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   test("renders the Review interpretation heading", () => {
     render(<FileUploadReviewStepUI {...makeProps()} />);
     expect(screen.getByText("Review interpretation")).toBeInTheDocument();

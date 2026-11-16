@@ -4,6 +4,7 @@ import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
+import { selectOptionKey } from "./option-key.js";
 
 export interface MultiAsyncSearchableSelectProps extends SelectBaseProps {
   value: string[];
@@ -135,6 +136,7 @@ export const MultiAsyncSearchableSelect: React.FC<
       }}
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
+      getOptionKey={selectOptionKey}
       filterOptions={(x) => x}
       loading={loading}
       disabled={disabled}

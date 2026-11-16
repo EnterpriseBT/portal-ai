@@ -12,7 +12,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { AuditLogActivity, AuditLogActivityUI } =
   await import("../components/AuditLogActivity.component");
@@ -210,6 +210,45 @@ describe("AuditLogActivityUI (#596)", () => {
     );
     await userEvent.click(screen.getByText("When"));
     expect(onSort).toHaveBeenCalledWith("created");
+  });
+
+  it("has no axe violations with entries and a paged toolbar", async () => {
+    const { container } = render(
+      <AuditLogActivityUI
+        {...uiProps}
+        entries={[
+          entry({
+            userId: "user-9",
+            action: "connector.credential.access",
+            targetType: "connector_instance",
+            targetId: "ci-42",
+            outcome: "failure",
+          }),
+          entry({
+            action: "org.update",
+            targetType: "organization",
+            targetId: "org-1",
+            metadata: { field: "name", from: "Acme", to: "Acme Corp" },
+          }),
+        ]}
+        toolbarProps={toolbarProps({ total: 45, totalPages: 3 })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the empty and error states", async () => {
+    const { container } = render(
+      <>
+        <AuditLogActivityUI {...uiProps} entries={[]} />
+        <AuditLogActivityUI
+          {...uiProps}
+          entries={[]}
+          error={new Error("Audit log unavailable")}
+        />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });
 

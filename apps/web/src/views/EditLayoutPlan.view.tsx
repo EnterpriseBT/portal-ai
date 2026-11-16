@@ -28,9 +28,12 @@ import { OrphanedRegionsNoticeUI } from "../components/OrphanedRegionsNotice.com
 import { jobLockReason } from "../utils/running-job-label.util";
 import { useRunningJobSubscriptions } from "../utils/use-running-job-subscriptions.util";
 import { RegionEditorUI } from "../modules/RegionEditor";
+import { patchBinding } from "../workflows/_shared/spreadsheet/use-spreadsheet-workflow.util";
+import { useBindingEditorResolvers } from "../workflows/_shared/spreadsheet/use-binding-editor-resolvers.util";
 import { serverErrorMessage } from "../utils/permission-denied.util";
 import type {
   CellBounds,
+  ColumnBindingDraft,
   EntityOption,
   LoadSliceFn,
   RegionDraft,
@@ -48,6 +51,7 @@ import {
   planRegionsToDrafts,
   preserveUserRegionConfig,
   regionDraftsToHints,
+  remapSelectedRegionId,
   splitPlanRegionsBySheet,
 } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 import type { OrphanedRegion } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
@@ -169,7 +173,21 @@ export interface EditLayoutPlanViewUIProps {
   onRegionDelete: (regionId: string) => void;
   onRegionResize: (regionId: string, nextBounds: CellBounds) => void;
   onJumpToRegion: (regionId: string) => void;
-  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  /**
+   * The review step's binding editor (#795): a chip opens it, and a save
+   * patches the region's binding in the page's draft.
+   */
+  bindingEditor?: Pick<
+    React.ComponentProps<typeof RegionEditorUI>,
+    | "onUpdateBinding"
+    | "onToggleBindingExcluded"
+    | "columnDefinitionSearch"
+    | "resolveReferenceOptions"
+    | "resolveReferenceFieldOptions"
+    | "resolveColumnDefinitionType"
+    | "resolveColumnDefinitionDescription"
+    | "resolveColumnLabel"
+  >;
   onCommit: () => void;
   /**
    * Wired to the ReviewStep's "Back to regions" button — steps from
@@ -235,7 +253,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onRegionDelete,
   onRegionResize,
   onJumpToRegion,
-  onEditBinding,
+  bindingEditor,
   onCommit,
   onBack,
   onLeaveView,
@@ -415,7 +433,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onInterpret={handleInterpretClick}
           isInterpreting={isInterpreting}
           onJumpToRegion={onJumpToRegion}
-          onEditBinding={onEditBinding}
+          {...bindingEditor}
           onCommit={onCommit}
           onBack={onBack}
           isCommitting={isCommitting}
@@ -522,6 +540,40 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   // Local editor state — initialized from the edit-context plan and the
   // preview workbook on first render after the query resolves.
   const [regions, setRegions] = useState<RegionDraft[]>([]);
+
+  // The review step's binding editor (#795): the same resolvers the
+  // spreadsheet workflows use, and saves that patch the page's draft.
+  const {
+    regionsWithResolvedLabels,
+    columnDefinitionSearch,
+    resolveReferenceOptions,
+    resolveReferenceFieldOptions,
+    resolveColumnDefinitionType,
+    resolveColumnDefinitionDescription,
+    resolveColumnLabel,
+  } = useBindingEditorResolvers(regions);
+  const onUpdateBinding = useCallback(
+    (
+      regionId: string,
+      sourceLocator: string,
+      patch: Partial<ColumnBindingDraft>
+    ) =>
+      setRegions(
+        (prev) =>
+          patchBinding(
+            { regions: prev, plan: null },
+            regionId,
+            sourceLocator,
+            patch
+          ).regions
+      ),
+    []
+  );
+  const onToggleBindingExcluded = useCallback(
+    (regionId: string, sourceLocator: string, excluded: boolean) =>
+      onUpdateBinding(regionId, sourceLocator, { excluded }),
+    [onUpdateBinding]
+  );
   // #1009: plan regions whose sheet is gone from the workbook.
   const [orphans, setOrphans] = useState<OrphanedRegion[]>([]);
   // The editor-shaped workbook and entity labels, built once per edit
@@ -758,7 +810,12 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // re-interpret doesn't clobber decisions the user already
       // made.
       const nextPlan = preserveUserRegionConfig(res.plan, regions);
-      setRegions(planRegionsToDrafts(nextPlan, workbook));
+      const nextRegions = planRegionsToDrafts(nextPlan, workbook);
+      setRegions(nextRegions);
+      // Interpret renames the regions; keep the same one selected (#999).
+      setSelectedRegionId((prev) =>
+        remapSelectedRegionId(prev, regions, nextRegions)
+      );
       setStep(1);
     } catch (err) {
       // Surface as the same Save-Draft snackbar channel — it's the
@@ -949,7 +1006,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       entityOptions={entityOptions}
       onCreateEntity={handleCreateEntity}
       loadSlice={loadSlice}
-      regions={regions}
+      // The chips' labels come from the catalog (a plan stores only ids);
+      // the drafts in state, which commit saves, stay as they are.
+      regions={regionsWithResolvedLabels}
       orphans={orphans}
       onMoveOrphan={handleMoveOrphan}
       onDeleteOrphan={(regionId) =>
@@ -968,7 +1027,16 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
         setSelectedRegionId(id);
         setStep(0);
       }}
-      onEditBinding={() => undefined}
+      bindingEditor={{
+        onUpdateBinding,
+        onToggleBindingExcluded,
+        columnDefinitionSearch,
+        resolveReferenceOptions,
+        resolveReferenceFieldOptions,
+        resolveColumnDefinitionType,
+        resolveColumnDefinitionDescription,
+        resolveColumnLabel,
+      }}
       onCommit={handleCommit}
       onBack={handleBack}
       onLeaveView={handleLeaveView}

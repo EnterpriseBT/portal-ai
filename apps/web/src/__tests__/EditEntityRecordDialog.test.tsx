@@ -8,8 +8,14 @@ jest.unstable_mockModule("react-markdown", () => ({
 }));
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { render, screen, fireEvent, pressEnter, waitFor } =
-  await import("./test-utils");
+const {
+  render,
+  screen,
+  fireEvent,
+  pressEnter,
+  waitFor,
+  expectNoAxeViolations,
+} = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EditEntityRecordDialog } =
   await import("../components/EditEntityRecordDialog.component");
@@ -100,6 +106,22 @@ describe("EditEntityRecordDialog — rendering", () => {
     expect(screen.getByLabelText("Metadata")).toBeInTheDocument();
   });
 
+  it("has no axe violations when open (#793)", async () => {
+    render(<EditEntityRecordDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <EditEntityRecordDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
   it("does not render when open={false}", () => {
     render(<EditEntityRecordDialog {...defaultProps} open={false} />);
     expect(screen.queryByText("Edit Record")).not.toBeInTheDocument();
@@ -184,8 +206,11 @@ describe("EditEntityRecordDialog — loading", () => {
   it("shows Saving... and disables buttons when isPending", () => {
     render(<EditEntityRecordDialog {...defaultProps} isPending={true} />);
     expect(screen.getByText("Saving...")).toBeInTheDocument();
-    expect(screen.getByText("Saving...")).toBeDisabled();
-    expect(screen.getByText("Cancel")).toBeDisabled();
+    expect(screen.getByText("Saving...")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByText("Cancel")).toHaveAttribute("aria-disabled", "true");
   });
 });
 

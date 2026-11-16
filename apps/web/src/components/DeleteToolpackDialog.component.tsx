@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
 import Typography from "@mui/material/Typography";
 
 import { FormAlert } from "./FormAlert.component";
@@ -41,23 +41,23 @@ export const DeleteToolpackDialogUI: React.FC<DeleteToolpackDialogUIProps> = ({
       onSubmit={onConfirm}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={onConfirm}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Deleting…")}
           >
             {isPending ? "Deleting..." : "Delete"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

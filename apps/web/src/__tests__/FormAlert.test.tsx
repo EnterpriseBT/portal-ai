@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { FormAlert } = await import("../components/FormAlert.component");
 
 describe("FormAlert", () => {
@@ -85,5 +85,19 @@ describe("FormAlert", () => {
       screen.queryByText(/You don't have permission/)
     ).not.toBeInTheDocument();
     expect(screen.getByText(/Duplicate name/)).toBeInTheDocument();
+  });
+});
+
+describe("FormAlert accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <FormAlert
+        serverError={{
+          message: "Duplicate name",
+          code: "ENTITY_TAG_DUPLICATE_NAME",
+        }}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

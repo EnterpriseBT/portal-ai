@@ -47,7 +47,14 @@ export const PageEmptyState = React.forwardRef<
             {icon}
           </Box>
         )}
-        <MuiTypography variant="h6" color="text.secondary" textAlign="center">
+        {/* #794: the title sits directly under the page's h1, so it's an
+            h2 (h6 broke heading order); it keeps the h6 look. */}
+        <MuiTypography
+          variant="h6"
+          component="h2"
+          color="text.secondary"
+          textAlign="center"
+        >
           {title}
         </MuiTypography>
         {description && (

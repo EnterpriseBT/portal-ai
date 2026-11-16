@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import type { GettingStartedStep } from "../utils/getting-started.util";
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { GettingStarted } =
   await import("../components/GettingStarted.component");
@@ -71,5 +71,24 @@ describe("GettingStarted", () => {
         screen.getByTestId(`getting-started-step-number-${i}`)
       ).toHaveTextContent(String(i));
     }
+  });
+});
+
+describe("GettingStarted heading order (#797)", () => {
+  it("titles each step at h3, under its section's h2", () => {
+    render(<GettingStarted steps={fixture} onNavigate={jest.fn()} />);
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(
+      fixture.length
+    );
+    expect(screen.queryByRole("heading", { level: 6 })).not.toBeInTheDocument();
+  });
+});
+
+describe("GettingStarted accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <GettingStarted steps={fixture} onNavigate={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

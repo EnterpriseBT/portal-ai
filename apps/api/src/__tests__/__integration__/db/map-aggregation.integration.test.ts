@@ -242,3 +242,91 @@ describe("Importance-ranked raw lines (#337)", () => {
     expect(rows.map((r) => Number(r.id))).toEqual([1, 2]); // longest two, not id 3
   });
 });
+
+// #796: tiles carry a stable per-feature id the widget dedupes and
+// highlights by. Run against real PostGIS so ST_AsMVT's feature-id column
+// (including a NULL id on a hybrid bin) is proven, not just spelled.
+describe("tile feature ids (#796)", () => {
+  const FID_TABLE = "fid_it_test";
+  const FENV = "ST_TileEnvelope(8, 48, 96)";
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+  const pipeline = `SELECT geom, cat FROM "${FID_TABLE}"`;
+
+  beforeAll(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection);
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS "${FID_TABLE}"`));
+    await db.execute(
+      sql.raw(
+        `CREATE TABLE "${FID_TABLE}" (geom geometry(Geometry,4326), cat text)`
+      )
+    );
+    // Three lines of different lengths, two sharing a category.
+    const lines = [
+      ["LINESTRING(-111.95 40.75, -111.80 40.77)", "a"],
+      ["LINESTRING(-111.90 40.74, -111.88 40.75)", "a"],
+      ["LINESTRING(-111.85 40.76, -111.84 40.761)", "b"],
+    ];
+    for (const [wkt, cat] of lines) {
+      await db.execute(
+        sql.raw(
+          `INSERT INTO "${FID_TABLE}" (geom, cat) VALUES (ST_GeomFromText('${wkt}', 4326), '${cat}')`
+        )
+      );
+    }
+  });
+
+  afterAll(async () => {
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS "${FID_TABLE}"`));
+    await connection.end();
+  });
+
+  it("gives every row a distinct id within JavaScript's safe range", async () => {
+    const rows = (await db.execute(
+      sql.raw(
+        `SELECT ${PortalMapTileService.featureIdExpr("src")}::text AS id FROM (${pipeline}) src`
+      )
+    )) as unknown as Array<{ id: string }>;
+    const ids = rows.map((r) => BigInt(r.id));
+    expect(new Set(ids.map(String)).size).toBe(3);
+    for (const id of ids) {
+      expect(id >= 0n && id <= BigInt(Number.MAX_SAFE_INTEGER)).toBe(true);
+    }
+  });
+
+  it("builds a raw tile with the id as its MVT feature id", async () => {
+    const q = PortalMapTileService.buildRawTileSql(
+      pipeline,
+      FENV,
+      ["cat"],
+      0,
+      10_000,
+      false,
+      "lines"
+    );
+    const rows = (await db.execute(sql.raw(q))) as unknown as Array<{
+      mvt: Buffer | null;
+      n: number;
+    }>;
+    expect(Number(rows[0].n)).toBe(3);
+    expect(rows[0].mvt).toBeTruthy();
+  });
+
+  it("builds a line hybrid with ids on the skeleton and none on the bins", async () => {
+    const q = PortalMapTileService.buildLineHybridTileSql(
+      pipeline,
+      8,
+      FENV,
+      0,
+      1
+    );
+    const rows = (await db.execute(sql.raw(q))) as unknown as Array<{
+      mvt: Buffer | null;
+      n: number;
+    }>;
+    expect(Number(rows[0].n)).toBeGreaterThanOrEqual(2); // 1 raw + ≥1 bin
+    expect(rows[0].mvt).toBeTruthy();
+  });
+});

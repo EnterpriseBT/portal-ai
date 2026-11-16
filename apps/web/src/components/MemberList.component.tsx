@@ -110,7 +110,11 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
               </Stack>
             )
           }
-          aria-label={`Groups for ${member.email ?? member.userId}`}
+          // #794: the name goes on the combobox; on the Select itself it
+          // landed on MUI's wrapper and left the combobox unnamed.
+          SelectDisplayProps={{
+            "aria-label": `Groups for ${member.email ?? member.userId}`,
+          }}
         >
           {groups.length === 0 ? (
             <MenuItem disabled value="">
@@ -174,7 +178,9 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
                 ))}
               </Stack>
             )}
-            aria-label={`Roles for ${member.email ?? member.userId}`}
+            SelectDisplayProps={{
+              "aria-label": `Roles for ${member.email ?? member.userId}`,
+            }}
           >
             {assignableRoles.map((r) => (
               <MenuItem key={r.slug} value={r.slug}>
@@ -193,6 +199,7 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
     {
       key: "actions",
       label: "",
+      headerLabel: "Actions",
       render: (_v, row) => {
         const member = row as unknown as Member;
         const isSelf = member.userId === callerUserId;
@@ -232,7 +239,11 @@ export const MemberListUI: React.FC<MemberListUIProps> = ({
     : columns.filter((c) => c.key !== "actions");
 
   return (
+    // #794: several controls per row, so an APG grid: one Tab stop, arrows
+    // between cells, Enter into a control and Escape back out.
     <DataTable
+      label="Members"
+      variant="grid"
       columns={visibleColumns}
       rows={members as unknown as Record<string, unknown>[]}
       emptyMessage="No members yet."

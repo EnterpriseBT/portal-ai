@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 
 import { ToolActivityStrip } from "../components/ToolActivityStrip.component";
 
@@ -31,5 +31,12 @@ describe("ToolActivityStrip", () => {
     const node = screen.getByRole("status");
     expect(node).toHaveAttribute("aria-label", "Clustering records");
     expect(node).toHaveAttribute("data-testid", "tool-activity-strip");
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ToolActivityStrip label="Building the chart" elapsedSeconds={12} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

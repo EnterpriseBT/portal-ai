@@ -47,7 +47,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { GroupEditorDialog, GroupEditorDialogUI } =
   await import("../modules/AccessAuthoring/GroupEditorDialog.component");
 
@@ -88,6 +89,12 @@ describe("GroupEditorDialog (#637)", () => {
     render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
     // The seeded member renders as a chip via its roster label — not an empty field.
     expect(screen.getByText("u1@example.io")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    mockGroupMembers.mockReturnValue(loaded(["u-1"]));
+    render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("saves membership on edit (setMembers with the group id + ids)", () => {

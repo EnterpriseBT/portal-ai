@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { MapWidgetUI } from "../MapWidget.component";
+import { VisualDataTableUI } from "../../../components/VisualDataTable.component";
 
 import type { MapSpec } from "@portalai/core/contracts";
 
@@ -14,6 +15,10 @@ const meta: Meta<typeof MapWidgetUI> = {
   title: "Modules/MapWidget",
   component: MapWidgetUI,
   parameters: { layout: "padded" },
+  args: {
+    summary:
+      "Parcels by land-use class. Most are residential, with commercial parcels along the main road.",
+  },
 };
 export default meta;
 
@@ -89,19 +94,11 @@ export const HighlightVacantByExpression: Story = {
       {
         kind: "polygons",
         source: { geometryColumn: "geom" },
+        // #1022: colour comes from colorBy and the theme (a literal `color`
+        // or `outlineColor` is ignored); the highlight is a wider outline.
         style: {
-          color: [
-            "case",
-            ["==", ["get", "prop_class"], "vacant"],
-            "#ff8a00",
-            "#cfd8dc",
-          ],
-          outlineColor: [
-            "case",
-            ["==", ["get", "prop_class"], "vacant"],
-            "#c25e00",
-            "#90a4ae",
-          ],
+          colorBy: { column: "prop_class" },
+          outlineWidth: ["case", ["==", ["get", "prop_class"], "vacant"], 3, 1],
         },
       },
     ]),
@@ -116,6 +113,21 @@ export const Points: Story = {
       { kind: "points", source: { latColumn: "lat", lngColumn: "lng" } },
     ]),
     rows: POINTS,
+  },
+};
+
+/** #796: the map's attributes behind "Show data", without raw geometry. */
+export const PointsWithData: Story = {
+  args: {
+    ...Points.args,
+    title: "Sites",
+    data: (
+      <VisualDataTableUI
+        label="Sites data"
+        columns={Object.keys(POINTS[0] ?? {})}
+        rows={POINTS}
+      />
+    ),
   },
 };
 

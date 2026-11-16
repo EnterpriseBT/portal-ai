@@ -106,7 +106,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityDetailViewUI } = await import("../views/EntityDetail.view");
 const { BidirectionalConsistencyBannerUI } =
@@ -154,6 +154,15 @@ describe("EntityDetailViewUI", () => {
     ).toBeInTheDocument();
   });
 
+  // #988: the records search matches text columns only (#821), and its
+  // name says so.
+  it('names the records search "Search text columns"', () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(
+      screen.getByRole("textbox", { name: "Search text columns" })
+    ).toBeInTheDocument();
+  });
+
   it("renders entity key chip", () => {
     render(<EntityDetailViewUI entity={stubEntity} />);
     expect(screen.getByText("contacts")).toBeInTheDocument();
@@ -197,17 +206,15 @@ describe("EntityDetailViewUI", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clicking a row calls onRecordClick with the correct recordId", async () => {
-    const onRecordClick = jest.fn();
+  // #794: opening a record is navigation, so it's a link a keyboard reaches.
+  it("links each record row to its record page", () => {
     mockRecordsList.mockReturnValue(stubRecordsList);
-    render(
-      <EntityDetailViewUI entity={stubEntity} onRecordClick={onRecordClick} />
-    );
-
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.click(screen.getByText("Jane"));
-
-    expect(onRecordClick).toHaveBeenCalledWith("rec-1");
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    const table = screen.getByRole("table", { name: "Records" });
+    const hrefs = within(table)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain(`/entities/${stubEntity.id}/records/rec-1`);
   });
 
   it("does not render any warning banners when no bidirectionalFieldMappings are provided", () => {
@@ -379,7 +386,6 @@ describe("EntityDetailViewUI", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         bidirectionalFieldMappings={[{ id: "fm-1", sourceField: "tags" }]}
-        onRecordClick={jest.fn()}
       />
     );
     // Warning is shown
@@ -429,10 +435,14 @@ describe("EntityDetailViewUI — New Record button", () => {
     );
     const create = await screen.findByRole("button", { name: "Create" });
     expect(create).toHaveAttribute("aria-disabled", "true");
+    // #793: the reason is its description, and its tooltip on hover.
+    expect(create).toHaveAccessibleDescription(
+      "Writes are disabled on this connector"
+    );
     await userEvent.hover(create);
-    expect(
-      await screen.findByText("Writes are disabled on this connector")
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Writes are disabled on this connector"
+    );
   });
 
   it("hides New Record without write on the entity (#829)", async () => {

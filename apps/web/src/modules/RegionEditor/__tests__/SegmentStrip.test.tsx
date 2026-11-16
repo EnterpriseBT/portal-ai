@@ -1,6 +1,8 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
+
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import type { AxisMember, Segment } from "@portalai/core/contracts";
 
 import {
@@ -209,5 +211,36 @@ describe("SegmentStripUI", () => {
     expect(
       screen.queryByRole("button", { name: /add column header axis/i })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SegmentStripUI — roles (#795)", () => {
+  it("is a group named by its axis, and each chip's name carries its count and range", () => {
+    setup({
+      axis: "row",
+      axisStart: 1,
+      segments: [
+        { kind: "field", positionCount: 3 },
+        { kind: "skip", positionCount: 1 },
+      ],
+    });
+    expect(
+      screen.getByRole("group", { name: "row segment strip" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /^edit row segment 1 \(field\): .*3 positions, spans B–D$/i,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /^edit row segment 2 \(skip\): .*1 position, spans E$/i,
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = setup({ axis: "row", axisStart: 1 });
+    await expectNoAxeViolations(container);
   });
 });

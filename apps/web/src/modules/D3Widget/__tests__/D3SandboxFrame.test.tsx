@@ -31,6 +31,7 @@ jest.unstable_mockModule("../utils/bridge.util", () => ({
 
 const { D3SandboxFrameUI } = await import("../D3SandboxFrame.component");
 const { SANDBOX_SRCDOC } = await import("../utils/sandbox-srcdoc.util");
+const { expectNoAxeViolations } = await import("../../../__tests__/test-utils");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ const THEME: D3SandboxTheme = {
   fontFamily: "sans-serif",
   monospaceFontFamily: "monospace",
   categorical: ["#123456"],
+  dashes: ["none"],
+  symbols: ["symbolCircle"],
 };
 
 const baseProps = {
@@ -59,6 +62,30 @@ beforeEach(() => {
 // ── Tests (spec case 20 + bridge lifecycle wiring) ───────────────────
 
 describe("D3SandboxFrameUI", () => {
+  // #796: axe can't reach inside the sandboxed iframe; the frame itself and
+  // its wrapper carry the contract (a titled frame).
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <D3SandboxFrameUI {...baseProps} title="Revenue" />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  // #796: the frame is named after the chart it draws.
+  it("names the iframe after the chart, or 'Chart' without a title", () => {
+    const { container, rerender } = render(
+      <D3SandboxFrameUI {...baseProps} title="Revenue" />
+    );
+    const iframe = () => container.querySelector("iframe") as HTMLIFrameElement;
+    expect(iframe().getAttribute("title")).toBe("Revenue (chart)");
+    rerender(<D3SandboxFrameUI {...baseProps} />);
+    expect(iframe().getAttribute("title")).toBe("Chart (chart)");
+  });
+
+  it("declares the srcdoc's language", () => {
+    expect(SANDBOX_SRCDOC).toContain('<html lang="en">');
+  });
+
   it("renders an iframe sandboxed to exactly allow-scripts with the shared srcdoc", () => {
     const { container } = render(<D3SandboxFrameUI {...baseProps} />);
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;

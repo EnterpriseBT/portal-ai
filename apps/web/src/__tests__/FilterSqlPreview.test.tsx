@@ -1,4 +1,4 @@
-const { render, screen } = await import("./test-utils");
+const { render, screen, expectNoAxeViolations } = await import("./test-utils");
 const { FilterSqlPreviewUI } =
   await import("../components/FilterSqlPreview.component");
 
@@ -62,5 +62,36 @@ describe("FilterSqlPreviewUI (#644)", () => {
     expect(screen.getByText("near")).toBeInTheDocument();
     expect(screen.getByText('{"a":1}')).toBeInTheDocument();
     expect(screen.getByText(/More rows match/)).toBeInTheDocument();
+  });
+});
+
+describe("FilterSqlPreviewUI accessibility", () => {
+  it("has no axe violations with matching rows", async () => {
+    const { container } = render(
+      <FilterSqlPreviewUI
+        pending={false}
+        serverError={null}
+        result={{
+          columns,
+          records: [{ _record_id: "r1", name: "near", payload: { a: 1 } }],
+          hasMore: true,
+        }}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations showing a refusal", async () => {
+    const { container } = render(
+      <FilterSqlPreviewUI
+        pending={false}
+        serverError={{
+          message: "unknown column",
+          code: "CURATED_VIEW_INVALID_FILTER_SQL",
+        }}
+        result={null}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

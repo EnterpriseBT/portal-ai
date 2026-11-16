@@ -9,6 +9,7 @@
  */
 import "../styles/tokens.css";
 import "../styles/global.css";
+import { themeHeadScript } from "../lib/theme-toggle";
 
 export interface Props {
   title: string;
@@ -96,47 +97,81 @@ const ogImage = new URL("/og-default.png", Astro.site).href;
         JSON encoding the app writes, so someone arriving from the product
         keeps their choice. */
     }
-    <script is:inline>
-      (function () {
-        try {
-          var stored = localStorage.getItem("portalai-theme");
-          var name = stored ? JSON.parse(stored) : null;
-          var theme =
-            name === "brand.dark"
-              ? "dark"
-              : name === "brand"
-                ? "light"
-                : window.matchMedia("(prefers-color-scheme: dark)").matches
-                  ? "dark"
-                  : "light";
-          document.documentElement.setAttribute("data-theme", theme);
-        } catch {
-          document.documentElement.setAttribute("data-theme", "light");
-        }
-      })();
-    </script>
+    {
+      /* Generated from the same function the toggle uses (#798), so the
+        two can't drift; it also sets data-js before paint, which the
+        toggle's CSS waits on. */
+    }
+    <script is:inline set:html={themeHeadScript()} />
   </head>
 
   <body>
     <slot />
 
     {
-      /* The toggle writes the app's encoding so the choice travels with the
-        visitor into the product. Progressive enhancement: with JS off the
-        page still renders in whatever the inline script resolved. */
+      /* The theme toggle (#798). A bundled script, so its state logic lives in
+        a tested module; it writes the app's encoding so the choice travels
+        with the visitor into the product, and keeps the button's aria-pressed
+        in step with the resolved theme, including a change made in another tab or
+        by the system preference. */
     }
-    <script is:inline>
-      document.addEventListener("click", function (event) {
-        var trigger = event.target.closest("[data-theme-toggle]");
+    <script>
+      import {
+        THEME_STORAGE_KEY,
+        nextTheme,
+        pressedFor,
+        resolveTheme,
+        titleFor,
+        toThemeName,
+        type SiteTheme,
+      } from "../lib/theme-toggle";
+
+      const root = document.documentElement;
+      const current = (): SiteTheme =>
+        root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      const toggles = () =>
+        document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]");
+      const sync = () => {
+        for (const button of toggles()) {
+          button.setAttribute("aria-pressed", pressedFor(current()));
+          button.title = titleFor(current());
+        }
+      };
+      const apply = (theme: SiteTheme) => {
+        root.setAttribute("data-theme", theme);
+        sync();
+      };
+      const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const stored = () => {
+        try {
+          return localStorage.getItem(THEME_STORAGE_KEY);
+        } catch {
+          return null;
+        }
+      };
+
+      sync();
+      // Another tab's choice, or the system preference when there is no
+      // stored choice, applies here too, so the button never shows a stale
+      // state and a click never overwrites a newer choice.
+      window.addEventListener("storage", (event) => {
+        if (event.key !== THEME_STORAGE_KEY) return;
+        apply(resolveTheme(event.newValue, darkQuery.matches));
+      });
+      darkQuery.addEventListener("change", (event) => {
+        if (stored() === null) apply(event.matches ? "dark" : "light");
+      });
+      document.addEventListener("click", (event) => {
+        const trigger = (event.target as Element | null)?.closest(
+          "[data-theme-toggle]"
+        );
         if (!trigger) return;
-        var root = document.documentElement;
-        var next =
-          root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-        root.setAttribute("data-theme", next);
+        const next = nextTheme(current());
+        apply(next);
         try {
           localStorage.setItem(
-            "portalai-theme",
-            JSON.stringify(next === "dark" ? "brand.dark" : "brand")
+            THEME_STORAGE_KEY,
+            JSON.stringify(toThemeName(next))
           );
         } catch {
           /* private mode — the toggle still works for this page view */

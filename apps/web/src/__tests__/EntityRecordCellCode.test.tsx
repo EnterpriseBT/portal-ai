@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, act } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  expectNoAxeViolations,
+} from "./test-utils";
 import { EntityRecordCellCode } from "../components/EntityRecordCellCode.component";
 
 describe("EntityRecordCellCode", () => {
@@ -47,5 +53,16 @@ describe("EntityRecordCellCode", () => {
     });
     const tooltip = await findByRole("tooltip");
     expect(tooltip.textContent).toContain("a".repeat(200));
+  });
+
+  it("has no axe violations when truncated", async () => {
+    const { container } = render(
+      <EntityRecordCellCode
+        value={{ key: "a".repeat(200) }}
+        type="json"
+        maxLength={80}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

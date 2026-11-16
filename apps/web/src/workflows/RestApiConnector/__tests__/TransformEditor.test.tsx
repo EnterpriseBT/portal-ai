@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { fireEvent, screen } from "@testing-library/react";
 
-import { render } from "../../../__tests__/test-utils";
+import { render, expectNoAxeViolations } from "../../../__tests__/test-utils";
 
 import { TransformEditorUI } from "../TransformEditor.component";
 
@@ -75,5 +75,25 @@ describe("TransformEditorUI", () => {
       />
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("TransformEditorUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <TransformEditorUI value="data.items" onChange={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with a serverError showing", async () => {
+    const { container } = render(
+      <TransformEditorUI
+        value="data.items"
+        onChange={jest.fn()}
+        serverError={{ kind: "parse", message: "unexpected token" }}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

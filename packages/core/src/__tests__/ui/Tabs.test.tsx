@@ -2,6 +2,7 @@ import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Tabs, Tab, TabPanel, useTabs } from "../../ui/Tabs";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Tabs Components", () => {
   describe("Rendering", () => {
@@ -327,5 +328,25 @@ describe("Tabs Components", () => {
         screen.getByText("Beta Content").closest("[role=tabpanel]")
       ).toHaveAttribute("aria-labelledby", "tab-1");
     });
+  });
+});
+
+describe("Tabs accessibility", () => {
+  it("has no axe violations", async () => {
+    const TabsExample = () => {
+      const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
+      return (
+        <>
+          <Tabs {...tabsProps} aria-label="Sections">
+            <Tab label="Alpha" {...getTabProps(0)} />
+            <Tab label="Beta" {...getTabProps(1)} />
+          </Tabs>
+          <TabPanel {...getTabPanelProps(0)}>Alpha Content</TabPanel>
+          <TabPanel {...getTabPanelProps(1)}>Beta Content</TabPanel>
+        </>
+      );
+    };
+    const { container } = render(<TabsExample />);
+    await expectNoAxeViolations(container);
   });
 });

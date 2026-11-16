@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
-import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -25,8 +24,26 @@ import {
   resolveColorBy,
   sourceIdFor,
 } from "../utils/map-config.util";
-import type { MapLegend } from "../utils/map-config.util";
+import type { MapColours, MapLegend } from "../utils/map-config.util";
 import type { InstallBasemap } from "../../../utils/runtime-config.util";
+
+/** A stand-in theme palette (#1022): eight categorical colours and "other". */
+const COLOURS: MapColours = {
+  categorical: [
+    "#c00000",
+    "#c11111",
+    "#c22222",
+    "#c33333",
+    "#c44444",
+    "#c55555",
+    "#c66666",
+    "#c77777",
+  ],
+  other: "#0e0e0e",
+  sequential: ["#5a0000", "#5b1111", "#5c2222"],
+};
+const [C0, C1, C2] = COLOURS.categorical;
+const [S0, S1, S2] = COLOURS.sequential;
 
 /** Swatch labels of a legend (or [] for null/gradient) — the discriminated
  *  MapLegend replaced the flat LegendEntry[] in #336. */
@@ -127,7 +144,11 @@ describe("resolveColorBy", () => {
       { klass: "improved" },
       { klass: "vacant" },
     ];
-    const { expression, legend } = resolveColorBy({ column: "klass" }, rows);
+    const { expression, legend } = resolveColorBy(
+      { column: "klass" },
+      rows,
+      COLOURS
+    );
     const expr = expression as unknown[];
     expect(expr[0]).toBe("match");
     expect(expr[1]).toEqual(["get", "klass"]);
@@ -139,7 +160,11 @@ describe("resolveColorBy", () => {
 
   it("returns a solid colour (not a zero-pair match) when no categories resolve", () => {
     // Tiled layer: no rows to derive categories from, no explicit stops.
-    const { expression, legend } = resolveColorBy({ column: "klass" }, []);
+    const { expression, legend } = resolveColorBy(
+      { column: "klass" },
+      [],
+      COLOURS
+    );
     expect(typeof expression).toBe("string");
     expect(legend).toBeNull();
   });
@@ -154,7 +179,8 @@ describe("resolveColorBy", () => {
           [300000, "#6baed6"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     // `step` (ranges), NOT `match` (exact) — a continuous value like 152,397
     // must land in a band, not fall to the grey fallback. Wrapped in a `case`
@@ -165,11 +191,13 @@ describe("resolveColorBy", () => {
     expect(expr[2]).toEqual([
       "step",
       ["to-number", ["get", "mkt_value"], 0], // coerced so null can't throw → black
-      "#f7fbff",
+      // #1022: the bands take the theme's colours in ascending order; the
+      // stored colours are ignored.
+      C0,
       100000,
-      "#c6dbef",
+      C1,
       300000,
-      "#6baed6",
+      C2,
     ]);
     expect(typeof expr[3]).toBe("string"); // no-data fallback colour
     expect(swatchLabels(legend)).toEqual(["0", "100000", "300000"]);
@@ -184,7 +212,8 @@ describe("resolveColorBy", () => {
           [100000, "#b"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     const expr = expression as unknown[];
     // case( has(col), step, <no-data> ) — features lacking the key never reach step.
@@ -203,35 +232,39 @@ describe("resolveColorBy", () => {
           [100000, "#1"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     // The step (inside the null-guard `case`) is sorted ascending.
     expect((expression as unknown[])[2]).toEqual([
       "step",
       ["to-number", ["get", "v"], 0],
-      "#0",
+      C0,
       100000,
-      "#1",
+      C1,
       300000,
-      "#3",
+      C2,
     ]);
   });
 
-  it("honours explicit stops", () => {
+  it("keeps stored stops' order but recolours them from the theme (#1022)", () => {
     const { expression, legend } = resolveColorBy(
       { column: "klass", stops: [["vacant", "#ff8a00"]] },
-      []
+      [],
+      COLOURS
     );
     expect(expression).toEqual([
       "match",
       ["get", "klass"],
       "vacant",
-      "#ff8a00",
-      expect.any(String),
+      C0,
+      COLOURS.other,
     ]);
     expect(legend).toEqual({
       kind: "swatches",
-      entries: [{ label: "vacant", color: "#ff8a00" }],
+      column: "klass",
+      entries: [{ label: "vacant", color: C0 }],
+      more: 0,
     });
   });
 
@@ -246,7 +279,8 @@ describe("resolveColorBy", () => {
           ["480", "#b"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     const expr = expression as unknown[];
     expect(expr[0]).toBe("case");
@@ -254,9 +288,9 @@ describe("resolveColorBy", () => {
     expect(step[0]).toBe("step");
     expect(step[1]).toEqual(["to-number", ["get", "acres"], 0]);
     // sorted ascending, breakpoints are NUMBERS (480 base, then 640) — not "640".
-    expect(step[2]).toBe("#b"); // base color (lowest)
+    expect(step[2]).toBe(C0); // base color (lowest)
     expect(step[3]).toBe(640); // number breakpoint, not the string "640"
-    expect(step[4]).toBe("#a");
+    expect(step[4]).toBe(C1);
     expect(swatchLabels(legend)).toEqual(["480", "640"]);
   });
 
@@ -269,7 +303,8 @@ describe("resolveColorBy", () => {
           ["vacant", "#b"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     expect((expression as unknown[])[0]).toBe("match");
   });
@@ -284,7 +319,8 @@ describe("resolveColorBy", () => {
           [100, "#ffffff"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     const expr = expression as unknown[];
     // Same null-guard shape as step: case(has, interpolate(to-number …), no-data).
@@ -294,20 +330,24 @@ describe("resolveColorBy", () => {
     expect(interp[0]).toBe("interpolate");
     expect(interp[1]).toEqual(["linear"]);
     expect(interp[2]).toEqual(["to-number", ["get", "mkt"], 0]);
-    expect(interp.slice(3)).toEqual([0, "#000000", 100, "#ffffff"]);
+    // #1022 adversarial F1: the theme's ramp, spread evenly from min to max;
+    // the stored colours aren't used.
+    expect(interp.slice(3)).toEqual([0, S0, 50, S1, 100, S2]);
     expect(typeof expr[3]).toBe("string"); // no-data colour, never black
     expect(legend).toEqual({
       kind: "gradient",
+      column: "mkt",
       min: 0,
       max: 100,
       stops: [
-        { value: 0, color: "#000000" },
-        { value: 100, color: "#ffffff" },
+        { value: 0, color: S0 },
+        { value: 50, color: S1 },
+        { value: 100, color: S2 },
       ],
     });
   });
 
-  it("interpolate sorts + dedupes stops ascending (MapLibre requires strictly increasing) (#336)", () => {
+  it("interpolate spans the stored stops' range, whatever their order (#336, #1022)", () => {
     const { legend } = resolveColorBy(
       {
         column: "v",
@@ -319,16 +359,18 @@ describe("resolveColorBy", () => {
           [100, "#1"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     expect(legend).toEqual({
       kind: "gradient",
+      column: "v",
       min: 0,
       max: 300,
       stops: [
-        { value: 0, color: "#0" },
-        { value: 100, color: "#1" },
-        { value: 300, color: "#3" },
+        { value: 0, color: S0 },
+        { value: 150, color: S1 },
+        { value: 300, color: S2 },
       ],
     });
   });
@@ -336,7 +378,8 @@ describe("resolveColorBy", () => {
   it("scale:'interpolate' with <2 distinct numeric stops → falls back to step, never a broken expr (#336)", () => {
     const { expression, legend } = resolveColorBy(
       { column: "mkt", scale: "interpolate", stops: [[42, "#abc"]] },
-      []
+      [],
+      COLOURS
     );
     const expr = expression as unknown[];
     expect(expr[0]).toBe("case");
@@ -344,16 +387,17 @@ describe("resolveColorBy", () => {
     expect(legend?.kind).toBe("swatches");
   });
 
-  it("scale:'interpolate' with no stops derives min→max from rows using SEQUENTIAL_PALETTE (#336)", () => {
+  it("scale:'interpolate' with no stops derives min→max from rows, in the theme's ramp (#336, #1022)", () => {
     const rows = [{ v: 10 }, { v: 30 }, { v: 20 }];
     const { expression, legend } = resolveColorBy(
       { column: "v", scale: "interpolate" },
-      rows
+      rows,
+      COLOURS
     );
     const interp = (expression as unknown[])[2] as unknown[];
     expect(interp[0]).toBe("interpolate");
     const colors = interp.slice(3).filter((_, i) => i % 2 === 1);
-    for (const c of colors) expect(SEQUENTIAL_PALETTE).toContain(c);
+    expect(colors).toEqual(COLOURS.sequential);
     expect(legend).toMatchObject({ kind: "gradient", min: 10, max: 30 });
   });
 
@@ -367,7 +411,8 @@ describe("resolveColorBy", () => {
           [2, "#b"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     expect((expression as unknown[])[0]).toBe("match");
   });
@@ -382,7 +427,8 @@ describe("resolveColorBy", () => {
           [100, "#b"],
         ],
       },
-      []
+      [],
+      COLOURS
     );
     const expr = expression as unknown[];
     expect(expr[0]).toBe("case");
@@ -391,17 +437,27 @@ describe("resolveColorBy", () => {
 });
 
 describe("layerToMapLibre", () => {
-  it("points → a circle layer with a literal colour", () => {
+  it("points → a circle layer, ignoring a stored literal colour (#1022)", () => {
     const layer = {
       kind: "points",
       source: { latColumn: "lat", lngColumn: "lng" },
       style: { color: "#123456", radius: 8 },
     } as MapLayer;
-    const { layers, legend } = layerToMapLibre(layer, 0, []);
+    const { layers, legend } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+    });
     expect(layers).toHaveLength(1);
     expect(layers[0].type).toBe("circle");
-    expect(layers[0].paint["circle-color"]).toBe("#123456");
-    expect(layers[0].paint["circle-radius"]).toBe(8);
+    // #1022: a stored `color` isn't contrast-checked, so the layer takes its
+    // palette colour instead.
+    expect(layers[0].paint["circle-color"]).toBe(C0);
+    // #796: the radius grows while its feature is selected.
+    expect(layers[0].paint["circle-radius"]).toEqual([
+      "case",
+      ["boolean", ["feature-state", "selected"], false],
+      11,
+      8,
+    ]);
     expect(legend).toBeNull();
   });
 
@@ -410,14 +466,14 @@ describe("layerToMapLibre", () => {
       kind: "polygons",
       source: { geometryColumn: "geom" },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 2, []);
+    const { layers } = layerToMapLibre(layer, 2, [], { colours: COLOURS });
     expect(layers.map((l) => l.type)).toEqual(["fill", "line"]);
     expect(layers[0].source).toBe(sourceIdFor(2));
   });
 
   it("raw polygon fill is translucent by default; style.opacity may only make it MORE translucent, never more opaque (#330)", () => {
     const fill = (l: MapLayer) =>
-      layerToMapLibre(l, 0, []).layers.find(
+      layerToMapLibre(l, 0, [], { colours: COLOURS }).layers.find(
         (x) => x.id === `${sourceIdFor(0)}-fill`
       )!;
     const def = fill({
@@ -444,15 +500,15 @@ describe("layerToMapLibre", () => {
     expect(lighter.paint["fill-opacity"]).toBe(0.15);
   });
 
-  it("passes a MapLibre expression through as the colour verbatim", () => {
+  it("ignores a stored colour expression, drawing the palette colour (#1022)", () => {
     const expr = ["case", ["==", ["get", "k"], "v"], "#f00", "#eee"];
     const layer = {
       kind: "polygons",
       source: { geometryColumn: "geom" },
       style: { color: expr },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, []);
-    expect(layers[0].paint["fill-color"]).toEqual(expr);
+    const { layers } = layerToMapLibre(layer, 0, [], { colours: COLOURS });
+    expect(layers[0].paint["fill-color"]).toBe(C0);
   });
 
   it("compiles colorBy into a match expression + legend on the primary colour", () => {
@@ -462,7 +518,9 @@ describe("layerToMapLibre", () => {
       style: { colorBy: { column: "klass" } },
     } as MapLayer;
     const rows = [{ klass: "a" }, { klass: "b" }];
-    const { layers, legend } = layerToMapLibre(layer, 0, rows);
+    const { layers, legend } = layerToMapLibre(layer, 0, rows, {
+      colours: COLOURS,
+    });
     expect((layers[0].paint["fill-color"] as unknown[])[0]).toBe("match");
     expect(swatchLabels(legend)).toEqual(["a", "b"]);
   });
@@ -472,7 +530,7 @@ describe("layerToMapLibre", () => {
       kind: "heatmap",
       source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, []);
+    const { layers } = layerToMapLibre(layer, 0, [], { colours: COLOURS });
     expect(layers[0].type).toBe("heatmap");
   });
 });
@@ -488,7 +546,10 @@ describe("layerToMapLibre aggregation (#330)", () => {
   } as MapLayer;
 
   it("tiled category layer → raw layers + an -agg fill, separated by the _agg filter (#532)", () => {
-    const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(catLayer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
     const raw = layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`);
     expect(agg.type).toBe("fill");
@@ -514,7 +575,10 @@ describe("layerToMapLibre aggregation (#330)", () => {
       kind: "points",
       source: { latColumn: "lat", lngColumn: "lng" },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
     const op = agg.paint["fill-opacity"] as unknown[];
     expect(op[0]).toBe("interpolate");
@@ -526,7 +590,10 @@ describe("layerToMapLibre aggregation (#330)", () => {
       ...catLayer,
       aggregation: { zoomThreshold: 9 },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
     expect(agg.maxzoom).toBeUndefined();
     expect(agg.filter).toEqual(["==", ["get", "_agg"], 1]);
@@ -539,20 +606,26 @@ describe("layerToMapLibre aggregation (#330)", () => {
 
   it("aggregation.enabled === false → no agg layer, raw layers unfiltered/ungated", () => {
     const layer = { ...catLayer, aggregation: { enabled: false } } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
     expect(layers.every((l) => l.filter === undefined)).toBe(true);
   });
 
   it("inline (not tiled) → no agg layer even with a colorBy", () => {
-    const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: false });
+    const { layers } = layerToMapLibre(catLayer, 0, [], {
+      colours: COLOURS,
+      tiled: false,
+    });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
   });
 
   it("bins are translucent so the basemap shows through, and honour style.opacity (#330)", () => {
     const agg = (l: MapLayer) =>
-      layerToMapLibre(l, 0, [], { tiled: true }).layers.find(
+      layerToMapLibre(l, 0, [], { colours: COLOURS, tiled: true }).layers.find(
         (x) => x.id === `${sourceIdFor(0)}-agg`
       )!;
     // Default category bin: translucent (basemap reads through), not near-opaque.
@@ -587,7 +660,10 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
   const aggId = `${sourceIdFor(0)}-agg`;
 
   it("tiled line layer → hybrid: raw line (·_agg-filtered) + a density -agg fill (#532 slice 4)", () => {
-    const { layers } = layerToMapLibre(lineLayer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(lineLayer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     // Over-cap line tiles carry the hybrid's density bins, so a tiled line layer
     // gets an -agg fill and its raw line is filtered to non-bin features.
     const agg = layers.find((l) => l.id === aggId)!;
@@ -607,7 +683,10 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
       ...lineLayer,
       style: { colorBy: { column: "c_road", stops: [["I-15", "#111"]] } },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     const agg = layers.find((l) => l.id === aggId)!;
     const op = agg.paint["fill-opacity"] as unknown[];
     expect(op[0]).toBe("interpolate"); // density, not a match on the (absent) value
@@ -618,7 +697,10 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
       ...polyLayer,
       aggregation: { treatment: "none" },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     expect(layers.some((l) => l.id === aggId)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
@@ -628,7 +710,10 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
   // zoom, so the client renders the base fill/outline ungated (all zooms),
   // colored by the same colorBy expression, with NO centroid-bin fill.
   it("tiled polygon+colorBy → 'dissolve': real fill ungated, no -agg bin fill", () => {
-    const { layers } = layerToMapLibre(polyLayer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(polyLayer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     expect(layers.some((l) => l.id === aggId)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
     const fill = layers.find((l) => l.id === `${sourceIdFor(0)}-fill`)!;
@@ -645,7 +730,10 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
       kind: "polygons",
       source: { geometryColumn: "geom" },
     } as MapLayer;
-    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const { layers } = layerToMapLibre(layer, 0, [], {
+      colours: COLOURS,
+      tiled: true,
+    });
     expect(layers.some((l) => l.id === aggId)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
   });
@@ -662,8 +750,13 @@ describe("buildLegend", () => {
         },
       ],
     } as unknown as MapSpec;
-    expect(buildLegend(spec, [])).toEqual([
-      { kind: "swatches", entries: [{ label: "x", color: "#111" }] },
+    expect(buildLegend(spec, [], COLOURS)).toEqual([
+      {
+        kind: "swatches",
+        column: "klass",
+        entries: [{ label: "x", color: C0 }],
+        more: 0,
+      },
     ]);
   });
 
@@ -691,7 +784,7 @@ describe("buildLegend", () => {
         },
       ],
     } as unknown as MapSpec;
-    expect(buildLegend(spec, []).map((l) => l.kind)).toEqual([
+    expect(buildLegend(spec, [], COLOURS).map((l) => l.kind)).toEqual([
       "swatches",
       "gradient",
     ]);
@@ -982,5 +1075,426 @@ describe("isTileBoundGeo (#371 — tile-on-mount decision)", () => {
       rows: [{ b: 2 }],
     } as unknown as WidgetRefreshResponse;
     expect(isTileBoundGeo(fresh, tiledPin, true)).toBe(false);
+  });
+});
+
+// #796: the feature picked from "Features in view" is highlighted on the map.
+describe("selected feature paint (#796)", () => {
+  const SELECTED = ["boolean", ["feature-state", "selected"], false];
+  const paintFor = (
+    layer: MapLayer,
+    type: string,
+    opts: { highlightColor?: string } = {}
+  ) =>
+    layerToMapLibre(layer, 0, [], { ...opts, colours: COLOURS }).layers.find(
+      (l) => l.type === type
+    )!.paint;
+  const point = (style?: object) =>
+    ({
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
+      style,
+    }) as MapLayer;
+
+  it("grows a selected point and rings it in the highlight colour", () => {
+    const paint = paintFor(point({ radius: 8 }), "circle", {
+      highlightColor: "#000000",
+    });
+    expect(paint["circle-radius"]).toEqual(["case", SELECTED, 11, 8]);
+    // #1022: every point carries a 1px "other" stroke, its contrast against
+    // the basemap.
+    expect(paint["circle-stroke-width"]).toEqual(["case", SELECTED, 3, 1]);
+    expect(paint["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      COLOURS.other,
+    ]);
+  });
+
+  // #796 smoke: a white 2px outline only went to 3px white on selection,
+  // invisible on a light basemap. The ring now takes the highlight colour.
+  it("rings in the highlight colour; a stored outline colour is ignored (#1022)", () => {
+    const paint = paintFor(
+      point({ outlineColor: "#ffffff", outlineWidth: 2 }),
+      "circle",
+      { highlightColor: "#000000" }
+    );
+    expect(paint["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      COLOURS.other,
+    ]);
+    expect(paint["circle-stroke-width"]).toEqual(["case", SELECTED, 3, 2]);
+  });
+
+  it("outlines a selected polygon in the highlight colour", () => {
+    const paint = paintFor(
+      { kind: "polygons", source: { geometryColumn: "geom" } } as MapLayer,
+      "line",
+      { highlightColor: "#ffffff" }
+    );
+    expect(paint["line-width"]).toEqual(["case", SELECTED, 3, 1.5]);
+    expect(paint["line-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#ffffff",
+      expect.anything(),
+    ]);
+  });
+
+  it("widens a selected line and keeps its data colour", () => {
+    const paint = paintFor(
+      {
+        kind: "lines",
+        source: { geometryColumn: "geom" },
+        style: { width: 2, color: "#123456" },
+      } as MapLayer,
+      "line"
+    );
+    expect(paint["line-width"]).toEqual(["case", SELECTED, 4, 2]);
+    expect(paint["line-color"]).toBe(C0);
+  });
+
+  it("grows a data-driven radius by expression", () => {
+    const radius = ["get", "size"];
+    expect(paintFor(point({ radius }), "circle")["circle-radius"]).toEqual([
+      "case",
+      SELECTED,
+      ["+", radius, 3],
+      radius,
+    ]);
+  });
+
+  it("defaults the highlight to black", () => {
+    expect(paintFor(point(), "circle")["circle-stroke-color"]).toEqual([
+      "case",
+      SELECTED,
+      "#000000",
+      COLOURS.other,
+    ]);
+  });
+});
+
+// #796 review: MapLibre only accepts a zoom expression as the input of a
+// top-level step/interpolate, so an author's expression width is never
+// wrapped in the selection `case` (it would fail addLayer and blank the map).
+describe("selected paint leaves an expression width alone (#796)", () => {
+  const zoomWidth = ["interpolate", ["linear"], ["zoom"], 5, 1, 15, 6];
+
+  it.each([
+    [
+      "line width",
+      {
+        kind: "lines",
+        source: { geometryColumn: "geom" },
+        style: { width: zoomWidth },
+      },
+      "line",
+      "line-width",
+    ],
+    [
+      "polygon outline width",
+      {
+        kind: "polygons",
+        source: { geometryColumn: "geom" },
+        style: { outlineWidth: zoomWidth },
+      },
+      "line",
+      "line-width",
+    ],
+    [
+      "point stroke width",
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { outlineWidth: zoomWidth },
+      },
+      "circle",
+      "circle-stroke-width",
+    ],
+    [
+      "point radius",
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+        style: { radius: zoomWidth },
+      },
+      "circle",
+      "circle-radius",
+    ],
+  ])("keeps a %s expression as authored", (_name, layer, type, prop) => {
+    const paint = layerToMapLibre(layer as MapLayer, 0, [], {
+      colours: COLOURS,
+    }).layers.find((l) => l.type === type)!.paint;
+    expect(paint[prop]).toEqual(zoomWidth);
+  });
+});
+
+// #1022: the web colours categorical and step maps from the theme, so every
+// colour is held at 3:1 against the basemap and a saved map follows the
+// viewer's theme.
+describe("theme colours (#1022)", () => {
+  const polygons = (style: object) =>
+    ({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style,
+    }) as MapLayer;
+
+  it("colours colorBy.categories in order, with other as the fallback", () => {
+    const { expression, legend } = resolveColorBy(
+      { column: "klass", categories: ["vacant", "improved", "exempt"] },
+      [{ klass: "exempt" }, { klass: "vacant" }],
+      COLOURS
+    );
+    expect(expression).toEqual([
+      "match",
+      ["get", "klass"],
+      "vacant",
+      C0,
+      "improved",
+      C1,
+      "exempt",
+      C2,
+      COLOURS.other,
+    ]);
+    expect(legend).toEqual({
+      kind: "swatches",
+      column: "klass",
+      entries: [
+        { label: "vacant", color: C0 },
+        { label: "improved", color: C1 },
+        { label: "exempt", color: C2 },
+      ],
+      more: 0,
+    });
+  });
+
+  it("categories win over stored stops", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "k",
+        categories: ["b", "a"],
+        stops: [
+          ["a", "#111111"],
+          ["b", "#222222"],
+        ],
+      },
+      [],
+      COLOURS
+    );
+    expect((expression as unknown[]).slice(2, 6)).toEqual(["b", C0, "a", C1]);
+  });
+
+  it("recolours a pre-#1022 block's hex stops, keeping their order", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "k",
+        stops: [
+          ["x", "#4e79a7"],
+          ["y", "#f28e2b"],
+        ],
+      },
+      [],
+      COLOURS
+    );
+    expect(expression).toEqual([
+      "match",
+      ["get", "k"],
+      "x",
+      C0,
+      "y",
+      C1,
+      COLOURS.other,
+    ]);
+  });
+
+  it("puts categories past the eighth in other and counts them", () => {
+    const categories = Array.from({ length: 11 }, (_, i) => `c${i}`);
+    const { expression, legend } = resolveColorBy(
+      { column: "k", categories },
+      [],
+      COLOURS
+    );
+    const match = expression as unknown[];
+    // Only the first eight are matched; the rest fall to `other`.
+    expect(match).toHaveLength(2 + 8 * 2 + 1);
+    expect(match.at(-1)).toBe(COLOURS.other);
+    expect(legend).toMatchObject({ kind: "swatches", more: 3 });
+    expect(legend?.kind === "swatches" && legend.entries).toHaveLength(8);
+  });
+
+  it("infers step for numeric categories and colours bands in ascending order", () => {
+    const { expression } = resolveColorBy(
+      { column: "v", categories: ["300", "10", "20"] },
+      [],
+      COLOURS
+    );
+    expect((expression as unknown[])[2]).toEqual([
+      "step",
+      ["to-number", ["get", "v"], 0],
+      C0,
+      20,
+      C1,
+      300,
+      C2,
+    ]);
+  });
+
+  it("bins more than eight numeric values into eight coloured bands (code review)", () => {
+    const categories = Array.from({ length: 20 }, (_, i) => String(i * 10));
+    const { expression, legend } = resolveColorBy(
+      { column: "v", categories },
+      [],
+      COLOURS
+    );
+    const step = (expression as unknown[])[2] as unknown[];
+    // step(input, base, 7 × [break, colour]): eight bands, no grey band.
+    expect(step).toHaveLength(3 + 7 * 2);
+    const colours = [step[2], ...step.slice(4).filter((_, i) => i % 2 === 0)];
+    expect(colours).toEqual(COLOURS.categorical);
+    const breaks = step.slice(3).filter((_, i) => i % 2 === 0) as number[];
+    for (let i = 1; i < breaks.length; i++)
+      expect(breaks[i]).toBeGreaterThan(breaks[i - 1]);
+    expect(legend).toMatchObject({ kind: "swatches", more: 0 });
+    expect(legend?.kind === "swatches" && legend.entries[0].label).toBe("0");
+  });
+
+  it("makes one breakpoint of values that coerce to the same number (code review)", () => {
+    const { expression } = resolveColorBy(
+      { column: "v" },
+      [{ v: 1 }, { v: "1" }, { v: "1.0" }, { v: 2 }],
+      COLOURS
+    );
+    expect((expression as unknown[])[2]).toEqual([
+      "step",
+      ["to-number", ["get", "v"], 0],
+      C0,
+      2,
+      C1,
+    ]);
+  });
+
+  it("ignores an interpolate's own palette and stop colours (adversarial F1)", () => {
+    const { legend } = resolveColorBy(
+      {
+        column: "v",
+        scale: "interpolate",
+        stops: [
+          [0, "#440154"],
+          [9, "#fde725"],
+        ],
+      },
+      [],
+      COLOURS
+    );
+    expect(legend).toMatchObject({
+      kind: "gradient",
+      stops: [
+        { value: 0, color: S0 },
+        { value: 4.5, color: S1 },
+        { value: 9, color: S2 },
+      ],
+    });
+    const viaPalette = resolveColorBy(
+      { column: "v", scale: "interpolate", palette: ["#fffff0", "#ffffff"] },
+      [{ v: 1 }, { v: 9 }],
+      COLOURS
+    );
+    expect(
+      viaPalette.legend?.kind === "gradient" &&
+        viaPalette.legend.stops.map((s) => s.color)
+    ).toEqual(COLOURS.sequential);
+  });
+
+  it("gives each layer without colorBy its own palette colour, by index", () => {
+    const point = {
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
+    } as MapLayer;
+    const colourOf = (i: number) =>
+      layerToMapLibre(point, i, [], { colours: COLOURS }).layers[0].paint[
+        "circle-color"
+      ];
+    expect([colourOf(0), colourOf(1), colourOf(2)]).toEqual([C0, C1, C2]);
+    expect(colourOf(8)).toBe(C0);
+  });
+
+  it("outlines a polygon in its fill colour, whatever outlineColor says", () => {
+    const { layers } = layerToMapLibre(
+      polygons({ outlineColor: "#ffffff", color: "#ffff00" }),
+      1,
+      [],
+      { colours: COLOURS }
+    );
+    const outline = layers.find((l) => l.type === "line")!.paint;
+    expect(layers[0].paint["fill-color"]).toBe(C1);
+    expect((outline["line-color"] as unknown[])[3]).toBe(C1);
+  });
+
+  it("colours a layer with no colorBy and no colour in the first theme colour", () => {
+    const { layers } = layerToMapLibre(
+      {
+        kind: "points",
+        source: { latColumn: "lat", lngColumn: "lng" },
+      } as MapLayer,
+      0,
+      [],
+      { colours: COLOURS }
+    );
+    expect(layers[0].paint["circle-color"]).toBe(C0);
+  });
+
+  it("outlines polygons at full opacity in the category colour, at least 1.5px", () => {
+    const { layers } = layerToMapLibre(
+      polygons({ colorBy: { column: "k", categories: ["a"] }, opacity: 0.2 }),
+      0,
+      [],
+      { colours: COLOURS }
+    );
+    const outline = layers.find((l) => l.type === "line")!.paint;
+    const fill = layers.find((l) => l.type === "fill")!.paint;
+    expect(outline["line-opacity"]).toBeUndefined();
+    expect((outline["line-color"] as unknown[])[3]).toEqual(fill["fill-color"]);
+    expect((outline["line-width"] as unknown[])[3]).toBe(1.5);
+  });
+
+  it("draws lines at full opacity, whatever the style's opacity", () => {
+    const { layers } = layerToMapLibre(
+      {
+        kind: "lines",
+        source: { geometryColumn: "geom" },
+        style: { opacity: 0.3, colorBy: { column: "k", categories: ["a"] } },
+      } as MapLayer,
+      0,
+      [],
+      { colours: COLOURS }
+    );
+    expect(layers[0].paint["line-opacity"]).toBeUndefined();
+    expect((layers[0].paint["line-color"] as unknown[])[0]).toBe("match");
+  });
+
+  it("names the column on every legend", () => {
+    const spec = {
+      layers: [
+        polygons({ colorBy: { column: "zoning", categories: ["r1"] } }),
+        polygons({
+          colorBy: {
+            column: "value",
+            scale: "interpolate",
+            stops: [
+              [0, "#000000"],
+              [1, "#ffffff"],
+            ],
+          },
+        }),
+      ],
+    } as unknown as MapSpec;
+    expect(buildLegend(spec, [], COLOURS).map((l) => l.column)).toEqual([
+      "zoning",
+      "value",
+    ]);
   });
 });

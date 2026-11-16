@@ -48,24 +48,6 @@ export interface RegionDecoration {
   label?: string;
 }
 
-/** Solid fills shown over the region background. Kept transparent so cell text stays legible. */
-export const DECORATION_COLOR: Record<DecorationKind, string> = {
-  header: "rgba(37, 99, 235, 0.22)",
-  rowAxisLabel: "rgba(147, 51, 234, 0.22)",
-  colAxisLabel: "rgba(219, 39, 119, 0.22)",
-  axisNameAnchor: "rgba(234, 88, 12, 0.38)",
-  cellValue: "rgba(13, 148, 136, 0.12)",
-  skipped: "rgba(100, 116, 139, 0.18)",
-};
-
-/** Optional secondary styling — used by skipped to get the striped "excluded" treatment. */
-export const DECORATION_BACKGROUND_IMAGE: Partial<
-  Record<DecorationKind, string>
-> = {
-  skipped:
-    "repeating-linear-gradient(45deg, rgba(100,116,139,0.45) 0 6px, transparent 6px 12px)",
-};
-
 export const DECORATION_LABEL: Record<DecorationKind, string> = {
   header: "Header",
   rowAxisLabel: "Row axis labels",
@@ -429,31 +411,6 @@ export interface SegmentOverlay {
   dynamic?: boolean;
 }
 
-/** Strong segment-band fills keyed by kind. Opacity is bumped over the
- *  subdued header/axis-label decorations so segments remain readable when
- *  they layer on top of them. */
-export const SEGMENT_OVERLAY_COLOR: Record<SegmentOverlayKind, string> = {
-  field: "rgba(37, 99, 235, 0.32)",
-  pivot: "rgba(147, 51, 234, 0.32)",
-  skip: "rgba(100, 116, 139, 0.22)",
-};
-
-/** Secondary styling for the skip overlay — the same diagonal stripes used
- *  for the canonical "skipped" decoration so the two read as related. */
-export const SEGMENT_OVERLAY_BACKGROUND_IMAGE: Partial<
-  Record<SegmentOverlayKind, string>
-> = {
-  skip: "repeating-linear-gradient(45deg, rgba(100,116,139,0.38) 0 5px, transparent 5px 10px)",
-};
-
-/** Overlay border colour for each kind — matches the chip tone so grid and
- *  chip read as the same element. */
-export const SEGMENT_OVERLAY_BORDER: Record<SegmentOverlayKind, string> = {
-  field: "rgba(37, 99, 235, 0.75)",
-  pivot: "rgba(147, 51, 234, 0.75)",
-  skip: "rgba(100, 116, 139, 0.55)",
-};
-
 // ── Pivot intersection overlays ──────────────────────────────────────────
 
 /**
@@ -514,40 +471,6 @@ export interface IntersectionOverlay {
    */
   cellValueOverridden?: boolean;
 }
-
-/**
- * Tints keyed by `IntersectionKind`. Each kind gets a distinct hue so the
- * user reads the body grid at a glance:
- *
- * - `field-field` blue (degenerate; both axes claim the cell)
- * - `field-pivot` violet (one axis static, the other fans out)
- * - `pivot-pivot` amber (the canonical intersection — editable)
- * - `skip-mixed`  gray (any axis is `<skip>` — body cell is dropped)
- */
-export const INTERSECTION_OVERLAY_COLOR: Record<IntersectionKind, string> = {
-  "field-field": "rgba(37, 99, 235, 0.14)",
-  "field-pivot": "rgba(168, 85, 247, 0.16)",
-  "pivot-pivot": "rgba(217, 119, 6, 0.18)",
-  "skip-mixed": "rgba(100, 116, 139, 0.14)",
-};
-
-/** Borders matching the per-kind tint above; the label chip reuses these
- *  for its own background so the outline + chip read as one unit. */
-export const INTERSECTION_OVERLAY_BORDER: Record<IntersectionKind, string> = {
-  "field-field": "rgba(37, 99, 235, 0.55)",
-  "field-pivot": "rgba(147, 51, 234, 0.55)",
-  "pivot-pivot": "rgba(180, 83, 9, 0.65)",
-  "skip-mixed": "rgba(100, 116, 139, 0.55)",
-};
-
-/** Diagonal-stripe pattern for `skip-mixed` so dropped cells read as
- *  excluded at a glance — same gesture skip-rule decorations use. */
-export const INTERSECTION_OVERLAY_BACKGROUND_IMAGE: Partial<
-  Record<IntersectionKind, string>
-> = {
-  "skip-mixed":
-    "repeating-linear-gradient(45deg, rgba(100,116,139,0.32) 0 5px, transparent 5px 10px)",
-};
 
 function intersectionKind(
   rowKind: Segment["kind"],

@@ -4,6 +4,10 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SelectOption } from "@portalai/core/ui";
 
+import {
+  expectNoAxeViolations,
+  render as renderWithTheme,
+} from "../../../__tests__/test-utils";
 import { BindingEditorPopoverUI } from "../BindingEditorPopover.component";
 import type { BindingEditorPopoverUIProps } from "../BindingEditorPopover.component";
 import type { ColumnBindingDraft } from "../utils/region-editor.types";
@@ -29,13 +33,18 @@ function makeSearchStub(): NonNullable<
   };
 }
 
-function setup(overrides: Partial<BindingEditorPopoverUIProps> = {}) {
+function setup(
+  overrides: Partial<BindingEditorPopoverUIProps> = {},
+  // The axe cases render inside the app's theme, which names every
+  // CircularProgress ("Loading").
+  { withTheme = false }: { withTheme?: boolean } = {}
+) {
   const anchor = document.createElement("button");
   document.body.appendChild(anchor);
   const onChange = jest.fn<(patch: Partial<ColumnBindingDraft>) => void>();
   const onApply = jest.fn();
   const onCancel = jest.fn();
-  const utils = render(
+  const ui = (
     <BindingEditorPopoverUI
       open
       anchorEl={anchor}
@@ -50,6 +59,7 @@ function setup(overrides: Partial<BindingEditorPopoverUIProps> = {}) {
       {...overrides}
     />
   );
+  const utils = withTheme ? renderWithTheme(ui) : render(ui);
   return { ...utils, onChange, onApply, onCancel, anchor };
 }
 
@@ -163,7 +173,7 @@ describe("BindingEditorPopoverUI — interaction", () => {
     const { onApply } = setup();
     // MUI Popover portals into document.body — query globally rather than by container.
     const form = document.querySelector<HTMLFormElement>(
-      'form[aria-label="Edit column binding"]'
+      '[role="dialog"][aria-label="Edit column binding"] form'
     );
     expect(form).not.toBeNull();
     const field = form!.querySelector<HTMLInputElement>(
@@ -328,5 +338,34 @@ describe("BindingEditorPopoverUI — Enter on a checkbox", () => {
     screen.getByLabelText("Omit this column from the entity").focus();
     await user.keyboard("{Enter}");
     expect(onApply).not.toHaveBeenCalled();
+  });
+});
+
+describe("BindingEditorPopoverUI — roles (#795)", () => {
+  test("is a named dialog holding a form, not a form with a dialog role", () => {
+    setup();
+    const dialog = screen.getByRole("dialog", { name: "Edit column binding" });
+    expect(dialog.tagName).not.toBe("FORM");
+    expect(dialog.querySelector("form")).not.toBeNull();
+  });
+
+  test("the status icon is an image named by its state", () => {
+    setup();
+    const icon = screen.getByTestId(/^binding-state-icon-/);
+    expect(icon).toHaveAttribute("role", "img");
+    expect(icon).toHaveAccessibleName();
+  });
+
+  test("has no axe violations when open", async () => {
+    setup({}, { withTheme: true });
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  test("has no axe violations with a server error showing", async () => {
+    setup(
+      { serverError: { message: "Save failed", code: "X_FAILED" } },
+      { withTheme: true }
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 });

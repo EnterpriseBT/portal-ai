@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { SyncColumns } from "../components/SyncColumns.component";
 
 import type { ResolvedColumn } from "@portalai/core/contracts";
@@ -111,5 +111,14 @@ describe("SyncColumns", () => {
       </SyncColumns>
     );
     expect(setColumns).not.toHaveBeenCalled();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <SyncColumns columns={columns} setColumns={jest.fn()}>
+        <div>content</div>
+      </SyncColumns>
+    );
+    await expectNoAxeViolations(container);
   });
 });

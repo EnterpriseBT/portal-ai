@@ -1,4 +1,5 @@
-const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { AttachmentChipUI } =
   await import("../components/AttachmentChip.component");
 
@@ -43,5 +44,15 @@ describe("AttachmentChipUI (#674)", () => {
     const chip = screen.getByTestId("attachment-chip-no-access");
     expect(chip).not.toHaveClass("MuiChip-clickable");
     expect(chip).not.toHaveAttribute("role", "button");
+  });
+
+  it("has no axe violations, readable and unreadable", async () => {
+    const { container } = render(
+      <>
+        <AttachmentChipUI kind="view" label="Q3 orders" canRead />
+        <AttachmentChipUI kind="connector" label="Secret" canRead={false} />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

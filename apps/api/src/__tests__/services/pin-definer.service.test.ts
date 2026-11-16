@@ -187,6 +187,17 @@ describe("PinDefinerService.authorizeHandleRead (#640)", () => {
     ).rejects.toMatchObject({ status: 404, code: ApiCode.READ_HANDLE_EXPIRED });
   });
 
+  // #796 adversarial F5: the same words as a missing handle.
+  it("words a refused pin handle exactly like a missing one", async () => {
+    const { HANDLE_EXPIRED_MESSAGE } =
+      await import("../../constants/query-handle.constants.js");
+    mockFindPin.mockResolvedValue(row);
+    mockCan.mockReturnValue(false);
+    await expect(
+      PinDefinerService.authorizeHandleRead(handle, ctx)
+    ).rejects.toMatchObject({ message: HANDLE_EXPIRED_MESSAGE });
+  });
+
   it("refuses neutrally to a reader once the definer is removed", async () => {
     mockFindPin.mockResolvedValue(row);
     mockCan.mockImplementation(canRead);

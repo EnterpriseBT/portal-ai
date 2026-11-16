@@ -16,6 +16,7 @@ jest.unstable_mockModule("../../../utils/use-widget-refresh.util", () => ({
 }));
 
 const { TableWidget, TableWidgetUI } = await import("../TableWidget.component");
+const { expectNoAxeViolations } = await import("../../../__tests__/test-utils");
 
 const REFRESH_IDLE = {
   fresh: null,
@@ -44,6 +45,19 @@ beforeEach(() => {
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 describe("TableWidgetUI", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <TableWidgetUI
+        columns={["name", "acres"]}
+        rows={rows}
+        lastUpdatedAt={Date.now()}
+        canRefresh
+        onRefresh={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
   it("renders columns and rows", () => {
     render(<TableWidgetUI columns={["name", "acres"]} rows={rows} />);
     expect(screen.getByText("North Ridge")).toBeInTheDocument();

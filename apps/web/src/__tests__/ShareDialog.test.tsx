@@ -1,5 +1,12 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent, pressEnter, waitFor } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  pressEnter,
+  waitFor,
+  expectNoAxeViolations,
+} from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { ShareDialogUI } from "../components/ShareDialog.component";
 import type { GrantView } from "@portalai/core/contracts";
@@ -25,6 +32,22 @@ describe("ShareDialogUI (#621)", () => {
     expect(screen.getByLabelText("Share with")).toBeInTheDocument();
     expect(screen.getByLabelText("Access")).toBeInTheDocument();
     expect(screen.getByText("Not shared with anyone yet.")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<ShareDialogUI {...baseProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <ShareDialogUI
+        {...baseProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("does not render when closed", () => {

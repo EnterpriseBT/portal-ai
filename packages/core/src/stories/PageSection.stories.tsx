@@ -53,7 +53,9 @@ const SampleCards = () => (
     {["Alpha Connector", "Beta Connector", "Gamma Connector"].map((name) => (
       <Card key={name} variant="outlined">
         <CardContent>
-          <MuiTypography variant="subtitle1">{name}</MuiTypography>
+          <MuiTypography variant="subtitle1" component="h3">
+            {name}
+          </MuiTypography>
           <MuiTypography variant="body2" color="text.secondary">
             Last synced 2 hours ago
           </MuiTypography>

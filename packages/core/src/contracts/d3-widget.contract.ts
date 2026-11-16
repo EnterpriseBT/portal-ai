@@ -46,6 +46,10 @@ export const D3BaseContentSchema = z.object({
   /** Function-body source (see module doc above). Never empty. */
   program: z.string().min(1),
   title: z.string().optional(),
+  /** Agent-written text alternative (#796): what it shows and the takeaway.
+   *  Optional so pre-#796 blocks and pins parse; the widget derives one when
+   *  absent. No length limit here: limits live on request contracts only. */
+  summary: z.string().optional(),
   params: D3ProgramParamsSchema.optional(),
   /** Durable re-executable pipeline (#270). Optional — see `VizPipelineSchema`. */
   pipeline: VizPipelineSchema.optional(),

@@ -5,10 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Button,
+  GatedButton,
   Modal,
+  MultiSearchableSelect,
+  pendingGate,
   Stack,
   Typography,
-  MultiSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import {
@@ -83,14 +85,15 @@ export const GroupEditorDialogUI: React.FC<GroupEditorDialogUIProps> = ({
         <Button type="button" variant="outlined" onClick={onClose}>
           Cancel
         </Button>
-        <Button
+        <GatedButton
           type="button"
           variant="contained"
           onClick={onSubmit}
-          disabled={isPending || !name.trim() || membersLoading}
+          gate={pendingGate(isPending)}
+          disabled={!name.trim() || membersLoading}
         >
           {isPending ? "Saving…" : "Save"}
-        </Button>
+        </GatedButton>
       </Stack>
     }
   >

@@ -198,6 +198,46 @@ describe("gis pack visualize_map colorBy.scale (#336)", () => {
     expect(specDesc).toContain("scale");
     expect(specDesc.toLowerCase()).toContain("gradient");
   });
+
+  it("steers per-feature colour to colorBy and says lines ignore opacity (#1022)", () => {
+    expect(tool!.description).toContain("Colour features with `colorBy`");
+    expect(tool!.description).toContain(
+      "`color` and `outlineColor` are refused"
+    );
+    const specDesc =
+      (
+        tool!.parameterSchema.properties as Record<
+          string,
+          { description?: string }
+        >
+      ).spec.description ?? "";
+    expect(specDesc).toContain("a lines layer ignores `opacity`");
+  });
+
+  it("says categorical colours come from the theme (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Categorical and banded `colorBy` colours come from the theme"
+    );
+  });
+});
+
+// #796 — both visualization tools require a text alternative, and every
+// example shows one.
+describe("visualization summary (#796)", () => {
+  it.each(["visualize_d3", "visualize_map"])(
+    "%s requires a summary",
+    (name) => {
+      const tool = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+        (t) => t.name === name
+      );
+      expect(tool!.parameterSchema.required).toContain("summary");
+      for (const example of tool!.examples ?? []) {
+        expect((example.input as Record<string, unknown>).summary).toEqual(
+          expect.any(String)
+        );
+      }
+    }
+  );
 });
 
 // #269 — the visualize pack + visualize_d3 tool contract.
@@ -209,17 +249,28 @@ describe("visualize pack (#269)", () => {
     expect(tool!.description).toContain("80 usage units");
   });
 
+  it("says charts take the theme's palette and label their series (#1022)", () => {
+    expect(tool!.description).toContain(
+      "Charts use the theme's accessible palette and label their series; you don't choose colours."
+    );
+  });
+
   it("exists with exactly the visualize_d3 tool", () => {
     expect(pack).toBeDefined();
     expect(pack!.tools).toHaveLength(1);
     expect(pack!.tools[0].name).toBe("visualize_d3");
   });
 
-  it("visualize_d3 takes intent (sql + instruction + optional title), not a program", () => {
+  it("visualize_d3 takes intent (sql + instruction + summary + optional title), not a program", () => {
     const schema = tool!.parameterSchema;
     const props = schema.properties as Record<string, unknown>;
-    expect(Object.keys(props).sort()).toEqual(["instruction", "sql", "title"]);
-    expect(schema.required).toEqual(["sql", "instruction"]);
+    expect(Object.keys(props).sort()).toEqual([
+      "instruction",
+      "sql",
+      "summary",
+      "title",
+    ]);
+    expect(schema.required).toEqual(["sql", "instruction", "summary"]);
     // The agent supplies intent — never a program or a chart spec.
     expect(props.d3Program).toBeUndefined();
     expect(props.spec).toBeUndefined();

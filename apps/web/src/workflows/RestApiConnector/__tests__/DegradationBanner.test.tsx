@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  expectNoAxeViolations,
+} from "../../../__tests__/test-utils";
 
 import { DegradationBannerUI } from "../DegradationBanner.component";
 
@@ -20,5 +24,14 @@ describe("DegradationBannerUI", () => {
   it("renders nothing when degradation is null", () => {
     const { container } = render(<DegradationBannerUI degradation={null} />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("DegradationBannerUI — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <DegradationBannerUI degradation="llm-failed" />
+    );
+    await expectNoAxeViolations(container);
   });
 });

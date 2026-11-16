@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { render, screen, expectNoAxeViolations } from "./test-utils";
 import {
   DataResult,
   QueryResultLike,
@@ -256,5 +256,79 @@ describe("DataResult Component", () => {
       );
       expect(screen.getByTestId("data-result")).toBeInTheDocument();
     });
+  });
+});
+
+describe("DataResult page title (#797)", () => {
+  it.each([
+    ["loading", loadingQuery()],
+    ["error", errorQuery("Boom")],
+  ])("keeps the page's h1 while %s", (_state, query) => {
+    render(
+      <DataResult pageTitle="Job" results={{ item: query }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Job" })
+    ).toBeInTheDocument();
+  });
+
+  // #982: React Query v5's isLoading is isPending && isFetching, so a query
+  // paused offline is pending with no data but not "loading". It used to
+  // skip this state and hand children undefined data: a blank page with no
+  // h1, or a crash reading a field of it.
+  it("treats a pending query that isn't fetching (paused) as loading", () => {
+    const children = jest.fn(() => <h1>Job 42</h1>);
+    render(
+      <DataResult pageTitle="Job" results={{ item: makeQuery<number>() }}>
+        {children}
+      </DataResult>
+    );
+    expect(children).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Job" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("renders a successful query's undefined data (an empty 204) as success", () => {
+    const children = jest.fn(() => <h1>Job 42</h1>);
+    render(
+      <DataResult
+        pageTitle="Job"
+        results={{ item: makeQuery({ isSuccess: true }) }}
+      >
+        {children}
+      </DataResult>
+    );
+    expect(children).toHaveBeenCalled();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("renders no extra h1 on success, or when no title is given", () => {
+    const { unmount } = render(
+      <DataResult pageTitle="Job" results={{ item: successQuery(1) }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    unmount();
+    render(
+      <DataResult results={{ item: loadingQuery() }}>{() => null}</DataResult>
+    );
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["loading", loadingQuery()],
+    ["error", errorQuery("Boom")],
+  ])("has no axe violations while %s", async (_state, query) => {
+    const { container } = render(
+      <DataResult pageTitle="Job" results={{ item: query }}>
+        {() => <h1>Job 42</h1>}
+      </DataResult>
+    );
+    await expectNoAxeViolations(container);
   });
 });

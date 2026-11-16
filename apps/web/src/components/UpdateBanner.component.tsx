@@ -1,10 +1,12 @@
 import React from "react";
+import { createPortal } from "react-dom";
 
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Snackbar from "@mui/material/Snackbar";
 
-import { useAppVersion } from "../utils/app-version.util";
+import { getNotificationsRoot } from "../utils/notifications-root.util";
+import { useUpdateNotice } from "../utils/update-notice.context";
 
 /**
  * NOT a toast, deliberately (#293). This reports a *polled condition* — a new
@@ -34,6 +36,8 @@ export const UpdateBannerUI: React.FC<UpdateBannerUIProps> = ({
     anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
   >
     <Alert
+      // A polled condition, not an emergency: announced politely (#797).
+      role="status"
       severity="info"
       variant="filled"
       action={
@@ -60,15 +64,14 @@ export const UpdateBannerUI: React.FC<UpdateBannerUIProps> = ({
 // ── Container ────────────────────────────────────────────────────────
 
 export const UpdateBanner: React.FC = () => {
-  const { updateAvailable, dismiss } = useAppVersion();
+  const { open, dismiss } = useUpdateNotice();
 
   const handleReload = () => window.location.reload();
 
-  return (
-    <UpdateBannerUI
-      open={updateAvailable}
-      onReload={handleReload}
-      onDismiss={dismiss}
-    />
+  const banner = (
+    <UpdateBannerUI open={open} onReload={handleReload} onDismiss={dismiss} />
   );
+  // In the Notifications region (#797), so "Skip to notifications" reaches it.
+  const root = getNotificationsRoot();
+  return root ? createPortal(banner, root) : banner;
 };

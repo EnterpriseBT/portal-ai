@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, pressEnter } = await import("./test-utils");
+const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { DeletePortalDialog } =
   await import("../components/DeletePortalDialog.component");
 
@@ -20,6 +21,27 @@ describe("DeletePortalDialog", () => {
   it("should render 'Delete Portal' title", () => {
     render(<DeletePortalDialog {...defaultProps} />);
     expect(screen.getByText("Delete Portal")).toBeInTheDocument();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<DeletePortalDialog {...defaultProps} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("is described by its message (#793)", async () => {
+    render(<DeletePortalDialog {...defaultProps} />);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(/\w/);
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <DeletePortalDialog
+        {...defaultProps}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("should display portal name in the confirmation message", () => {
@@ -43,8 +65,14 @@ describe("DeletePortalDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeletePortalDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should not render content when open is false", () => {

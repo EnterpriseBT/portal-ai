@@ -9,6 +9,7 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
+  CardList,
   GatedButton,
   Icon,
   IconName,
@@ -133,16 +134,17 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                     }
 
                     return (
-                      <Stack spacing={1}>
+                      <CardList aria-label="Tags">
                         {list.entityTags.map((tag) => (
                           <TagCardUI
                             key={tag.id}
                             tag={tag}
+                            headingLevel={2}
                             onEdit={onEditTag}
                             onDelete={onDeleteTag}
                           />
                         ))}
-                      </Stack>
+                      </CardList>
                     );
                   }}
                 </DataResult>

@@ -110,6 +110,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
   return (
     <Box display="flex" flexDirection="column" flex={1} minHeight={0}>
       <DataResult
+        pageTitle="Portal"
         results={{ item: headerResult }}
         options={{
           item: {

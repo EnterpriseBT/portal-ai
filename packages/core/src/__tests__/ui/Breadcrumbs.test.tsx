@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Breadcrumbs } from "../../ui/Breadcrumbs";
 import { jest } from "@jest/globals";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("Breadcrumbs Component", () => {
   const items = [
@@ -86,5 +87,9 @@ describe("Breadcrumbs Component", () => {
       const { container } = render(<Breadcrumbs items={items} separator=">" />);
       expect(container.textContent).toContain(">");
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(<Breadcrumbs items={items} />);
+    await expectNoAxeViolations(container);
   });
 });

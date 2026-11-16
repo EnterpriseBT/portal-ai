@@ -237,7 +237,7 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
     {
       name: "visualize_d3",
       description:
-        "Render an interactive D3 visualization from a SQL query. Describe the chart you want in `instruction` (type, encodings, emphasis) — the render program is generated for you. Do not add a LIMIT; result size is handled automatically (rows stream to the widget via a handle when large). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.",
+        "Render an interactive D3 visualization from a SQL query. Describe the chart you want in `instruction` (type, encodings, emphasis) — the render program is generated for you. Charts use the theme's accessible palette and label their series; you don't choose colours. Do not add a LIMIT; result size is handled automatically (rows stream to the widget via a handle when large). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.",
       parameterSchema: objectSchema(
         {
           sql: stringField("The SQL query whose rows feed the visualization"),
@@ -245,8 +245,11 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
             "A natural-language description of the visualization to render: chart type, which columns (from the `sql` results) map to which encodings, and any emphasis."
           ),
           title: stringField("Optional display title for the widget"),
+          summary: stringField(
+            "One to three sentences for someone who can't see the chart: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+          ),
         },
-        ["sql", "instruction"]
+        ["sql", "instruction", "summary"]
       ),
       examples: [
         {
@@ -255,6 +258,8 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
             sql: "SELECT month, SUM(revenue) AS revenue FROM sales GROUP BY month ORDER BY month",
             instruction:
               "Vertical bar chart: month on the x-axis, total revenue on the y-axis.",
+            summary:
+              "Monthly revenue as bars. Revenue rises through spring and peaks in June.",
           },
           output: { type: "d3" },
         },
@@ -273,7 +278,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
     {
       name: "visualize_map",
       description:
-        "Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.",
+        'Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); Colour features with `colorBy`: the style fields `color` and `outlineColor` are refused. Other style values (radius, width, opacity) take literals or MapLibre expressions. Categorical and banded `colorBy` colours come from the theme: the first eight categories get distinct colours and the rest share one; a gradient (`scale: "interpolate"`) uses the theme\'s sequential ramp. `palette` and `stops` colours are ignored. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.',
       parameterSchema: objectSchema(
         {
           sql: stringField(
@@ -282,11 +287,14 @@ const GIS_PACK: BuiltinToolpackSpec = {
           spec: {
             type: "object",
             description:
-              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend — set `colorBy.scale` ('categorical' | 'step' | 'interpolate') to pick the colour scale, where 'interpolate' is a smooth continuous gradient for a numeric column (absent ⇒ inferred: numeric → banded step, else categorical). Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
+              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend — set `colorBy.scale` ('categorical' | 'step' | 'interpolate') to pick the colour scale, where 'interpolate' is a smooth continuous gradient for a numeric column (absent ⇒ inferred: numeric → banded step, else categorical); a lines layer ignores `opacity`, so its colour keeps its contrast. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
           },
           title: stringField("Optional display title for the map widget"),
+          summary: stringField(
+            "One to three sentences for someone who can't see the map: what it shows and the main takeaway. Name the measures and the notable values; don't describe colours."
+          ),
         },
-        ["sql", "spec"]
+        ["sql", "spec", "summary"]
       ),
       examples: [
         {
@@ -305,6 +313,8 @@ const GIS_PACK: BuiltinToolpackSpec = {
               ],
               popup: { template: "{{c_address}} — {{c_prop_class}}" },
             },
+            summary:
+              "Vacant parcels by zoning class. Most are residential, clustered on the east side.",
           },
           output: { type: "geo" },
         },

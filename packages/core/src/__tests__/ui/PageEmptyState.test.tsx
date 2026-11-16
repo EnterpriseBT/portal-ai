@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { PageEmptyState } from "../../ui/PageEmptyState";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("PageEmptyState Component", () => {
   describe("Rendering", () => {
@@ -121,5 +122,24 @@ describe("PageEmptyState Component", () => {
       render(<PageEmptyState ref={ref} title="Empty" />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+
+  // #794: an empty page's title sits directly under the page's h1.
+  it("renders its title as an h2", () => {
+    render(<PageEmptyState title="No stations yet" />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "No stations yet" })
+    ).toBeInTheDocument();
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <PageEmptyState
+        title="Nothing here"
+        description="Add some items to see them listed."
+        icon={<span>ic</span>}
+        action={<button>Add Item</button>}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

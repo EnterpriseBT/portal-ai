@@ -5,7 +5,11 @@ import userEvent from "@testing-library/user-event";
 import GoogleIcon from "@mui/icons-material/Google";
 import MicrosoftIcon from "@mui/icons-material/Microsoft";
 
-import { render, screen } from "../../__tests__/test-utils";
+import {
+  expectNoAxeViolations,
+  render,
+  screen,
+} from "../../__tests__/test-utils";
 
 import { OAuthAuthorizeStep } from "../OAuthAuthorizeStep.component";
 import type { OAuthAuthorizeStepUIProps } from "../OAuthAuthorizeStep.component";
@@ -140,5 +144,23 @@ describe("OAuthAuthorizeStep — Microsoft branding", () => {
     expect(
       screen.getByText(/authorize portals ai to read your microsoft 365 excel/i)
     ).toBeInTheDocument();
+  });
+});
+
+describe("OAuthAuthorizeStep accessibility", () => {
+  it("has no axe violations in the idle state", async () => {
+    const { container } = render(
+      <OAuthAuthorizeStep {...makeProps({ state: "idle" })} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations in the error state", async () => {
+    const { container } = render(
+      <OAuthAuthorizeStep
+        {...makeProps({ state: "error", error: "Authorization was cancelled" })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

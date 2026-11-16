@@ -97,6 +97,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
       runningJobs: () => query({ runningJobs: [] }),
     },
     layoutPlans: { interpret: () => mutation },
+    // The review step's binding editor (#795).
+    columnDefinitions: {
+      listAll: () => query({ columnDefinitions: [] }),
+      search: () => ({ onSearch: async () => [], labelMap: {} }),
+    },
+    connectorEntities: {
+      search: () => ({ onSearch: async () => [], labelMap: {}, metaMap: {} }),
+    },
     googleSheets: { sheetSlice: () => mutation },
     microsoftExcel: { sheetSlice: () => mutation },
     fileUploads: { sheetSlice: () => mutation },

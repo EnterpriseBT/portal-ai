@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { PageSection } from "../../ui/PageSection";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("PageSection Component", () => {
   describe("Rendering", () => {
@@ -267,5 +268,21 @@ describe("PageSection Component", () => {
         screen.getByRole("button", { name: "More actions" })
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("PageSection accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <PageSection
+        title="Connectors"
+        icon={<span>ic</span>}
+        primaryAction={<button type="button">Add</button>}
+        secondaryActions={[{ label: "Export", onClick: () => {} }]}
+      >
+        <p>Section body</p>
+      </PageSection>
+    );
+    await expectNoAxeViolations(container);
   });
 });

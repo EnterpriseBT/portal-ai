@@ -2,7 +2,13 @@ import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
 
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  GatedButton,
+  Modal,
+  pendingGate,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -64,24 +70,25 @@ export const DeleteOrganizationDialog: React.FC<
       onSubmit={handleConfirm}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button
+          <GatedButton
             type="button"
             variant="outlined"
             onClick={onClose}
-            disabled={isPending}
+            gate={pendingGate(isPending, "Wait for this to finish")}
           >
             Cancel
-          </Button>
-          <Button
+          </GatedButton>
+          <GatedButton
             type="button"
             variant="contained"
             color="error"
             onClick={handleConfirm}
-            disabled={!matches || isPending}
+            gate={pendingGate(isPending, "Deleting…")}
+            disabled={!matches}
             data-testid="confirm-delete-organization"
           >
             {isPending ? "Deleting..." : "Delete organization"}
-          </Button>
+          </GatedButton>
         </Stack>
       }
     >

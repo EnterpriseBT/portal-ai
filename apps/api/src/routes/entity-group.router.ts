@@ -332,7 +332,9 @@ entityGroupRouter.get(
       ).map((m) => ({
         ...m,
         connectorEntityLabel: m.connectorEntity!.label,
-        linkFieldMappingSourceField: m.columnDefinition!.key,
+        // The mapping's own source field (#986): the column definition's key
+        // is shared by every mapping onto it, so two members read the same.
+        linkFieldMappingSourceField: m.fieldMapping!.sourceField,
         connectorEntity: undefined,
         fieldMapping: undefined,
       }));

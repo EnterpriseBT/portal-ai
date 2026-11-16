@@ -225,6 +225,26 @@
     rafId = window.requestAnimationFrame(renderPass);
   }
 
+  // #1022: the palette is held at 3:1 against the figure's surface, so the
+  // frame paints that surface instead of staying transparent.
+  var themeDefaults = null;
+  var CSS_COLOUR = /^(#[0-9a-f]{3,8}|rgba?\([0-9.,\s%]+\))$/i;
+  function paintBackground() {
+    if (!theme) return;
+    if (theme.background) document.body.style.background = theme.background;
+    // #1022 (1.4.3): an SVG label with no fill draws black, which fails on
+    // the dark surface. Text without its own fill takes the theme's text
+    // colour; a fill attribute or style still wins. Only a plain colour value
+    // reaches the stylesheet.
+    if (typeof theme.text !== "string" || !CSS_COLOUR.test(theme.text)) return;
+    if (!themeDefaults) {
+      themeDefaults = document.createElement("style");
+      document.head.appendChild(themeDefaults);
+    }
+    themeDefaults.textContent =
+      "svg text:not([fill]) { fill: " + theme.text + "; }";
+  }
+
   window.addEventListener("message", function (event) {
     var msg = event.data;
     if (!msg || typeof msg !== "object" || msg.v !== VERSION) return;
@@ -236,6 +256,7 @@
       nonce = msg.nonce;
       params = msg.params || {};
       theme = msg.theme || null;
+      paintBackground();
       width = (msg.size && msg.size.width) || 0;
       height = (msg.size && msg.size.height) || 0;
       try {
@@ -254,6 +275,7 @@
       scheduleRender();
     } else if (msg.type === "theme" && msg.theme) {
       theme = msg.theme;
+      paintBackground();
       scheduleRender();
     } else if (msg.type === "resize" && msg.size) {
       width = msg.size.width || width;

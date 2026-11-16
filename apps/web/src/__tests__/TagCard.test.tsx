@@ -1,7 +1,8 @@
 import { jest } from "@jest/globals";
 import type { EntityTag } from "@portalai/core/models";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, fireEvent } =
+  await import("./test-utils");
 const { TagCardUI } = await import("../components/TagCard.component");
 
 type Capabilities = { read: boolean; write: boolean; delete: boolean };
@@ -116,5 +117,12 @@ describe("TagCardUI", () => {
     );
     expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <TagCardUI tag={makeTag()} onEdit={jest.fn()} onDelete={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -25,7 +25,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const {
   ConnectorDefinitionDataList,
   ConnectorDefinitionDataItem,
@@ -254,5 +255,25 @@ describe("ConnectorDefinitionCardUI", () => {
     render(<ConnectorDefinitionCardUI connectorDefinition={cd} canConnect />);
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
     expect(screen.getByText("Inactive")).toBeInTheDocument();
+  });
+
+  it("has no axe violations with an icon and Connect", async () => {
+    const cd = makeConnectorDefinition();
+    const { container } = render(
+      <ConnectorDefinitionCardUI
+        connectorDefinition={cd}
+        canConnect
+        onConnect={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations as an inactive letter-avatar card", async () => {
+    const cd = makeConnectorDefinition({ iconUrl: null, isActive: false });
+    const { container } = render(
+      <ConnectorDefinitionCardUI connectorDefinition={cd} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

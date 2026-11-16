@@ -699,6 +699,19 @@ export class PortalMapTileService {
   }
 
   /**
+   * The MVT feature-id column (#796). A raw feature's id is a hash of its whole
+   * source row, so the same feature has the same id in every tile it crosses
+   * and at every zoom: the widget dedupes "Features in view" by it and
+   * highlights a picked feature through feature state. Masked to 53 bits so it
+   * survives as a JavaScript number. Aggregate bins carry no id.
+   */
+  static readonly FEATURE_ID_COLUMN = "_fid";
+
+  static featureIdExpr(rowAlias: string): string {
+    return `(hashtextextended(${rowAlias}::text, 0) & ${Number.MAX_SAFE_INTEGER})`;
+  }
+
+  /**
    * Raw-feature tile SQL (the pre-#330 path). `lim` is the capped,
    * tile-intersecting source set; `n_limited` counts its rows (how many the
    * LIMIT actually returned) so truncation reflects the real clip, while `n` /
@@ -727,12 +740,13 @@ export class PortalMapTileService {
       : ``;
     return (
       `WITH lim AS (` +
-      `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
+      `SELECT ${propSelect}${PortalMapTileService.featureIdExpr("src")} AS ${PortalMapTileService.FEATURE_ID_COLUMN}, ` +
+      `ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
       `FROM (${fenceSql(pipelineSql)}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
       `${orderBy}LIMIT ${cap}` +
       `) SELECT ` +
-      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom', '${PortalMapTileService.FEATURE_ID_COLUMN}') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
       `(SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n, ` +
       `(SELECT count(*) FROM lim)::int AS n_limited`
     );
@@ -808,7 +822,7 @@ export class PortalMapTileService {
     const geomExpr = tileSimplifyExpr("r.g", tolerance, "lines");
     return (
       `WITH ranked AS (` +
-      `SELECT src.geom AS g, ` +
+      `SELECT src.geom AS g, ${PortalMapTileService.featureIdExpr("src")} AS fid, ` +
       `row_number() OVER (ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC) AS rn ` +
       `FROM (${fenceSql(pipelineSql)}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326)` +
@@ -816,7 +830,7 @@ export class PortalMapTileService {
       // The longest `cap` lines, drawn raw (the skeleton).
       `skeleton AS (` +
       `SELECT ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom, ` +
-      `NULL::int AS _count, 0 AS _agg ` +
+      `NULL::int AS _count, 0 AS _agg, r.fid AS _fid ` +
       `FROM ranked r WHERE r.rn <= ${cap}` +
       `), ` +
       // The remainder, summarised to density bins on the nested grid.
@@ -825,15 +839,15 @@ export class PortalMapTileService {
       `FROM ranked r WHERE r.rn > ${cap} GROUP BY 1` +
       `), ` +
       `bin_geoms AS (` +
-      `SELECT ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom, _count, 1 AS _agg ` +
+      `SELECT ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom, _count, 1 AS _agg, NULL::bigint AS _fid ` +
       `FROM bins` +
       `), ` +
       `combined AS (` +
-      `SELECT geom, _count, _agg FROM skeleton WHERE geom IS NOT NULL ` +
+      `SELECT geom, _count, _agg, _fid FROM skeleton WHERE geom IS NOT NULL ` +
       `UNION ALL ` +
-      `SELECT geom, _count, _agg FROM bin_geoms WHERE geom IS NOT NULL` +
+      `SELECT geom, _count, _agg, _fid FROM bin_geoms WHERE geom IS NOT NULL` +
       `) SELECT ` +
-      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM combined q) AS mvt, ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom', '_fid') FROM combined q) AS mvt, ` +
       `(SELECT count(*) FROM combined)::int AS n, ` +
       `0 AS n_limited`
     );

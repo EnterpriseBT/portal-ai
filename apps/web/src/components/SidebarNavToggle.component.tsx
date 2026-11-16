@@ -10,6 +10,32 @@ export interface SidebarNavToggleProps {
   expandedIcon?: IconName;
   variant: "full" | "compact";
   onClick: () => void;
+  /** The id of the navigation this toggle shows and hides. Only set where
+   *  that element exists, or aria-controls would dangle. */
+  controlsId?: string;
+  /** Escape on the toggle: closes the open mobile drawer (#797). */
+  onEscape?: () => void;
+}
+
+/** WCAG 2.5.8: a pointer target is at least 24×24 CSS px. */
+export const MIN_TARGET_PX = 24;
+
+/** The toggle's visible width for a variant. */
+const visibleWidth = (
+  variant: "full" | "compact",
+  spacing: (n: number) => string
+): string => (variant === "full" ? spacing(4) : spacing(2));
+
+/**
+ * The width the toggle answers clicks over: its visible width, widened by an
+ * invisible ::after to MIN_TARGET_PX when narrower (the compact toggle is
+ * 16 px wide on the drawer edge, #797 KB-06).
+ */
+export function toggleTargetWidth(
+  variant: "full" | "compact",
+  spacing: (n: number) => string
+): number {
+  return Math.max(parseFloat(visibleWidth(variant, spacing)), MIN_TARGET_PX);
 }
 
 export const SidebarNavToggleUI = ({
@@ -18,17 +44,43 @@ export const SidebarNavToggleUI = ({
   collapsedIcon = IconName.KeyboardArrowRight,
   expandedIcon = IconName.KeyboardArrowLeft,
   onClick,
+  controlsId,
+  onEscape,
 }: SidebarNavToggleProps) => {
   return (
     <IconButton
       aria-label="toggle sidebar"
+      aria-expanded={!collapsed}
+      aria-controls={controlsId}
       color="inherit"
       onClick={onClick}
+      onKeyDown={
+        onEscape
+          ? (e: React.KeyboardEvent) => {
+              if (e.key === "Escape") onEscape();
+            }
+          : undefined
+      }
       size="small"
-      sx={(theme) => ({
-        width: variant === "full" ? theme.spacing(4) : theme.spacing(2),
-        height: 32,
-      })}
+      sx={(theme) => {
+        const visible = parseFloat(visibleWidth(variant, theme.spacing));
+        const extra = (toggleTargetWidth(variant, theme.spacing) - visible) / 2;
+        return {
+          width: visibleWidth(variant, theme.spacing),
+          height: 32,
+          position: "relative",
+          ...(extra > 0 && {
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: -extra,
+              right: -extra,
+            },
+          }),
+        };
+      }}
       icon={collapsed ? collapsedIcon : expandedIcon}
     />
   );
@@ -51,13 +103,21 @@ export const SidebarNavToggle = () => {
   );
 
   return (
-    <span onClick={stopClickAwayEvents} onTouchEnd={stopClickAwayEvents}>
+    // Only stops the click reaching the drawer's ClickAwayListener; the
+    // button inside is the control.
+    <span
+      role="presentation"
+      onClick={stopClickAwayEvents}
+      onTouchEnd={stopClickAwayEvents}
+    >
       <SidebarNavToggleUI
         variant={isMobile ? "full" : "compact"}
         collapsed={isCollapsed}
         collapsedIcon={isMobile ? IconName.Menu : undefined}
         expandedIcon={isMobile ? IconName.Close : undefined}
         onClick={() => toggle()}
+        controlsId="primary-nav"
+        onEscape={isMobile && !isCollapsed ? toggle : undefined}
       />
     </span>
   );

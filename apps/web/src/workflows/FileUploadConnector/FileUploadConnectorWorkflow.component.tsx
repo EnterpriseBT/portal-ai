@@ -18,6 +18,8 @@ import type {
   FileUploadParseSheet,
 } from "@portalai/core/contracts";
 
+import { DiscardImportDialogUI } from "../_shared/spreadsheet/DiscardImportDialog.component";
+import { useConfirmDiscard } from "../_shared/spreadsheet/use-confirm-discard.util";
 import { UploadStep } from "./UploadStep.component";
 import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
 import { FileUploadReviewStepUI } from "./FileUploadReviewStep.component";
@@ -38,6 +40,7 @@ import {
 import { lockPlanIdentityToRowPosition } from "./utils/lock-identity.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
+import { useBindingEditorResolvers } from "../_shared/spreadsheet/use-binding-editor-resolvers.util";
 import { putToS3 } from "../../api/file-uploads.api";
 import { sse } from "../../api/sse.api";
 import { awaitJobCompletion } from "../../utils/job-stream.util";
@@ -262,10 +265,17 @@ export const FileUploadConnectorWorkflowUI: React.FC<
 
   const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
 
+  // #795: Escape and the close button ask before dropping drawn regions;
+  // one Escape used to discard the whole import.
+  const { requestClose, discardDialogProps } = useConfirmDiscard(
+    regions.length > 0,
+    onClose
+  );
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title="Upload a spreadsheet"
       defaultMaximized
       maximizable
@@ -368,6 +378,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
           </Stack>
         )}
       </Stack>
+      <DiscardImportDialogUI {...discardDialogProps} />
     </Modal>
   );
 };
@@ -644,91 +655,16 @@ export const FileUploadConnectorWorkflow: React.FC<
     [workflow.workbook, stagedEntities]
   );
 
-  // The interpret endpoint returns column bindings keyed by columnDefinitionId
-  // — opaque UUIDs. Fetch the org's ColumnDefinition catalog so the review and
-  // region-editor panels can show the human label on each binding chip.
-  // #414: `listAll` pages to exhaustion. `limit: 1000` was clamped to 100 by
-  // the pagination contract, so a binding whose definition sorted past the cap
-  // showed a bare UUID with no way for the user to recover it.
-  const columnDefinitionsQuery = sdk.columnDefinitions.listAll();
-  const columnDefinitionsById = useMemo(() => {
-    const map = new Map<
-      string,
-      { label: string; type: ColumnDataType; description: string | null }
-    >();
-    const rows = columnDefinitionsQuery.data?.columnDefinitions ?? [];
-    for (const cd of rows) {
-      map.set(cd.id, {
-        label: cd.label,
-        type: cd.type as ColumnDataType,
-        description: cd.description,
-      });
-    }
-    return map;
-  }, [columnDefinitionsQuery.data]);
-
-  const regionsWithResolvedLabels = useMemo(() => {
-    if (columnDefinitionsById.size === 0) {
-      return workflow.regions;
-    }
-    return workflow.regions.map((region) => {
-      if (!region.columnBindings || region.columnBindings.length === 0) {
-        return region;
-      }
-      return {
-        ...region,
-        columnBindings: region.columnBindings.map((binding) => {
-          if (!binding.columnDefinitionId) return binding;
-          const meta = columnDefinitionsById.get(binding.columnDefinitionId);
-          if (!meta) return binding;
-          return {
-            ...binding,
-            columnDefinitionLabel: binding.columnDefinitionLabel ?? meta.label,
-            columnDefinitionType: binding.columnDefinitionType ?? meta.type,
-          };
-        }),
-      };
-    });
-  }, [workflow.regions, columnDefinitionsById]);
-
-  // Search hooks for the binding editor popover. `columnDefinitions.search`
-  // populates the rebind picker; `connectorEntities.search` populates the
-  // reference editor's DB-target half (staged entities come from `regions`).
-  const columnDefinitionSearch = sdk.columnDefinitions.search();
-  const connectorEntitySearch = sdk.connectorEntities.search();
-
-  const resolveColumnDefinitionType = useCallback(
-    (binding: ColumnBindingDraft): ColumnDataType | undefined => {
-      // Prefer a fresh catalog lookup keyed by the currently-selected id so
-      // the returned type always matches the current binding. The cached
-      // `binding.columnDefinitionType` can drift from `columnDefinitionId`
-      // when the user swaps definitions in the popover — treating it as
-      // authoritative surfaced as the binding editor failing to show
-      // reference/enum sub-fields after a rebind.
-      if (binding.columnDefinitionId) {
-        const fromCatalog = columnDefinitionsById.get(
-          binding.columnDefinitionId
-        )?.type;
-        if (fromCatalog) return fromCatalog;
-      }
-      return binding.columnDefinitionType;
-    },
-    [columnDefinitionsById]
-  );
-
-  const resolveColumnDefinitionDescription = useCallback(
-    (binding: ColumnBindingDraft): string | null | undefined => {
-      if (!binding.columnDefinitionId) return undefined;
-      return columnDefinitionsById.get(binding.columnDefinitionId)?.description;
-    },
-    [columnDefinitionsById]
-  );
-
-  const resolveColumnLabel = useCallback(
-    (columnDefinitionId: string): string | undefined =>
-      columnDefinitionsById.get(columnDefinitionId)?.label,
-    [columnDefinitionsById]
-  );
+  const {
+    regionsWithResolvedLabels,
+    columnDefinitionSearch,
+    connectorEntitySearch,
+    resolveColumnDefinitionType,
+    resolveColumnDefinitionDescription,
+    resolveColumnLabel,
+    resolveReferenceOptions,
+    resolveReferenceFieldOptions,
+  } = useBindingEditorResolvers(workflow.regions);
 
   // C2 pre-check: before staging a newly-created entity, make sure no
   // other connector in this org already owns the chosen key. Reuses the
@@ -747,86 +683,6 @@ export const FileUploadConnectorWorkflow: React.FC<
       return { ok: false, ownedBy };
     },
     [connectorEntitySearch]
-  );
-
-  // Reference-target options — staged sibling entities first (prefixed "this
-  // import"), then DB-backed options resolved by the connectorEntity search.
-  const resolveReferenceOptions = useCallback(
-    (currentRegion: RegionDraft): SelectOption[] => {
-      const staged = new Map<string, SelectOption>();
-      for (const r of workflow.regions) {
-        if (!r.targetEntityDefinitionId) continue;
-        if (r.id === currentRegion.id) continue; // self-references disallowed
-        if (staged.has(r.targetEntityDefinitionId)) continue;
-        const label = r.targetEntityLabel ?? r.targetEntityDefinitionId;
-        staged.set(r.targetEntityDefinitionId, {
-          value: r.targetEntityDefinitionId,
-          label: `${label} (this import)`,
-        });
-      }
-      // DB-backed options: C2 surfaces the owning connector's name via
-      // `metaMap.connectorInstanceName` so the picker can disambiguate
-      // across connectors within the same org.
-      const metaMap = connectorEntitySearch.metaMap ?? {};
-      const dbOptions = Object.entries(connectorEntitySearch.labelMap).map(
-        ([value, label]) => {
-          const connectorName = metaMap[value]?.connectorInstanceName;
-          const suffix = connectorName
-            ? ` (existing · ${connectorName})`
-            : " (existing)";
-          return { value, label: `${label}${suffix}` };
-        }
-      );
-      const all = [...staged.values(), ...dbOptions];
-      const seen = new Set<string>();
-      return all.filter((opt) => {
-        if (seen.has(String(opt.value))) return false;
-        seen.add(String(opt.value));
-        return true;
-      });
-    },
-    [
-      workflow.regions,
-      connectorEntitySearch.labelMap,
-      connectorEntitySearch.metaMap,
-    ]
-  );
-
-  const resolveReferenceFieldOptions = useCallback(
-    (
-      _region: RegionDraft,
-      refEntityKey: string | null | undefined
-    ): SelectOption[] => {
-      if (!refEntityKey) return [];
-      // Staged target — derive from sibling region's bindings' normalizedKey
-      // overrides + catalog keys. Commit reconciles with the same logic.
-      const stagedRegion = workflow.regions.find(
-        (r) => r.targetEntityDefinitionId === refEntityKey
-      );
-      if (stagedRegion) {
-        const seen = new Set<string>();
-        const out: SelectOption[] = [];
-        for (const b of stagedRegion.columnBindings ?? []) {
-          if (b.excluded) continue;
-          const key =
-            b.normalizedKey ??
-            (b.columnDefinitionId
-              ? (columnDefinitionsById.get(b.columnDefinitionId)?.label ??
-                b.columnDefinitionId)
-              : null);
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          out.push({ value: key, label: key });
-        }
-        return out;
-      }
-      // DB target — field list isn't loaded synchronously here; fall back to
-      // an empty list so the select is disabled until the server validates.
-      // Commit's reference validation (`LAYOUT_PLAN_INVALID_REFERENCE`) is
-      // the safety net.
-      return [];
-    },
-    [workflow.regions, columnDefinitionsById]
   );
 
   return (

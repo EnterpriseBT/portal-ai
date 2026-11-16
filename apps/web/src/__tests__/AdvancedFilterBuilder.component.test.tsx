@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { render, screen, within, expectNoAxeViolations } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { AdvancedFilterBuilderUI } from "../components/AdvancedFilterBuilder.component";
 
@@ -408,5 +408,91 @@ describe("AdvancedFilterBuilderUI", () => {
       expect(screen.getByPlaceholderText("Min")).toBeInTheDocument();
       expect(screen.getByPlaceholderText("Max")).toBeInTheDocument();
     });
+  });
+});
+
+// #793: every control is named, within a group per condition.
+describe("AdvancedFilterBuilderUI accessibility (#793)", () => {
+  it("names each condition's group and its column, operator and value", () => {
+    render(
+      <AdvancedFilterBuilderUI
+        {...makeProps({ expression: multiConditionExpr })}
+      />
+    );
+    const second = screen.getByRole("group", { name: "Condition 2" });
+    expect(
+      within(second).getByRole("combobox", { name: "Column" })
+    ).toBeInTheDocument();
+    expect(
+      within(second).getByRole("combobox", { name: "Operator" })
+    ).toBeInTheDocument();
+    expect(
+      within(second).getByRole("spinbutton", { name: "Value" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Condition 1" })
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["number", "age", "spinbutton"],
+    ["date", "created_at", "textbox"],
+  ] as const)(
+    "names a %s between's two fields Minimum and Maximum",
+    (_type, field, role) => {
+      const { container } = render(
+        <AdvancedFilterBuilderUI
+          {...makeProps({
+            expression: {
+              combinator: "and",
+              conditions: [{ field, operator: "between", value: ["", ""] }],
+            },
+          })}
+        />
+      );
+      // jsdom gives date inputs no role; query by label for those.
+      if (role === "spinbutton") {
+        expect(screen.getByRole(role, { name: "Minimum" })).toBeInTheDocument();
+        expect(screen.getByRole(role, { name: "Maximum" })).toBeInTheDocument();
+      } else {
+        expect(
+          container.querySelector('input[aria-label="Minimum"]')
+        ).not.toBeNull();
+        expect(
+          container.querySelector('input[aria-label="Maximum"]')
+        ).not.toBeNull();
+      }
+    }
+  );
+
+  it("names the AND/OR toggle", () => {
+    render(<AdvancedFilterBuilderUI {...makeProps()} />);
+    expect(screen.getByRole("group", { name: "Match" })).toBeInTheDocument();
+  });
+
+  it("has no axe violations with nested groups", async () => {
+    const { container } = render(
+      <AdvancedFilterBuilderUI {...makeProps({ expression: nestedExpr })} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations with between and empty operators", async () => {
+    const { container } = render(
+      <AdvancedFilterBuilderUI
+        {...makeProps({
+          expression: {
+            combinator: "and",
+            conditions: [
+              { field: "age", operator: "between", value: ["1", "2"] },
+              { field: "created_at", operator: "between", value: ["", ""] },
+              { field: "name", operator: "is_empty", value: null },
+              { field: "active", operator: "eq", value: true },
+            ],
+          },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

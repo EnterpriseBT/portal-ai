@@ -375,7 +375,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Visualization Widget",
     category: GlossaryCategory.Analytics,
     definition:
-      "A live chart, map, or table the assistant builds from your data. It remembers the query behind it, so it can re-run for fresh data on its own when you come back to it — no need to ask again. You can also refresh it yourself any time with the refresh button.",
+      "A live chart, map, or table the assistant builds from your data. It remembers the query behind it, so it can re-run for fresh data on its own when you come back to it — no need to ask again. You can also refresh it yourself any time with the refresh button. Every chart and map comes with a short written summary of what it shows, and a “Show data” button that opens the rows behind it as a table, so you can read it without seeing it.",
     example:
       "Reopen yesterday's session and its revenue chart quietly reloads with today's numbers; a “Refresh” button and an “Updated … ago” note let you force and confirm a refresh. A table of the ten largest parcels re-runs the whole query, so a newly-largest parcel appears.",
     relatedTerms: ["Portal Result", "Query Handle"],
@@ -386,7 +386,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "An interactive map built from a spatial query — points, lines, or polygons styled by your data, with pan, zoom, and click-to-inspect. Produced by the GIS tool pack's map tool from a SQL query plus a declarative style; large results stream in as vector tiles.",
     example:
-      "“Show all vacant parcels on a map, colored by zoning” renders an interactive map you can pan and click; clicking a parcel shows its address and class.",
+      "“Show all vacant parcels on a map, colored by zoning” renders an interactive map you can pan and click; clicking a parcel shows its address and class. Below the map, “Features in view” lists the parcels currently on screen, so you can open any of them from the keyboard.",
     relatedTerms: ["Geometry", "Visualization Widget", "Tool Pack"],
   },
   {

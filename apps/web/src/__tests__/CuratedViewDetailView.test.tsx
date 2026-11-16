@@ -117,6 +117,15 @@ describe("CuratedViewDetailUI", () => {
     expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
   });
 
+  // #794: a failed load is an error, announced as an alert, not an empty list.
+  it("shows a failed records load as an alert, not as no results", () => {
+    render(<CuratedViewDetailUI {...baseProps} recordsError />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't load this view's rows."
+    );
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
+  });
+
   it("#645: shows no provenance chip on a view made on the page", () => {
     render(<CuratedViewDetailUI {...baseProps} />);
     expect(

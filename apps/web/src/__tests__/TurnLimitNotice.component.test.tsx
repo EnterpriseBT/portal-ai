@@ -4,7 +4,7 @@
  */
 
 import { screen } from "@testing-library/react";
-import { render } from "./test-utils";
+import { expectNoAxeViolations, render } from "./test-utils";
 import { TurnLimitNoticeUI } from "../components/TurnLimitNotice.component";
 
 describe("TurnLimitNoticeUI", () => {
@@ -29,5 +29,15 @@ describe("TurnLimitNoticeUI", () => {
       />
     );
     expect(screen.getByText("View plans")).toBeInTheDocument();
+  });
+
+  it("has no axe violations, with the upgrade CTA", async () => {
+    const { container } = render(
+      <TurnLimitNoticeUI
+        message="You've reached your plan's agent-turn limit for today."
+        showUpgrade
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

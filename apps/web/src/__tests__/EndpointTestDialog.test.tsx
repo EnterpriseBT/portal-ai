@@ -24,7 +24,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: {},
 }));
 
-const { render, screen, waitFor } = await import("./test-utils");
+const { render, screen, waitFor, expectNoAxeViolations } =
+  await import("./test-utils");
 const { EndpointTestDialog, EndpointTestDialogUI } =
   await import("../components/EndpointTestDialog.component");
 
@@ -138,6 +139,20 @@ describe("EndpointTestDialog", () => {
         endpointEntityId: "ent-users",
       })
     );
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    mutateAsyncMock.mockResolvedValueOnce({ ok: true, sample: [{ id: 1 }] });
+    render(
+      <EndpointTestDialog
+        open
+        instanceId="inst-1"
+        endpointEntityId="ent-users"
+        endpointLabel="Users"
+        onClose={jest.fn()}
+      />
+    );
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("re-fires when endpointEntityId changes", async () => {

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import { ActionsSuite } from "../../ui/ActionsSuite";
+import { expectNoAxeViolations } from "../axe.util";
 
 describe("ActionsSuite Component", () => {
   const items = [
@@ -174,5 +175,20 @@ describe("ActionsSuite Component", () => {
       render(<ActionsSuite ref={ref} items={items} />);
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <ActionsSuite
+        items={[
+          ...items,
+          {
+            label: "Archive",
+            onClick: jest.fn(),
+            gate: { kind: "disable", reason: "An import is running" },
+          },
+        ]}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

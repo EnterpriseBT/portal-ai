@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { ConnectorInstanceSyncButtonUI } =
   await import("../components/ConnectorInstanceSyncButton.component");
 
@@ -161,5 +162,15 @@ describe("ConnectorInstanceSyncButtonUI", () => {
     const btn = screen.getByRole("button", { name: /sync now/i });
     fireEvent.mouseOver(btn);
     expect(screen.queryByText(/recreates all records/i)).toBeNull();
+  });
+
+  it("has no axe violations idle and while syncing", async () => {
+    const { container } = render(
+      <>
+        <ConnectorInstanceSyncButtonUI {...baseProps} />
+        <ConnectorInstanceSyncButtonUI {...baseProps} jobStatus="active" />
+      </>
+    );
+    await expectNoAxeViolations(container);
   });
 });

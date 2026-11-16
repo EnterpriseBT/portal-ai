@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, pressEnter } = await import("./test-utils");
+const { render, screen, pressEnter, expectNoAxeViolations } =
+  await import("./test-utils");
 const { PolicyEditorDialogUI } =
   await import("../modules/AccessAuthoring/PolicyEditorDialog.component");
 
@@ -41,6 +42,23 @@ describe("PolicyEditorDialogUI (#691)", () => {
     expect(screen.getByText("Everything")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("has no axe violations when open (#793)", async () => {
+    render(<PolicyEditorDialogUI {...props} policy={policy("system")} />);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("has no axe violations with a server error (#793)", async () => {
+    render(
+      <PolicyEditorDialogUI
+        {...props}
+        policy={policy("system")}
+        serverError={{ message: "Something went wrong", code: "TEST_ERROR" }}
+      />
+    );
+    await screen.findByText(/Something went wrong/);
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 
   it("#691: a system policy's statements read as text, not disabled controls", () => {

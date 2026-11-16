@@ -12,7 +12,7 @@ import {
   TOAST_MAX_VISIBLE,
   TOAST_QUEUE_CAP,
 } from "../utils/toast.constants";
-import { ToastContext } from "../utils/toast.context";
+import { ToastContext, ToastPresenceContext } from "../utils/toast.context";
 
 import type { Toast, ToastApi, ToastOptions } from "../utils/toast.context";
 
@@ -33,9 +33,14 @@ export interface ToastProviderProps {
  * - **Bounded stack.** The first `TOAST_MAX_VISIBLE` are shown; the rest
  *   queue behind a "+N more" row so multiplicity is visible without an
  *   unbounded pile.
- * - **Asymmetric timing.** `error` persists until dismissed; other severities
- *   auto-hide. Each *visible* toast runs its own timer, so a success fades
+ * - **Asymmetric timing.** Only a `success` hides itself (#1021): `error`,
+ *   `info` and `warning` persist until dismissed unless a caller passes
+ *   `autoHideMs`. Each *visible* toast runs its own timer, so a success fades
  *   from beside a persistent error.
+ * - **Held while read.** While the pointer or keyboard focus is in the stack
+ *   (`ToastHost`'s `onHoldChange`), no success timer runs; when the hold
+ *   ends each restarts in full (WCAG 2.2.1). An `autoHideMs` notice isn't
+ *   held, since it stops being true when its wait ends.
  * - **Timers start on promotion**, not on raise — a toast that waited its turn
  *   still gets its full reading time.
  * - **Dedupe against visible toasts**, so double-clicking a failing button
@@ -45,6 +50,8 @@ export interface ToastProviderProps {
  */
 export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   const [queue, setQueue] = useState<Toast[]>([]);
+  /** True while the pointer or focus is in the stack: every timer stops. */
+  const [held, setHeld] = useState(false);
 
   /** Live auto-hide timers, keyed by toast id. */
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -90,27 +97,32 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
    * Arm one timer per visible toast, and only once it is visible — hence
    * keying off `visible` rather than the whole queue. Timers for toasts that
    * have left the visible set are cleared, so a dismissal cannot fire a
-   * stale callback.
+   * stale callback. While the stack is held a success's timer is cleared, so
+   * the release re-arms it with its full duration. A notice with
+   * `autoHideMs` isn't held: its end is the end of what it reports (a
+   * rate-limit wait), and its caller times that independently.
    */
   useEffect(() => {
     const live = timers.current;
-    const visibleIds = new Set(visible.map((t) => t.id));
+    const byId = new Map(visible.map((t) => [t.id, t]));
+    const holds = (t: Toast) => held && t.autoHideMs == null;
 
     for (const [id, handle] of live) {
-      if (!visibleIds.has(id)) {
+      const toast = byId.get(id);
+      if (!toast || holds(toast)) {
         clearTimeout(handle);
         live.delete(id);
       }
     }
 
     for (const toast of visible) {
-      if (live.has(toast.id)) continue;
+      if (live.has(toast.id) || holds(toast)) continue;
       // An error persists until dismissed, whatever the caller asked for.
       const duration =
         toast.severity === "error"
           ? null
           : (toast.autoHideMs ?? TOAST_AUTO_HIDE_MS[toast.severity]);
-      if (duration == null) continue; // errors persist
+      if (duration == null) continue; // errors, info and warnings persist
       live.set(
         toast.id,
         setTimeout(() => {
@@ -119,7 +131,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
         }, duration)
       );
     }
-  }, [visible, dismiss]);
+  }, [visible, dismiss, held]);
 
   // Clear every timer on unmount.
   useEffect(() => {
@@ -149,13 +161,16 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
   return (
     <ToastContext.Provider value={api}>
-      {children}
-      <ToastHost
-        toasts={visible}
-        hiddenCount={queue.length - visible.length}
-        onDismiss={dismiss}
-        onDismissAll={dismissAll}
-      />
+      <ToastPresenceContext.Provider value={visible.length}>
+        {children}
+        <ToastHost
+          toasts={visible}
+          hiddenCount={queue.length - visible.length}
+          onDismiss={dismiss}
+          onDismissAll={dismissAll}
+          onHoldChange={setHeld}
+        />
+      </ToastPresenceContext.Provider>
     </ToastContext.Provider>
   );
 };

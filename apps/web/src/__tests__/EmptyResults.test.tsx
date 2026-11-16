@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { render, screen, expectNoAxeViolations } from "./test-utils";
 import { EmptyResults } from "../components/EmptyResults.component";
 
 describe("EmptyResults", () => {
@@ -19,5 +19,10 @@ describe("EmptyResults", () => {
         "Try adjusting your search or filter to find what you are looking for."
       )
     ).toBeInTheDocument();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = render(<EmptyResults />);
+    await expectNoAxeViolations(container);
   });
 });

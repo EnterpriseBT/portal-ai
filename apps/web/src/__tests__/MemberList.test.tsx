@@ -1,5 +1,12 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+  expectNoAxeViolations,
+} from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { MemberListUI } from "../components/MemberList.component";
 import type { Member, RoleRef } from "@portalai/core/contracts";
@@ -251,5 +258,81 @@ describe("MemberListUI (#620)", () => {
     expect(
       screen.getByRole("button", { name: "Remove owner@x.com" })
     ).toBeDisabled();
+  });
+});
+
+// #794: many controls per row, so the table is an APG grid: one Tab stop,
+// arrows between cells, Enter into a control and Escape back out.
+describe("MemberListUI grid (#794)", () => {
+  const renderGrid = () =>
+    render(
+      <MemberListUI
+        canRemove
+        members={[owner, plain]}
+        canManageRoles
+        callerUserId="u-owner"
+        assignableRoles={ASSIGNABLE_ROLES}
+        onSetRoles={jest.fn()}
+        onRemove={jest.fn()}
+      />
+    );
+  const at = (row: number, col: number) =>
+    document.querySelector(`[data-grid-cell="${row}:${col}"]`) as HTMLElement;
+
+  it("is a named grid with one tab stop", () => {
+    renderGrid();
+    const grid = screen.getByRole("grid", { name: "Members" });
+    expect(
+      grid.querySelectorAll('[data-grid-cell][tabindex="0"]')
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("columnheader", { name: "Actions" })
+    ).toBeInTheDocument();
+  });
+
+  it("reaches a member's roles by arrow, enters with Enter and leaves with Escape", async () => {
+    const user = userEvent.setup();
+    renderGrid();
+    act(() => at(0, 0).focus());
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}{ArrowRight}");
+    expect(at(2, 2)).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen.getByRole("combobox", { name: "Roles for plain@x.com" })
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(at(2, 2)).toHaveFocus();
+  });
+
+  it("lets an open roles menu take the first Escape", async () => {
+    const user = userEvent.setup();
+    renderGrid();
+    act(() => at(2, 2).focus());
+    await user.keyboard("{Enter}");
+    const select = screen.getByRole("combobox", {
+      name: "Roles for plain@x.com",
+    });
+    await user.keyboard("{ArrowDown}");
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(select).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(at(2, 2)).toHaveFocus();
+  });
+
+  it("reaches a row's Remove, named for the member", async () => {
+    const user = userEvent.setup();
+    renderGrid();
+    act(() => at(2, 0).focus());
+    await user.keyboard("{End}{Enter}");
+    expect(
+      screen.getByRole("button", { name: "Remove plain@x.com" })
+    ).toHaveFocus();
+  });
+
+  it("has no axe violations", async () => {
+    const { container } = renderGrid();
+    await expectNoAxeViolations(container);
   });
 });

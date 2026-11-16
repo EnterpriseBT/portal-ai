@@ -1,4 +1,4 @@
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import { MessageTimestamp } from "../components/MessageTimestamp.component";
 
 // Compute expectations with the same Intl options the component uses, so the
@@ -32,5 +32,14 @@ describe("MessageTimestamp", () => {
     render(<MessageTimestamp created={created} />);
     expect(screen.getByText(shortLabel(created))).toBeInTheDocument();
     expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("MessageTimestamp accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <MessageTimestamp created={new Date("2026-07-08T20:34:00Z").getTime()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

@@ -45,7 +45,13 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
                   {stepNumber}
                 </Box>
                 <Stack spacing={1} sx={{ flex: 1 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  {/* subtitle1 renders an h6; the steps sit under their
+                      section's h2 (#797). */}
+                  <Typography
+                    variant="subtitle1"
+                    component="h3"
+                    sx={{ fontWeight: 600 }}
+                  >
                     {step.title}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

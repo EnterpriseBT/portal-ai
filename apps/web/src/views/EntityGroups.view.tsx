@@ -11,6 +11,7 @@ import {
   IconName,
   PageEmptyState,
   PageHeader,
+  CardList,
   DetailCard,
   GatedButton,
   MetadataList,
@@ -28,6 +29,7 @@ import DataResult from "../components/DataResult.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { RouterLink } from "../components/RouterLink.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -58,13 +60,11 @@ const dates = new DateFactory("UTC");
 
 interface EntityGroupCardProps {
   group: EntityGroupListResponsePayload["entityGroups"][number];
-  onClick: () => void;
   onDelete: () => void;
 }
 
 const EntityGroupCard: React.FC<EntityGroupCardProps> = ({
   group,
-  onClick,
   onDelete,
 }) => {
   const actions: ActionSuiteItem[] = [
@@ -79,7 +79,14 @@ const EntityGroupCard: React.FC<EntityGroupCardProps> = ({
   ];
 
   return (
-    <DetailCard title={group.name} onClick={onClick} actions={actions}>
+    // #794: the card opens its group through its title's link.
+    <DetailCard
+      title={group.name}
+      href={`/entity-groups/${group.id}`}
+      linkComponent={RouterLink}
+      headingLevel={2}
+      actions={actions}
+    >
       <MetadataList
         items={[
           {
@@ -139,12 +146,6 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
     defaultSortOrder: "asc",
   });
 
-  const handleRowClick = (groupId: string) => {
-    navigate({
-      to: `/entity-groups/${groupId}`,
-    });
-  };
-
   return (
     <Box>
       <Stack spacing={4}>
@@ -198,16 +199,15 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     }
 
                     return (
-                      <Stack spacing={1}>
+                      <CardList aria-label="Entity groups">
                         {list.entityGroups.map((group) => (
                           <EntityGroupCard
                             key={group.id}
                             group={group}
-                            onClick={() => handleRowClick(group.id)}
                             onDelete={() => onDeleteGroup(group)}
                           />
                         ))}
-                      </Stack>
+                      </CardList>
                     );
                   }}
                 </DataResult>

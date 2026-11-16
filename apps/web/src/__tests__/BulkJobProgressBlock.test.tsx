@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, expectNoAxeViolations } =
+  await import("./test-utils");
 const { BulkJobProgressBlockUI } =
   await import("../components/BulkJobProgressBlock.component");
 
@@ -135,5 +136,33 @@ describe("BulkJobProgressBlockUI", () => {
     );
     expect(screen.getByText(/Cancelled/)).toBeInTheDocument();
     expect(screen.getByText(/47 \/ 100 records/)).toBeInTheDocument();
+  });
+
+  it("has no axe violations while running with failures", async () => {
+    const { container } = render(
+      <BulkJobProgressBlockUI
+        state={makeState({ recordsProcessed: 47, failureCount: 3 })}
+        cancelling={false}
+        onCancel={() => {}}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("has no axe violations when completed with dropped columns", async () => {
+    const { container } = render(
+      <BulkJobProgressBlockUI
+        state={makeState({
+          status: "completed",
+          recordsProcessed: 0,
+          totalRecords: 100,
+          droppedCount: 100,
+          droppedKeys: ["c_diameter_avg_km"],
+        })}
+        cancelling={false}
+        onCancel={() => {}}
+      />
+    );
+    await expectNoAxeViolations(container);
   });
 });

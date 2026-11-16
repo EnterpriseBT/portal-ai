@@ -45,7 +45,7 @@ export const Default: Story = {
   args: {
     children: (
       <Box>
-        <Typography variant="h5" gutterBottom>
+        <Typography variant="h5" component="h1" gutterBottom>
           Dashboard
         </Typography>
         <Typography variant="body1">
@@ -61,7 +61,9 @@ export const WithMultipleElements: Story = {
   args: {
     children: (
       <Box display="flex" flexDirection="column" gap={3}>
-        <Typography variant="h4">Welcome to Portals AI</Typography>
+        <Typography variant="h4" component="h1">
+          Welcome to Portals AI
+        </Typography>
         <Box
           sx={{
             p: 3,
@@ -69,7 +71,7 @@ export const WithMultipleElements: Story = {
             borderRadius: 1,
           }}
         >
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h2" gutterBottom>
             Card 1
           </Typography>
           <Typography variant="body2">
@@ -84,7 +86,7 @@ export const WithMultipleElements: Story = {
             borderRadius: 1,
           }}
         >
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h2" gutterBottom>
             Card 2
           </Typography>
           <Typography variant="body2">
@@ -101,7 +103,9 @@ export const WithLongContent: Story = {
   args: {
     children: (
       <Box display="flex" flexDirection="column" gap={2}>
-        <Typography variant="h4">Scrollable Content</Typography>
+        <Typography variant="h4" component="h1">
+          Scrollable Content
+        </Typography>
         {Array.from({ length: 20 }, (_, i) => (
           <Box
             key={i}

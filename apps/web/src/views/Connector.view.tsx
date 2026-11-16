@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 
 import {
   Box,
+  CardList,
   Icon,
   IconName,
   PageEmptyState,
@@ -155,13 +156,6 @@ export const ConnectorView = () => {
     ],
   });
 
-  const handleInstanceClick = useCallback(
-    (ci: ConnectorInstanceApi) => {
-      navigate({ to: `/connectors/${ci.id}` });
-    },
-    [navigate]
-  );
-
   // --- Definition pagination (Tab 1) ---
   const catalogPagination = usePagination({
     defaultSortBy: "display",
@@ -229,7 +223,7 @@ export const ConnectorView = () => {
                           />
                         )
                       ) : (
-                        <Stack spacing={1}>
+                        <CardList aria-label="Connectors">
                           {connectorInstances.connectorInstances.map((ci) => (
                             <ConnectorInstanceCardUI
                               key={ci.id}
@@ -237,11 +231,12 @@ export const ConnectorView = () => {
                               connectorDefinition={
                                 ci.connectorDefinition ?? undefined
                               }
-                              onClick={handleInstanceClick}
+                              href={`/connectors/${ci.id}`}
+                              headingLevel={2}
                               onDelete={handleDeleteClick}
                             />
                           ))}
-                        </Stack>
+                        </CardList>
                       )
                     }
                   </DataResult>
@@ -283,7 +278,7 @@ export const ConnectorView = () => {
                           />
                         )
                       ) : (
-                        <Stack spacing={1}>
+                        <CardList aria-label="Connector catalog">
                           {connectorDefinitions.connectorDefinitions.map(
                             (cd) => (
                               <ConnectorDefinitionCardUI
@@ -291,10 +286,11 @@ export const ConnectorView = () => {
                                 connectorDefinition={cd}
                                 canConnect={canCreateInstances}
                                 onConnect={handleConnect}
+                                headingLevel={2}
                               />
                             )
                           )}
-                        </Stack>
+                        </CardList>
                       )
                     }
                   </DataResult>

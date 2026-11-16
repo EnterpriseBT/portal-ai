@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MetadataList } from "../../ui/MetadataList";
 import type { MetadataItem } from "../../ui/MetadataList";
+import { expectNoAxeViolations } from "../axe.util";
 
 const baseItems: MetadataItem[] = [
   { label: "ID", value: "abc-123", variant: "mono" },
@@ -143,6 +144,18 @@ describe("MetadataList", () => {
       expect(screen.getByText("ext_123")).toBeInTheDocument();
     });
 
+    it("should stretch a responsive row's value so wide content can shrink (#1019)", () => {
+      render(
+        <MetadataList
+          layout="responsive"
+          direction="vertical"
+          items={[{ label: "Config", value: <pre>{"x".repeat(200)}</pre> }]}
+        />
+      );
+      const value = screen.getByText("Config").nextElementSibling;
+      expect(value).toHaveStyle({ alignSelf: "stretch", minWidth: "0" });
+    });
+
     it("should render stacked layout by default", () => {
       render(<MetadataList items={[{ label: "Name", value: "Test" }]} />);
       expect(screen.getByText("Name")).toBeInTheDocument();
@@ -233,5 +246,9 @@ describe("MetadataList", () => {
       render(<MetadataList data-testid="custom-list" items={baseItems} />);
       expect(screen.getByTestId("custom-list")).toBeInTheDocument();
     });
+  });
+  it("has no axe violations", async () => {
+    const { container } = render(<MetadataList items={baseItems} />);
+    await expectNoAxeViolations(container);
   });
 });

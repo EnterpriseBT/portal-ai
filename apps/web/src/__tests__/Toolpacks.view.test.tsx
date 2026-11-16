@@ -114,6 +114,18 @@ describe("ToolpacksUI", () => {
     expect(arg.slug).toBe("statistics");
   });
 
+  // #794: opening a pack's details is an action, so its name is a button a
+  // keyboard reaches, in a named table.
+  it("names the table and opens a toolpack from its name button", () => {
+    const onSelect = jest.fn();
+    renderUI({ onSelect });
+    screen.getByRole("table", { name: "Toolpacks" });
+    fireEvent.click(screen.getByRole("button", { name: "Statistics" }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const arg = (onSelect as jest.Mock).mock.calls[0][0] as Toolpack;
+    expect(arg.slug).toBe("statistics");
+  });
+
   // Case 53
   it("renders the metadata modal heading when a toolpack is selected", () => {
     renderUI({ selected: PACKS[0] });
@@ -158,16 +170,16 @@ describe("ToolpacksUI", () => {
       onRefresh: jest.fn(),
     });
 
-    // The custom row's three icon buttons render — at least one of each.
+    // #794: the custom row's three icon buttons each name the pack.
     expect(
-      screen.getAllByLabelText("Edit toolpack").length
-    ).toBeGreaterThanOrEqual(1);
+      screen.getByRole("button", { name: "Edit customer_intel" })
+    ).toBeInTheDocument();
     expect(
-      screen.getAllByLabelText("Delete toolpack").length
-    ).toBeGreaterThanOrEqual(1);
+      screen.getByRole("button", { name: "Delete customer_intel" })
+    ).toBeInTheDocument();
     expect(
-      screen.getAllByLabelText("Refresh toolpack schema").length
-    ).toBeGreaterThanOrEqual(1);
+      screen.getByRole("button", { name: "Refresh customer_intel schema" })
+    ).toBeInTheDocument();
   });
 
   describe("per-row actions follow the row's capabilities (#691)", () => {
@@ -204,9 +216,9 @@ describe("ToolpacksUI", () => {
         toolpacks: [custom("a", { read: true, write: false, delete: false })],
         ...handlers,
       });
-      expect(screen.queryByLabelText("Edit toolpack")).toBeNull();
-      expect(screen.queryByLabelText("Delete toolpack")).toBeNull();
-      expect(screen.queryByLabelText("Refresh toolpack schema")).toBeNull();
+      expect(screen.queryByLabelText(/^Edit /)).toBeNull();
+      expect(screen.queryByLabelText(/^Delete /)).toBeNull();
+      expect(screen.queryByLabelText(/^Refresh .* schema$/)).toBeNull();
     });
 
     it("write without delete shows Refresh and Edit, not Delete", () => {
@@ -214,11 +226,9 @@ describe("ToolpacksUI", () => {
         toolpacks: [custom("b", { read: true, write: true, delete: false })],
         ...handlers,
       });
-      expect(screen.getByLabelText("Edit toolpack")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Refresh toolpack schema")
-      ).toBeInTheDocument();
-      expect(screen.queryByLabelText("Delete toolpack")).toBeNull();
+      expect(screen.getByLabelText(/^Edit /)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Refresh .* schema$/)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Delete /)).toBeNull();
     });
 
     it("each row is gated on its own capabilities", () => {
@@ -229,8 +239,8 @@ describe("ToolpacksUI", () => {
         ],
         ...handlers,
       });
-      expect(screen.getAllByLabelText("Delete toolpack")).toHaveLength(1);
-      expect(screen.getAllByLabelText("Edit toolpack")).toHaveLength(1);
+      expect(screen.getAllByLabelText(/^Delete /)).toHaveLength(1);
+      expect(screen.getAllByLabelText(/^Edit /)).toHaveLength(1);
     });
   });
 
@@ -275,7 +285,7 @@ describe("ToolpacksUI", () => {
       refreshingId: null,
     });
     const before = screen.getByLabelText(
-      "Refresh toolpack schema"
+      /^Refresh .* schema$/
     ) as HTMLButtonElement;
     expect(before.disabled).toBe(false);
     expect(
@@ -294,7 +304,7 @@ describe("ToolpacksUI", () => {
     );
 
     const after = screen.getByLabelText(
-      "Refresh toolpack schema"
+      /^Refresh .* schema$/
     ) as HTMLButtonElement;
     expect(after.disabled).toBe(true);
     expect(

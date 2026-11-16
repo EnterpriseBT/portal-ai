@@ -1,6 +1,12 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, fireEvent } from "./test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  expectNoAxeViolations,
+} from "./test-utils";
 import { ToastHost } from "../components/ToastHost.component";
 import { TOAST_ANCHOR } from "../utils/toast.constants";
 import type { Toast } from "../utils/toast.context";
@@ -20,6 +26,7 @@ const baseProps = {
   hiddenCount: 0,
   onDismiss: jest.fn<(id: string) => void>(),
   onDismissAll: jest.fn<() => void>(),
+  onHoldChange: jest.fn<(held: boolean) => void>(),
 };
 
 beforeEach(() => {
@@ -68,6 +75,362 @@ describe("ToastHost — dismissal", () => {
   });
 });
 
+// Adversarial walk F1: closing a toast removed the focused button and left
+// focus on <body>, so a keyboard user lost their place.
+describe("ToastHost — focus after a toast goes (#797)", () => {
+  let main: HTMLElement;
+  beforeEach(() => {
+    main = document.createElement("main");
+    main.id = "main-content";
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+  });
+  afterEach(() => main.remove());
+
+  const three = [
+    toast({ id: "a", message: "One", severity: "error" }),
+    toast({ id: "b", message: "Two", severity: "error" }),
+    toast({ id: "c", message: "Three", severity: "error" }),
+  ];
+  const closeButtons = () => screen.getAllByRole("button", { name: /close/i });
+
+  it("moves focus to the close button of the toast that takes its place", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[1].focus();
+    rerender(<ToastHost {...baseProps} toasts={[three[0], three[2]]} />);
+    expect(document.activeElement).toBe(closeButtons()[1]);
+    expect(
+      closeButtons()[1]
+        .closest("[data-toast-id]")
+        ?.getAttribute("data-toast-id")
+    ).toBe("c");
+  });
+
+  it("moves focus to the previous toast when the last one goes", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[2].focus();
+    rerender(<ToastHost {...baseProps} toasts={[three[0], three[1]]} />);
+    expect(document.activeElement).toBe(closeButtons()[1]);
+  });
+
+  it("moves focus to main when Dismiss all empties the stack", () => {
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={three} hiddenCount={2} />
+    );
+    screen.getByRole("button", { name: "Dismiss all" }).focus();
+    rerender(<ToastHost {...baseProps} toasts={[]} hiddenCount={0} />);
+    expect(document.activeElement).toBe(main);
+  });
+
+  it("moves focus to main when the only toast closes", () => {
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={[three[0]]} />
+    );
+    closeButtons()[0].focus();
+    rerender(<ToastHost {...baseProps} toasts={[]} />);
+    expect(document.activeElement).toBe(main);
+  });
+
+  it("covers a toast that hides itself while focused", () => {
+    const success = toast({ id: "s", message: "Saved", severity: "success" });
+    const { rerender } = render(
+      <ToastHost {...baseProps} toasts={[three[0], success]} />
+    );
+    closeButtons()[1].focus();
+    // The provider's timer drops it; no click was involved.
+    rerender(<ToastHost {...baseProps} toasts={[three[0]]} />);
+    expect(document.activeElement).toBe(closeButtons()[0]);
+  });
+
+  it("never takes focus the user put somewhere else", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+      closeButtons()[0].focus();
+      outside.focus();
+      rerender(<ToastHost {...baseProps} toasts={[three[1], three[2]]} />);
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("leaves focus alone when the user had left for the page body", () => {
+    const { rerender } = render(<ToastHost {...baseProps} toasts={three} />);
+    closeButtons()[0].focus();
+    closeButtons()[0].blur();
+    rerender(<ToastHost {...baseProps} toasts={[three[1], three[2]]} />);
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe("ToastHost — hold while read (#1021)", () => {
+  const holds = () => baseProps.onHoldChange.mock.calls.map(([h]) => h);
+
+  it("holds while the pointer is over the stack", () => {
+    render(<ToastHost {...baseProps} />);
+    fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+    fireEvent.pointerLeave(screen.getByTestId("toast-host"));
+    expect(holds()).toEqual([true, false]);
+  });
+
+  it("holds while focus is inside, and releases on leaving it", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      render(<ToastHost {...baseProps} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      outside.focus();
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("stays held while either the pointer or focus is inside", () => {
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      render(<ToastHost {...baseProps} />);
+      fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+      screen.getByRole("button", { name: /close/i }).focus();
+      outside.focus();
+      expect(holds()).toEqual([true]);
+      fireEvent.pointerLeave(screen.getByTestId("toast-host"));
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("releases when the focused last toast goes and focus moves to main", () => {
+    const main = document.createElement("main");
+    main.id = "main-content";
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+    try {
+      const { rerender } = render(<ToastHost {...baseProps} />);
+      screen.getByRole("button", { name: /close/i }).focus();
+      rerender(<ToastHost {...baseProps} toasts={[]} />);
+      expect(document.activeElement).toBe(main);
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      main.remove();
+    }
+  });
+
+  it("doesn't hold for focus a pointer press put there, until a key is pressed", () => {
+    render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    fireEvent.pointerDown(close);
+    close.focus();
+    expect(holds()).toEqual([]);
+    fireEvent.keyDown(close, { key: "Shift" });
+    expect(holds()).toEqual([true]);
+  });
+
+  it("releases when the window loses focus, even though activeElement stays", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    const close = screen.getByRole("button", { name: /close/i });
+    close.focus();
+    const hasFocus = jest.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      fireEvent.blur(close);
+      rerender(
+        <ToastHost
+          {...baseProps}
+          toasts={[...baseProps.toasts, toast({ id: "t-2", message: "Again" })]}
+        />
+      );
+      expect(holds()).toEqual([true, false]);
+    } finally {
+      hasFocus.mockRestore();
+    }
+  });
+
+  it("releases a pointer hold when the stack empties under it", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    fireEvent.pointerEnter(screen.getByTestId("toast-host"));
+    rerender(<ToastHost {...baseProps} toasts={[]} />);
+    expect(holds()).toEqual([true, false]);
+  });
+});
+
+describe("ToastHost — steps aside for focus (#1024)", () => {
+  // jsdom lays nothing out, so boxes are stubbed. Its viewport is 1024×768;
+  // a 400×200 stack at the bottom right spans x 600–1000, y 544–744.
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  let under: HTMLButtonElement;
+  let clear: HTMLButtonElement;
+  beforeEach(() => {
+    under = document.createElement("button");
+    under.textContent = "Delete last row";
+    clear = document.createElement("button");
+    clear.textContent = "First row";
+    document.body.append(under, clear);
+    jest
+      .spyOn(under, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+    jest
+      .spyOn(clear, "getBoundingClientRect")
+      .mockReturnValue(rect(40, 120, 32, 32));
+  });
+  afterEach(() => {
+    under.remove();
+    clear.remove();
+  });
+  const stub = () => {
+    const host = screen.getByTestId("toast-host");
+    jest
+      .spyOn(host, "getBoundingClientRect")
+      .mockReturnValue(rect(600, 544, 400, 200));
+    return host;
+  };
+
+  it("sits at the bottom until focus lands under it", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+    act(() => clear.focus());
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  it("moves to the top while the focused control would be under it, and back once it isn't", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+    act(() => clear.focus());
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  it("stays put while focus is inside the stack", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
+    act(() => screen.getByRole("button", { name: /close/i }).focus());
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  /** Focus as the keyboard does: a key press first, then the focus. */
+  const keyFocus = (el: HTMLElement) =>
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      el.focus();
+    });
+  const moveUnder = (el: HTMLElement) =>
+    jest
+      .spyOn(el, "getBoundingClientRect")
+      .mockReturnValue(rect(900, 700, 32, 32));
+
+  it("re-checks when a toast arrives over the control that has focus", () => {
+    const { rerender } = render(<ToastHost {...baseProps} />);
+    const host = stub();
+    keyFocus(clear);
+    moveUnder(clear);
+    rerender(
+      <ToastHost
+        {...baseProps}
+        toasts={[...baseProps.toasts, toast({ id: "t-2", message: "Again" })]}
+      />
+    );
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  it("re-checks on scroll, once per frame", async () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    keyFocus(clear);
+    moveUnder(clear);
+    act(() => void document.dispatchEvent(new Event("scroll")));
+    await act(
+      () => new Promise<void>((done) => requestAnimationFrame(() => done()))
+    );
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+  });
+
+  // Review: 2.4.11 is about keyboard focus; a click near the corner
+  // mustn't make the stack jump from where the user is looking.
+  it("doesn't move for focus a pointer press put under it", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    act(() => {
+      fireEvent.pointerDown(under);
+      under.focus();
+    });
+    expect(host).toHaveAttribute("data-toast-edge", "bottom");
+  });
+
+  // Review: a stack moving away from a resting pointer gets no
+  // pointerleave, so the move itself ends the pointer's hold.
+  it("ends a pointer hold when it moves", () => {
+    render(<ToastHost {...baseProps} />);
+    const host = stub();
+    fireEvent.pointerEnter(host);
+    keyFocus(under);
+    expect(host).toHaveAttribute("data-toast-edge", "top");
+    expect(baseProps.onHoldChange.mock.calls.map(([h]) => h)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it("stops listening when it unmounts", () => {
+    const remove = jest.spyOn(document, "removeEventListener");
+    const removeWin = jest.spyOn(window, "removeEventListener");
+    const { unmount } = render(<ToastHost {...baseProps} />);
+    unmount();
+    const capture = { capture: true };
+    expect(remove).toHaveBeenCalledWith("focusin", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith(
+      "scroll",
+      expect.any(Function),
+      capture
+    );
+    expect(remove).toHaveBeenCalledWith(
+      "keydown",
+      expect.any(Function),
+      capture
+    );
+    expect(remove).toHaveBeenCalledWith(
+      "pointerdown",
+      expect.any(Function),
+      capture
+    );
+    expect(removeWin).toHaveBeenCalledWith("resize", expect.any(Function));
+    remove.mockRestore();
+    removeWin.mockRestore();
+  });
+
+  it("has no axe violations at the top", async () => {
+    render(<ToastHost {...baseProps} />);
+    stub();
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      under.focus();
+    });
+    await expectNoAxeViolations(screen.getByTestId("toast-host"));
+  });
+});
+
 describe("ToastHost — actions", () => {
   it("renders an action label and invokes it", () => {
     const onClick = jest.fn();
@@ -110,5 +473,92 @@ describe("ToastHost — overflow row", () => {
       screen.queryByTestId("toast-overflow-count")
     ).not.toBeInTheDocument();
     expect(screen.queryByTestId("toast-dismiss-all")).not.toBeInTheDocument();
+  });
+});
+
+describe("ToastHost — announcements (#797)", () => {
+  const region = () => document.getElementById("notifications");
+  const live = () => region()!.querySelector('[aria-live="polite"]')!;
+
+  it("keeps a named Notifications region with a live stack in the page even when idle, outside the render container", () => {
+    const { container } = render(<ToastHost {...baseProps} toasts={[]} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(region()).toHaveAttribute("aria-label", "Notifications");
+    expect(region()).toHaveAttribute("tabindex", "-1");
+    expect(region()?.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("announces success and info politely, errors and warnings as alerts", () => {
+    render(
+      <ToastHost
+        {...baseProps}
+        toasts={[
+          toast({ id: "a", severity: "success", message: "Saved" }),
+          toast({ id: "b", severity: "error", message: "Failed" }),
+          toast({ id: "c", severity: "warning", message: "Careful" }),
+          toast({ id: "d", severity: "info", message: "FYI" }),
+        ]}
+      />
+    );
+    expect(live()).toHaveTextContent("Saved");
+    expect(live()).toHaveTextContent("FYI");
+    expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual([
+      "Failed",
+      "Careful",
+    ]);
+  });
+
+  it("shows each message once (no hidden copies)", () => {
+    render(
+      <ToastHost
+        {...baseProps}
+        toasts={[toast({ severity: "error", message: "Failed" })]}
+      />
+    );
+    expect(screen.getAllByText("Failed")).toHaveLength(1);
+  });
+
+  it("shows toasts in queue order, whatever their severity (#797 review)", () => {
+    render(
+      <ToastHost
+        {...baseProps}
+        toasts={[
+          toast({ id: "a", severity: "success", message: "Saved" }),
+          toast({ id: "b", severity: "error", message: "Failed" }),
+          toast({ id: "c", severity: "info", message: "FYI" }),
+        ]}
+      />
+    );
+    const shown = Array.from(
+      live().querySelectorAll('[data-testid^="toast-"]')
+    ).map((el) => el.textContent);
+    expect(shown).toEqual(["Saved", "Failed", "FYI"]);
+  });
+
+  it("has no axe violations", async () => {
+    render(
+      <ToastHost
+        {...baseProps}
+        toasts={[toast({ severity: "error", message: "Failed" })]}
+      />
+    );
+    await expectNoAxeViolations(region()!);
+  });
+});
+
+describe("ToastHost without a Notifications region (#797 review)", () => {
+  it("renders in place rather than creating one during render", () => {
+    const root = document.getElementById("notifications")!;
+    root.remove();
+    try {
+      const { container } = render(
+        <ToastHost {...baseProps} toasts={[toast({ message: "Saved" })]} />
+      );
+      expect(container).toHaveTextContent("Saved");
+      expect(document.getElementById("notifications")).toBeNull();
+    } finally {
+      document.body.appendChild(root);
+    }
   });
 });

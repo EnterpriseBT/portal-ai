@@ -334,8 +334,10 @@ describe("Entity Group Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values(colDef as never);
+      // #986: a source field unlike its column's key, so the member names the
+      // mapping it links on, not the shared column definition.
       const mapping = createFieldMapping(organizationId, entity.id, colDef.id, {
-        sourceField: "email",
+        sourceField: "work_email",
       });
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
@@ -372,7 +374,7 @@ describe("Entity Group Router", () => {
       );
       expect(
         res.body.payload.entityGroup.members[0].linkFieldMappingSourceField
-      ).toBe("email");
+      ).toBe("work_email");
     });
 
     it("should return 404 for unknown ID", async () => {

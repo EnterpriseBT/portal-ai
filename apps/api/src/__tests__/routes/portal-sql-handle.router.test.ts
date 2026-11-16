@@ -147,6 +147,22 @@ describe("GET /api/portal-sql/handle/:handleId — authorization (#685)", () => 
     expect(mockGetSnapshot).not.toHaveBeenCalled();
   });
 
+  // #796 adversarial F5: a foreign handle's 404 said "not found or expired"
+  // while a missing one said "has expired or does not exist", which told the
+  // two apart. Every handle 404 now reads the same.
+  it("words a foreign handle's 404 exactly like a missing one", async () => {
+    const { HANDLE_EXPIRED_MESSAGE } =
+      await import("../../constants/query-handle.constants.js");
+    for (const meta of [
+      { _organizationId: "org-other", _userId: "user-001" },
+      { _organizationId: "org-001", _userId: "user-other" },
+    ]) {
+      mockGetMeta.mockResolvedValueOnce(meta);
+      const res = await request(app).get("/api/portal-sql/handle/qh-x");
+      expect(res.body.message).toBe(HANDLE_EXPIRED_MESSAGE);
+    }
+  });
+
   it("refuses another user's handle in the same org", async () => {
     mockGetMeta.mockResolvedValueOnce({
       _organizationId: "org-001",

@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "./test-utils";
+import { expectNoAxeViolations, render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 
 // Mock sdk to avoid import.meta.env in api.util.ts
@@ -182,5 +182,14 @@ describe("LoginForm container label (#607)", () => {
     render(<LoginForm />);
     expect(screen.queryByTestId("e2e-qa-login")).not.toBeInTheDocument();
     window.history.pushState({}, "", "/");
+  });
+});
+
+describe("LoginFormUI accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(
+      <LoginFormUI onClickGoogleLogin={jest.fn()} onClickSso={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
   });
 });

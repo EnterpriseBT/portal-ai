@@ -67,13 +67,22 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
   isPending,
   onChange,
 }: ConnectorInstanceCapabilityFlagsUIProps) => {
+  // The rows wrap at narrow widths (#1019, WCAG 1.4.10). They keep Stack's
+  // margin-based `spacing` rather than `useFlexGap`: only the margin mode
+  // resets FormControlLabel's default -11px/16px margins.
   if (!canEdit) {
     const enabled = [
       "Read",
       ...FLAGS.filter((f) => flags?.[f.key]).map((f) => f.label),
     ];
     return (
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        rowGap={1}
+        flexWrap="wrap"
+        alignItems="center"
+      >
         {enabled.map((label) => (
           <Chip key={label} label={label} size="small" variant="outlined" />
         ))}
@@ -83,7 +92,13 @@ export const ConnectorInstanceCapabilityFlagsUI = ({
 
   return (
     <Stack spacing={0.5}>
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        rowGap={1}
+        flexWrap="wrap"
+        alignItems="center"
+      >
         <Tooltip title="Allow reading data from this connector" describeChild>
           <FormControlLabel
             control={<Checkbox checked disabled size="small" />}

@@ -25,6 +25,7 @@ import {
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { STALE_REFERENCE } from "./portal-sql-validation.util.js";
+import { HANDLE_EXPIRED_MESSAGE } from "../constants/query-handle.constants.js";
 
 type DefinerRow = Pick<
   PortalResultSelect,
@@ -121,11 +122,7 @@ export class PinDefinerService {
     deps: { explainSqlQuery?: typeof PortalSqlService.explainSqlQuery } = {}
   ): Promise<void> {
     const notFound = () =>
-      new ApiError(
-        404,
-        ApiCode.READ_HANDLE_EXPIRED,
-        "Query handle not found or expired"
-      );
+      new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, HANDLE_EXPIRED_MESSAGE);
     const row = await DbService.repository.portalResults.findById(
       handle.portalResultId
     );

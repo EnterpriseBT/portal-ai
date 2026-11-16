@@ -2,12 +2,13 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+import { expectNoAxeViolations } from "../../../__tests__/test-utils";
 import { EntityLegendUI } from "../EntityLegend.component";
 import type { EntityLegendEntry } from "../utils/region-editor.types";
 
 const ENTRIES: EntityLegendEntry[] = [
-  { id: "ent_a", label: "Contact", color: "#2563eb", regionCount: 2 },
-  { id: "ent_b", label: "Deal", color: "#db2777", regionCount: 1 },
+  { id: "ent_a", label: "Contact", entitySlot: "0", regionCount: 2 },
+  { id: "ent_b", label: "Deal", entitySlot: "1", regionCount: 1 },
 ];
 
 describe("EntityLegendUI", () => {
@@ -29,5 +30,17 @@ describe("EntityLegendUI", () => {
     render(<EntityLegendUI entries={ENTRIES} onEntitySelect={onSelect} />);
     fireEvent.click(screen.getByText("Contact"));
     expect(onSelect).toHaveBeenCalledWith("ent_a");
+  });
+
+  test("has no axe violations", async () => {
+    const { container } = render(
+      <EntityLegendUI entries={ENTRIES} onEntitySelect={jest.fn()} />
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  test("has no axe violations when empty", async () => {
+    const { container } = render(<EntityLegendUI entries={[]} />);
+    await expectNoAxeViolations(container);
   });
 });
