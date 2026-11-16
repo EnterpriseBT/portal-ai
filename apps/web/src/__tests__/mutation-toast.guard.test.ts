@@ -16,12 +16,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 
-import {
-  argumentsAt,
-  blankLiterals,
-  sourceFiles,
-  topLevelArgs,
-} from "./guard-source.util";
+import { mutationCalls, sourceFiles } from "./guard-source.util";
 
 const webSrc = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -33,41 +28,16 @@ const ALLOWED: Record<string, string> = {
   "views/EntityDetail.view.tsx": "job-completion toasts on page-scoped SSE",
 };
 
-/** Names bound from `mutate` / `mutateAsync` by object destructuring. */
-function destructuredNames(blanked: string): string[] {
-  const names = new Set<string>();
-  for (const m of blanked.matchAll(
-    /[{,]\s*(mutate|mutateAsync)\b(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*(?=[,}=])/g
-  )) {
-    names.add(m[2] ?? m[1]!);
-  }
-  return [...names];
-}
-
 const TOAST_CALL = /\btoast\.(?:success|error|info|warning|show)\(/;
 
 /** The mutation calls in `source` whose options argument raises a toast. */
 export function toastingMutationsIn(source: string): string[] {
-  const blanked = blankLiterals(source);
-  const names = destructuredNames(blanked);
-  const found: string[] = [];
-  for (const call of blanked.matchAll(
-    /(?:\.(?:mutate|mutateAsync)|(?<![\w$.])[A-Za-z_$][\w$]*)\(/g
-  )) {
-    const name = call[0].replace(/^\./, "").slice(0, -1);
-    const viaMember = call[0].startsWith(".");
-    if (!viaMember && !names.includes(name)) continue;
-    const args = topLevelArgs(
-      argumentsAt(blanked, call.index! + call[0].length - 1)
+  return mutationCalls(source)
+    .filter(({ options }) => options !== undefined && TOAST_CALL.test(options))
+    .map(
+      ({ name, options }) =>
+        `${name}(…): ${options!.replace(/\s+/g, " ").trim().slice(0, 100)}`
     );
-    const options = args[1];
-    if (options && TOAST_CALL.test(options)) {
-      found.push(
-        `${name}(…): ${options.replace(/\s+/g, " ").trim().slice(0, 100)}`
-      );
-    }
-  }
-  return found;
 }
 
 describe("mutation toasts go in the call's toast option (#970)", () => {
