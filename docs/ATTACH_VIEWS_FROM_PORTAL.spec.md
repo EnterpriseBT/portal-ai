@@ -49,9 +49,10 @@ export function forgetForRequest(key: string): void;
 
 ```ts
 /** The `resolveViewsForSession` memo key; the only place its format lives. */
-static sessionViewsKey(stationId: string, userId: string, organizationId: string): string; // `views:${stationId}:${userId}:${organizationId}`
+// Instance methods on PortalSqlServiceImpl; argument order matches resolveViewsForSession.
+sessionViewsKey(stationId: string, organizationId: string, userId: string): string; // `views:${stationId}:${userId}:${organizationId}`
 /** #1036: a view set changed in this request; the next sql_query re-resolves it. */
-forgetSessionViews(stationId: string, userId: string, organizationId: string): void;
+forgetSessionViews(stationId: string, organizationId: string, userId: string): void;
 ```
 
 `resolveViewsForSession` uses `sessionViewsKey` instead of building the string inline.
@@ -130,7 +131,7 @@ result: { success: true; stationId: string; isSessionStation: boolean;
 ```
 
 When `isSessionStation` is true and anything was added, the tool:
-1. calls `PortalSqlService.forgetSessionViews(stationId, ctx.userId, ctx.organizationId)`;
+1. calls `PortalSqlService.forgetSessionViews(stationId, ctx.organizationId, ctx.userId)`;
 2. resolves the station's granted view columns and reports each attached view.
 
 An attached view that isn't in the resolved set because another attached view already has its key (`portal-sql.service.ts:650-659`) is reported `queryable: false, reason: "KEY_CONFLICT"`.

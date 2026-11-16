@@ -60,8 +60,11 @@ export function getDbCancelReason(): DbCancelReason | undefined {
  * evicted, so a failed call is retried by the next caller. With no request
  * store (a job worker, a test), this is a passthrough that just runs `factory`.
  *
- * Only for values that cannot change within one request (e.g. a caller's
- * resolved view grants — a grant changed mid-turn applies on the next request).
+ * Only for values the request itself doesn't change (e.g. a caller's resolved
+ * view grants — a grant changed elsewhere mid-turn applies on the next
+ * request). When the request does change one, through the service that owns
+ * its key (#1036: an agent attaching a view to its own station), that service
+ * calls {@link forgetForRequest} so the next caller recomputes.
  * `key` shares one per-request namespace across all callers, so it MUST be
  * prefixed to the concern (e.g. `views:<…>`) to avoid a cross-concern collision.
  */
@@ -81,4 +84,14 @@ export function memoizeForRequest<T>(
   });
   memo.set(key, pending);
   return pending;
+}
+
+/**
+ * Drop one memoized value so the next {@link memoizeForRequest} for `key`
+ * recomputes (#1036). A no-op outside a request store or for an unset key.
+ * Only the service that owns `key` calls it, so a key's format and its
+ * invalidation live in one place.
+ */
+export function forgetForRequest(key: string): void {
+  requestContext.getStore()?.memo?.delete(key);
 }
