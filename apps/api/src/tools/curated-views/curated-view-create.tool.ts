@@ -54,7 +54,7 @@ export class CuratedViewCreateTool extends Tool<typeof InputSchema> {
   slug = "curated_view_create";
   name = "curated_view_create";
   description =
-    "Creates a curated view over one connector entity: a unique key, a label, optionally the columns it shows (by column key) and a row filter (a structured filter or an advanced SQL filter, not both). It does not attach the view to any station. The user must be allowed to create views and read the entity.";
+    "Creates a curated view over one connector entity: a unique key, a label, optionally the columns it shows (by column key) and a row filter (a structured filter or an advanced SQL filter, not both). To query it in this session, attach it with curated_view_attach. The user must be allowed to create views and read the entity.";
 
   get schema() {
     return InputSchema;

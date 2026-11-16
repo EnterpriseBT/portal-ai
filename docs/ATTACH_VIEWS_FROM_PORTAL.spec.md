@@ -126,7 +126,7 @@ input:  z.object({
 result: { success: true; stationId: string; isSessionStation: boolean;
           added: string[]; alreadyAttached: string[];
           // only when isSessionStation: what sql_query can read now, from resolveGrantedViewColumns
-          views?: Array<{ id: string; key: string; label: string; queryable: true; columns: Array<{ key: string; type: string }> }
+          views?: Array<{ id: string; key: string; label: string; queryable: true; columns: Array<{ key: string; wideColumnName: string; type: string }> }  // columns as station_context reports them
                         | { id: string; key: string; label: string; queryable: false; reason: "KEY_CONFLICT" }>; }
 ```
 

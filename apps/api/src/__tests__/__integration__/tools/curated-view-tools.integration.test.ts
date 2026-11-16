@@ -7,9 +7,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import pino from "pino";
 import { eq } from "drizzle-orm";
 
 import { ToolService } from "../../../services/tools.service.js";
+import { GrantService } from "../../../services/grant.service.js";
+import { requestContext } from "../../../utils/request-context.util.js";
 import { CuratedViewService } from "../../../services/curated-view.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
@@ -52,14 +55,17 @@ describe("view_management tools — integration (#645)", () => {
   let portalId: string;
 
   /** A tier with only the view pack; `advancedViewFilters` per test. */
-  async function useTier(advancedViewFilters: boolean): Promise<void> {
+  async function useTier(
+    advancedViewFilters: boolean,
+    builtinToolpacks: string[] = ["view_management"]
+  ): Promise<void> {
     const slug = `vt-${generateId().slice(0, 8)}`;
     await d.insert(schema.tiers).values({
       id: generateId(),
       ...base(TEST_TAG),
       slug,
       displayName: "View tools test",
-      builtinToolpacks: ["view_management"],
+      builtinToolpacks,
       advancedViewFilters,
     } as never);
     await d
@@ -587,5 +593,252 @@ describe("view_management tools — integration (#645)", () => {
         `${name}:${ApiCode.TOOL_TARGET_NOT_FOUND}`
       );
     }
+  });
+  // -------------------------------------------------------------------------
+  // #1036: attaching views from the session
+  // -------------------------------------------------------------------------
+
+  describe("curated_view_attach / curated_view_detach (#1036)", () => {
+    /** The station also queries: data_query on the tier and the station. */
+    async function enableDataQuery(): Promise<void> {
+      await useTier(false, ["view_management", "data_query"]);
+      await d.insert(schema.stationToolpacks).values({
+        id: generateId(),
+        stationId,
+        builtinSlug: "data_query",
+        organizationToolpackId: null,
+        ...base(ownerId),
+      } as never);
+    }
+
+    /** One record, written to the entity's wide table as a sync would. */
+    async function seedRow(name: string, region: string): Promise<void> {
+      const id = generateId();
+      await d.insert(schema.entityRecords).values({
+        id,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        sourceId: `src-${id}`,
+        isValid: true,
+        validationErrors: null,
+        normalizedData: {},
+        syncedAt: Date.now(),
+        data: {},
+        checksum: `c-${id}`,
+        origin: "sync",
+        ...base("SYSTEM_TEST"),
+      } as never);
+      const cols: Record<string, unknown> = {
+        entity_record_id: id,
+        organization_id: orgId,
+        synced_at: Date.now(),
+        is_valid: true,
+        source_id: `src-${id}`,
+        c_name: name,
+        c_region: region,
+      };
+      const keys = Object.keys(cols);
+      const columnList = keys.map((k) => `"${k}"`).join(",");
+      const params = keys.map((_, i) => `$${i + 1}`).join(",");
+      await connection.unsafe(
+        `INSERT INTO "er__${entityId}" (${columnList}) VALUES (${params})`,
+        Object.values(cols) as never
+      );
+    }
+
+    /** One portal turn: every call shares one request store, as a turn does. */
+    const inOneTurn = <T>(fn: () => Promise<T>) =>
+      // A plain logger: `createLogger` resolves through the store's own
+      // `log`, so storing one of its proxies would recurse.
+      requestContext.run({ log: pino({ level: "silent" }) }, fn);
+
+    async function sessionTools(userId: string) {
+      const tools = await ToolService.buildAnalyticsTools(
+        orgId,
+        stationId,
+        userId,
+        portalId
+      );
+      return (name: string, input: unknown) =>
+        (
+          tools[name] as {
+            execute: (i: unknown, o: unknown) => Promise<Result>;
+          }
+        ).execute(input, {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        });
+    }
+
+    const attachedTo = async (station: string) =>
+      (
+        await d
+          .select()
+          .from(schema.stationViews)
+          .where(eq(schema.stationViews.stationId, station))
+      ).filter((r) => r.deleted === null);
+
+    it("a view attached mid-turn is queryable in the same turn, and gone once detached", async () => {
+      await enableDataQuery();
+      await seedRow("Acme", "NE");
+      await seedRow("Bolt", "SW");
+
+      await inOneTurn(async () => {
+        const call = await sessionTools(ownerId);
+        const created = await call("curated_view_create", {
+          connectorEntityId: entityId,
+          key: "ne_accounts",
+          label: "NE accounts",
+          filter: {
+            combinator: "and",
+            conditions: [{ field: "region", operator: "eq", value: "NE" }],
+          },
+          columns: ["name", "region"],
+        });
+        const viewId = (created.curatedView as { id: string }).id;
+        const query = { sql: "SELECT c_name FROM ne_accounts" };
+
+        // Not attached yet. sql_query resolves (and caches) the session's
+        // views, then refuses the unknown relation by throwing.
+        const unknownView = { code: ApiCode.PORTAL_SQL_FORBIDDEN };
+        await expect(call("sql_query", query)).rejects.toMatchObject(
+          unknownView
+        );
+
+        const attached = await call("curated_view_attach", {
+          curatedViewIds: [viewId],
+        });
+        expect(attached).toMatchObject({
+          success: true,
+          stationId,
+          isSessionStation: true,
+          added: [viewId],
+          views: [
+            {
+              id: viewId,
+              key: "ne_accounts",
+              queryable: true,
+              columns: expect.arrayContaining([
+                expect.objectContaining({
+                  key: "name",
+                  wideColumnName: "c_name",
+                }),
+              ]),
+            },
+          ],
+        });
+
+        const rows = await call("sql_query", query);
+        expect(rows.error).toBeUndefined();
+        expect(JSON.stringify(rows)).toContain("Acme");
+        expect(JSON.stringify(rows)).not.toContain("Bolt");
+
+        expect(
+          await call("curated_view_detach", { curatedViewIds: [viewId] })
+        ).toMatchObject({ success: true, removed: [viewId] });
+        await expect(call("sql_query", query)).rejects.toMatchObject(
+          unknownView
+        );
+      });
+    });
+
+    it("re-attaching is a no-op, and each change is audited as the agent", async () => {
+      const viewId = await createView();
+      const first = await asOwner("curated_view_attach", {
+        curatedViewIds: [viewId],
+      });
+      const again = await asOwner("curated_view_attach", {
+        curatedViewIds: [viewId],
+      });
+      expect(first).toMatchObject({ added: [viewId], alreadyAttached: [] });
+      expect(again).toMatchObject({ added: [], alreadyAttached: [viewId] });
+      expect(await attachedTo(stationId)).toHaveLength(1);
+
+      await asOwner("curated_view_detach", { curatedViewIds: [viewId] });
+      const events = await d
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.organizationId, orgId));
+      const changes = events.filter(
+        (e) => e.action === "station.attachments.change"
+      );
+      expect(changes).toHaveLength(2);
+      for (const e of changes) {
+        expect(e).toMatchObject({
+          userId: ownerId,
+          targetId: stationId,
+          userAgent: "portal-agent",
+        });
+      }
+    });
+
+    it("attaches to another station named by id", async () => {
+      const viewId = await createView();
+      const otherId = generateId();
+      await d.insert(schema.stations).values({
+        id: otherId,
+        organizationId: orgId,
+        name: "Sales",
+        description: null,
+        ...base(ownerId),
+      } as never);
+
+      const r = await asOwner("curated_view_attach", {
+        curatedViewIds: [viewId],
+        stationId: otherId,
+      });
+      expect(r).toEqual({
+        success: true,
+        stationId: otherId,
+        isSessionStation: false,
+        added: [viewId],
+        alreadyAttached: [],
+      });
+      expect(await attachedTo(otherId)).toHaveLength(1);
+      expect(await attachedTo(stationId)).toHaveLength(0);
+    });
+
+    it("a member who can read but not edit the station is refused, and nothing is attached", async () => {
+      const viewId = await createView();
+      await shareWithMember(viewId, "read");
+      await GrantService.share(
+        { userId: ownerId, organizationId: orgId, roles: ["owner"] },
+        {
+          resourceType: "station",
+          resourceId: stationId,
+          grantee: { type: "user", userId: memberId },
+          access: "read",
+        },
+        { sourceIp: null, userAgent: "test" }
+      );
+
+      const r = await asMember("curated_view_attach", {
+        curatedViewIds: [viewId],
+      });
+      expect(r.error?.code).toBe(ApiCode.TOOL_PERMISSION_DENIED);
+      expect(await attachedTo(stationId)).toHaveLength(0);
+    });
+
+    it("an unreadable station or view is not found", async () => {
+      const viewId = await createView();
+      // The member can't read the owner's station.
+      expect(
+        (
+          await asMember("curated_view_detach", {
+            curatedViewIds: [viewId],
+          })
+        ).error?.code
+      ).toBe(ApiCode.TOOL_TARGET_NOT_FOUND);
+      // A view that doesn't exist, in a batch with one that does: nothing.
+      expect(
+        (
+          await asOwner("curated_view_attach", {
+            curatedViewIds: [viewId, generateId()],
+          })
+        ).error?.code
+      ).toBe(ApiCode.TOOL_TARGET_NOT_FOUND);
+      expect(await attachedTo(stationId)).toHaveLength(0);
+    });
   });
 });

@@ -636,8 +636,9 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Curated Views Notes");
       lines.push("");
       lines.push(
-        "You can list, read, create, edit, delete, and share curated views " +
-          "with the view_management tools. They act on the user's own " +
+        "You can list, read, create, edit, delete, and share curated views, " +
+          "and attach them to stations, with the view_management tools. " +
+          "They act on the user's own " +
           "authority: a change they cannot make on the Views page you cannot " +
           "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
           "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
@@ -673,9 +674,19 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
-        "**You cannot attach a view to a station.** A view you create only " +
-          "shows up in a session after someone attaches it while creating " +
-          "or editing a station. Say so after you create one."
+        "**`sql_query` reads only views attached to this station.** When the " +
+          "user wants to query a view you created (or one not attached " +
+          "here), attach it with `curated_view_attach`; without a " +
+          "`stationId` it attaches to this station. Once attached here it " +
+          "can be queried in the same turn: the view's `key` is the table " +
+          "and each column's `wideColumnName` is the column, as the result " +
+          "returns them, since this station's summary only lists it from " +
+          "the next message. A result entry with " +
+          '`queryable: false` and `reason: "KEY_CONFLICT"` means another ' +
+          "view attached here already uses that key; say so rather than " +
+          "querying it. Attaching needs permission to edit the station; a " +
+          "refusal names that permission. `curated_view_detach` removes a " +
+          "view from a station without deleting it."
       );
       lines.push("");
       lines.push(

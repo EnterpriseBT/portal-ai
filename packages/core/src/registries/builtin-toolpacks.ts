@@ -1504,15 +1504,17 @@ const curatedViewIdField = stringField(
  * list, read, create, edit, delete and share curated views. Each tool routes
  * to `CuratedViewService` / `GrantService`, which run the same checks as the
  * REST routes; a refusal surfaces as `TOOL_PERMISSION_DENIED` (gate catch-403)
- * or `TOOL_TARGET_NOT_FOUND`. Attaching a view to a station is not a tool:
- * it's done when creating or editing the station. Hand-authored to match the
- * `Tool` classes in `apps/api/src/tools/curated-views/*`.
+ * or `TOOL_TARGET_NOT_FOUND`. `curated_view_attach` / `curated_view_detach`
+ * (#1036) attach views to a station — the session's own by default — through
+ * the attach routes' own path, so a view can be queried the turn it's
+ * created. Hand-authored to match the `Tool` classes in
+ * `apps/api/src/tools/curated-views/*`.
  */
 const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   slug: "view_management",
   name: "Curated Views",
   description:
-    "Manage curated views in a session: list and inspect views, find the entities and columns a view can use, create and edit a view's columns and row filter, delete views, and share them. Changes follow the caller's own permissions on each view. Attaching a view to a station is done when creating or editing the station.",
+    "Manage curated views in a session: list and inspect views, find the entities and columns a view can use, create and edit a view's columns and row filter, delete views, and share them, and attach or detach them on stations, this session's included, so a view can be queried right after it's created. Changes follow the caller's own permissions on each view and station.",
   iconSlug: "Layers",
   tools: [
     {
@@ -1564,7 +1566,7 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "curated_view_entity_list",
       description:
-        "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, a view on them must be attached to the station.",
+        "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, create a view on one and attach it to the station with curated_view_attach.",
       parameterSchema: objectSchema({
         search: stringField(
           "Match entities whose key or label contains this text"
@@ -1576,7 +1578,7 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "curated_view_create",
       description:
-        "Creates a curated view over one connector entity: a unique key, a label, optionally the columns it shows (by column key) and a row filter (a structured filter or an advanced SQL filter, not both). It does not attach the view to any station. The user must be allowed to create views and read the entity.",
+        "Creates a curated view over one connector entity: a unique key, a label, optionally the columns it shows (by column key) and a row filter (a structured filter or an advanced SQL filter, not both). To query it in this session, attach it with curated_view_attach. The user must be allowed to create views and read the entity.",
       parameterSchema: objectSchema(
         {
           connectorEntityId: stringField(
@@ -1644,6 +1646,36 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
           ),
         },
         ["curatedViewId", "grantee", "access"]
+      ),
+    },
+    {
+      name: "curated_view_attach",
+      description:
+        "Attaches curated views to a station so portal sessions on it can query them. It attaches to this session's station unless you name another with stationId (from station_list). Attached here, a view can be queried with sql_query in the same turn: the view's key is the table and each column's wideColumnName is the column, as the result returns them. All the views must be ones the user can read, and the user must be allowed to edit the station; otherwise nothing is attached. A view already attached is reported, not an error.",
+      parameterSchema: objectSchema(
+        {
+          curatedViewIds: stringArrayField(
+            "Ids of the views to attach (1-25), from curated_view_list or curated_view_create"
+          ),
+          stationId: stringField(
+            "The station to attach to, from station_list. Omit it to attach to this session's station"
+          ),
+        },
+        ["curatedViewIds"]
+      ),
+    },
+    {
+      name: "curated_view_detach",
+      description:
+        "Detaches curated views from a station, this session's unless you name another with stationId (from station_list). The views themselves aren't changed or deleted; sessions on that station just stop seeing them. The user must be allowed to edit the station. A view that isn't attached is reported, not an error.",
+      parameterSchema: objectSchema(
+        {
+          curatedViewIds: stringArrayField("Ids of the views to detach (1-25)"),
+          stationId: stringField(
+            "The station to detach from, from station_list. Omit it for this session's station"
+          ),
+        },
+        ["curatedViewIds"]
       ),
     },
     // Shared with rbac_management, to resolve "share with Jane" to a userId.
@@ -2038,6 +2070,10 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   curated_view_update: rbacWrite(),
   curated_view_delete: rbacWrite(),
   curated_view_share: rbacWrite(),
+  // #1036: station attachment of views — control-plane, self-gated by
+  // StationAttachmentService (station write + view read).
+  curated_view_attach: rbacWrite(),
+  curated_view_detach: rbacWrite(),
 };
 
 /**

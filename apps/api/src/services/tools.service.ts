@@ -114,6 +114,8 @@ import { CuratedViewCreateTool } from "../tools/curated-views/curated-view-creat
 import { CuratedViewUpdateTool } from "../tools/curated-views/curated-view-update.tool.js";
 import { CuratedViewDeleteTool } from "../tools/curated-views/curated-view-delete.tool.js";
 import { CuratedViewShareTool } from "../tools/curated-views/curated-view-share.tool.js";
+import { CuratedViewAttachTool } from "../tools/curated-views/curated-view-attach.tool.js";
+import { CuratedViewDetachTool } from "../tools/curated-views/curated-view-detach.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import {
@@ -280,6 +282,8 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "curated_view_update",
   "curated_view_delete",
   "curated_view_share",
+  "curated_view_attach",
+  "curated_view_detach",
 ]);
 
 export class ToolService {
@@ -895,7 +899,10 @@ export class ToolService {
     // CuratedViewService / GrantService, which run the routes' own checks;
     // a refusal surfaces as TOOL_PERMISSION_DENIED (the gate's catch-403) or
     // TOOL_TARGET_NOT_FOUND. Control-plane (`writes:[]`), so the tools stay
-    // on read-only stations. No tool attaches a view to a station.
+    // on read-only stations. Attach/detach (#1036) go through
+    // StationAttachmentService, the attach routes' own path, and know the
+    // session's station: the default target, and the one whose request-cached
+    // view set they drop so sql_query sees the change this turn.
     if (enabledPacks.has("view_management")) {
       tools.curated_view_list = new CuratedViewListTool().build(
         permissionContext
@@ -918,6 +925,15 @@ export class ToolService {
       );
       tools.curated_view_share = new CuratedViewShareTool().build(
         permissionContext
+      );
+      const viewSession = { stationId, portalId: portalId ?? null };
+      tools.curated_view_attach = new CuratedViewAttachTool().build(
+        permissionContext,
+        viewSession
+      );
+      tools.curated_view_detach = new CuratedViewDetachTool().build(
+        permissionContext,
+        viewSession
       );
     }
 

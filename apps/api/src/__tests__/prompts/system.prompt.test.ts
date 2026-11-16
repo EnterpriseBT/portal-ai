@@ -404,8 +404,19 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
   const prompt = () =>
     buildSystemPrompt(makeContext({ effectiveToolPacks: ["view_management"] }));
 
-  it("says the agent can't attach a view to a station", () => {
-    expect(prompt()).toContain("You cannot attach a view to a station");
+  it("no longer says the agent can't attach a view (#1036)", () => {
+    expect(prompt()).not.toContain("You cannot attach a view to a station");
+  });
+
+  it("tells the agent to attach a view to query it, in the same turn (#1036)", () => {
+    const p = prompt();
+    expect(p).toContain(
+      "`sql_query` reads only views attached to this station"
+    );
+    expect(p).toContain("curated_view_attach");
+    expect(p).toContain("can be queried in the same turn");
+    expect(p).toContain("KEY_CONFLICT");
+    expect(p).toContain("curated_view_detach");
   });
 
   it("explains both refusal codes and says not to retry", () => {

@@ -38,6 +38,28 @@ jest.unstable_mockModule("../../../services/grant.service.js", () => ({
   },
 }));
 
+const attachViews = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const detachViews = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const listViewsForStations =
+  jest.fn<(...args: unknown[]) => Promise<Map<string, unknown[]>>>();
+jest.unstable_mockModule(
+  "../../../services/station-attachment.service.js",
+  () => ({
+    StationAttachmentService: {
+      attachViews,
+      detachViews,
+      listViewsForStations,
+    },
+  })
+);
+
+const forgetSessionViews = jest.fn<(...args: unknown[]) => void>();
+const resolveGrantedViewColumns =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+jest.unstable_mockModule("../../../services/portal-sql.service.js", () => ({
+  PortalSqlService: { forgetSessionViews, resolveGrantedViewColumns },
+}));
+
 const { runViewTool } =
   await import("../../../tools/curated-views/curated-view-tool.util.js");
 const { CuratedViewListTool } =
@@ -54,6 +76,10 @@ const { CuratedViewDeleteTool } =
   await import("../../../tools/curated-views/curated-view-delete.tool.js");
 const { CuratedViewShareTool } =
   await import("../../../tools/curated-views/curated-view-share.tool.js");
+const { CuratedViewAttachTool } =
+  await import("../../../tools/curated-views/curated-view-attach.tool.js");
+const { CuratedViewDetachTool } =
+  await import("../../../tools/curated-views/curated-view-detach.tool.js");
 
 const ctx: PermissionContext = {
   userId: "u-1",
@@ -145,6 +171,24 @@ describe("runViewTool (#645)", () => {
     );
     expect(r).toEqual({
       error: { code: failed, message: "The curated view operation failed." },
+    });
+  });
+
+  it("answers an unattachable view as TOOL_TARGET_NOT_FOUND, not a permission refusal (#1036)", async () => {
+    const r = await runViewTool(failed, () =>
+      Promise.reject(
+        new ApiError(
+          403,
+          ApiCode.STATION_ATTACHMENT_NOT_READABLE,
+          "One or more items can't be attached"
+        )
+      )
+    );
+    expect(r).toEqual({
+      error: {
+        code: ApiCode.TOOL_TARGET_NOT_FOUND,
+        message: "One or more items can't be attached",
+      },
     });
   });
 
@@ -487,6 +531,248 @@ describe("view tool input refusals through the AI SDK (#645)", () => {
       expect(() => err.message).not.toThrow();
       expect(err.message).toContain(reason);
       expect(err.message).not.toContain('"schema"');
+    }
+  );
+});
+
+describe("curated_view_attach / curated_view_detach (#1036)", () => {
+  const SESSION = { stationId: "st-session", portalId: "portal-1" };
+  const AUDIT = {
+    userId: "u-1",
+    organizationId: "org-1",
+    sourceIp: null,
+    userAgent: "portal-agent",
+  };
+  const SET = { set: true };
+  const view = (id: string, key: string) => ({
+    view: { id, key, label: `${key} label` },
+    columns: [
+      { normalizedKey: "name", pgType: "text", columnName: "c_name" },
+      { normalizedKey: "amount", pgType: "numeric", columnName: "c_amount" },
+    ],
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resolveGrantedViewColumns.mockResolvedValue({
+      set: SET,
+      views: [view("v1", "ne_accounts")],
+    });
+    listViewsForStations.mockResolvedValue(
+      new Map([
+        [
+          "st-session",
+          [
+            { id: "v1", key: "ne_accounts", label: "NE", canRead: true },
+            { id: "v2", key: "ne_accounts", label: "NE copy", canRead: true },
+            { canRead: false, label: null },
+          ],
+        ],
+      ])
+    );
+  });
+
+  it("attaches to the session's station by default and makes it queryable this turn", async () => {
+    attachViews.mockResolvedValue({
+      stationId: "st-session",
+      added: ["v1"],
+      alreadyAttached: [],
+    });
+    const r = await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1"],
+    });
+    expect(attachViews).toHaveBeenCalledWith(
+      ctx,
+      { stationId: "st-session", curatedViewIds: ["v1"] },
+      AUDIT
+    );
+    expect(forgetSessionViews).toHaveBeenCalledWith(
+      "st-session",
+      "org-1",
+      "u-1"
+    );
+    expect(resolveGrantedViewColumns).toHaveBeenCalledWith(
+      "st-session",
+      "org-1",
+      "u-1"
+    );
+    expect(r).toEqual({
+      success: true,
+      stationId: "st-session",
+      isSessionStation: true,
+      added: ["v1"],
+      alreadyAttached: [],
+      views: [
+        {
+          id: "v1",
+          key: "ne_accounts",
+          label: "NE",
+          queryable: true,
+          columns: [
+            { key: "name", wideColumnName: "c_name", type: "text" },
+            { key: "amount", wideColumnName: "c_amount", type: "numeric" },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("reports a view whose key another attached view already uses as not queryable", async () => {
+    attachViews.mockResolvedValue({
+      stationId: "st-session",
+      added: ["v2"],
+      alreadyAttached: [],
+    });
+    const r = (await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v2"],
+    })) as { views: unknown[] };
+    expect(r.views).toEqual([
+      {
+        id: "v2",
+        key: "ne_accounts",
+        label: "NE copy",
+        queryable: false,
+        reason: "KEY_CONFLICT",
+      },
+    ]);
+  });
+
+  it("doesn't forget the session's views when nothing was added, but still reports them", async () => {
+    attachViews.mockResolvedValue({
+      stationId: "st-session",
+      added: [],
+      alreadyAttached: ["v1"],
+    });
+    const r = (await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1"],
+    })) as { views: unknown[] };
+    expect(forgetSessionViews).not.toHaveBeenCalled();
+    expect(r.views).toHaveLength(1);
+  });
+
+  it("attaching to another station neither forgets the session's views nor reports columns", async () => {
+    attachViews.mockResolvedValue({
+      stationId: "st-other",
+      added: ["v1"],
+      alreadyAttached: [],
+    });
+    const r = await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1"],
+      stationId: "st-other",
+    });
+    expect(forgetSessionViews).not.toHaveBeenCalled();
+    expect(resolveGrantedViewColumns).not.toHaveBeenCalled();
+    expect(r).toEqual({
+      success: true,
+      stationId: "st-other",
+      isSessionStation: false,
+      added: ["v1"],
+      alreadyAttached: [],
+    });
+  });
+
+  it("detaches from the session's station and forgets its views when something was removed", async () => {
+    detachViews.mockResolvedValue({
+      stationId: "st-session",
+      removed: ["v1"],
+      notAttached: ["v9"],
+    });
+    const r = await exec(new CuratedViewDetachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1", "v9"],
+    });
+    expect(detachViews).toHaveBeenCalledWith(
+      ctx,
+      { stationId: "st-session", curatedViewIds: ["v1", "v9"] },
+      AUDIT
+    );
+    expect(forgetSessionViews).toHaveBeenCalledWith(
+      "st-session",
+      "org-1",
+      "u-1"
+    );
+    expect(r).toEqual({
+      success: true,
+      stationId: "st-session",
+      isSessionStation: true,
+      removed: ["v1"],
+      notAttached: ["v9"],
+    });
+  });
+
+  it("detaching nothing doesn't forget the session's views", async () => {
+    detachViews.mockResolvedValue({
+      stationId: "st-session",
+      removed: [],
+      notAttached: ["v1"],
+    });
+    await exec(new CuratedViewDetachTool().build(ctx, SESSION), {
+      curatedViewIds: ["v1"],
+    });
+    expect(forgetSessionViews).not.toHaveBeenCalled();
+  });
+
+  it("re-throws a permission 403 for the gate", async () => {
+    attachViews.mockRejectedValue(
+      new ApiError(403, ApiCode.PERMISSION_DENIED, "no write")
+    );
+    await expect(
+      exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+        curatedViewIds: ["v1"],
+      })
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("answers an unreadable station as TOOL_TARGET_NOT_FOUND", async () => {
+    detachViews.mockRejectedValue(
+      new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+    );
+    expect(
+      await exec(new CuratedViewDetachTool().build(ctx, SESSION), {
+        curatedViewIds: ["v1"],
+      })
+    ).toEqual({
+      error: {
+        code: ApiCode.TOOL_TARGET_NOT_FOUND,
+        message: "Station not found",
+      },
+    });
+  });
+
+  it("hides an unexpected failure behind its own failed code", async () => {
+    attachViews.mockRejectedValue(new Error("db-internal"));
+    expect(
+      await exec(new CuratedViewAttachTool().build(ctx, SESSION), {
+        curatedViewIds: ["v1"],
+      })
+    ).toEqual({
+      error: {
+        code: ApiCode.CURATED_VIEW_ATTACH_FAILED,
+        message: "The curated view operation failed.",
+      },
+    });
+  });
+
+  it.each([
+    ["attach", () => new CuratedViewAttachTool()],
+    ["detach", () => new CuratedViewDetachTool()],
+  ])(
+    "%s refuses an empty batch, more than 25 views, and unknown keys",
+    (_n, make) => {
+      const schema = make().schema;
+      expect(schema.safeParse({ curatedViewIds: [] }).success).toBe(false);
+      expect(
+        schema.safeParse({
+          curatedViewIds: Array.from({ length: 26 }, (_, i) => `v${i}`),
+        }).success
+      ).toBe(false);
+      expect(
+        schema.safeParse({ curatedViewIds: ["v1"], extra: 1 }).success
+      ).toBe(false);
+      expect(
+        schema.safeParse({
+          curatedViewIds: Array.from({ length: 25 }, (_, i) => `v${i}`),
+        }).success
+      ).toBe(true);
     }
   );
 });
