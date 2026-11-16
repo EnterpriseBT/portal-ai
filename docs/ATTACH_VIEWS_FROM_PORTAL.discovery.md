@@ -161,10 +161,10 @@ The route detaches with station write alone. `applyChanges` instead skips views 
 
 ## Open questions
 
-1. **What an unreadable view reports.** The route answers 403 `STATION_ATTACHMENT_NOT_READABLE` with one message for missing and unreadable views alike. #1036's acceptance criterion says an unreadable view "reads as not found". **Lean:** in the tool, map it to `TOOL_TARGET_NOT_FOUND` and leave the route as it is, since changing a route's status is a separate contract change. The spec records the asymmetry.
-2. **Is attach a "session-creating" tool?** `SESSION_CREATING_TOOLS` (`system-principal.guard.test.ts:80-88`) lists tools whose output records `sourcePortalId`. A `station_views` link has no `sourcePortalId` column and isn't one of #641's types. **Lean: no.** The audit event's `agentAudit(portalId)` is the provenance.
-3. **Should `station_list` also return each station's toolpacks?** The route already loads them, and "attach to a station that can query it" depends on whether the target has `data_query`. **Lean: yes,** as slugs. It costs nothing extra and stops the agent attaching to a station that can't query.
-4. **Concurrent attach and detach of the same pair across sessions.** The unique index keeps attach idempotent, and detach soft-deletes. **Lean: no lock**, the same as the routes (none take one). Last write wins, and both are audited.
+1. **What an unreadable view reports.** The route answers 403 `STATION_ATTACHMENT_NOT_READABLE` with one message for missing and unreadable views alike. #1036's acceptance criterion says an unreadable view "reads as not found". **Lean:** in the tool, map it to `TOOL_TARGET_NOT_FOUND` and leave the route as it is, since changing a route's status is a separate contract change. The spec records the asymmetry. **Decided 2026-11-16: as leaned.**
+2. **Is attach a "session-creating" tool?** `SESSION_CREATING_TOOLS` (`system-principal.guard.test.ts:80-88`) lists tools whose output records `sourcePortalId`. A `station_views` link has no `sourcePortalId` column and isn't one of #641's types. **Lean: no.** The audit event's `agentAudit(portalId)` is the provenance. **Decided 2026-11-16: as leaned.**
+3. **Should `station_list` also return each station's toolpacks?** The route already loads them, and "attach to a station that can query it" depends on whether the target has `data_query`. **Lean: yes,** as slugs. It costs nothing extra and stops the agent attaching to a station that can't query. **Decided 2026-11-16: yes.**
+4. **Concurrent attach and detach of the same pair across sessions.** The unique index keeps attach idempotent, and detach soft-deletes. **Lean: no lock**, the same as the routes (none take one). Last write wins, and both are audited. **Decided 2026-11-16: as leaned.**
 
 ## Enterprise-scale considerations
 
