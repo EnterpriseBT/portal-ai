@@ -113,7 +113,10 @@ export const usePortalStream = (
   // Keep a ref to the latest streaming blocks so the done handler can
   // read the current value without stale closure issues.
   const streamingBlocksRef = useRef<PortalMessageBlock[]>([]);
-  // #1036: the tools this turn ran, reported once to onTurnEnd.
+  // #1036: the tools this turn ran, reported once to onTurnEnd. Collected
+  // from `tool_call_end`, which the server sends for every tool: `tool_result`
+  // only comes for a result with a display shape, so a scalar-result tool
+  // (curated_view_attach) never sends one. Found in the #1036 smoke walk.
   const turnToolNamesRef = useRef<Set<string>>(new Set());
   const turnEndedRef = useRef(true);
   const esRef = useRef<EventSource | null>(null);
@@ -213,6 +216,7 @@ export const usePortalStream = (
 
       es.addEventListener("tool_call_end", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as ToolCallEndEvent;
+        turnToolNamesRef.current.add(data.toolName);
         setToolSteps((prev) =>
           prev.filter((s) => s.toolCallId !== data.toolCallId)
         );
@@ -221,6 +225,8 @@ export const usePortalStream = (
       es.addEventListener("tool_result", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as ToolResultEvent;
         const result = data.result as Record<string, unknown> | null;
+        // A job's completion result arrives with no tool_call_end, so it
+        // counts here too.
         turnToolNamesRef.current.add(data.toolName);
 
         const block = streamingBlockFor(data.toolName, result);

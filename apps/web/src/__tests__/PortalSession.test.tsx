@@ -573,11 +573,17 @@ describe("PortalSession (container) via PortalSessionUI", () => {
         return es!;
       });
       await act(async () => {
-        stream.__emit("tool_result", {
-          type: "tool_result",
+        // As the server sends it: an attach result has no display shape, so
+        // only tool_call / tool_call_end arrive (#1036 smoke walk).
+        stream.__emit("tool_call", {
+          type: "tool_call",
           toolCallId: "tc-1",
           toolName,
-          result: { success: true },
+        });
+        stream.__emit("tool_call_end", {
+          type: "tool_call_end",
+          toolCallId: "tc-1",
+          toolName,
         });
         if (ending === "done") {
           stream.__emit("done", { type: "done", messageId: "m-1" });

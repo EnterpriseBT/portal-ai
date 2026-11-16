@@ -200,7 +200,7 @@ It is sorted by `name` ascending. `isSessionStation` compares each station with 
 ### Web
 
 `apps/web/src/utils/portal-stream.util.ts`:
-- `usePortalStream` records each `tool_result` event's `toolName` in a per-stream `Set` ref, cleared on `send`.
+- `usePortalStream` records each `tool_call_end` event's `toolName` in a per-stream `Set` ref, cleared on `send`. The server sends `tool_call_end` for every tool, but `tool_result` only for a result with a display shape, so a scalar-result tool such as `curated_view_attach` never sends one (found by the smoke walk). A bare `tool_result` (a job's completion result, which has no `tool_call_end`) is recorded too.
 - A second callback, `onTurnEnd(turn: { toolNames: ReadonlySet<string> })`, fires once per turn however it ended: `done`, `stream_error`, a lost connection or a cancel. A tool's write commits when its result arrives, so a turn that failed afterwards still changed what it changed (code review). `onDone` is unchanged.
 
 `apps/web/src/utils/station-attachment-tools.util.ts` (new):
