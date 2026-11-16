@@ -192,9 +192,9 @@ It is sorted by `name` ascending. `isSessionStation` compares each station with 
 - a refusal names the permission (station write).
 
 **Help.**
-- Glossary "Curated View" (`glossary.util.ts:257`): "attaching a view to a station is done when creating or editing the station, or by the assistant with the Curated Views pack."
-- Glossary "Station" (`:242`): mention the same.
-- FAQ `faq.util.ts:325`: add "…or ask the assistant to attach it."
+- Glossary "Curated View" (`glossary.util.ts:257`): the assistant can "attach a view to a station, its own session's station included, so a view it just created can be queried straight away. Attaching needs permission to edit the station."
+- Glossary "Station" (`:242`): "Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack."
+- FAQ `faq.util.ts:325`: "(with the Curated Views tool pack, the assistant can attach one for you)".
 
 ### Web
 

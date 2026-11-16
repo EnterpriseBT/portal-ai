@@ -364,6 +364,12 @@ describe("FAQ mentions views (#674)", () => {
       answer("Why are the assistant's answers vague or missing my data?")
     ).toMatch(/view attached and shared with you/i);
   });
+
+  it("#1036: the vague-answers entry says the assistant can attach a view", () => {
+    expect(
+      answer("Why are the assistant's answers vague or missing my data?")
+    ).toMatch(/assistant can attach one/i);
+  });
 });
 
 // #711 (spec case 21): policies govern permissions; roles and groups only
