@@ -23,7 +23,6 @@ import { DateFactory } from "@portalai/core/utils";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/IosShare";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
 import { PortalCardUI } from "../components/PortalCard.component";
@@ -82,7 +81,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   stationId,
 }) => {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
   const orgResult = sdk.organizations.current();
@@ -113,17 +111,12 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const handleEditSubmit = useCallback(
     (body: UpdateStationBody) => {
       updateMutation.mutate(body, {
-        onSuccess: () => {
-          setEditOpen(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-          // #674: the station's view attachments changed too.
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.curatedViews.root,
-          });
-        },
+        // #674: the station's view attachments changed too.
+        invalidate: [queryKeys.stations.root, queryKeys.curatedViews.root],
+        onSuccess: () => setEditOpen(false),
       });
     },
-    [updateMutation, queryClient]
+    [updateMutation]
   );
 
   const handleDeleteStation = useCallback(() => {
@@ -144,25 +137,18 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
     createPortalMutation.mutate(
       { stationId },
       {
-        onSuccess: (data) => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-          navigate({ to: `/portals/${data.portal.id}` });
-        },
+        invalidate: [queryKeys.portals.root],
+        onSuccess: (data) => navigate({ to: `/portals/${data.portal.id}` }),
       }
     );
-  }, [createPortalMutation, stationId, queryClient, navigate]);
+  }, [createPortalMutation, stationId, navigate]);
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
     deletePortal(undefined, {
-      onSuccess: () => {
-        // A portal's pins go with it (cascade), so pins refetch too.
-        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
-        setDeleteTarget(null);
-      },
+      // A portal's pins go with it (cascade), so pins refetch too.
+      invalidate: [queryKeys.portals.root, queryKeys.portalResults.root],
+      onSuccess: () => setDeleteTarget(null),
     });
   };
 

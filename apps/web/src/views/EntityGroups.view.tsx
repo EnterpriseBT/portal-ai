@@ -21,7 +21,6 @@ import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { CreateEntityGroupDialog } from "../components/CreateEntityGroupDialog.component";
@@ -223,7 +222,6 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const EntityGroupsView: React.FC = () => {
-  const queryClient = useQueryClient();
   // #708: Create decides from the create route's own check.
   const createGate = useCreateGate(
     "entity_group",
@@ -241,10 +239,6 @@ export const EntityGroupsView: React.FC = () => {
     enabled: !!deletingGroup,
   });
 
-  const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
-  }, [queryClient]);
-
   const handleOpenCreate = useCallback(() => {
     setCreateOpen(true);
   }, []);
@@ -256,13 +250,11 @@ export const EntityGroupsView: React.FC = () => {
   const handleCreateSubmit = useCallback(
     (body: EntityGroupCreateRequestBody) => {
       createMutation.mutate(body, {
-        onSuccess: () => {
-          handleCreateClose();
-          invalidate();
-        },
+        invalidate: [queryKeys.entityGroups.root],
+        onSuccess: handleCreateClose,
       });
     },
-    [createMutation, handleCreateClose, invalidate]
+    [createMutation, handleCreateClose]
   );
 
   const handleDeleteGroup = useCallback(
@@ -278,12 +270,10 @@ export const EntityGroupsView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined as unknown as void, {
-      onSuccess: () => {
-        setDeletingGroup(null);
-        invalidate();
-      },
+      invalidate: [queryKeys.entityGroups.root],
+      onSuccess: () => setDeletingGroup(null),
     });
-  }, [deleteMutation, invalidate]);
+  }, [deleteMutation]);
 
   return (
     <>

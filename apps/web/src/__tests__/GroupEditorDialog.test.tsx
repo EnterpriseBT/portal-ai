@@ -14,7 +14,8 @@ type MembersQuery = {
 const mockGroupMembers = jest.fn<() => MembersQuery>();
 const mockCreateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
 const mockUpdateMutate = jest.fn<(vars: unknown, opts: MutateOpts) => void>();
-const mockSetMembers = jest.fn<(v: unknown) => Promise<unknown>>();
+const mockSetMembers =
+  jest.fn<(v: unknown, opts?: unknown) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -47,6 +48,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
+const { queryKeys } = await import("../api/keys");
 const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
   await import("./test-utils");
 const { GroupEditorDialog, GroupEditorDialogUI } =
@@ -101,10 +103,11 @@ describe("GroupEditorDialog (#637)", () => {
     mockGroupMembers.mockReturnValue(loaded(["u-1"]));
     render(<GroupEditorDialog open onClose={jest.fn()} group={editGroup} />);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mockSetMembers).toHaveBeenCalledWith({
-      id: "g-1",
-      userIds: ["u-1"],
-    });
+    expect(mockSetMembers).toHaveBeenCalledWith(
+      { id: "g-1", userIds: ["u-1"] },
+      // #985: the refresh runs from the request, even if the page unmounts.
+      { invalidate: [queryKeys.groups.root] }
+    );
   });
 
   it("disables Save while the group's members are still loading (edit)", () => {
@@ -138,7 +141,10 @@ describe("GroupEditorDialog (#637)", () => {
       target: { value: "New Team" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mockSetMembers).toHaveBeenCalledWith({ id: "new-g", userIds: [] });
+    expect(mockSetMembers).toHaveBeenCalledWith(
+      { id: "new-g", userIds: [] },
+      { invalidate: [queryKeys.groups.root] }
+    );
   });
 });
 

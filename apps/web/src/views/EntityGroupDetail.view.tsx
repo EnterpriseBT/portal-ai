@@ -26,7 +26,6 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { AddGroupMemberDialog } from "../components/AddGroupMemberDialog.component";
@@ -364,7 +363,6 @@ interface EntityGroupDetailViewProps {
 export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   entityGroupId,
 }) => {
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { fetchWithAuth } = useAuthFetch();
 
@@ -399,12 +397,15 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     useState<EntityGroupMemberOverlapResponsePayload | null>(null);
   const [overlapLoading, setOverlapLoading] = useState(false);
 
-  const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.entityGroups.get(entityGroupId),
-    });
-  }, [queryClient, entityGroupId]);
+  // What a change to the group or its members makes stale (#985: passed as
+  // each call's `invalidate`, which still runs if the page unmounts).
+  const groupKeys = React.useMemo(
+    () => [
+      queryKeys.entityGroups.root,
+      queryKeys.entityGroups.get(entityGroupId),
+    ],
+    [entityGroupId]
+  );
 
   const fetchOverlap = useCallback(
     async (entityId: string, fieldMappingId: string) => {
@@ -471,23 +472,19 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const handleUpdateGroup = useCallback(
     (body: EntityGroupUpdateRequestBody) => {
       updateMutation.mutate(body, {
-        onSuccess: () => {
-          setEditOpen(false);
-          invalidate();
-        },
+        invalidate: groupKeys,
+        onSuccess: () => setEditOpen(false),
       });
     },
-    [updateMutation, invalidate]
+    [updateMutation, groupKeys]
   );
 
   const handleDeleteGroup = useCallback(() => {
     deleteMutation.mutate(undefined as unknown as void, {
-      onSuccess: () => {
-        invalidate();
-        navigate({ to: "/entity-groups" });
-      },
+      invalidate: groupKeys,
+      onSuccess: () => navigate({ to: "/entity-groups" }),
     });
-  }, [deleteMutation, invalidate, navigate]);
+  }, [deleteMutation, groupKeys, navigate]);
 
   // #689: member changes go through the SDK, so a 403 refetches the group
   // (its gates re-render) and every failure is reported, not swallowed.
@@ -496,12 +493,12 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
       updateMember(
         { memberId, isPrimary },
         {
-          onSuccess: invalidate,
+          invalidate: groupKeys,
           toast: { error: "Couldn't update the member" },
         }
       );
     },
-    [updateMember, invalidate]
+    [updateMember, groupKeys]
   );
   const handlePromoteMember = useCallback(
     (memberId: string) => handleSetPrimary(memberId, true),
@@ -516,14 +513,16 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const handleRemoveMember = useCallback(
     async (memberId: string) => {
       try {
-        await removeMemberMutation.mutateAsync({ memberId });
+        await removeMemberMutation.mutateAsync(
+          { memberId },
+          { invalidate: groupKeys }
+        );
       } catch {
         return false;
       }
-      invalidate();
       return true;
     },
-    [removeMemberMutation, invalidate]
+    [removeMemberMutation, groupKeys]
   );
 
   const resetAddMemberForm = useCallback(() => {
@@ -546,10 +545,8 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
       isPrimary: addMemberIsPrimary,
     };
     addMemberMutation.mutate(body, {
-      onSuccess: () => {
-        handleCloseAddMember();
-        invalidate();
-      },
+      invalidate: groupKeys,
+      onSuccess: handleCloseAddMember,
     });
   }, [
     selectedEntityId,
@@ -557,7 +554,7 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     addMemberIsPrimary,
     addMemberMutation,
     handleCloseAddMember,
-    invalidate,
+    groupKeys,
   ]);
 
   return (

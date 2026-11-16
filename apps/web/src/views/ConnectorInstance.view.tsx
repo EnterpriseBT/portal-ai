@@ -27,7 +27,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { invalidateAfterConnectorInstanceDelete } from "../utils/delete-invalidation.util";
+import { connectorInstanceDeleteKeys } from "../utils/delete-invalidation.util";
 import { sse } from "../api/sse.api";
 import { awaitJobCompletion } from "../utils/job-stream.util";
 import { toServerError } from "../utils/api.util";
@@ -279,48 +279,40 @@ export const ConnectorInstanceView = ({
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
+      invalidate: connectorInstanceDeleteKeys(),
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        invalidateAfterConnectorInstanceDelete(queryClient);
         navigate({ to: "/connectors" });
       },
     });
-  }, [deleteMutation, queryClient, navigate]);
+  }, [deleteMutation, navigate]);
 
   const handleRename = useCallback(
     (newName: string) => {
       renameMutation.mutate(
         { name: newName },
         {
-          onSuccess: () => {
-            setEditDialogOpen(false);
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.connectorInstances.root,
-            });
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.connectorInstances.get(connectorInstanceId),
-            });
-          },
+          invalidate: [
+            queryKeys.connectorInstances.root,
+            queryKeys.connectorInstances.get(connectorInstanceId),
+          ],
+          onSuccess: () => setEditDialogOpen(false),
         }
       );
     },
-    [renameMutation, queryClient, connectorInstanceId]
+    [renameMutation, connectorInstanceId]
   );
 
   const handleCapabilityChange = useCallback(
     (body: ConnectorInstancePatchRequestBody) => {
       updateMutation.mutate(body, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorInstances.root,
-          });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorInstances.get(connectorInstanceId),
-          });
-        },
+        invalidate: [
+          queryKeys.connectorInstances.root,
+          queryKeys.connectorInstances.get(connectorInstanceId),
+        ],
       });
     },
-    [updateMutation, queryClient, connectorInstanceId]
+    [updateMutation, connectorInstanceId]
   );
 
   const handleCreateEntityClose = useCallback(() => {
@@ -331,15 +323,11 @@ export const ConnectorInstanceView = ({
   const handleCreateEntitySubmit = useCallback(
     (body: ConnectorEntityCreateRequestBody) => {
       createEntityMutation.mutate(body, {
-        onSuccess: () => {
-          handleCreateEntityClose();
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorEntities.root,
-          });
-        },
+        invalidate: [queryKeys.connectorEntities.root],
+        onSuccess: handleCreateEntityClose,
       });
     },
-    [createEntityMutation, handleCreateEntityClose, queryClient]
+    [createEntityMutation, handleCreateEntityClose]
   );
 
   const pagination = usePagination({

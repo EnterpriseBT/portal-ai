@@ -55,8 +55,9 @@ export const organizations = {
       options
     ),
   /** Switch the caller's current org. The variables ARE the request body
-   *  ({ organizationId }). Consumers own cache invalidation in a per-call
-   *  onSuccess — all cached data is org-scoped, so invalidate broadly. */
+   *  ({ organizationId }). Consumers own cache invalidation through the
+   *  call's `invalidate` option (#985) — all cached data is org-scoped, so
+   *  invalidate broadly. */
   switch: () =>
     useAuthMutation<OrganizationGetResponse, OrganizationSwitchRequest>({
       url: "/api/organization/switch",

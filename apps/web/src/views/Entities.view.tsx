@@ -21,7 +21,6 @@ import {
 import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useQueryClient } from "@tanstack/react-query";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useNavigate } from "@tanstack/react-router";
 import AddIcon from "@mui/icons-material/Add";
@@ -37,7 +36,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { invalidateAfterConnectorEntityDelete } from "../utils/delete-invalidation.util";
+import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 
@@ -250,7 +249,6 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const EntitiesView: React.FC = () => {
-  const queryClient = useQueryClient();
   const { canOnResource, capabilitiesKnown } = useCapabilities();
   const canReadConnectors =
     !capabilitiesKnown || canOnResource("connector_instance", "read");
@@ -279,15 +277,11 @@ export const EntitiesView: React.FC = () => {
   const handleCreateSubmit = useCallback(
     (body: ConnectorEntityCreateRequestBody) => {
       createMutation.mutate(body, {
-        onSuccess: () => {
-          handleCreateClose();
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.connectorEntities.root,
-          });
-        },
+        invalidate: [queryKeys.connectorEntities.root],
+        onSuccess: handleCreateClose,
       });
     },
-    [createMutation, handleCreateClose, queryClient]
+    [createMutation, handleCreateClose]
   );
 
   const handleDeleteEntity = useCallback((entity: EntityWithTags) => {
@@ -300,12 +294,10 @@ export const EntitiesView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        setDeletingEntity(null);
-        invalidateAfterConnectorEntityDelete(queryClient);
-      },
+      invalidate: connectorEntityDeleteKeys(),
+      onSuccess: () => setDeletingEntity(null),
     });
-  }, [deleteMutation, queryClient]);
+  }, [deleteMutation]);
 
   return (
     <>

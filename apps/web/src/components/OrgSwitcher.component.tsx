@@ -3,7 +3,6 @@ import React from "react";
 import ListSubheader from "@mui/material/ListSubheader";
 
 import { MenuItem } from "@portalai/core/ui";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk } from "../api/sdk";
 
@@ -90,21 +89,16 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
 export const OrgSwitcher: React.FC<
   Pick<OrgSwitcherUIProps, "autoFocus" | "tabIndex">
 > = (menuFocus) => {
-  const queryClient = useQueryClient();
   const { data } = sdk.organizations.memberships();
   const { mutate, isPending } = sdk.organizations.switch();
 
   const memberships = data?.memberships ?? [];
 
   const handleSwitch = (organizationId: string) => {
-    mutate(
-      { organizationId },
-      {
-        onSuccess: () => {
-          void queryClient.invalidateQueries();
-        },
-      }
-    );
+    // All cached data is org-scoped. The empty key is a prefix of every
+    // query key, so this refreshes everything, like a bare
+    // `invalidateQueries()`.
+    mutate({ organizationId }, { invalidate: [[]] });
   };
 
   return (

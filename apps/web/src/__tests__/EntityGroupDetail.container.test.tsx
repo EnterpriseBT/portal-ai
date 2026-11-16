@@ -41,7 +41,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
         target[key] ?? domain(),
     }
   ),
-  queryKeys: new Proxy({}, { get: () => ({ root: ["root"] }) }),
+  queryKeys: new Proxy(
+    {},
+    { get: () => ({ root: ["root"], get: (id: string) => ["get", id] }) }
+  ),
 }));
 
 const { render, screen } = await import("./test-utils");

@@ -14,7 +14,6 @@ import {
   Stack,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { DefaultStationMeta } from "../components/DefaultStationMeta.component";
@@ -101,8 +100,6 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const StationsView: React.FC = () => {
-  const queryClient = useQueryClient();
-
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingStation, setDeletingStation] = useState<Station | null>(null);
@@ -117,14 +114,6 @@ export const StationsView: React.FC = () => {
   const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
   const setDefaultMutation = sdk.stations.setDefault(orgId);
 
-  const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-  }, [queryClient]);
-
-  const invalidateOrg = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.organizations.root });
-  }, [queryClient]);
-
   // Create
   const handleOpenCreate = useCallback(() => {
     setCreateOpen(true);
@@ -137,17 +126,12 @@ export const StationsView: React.FC = () => {
   const handleCreateSubmit = useCallback(
     (body: CreateStationBody) => {
       createMutation.mutate(body, {
-        onSuccess: () => {
-          handleCreateClose();
-          invalidate();
-          // #674: a create can attach views.
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.curatedViews.root,
-          });
-        },
+        // #674: a create can attach views.
+        invalidate: [queryKeys.stations.root, queryKeys.curatedViews.root],
+        onSuccess: handleCreateClose,
       });
     },
-    [createMutation, handleCreateClose, invalidate, queryClient]
+    [createMutation, handleCreateClose]
   );
 
   // Set as default
@@ -155,14 +139,10 @@ export const StationsView: React.FC = () => {
     (station: Station) => {
       setDefaultMutation.mutate(
         { defaultStationId: station.id },
-        {
-          onSuccess: () => {
-            invalidateOrg();
-          },
-        }
+        { invalidate: [queryKeys.organizations.root] }
       );
     },
-    [setDefaultMutation, invalidateOrg]
+    [setDefaultMutation]
   );
 
   // Delete
@@ -178,22 +158,14 @@ export const StationsView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        handleDeleteClose();
-        invalidate();
-        invalidateOrg();
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
-      },
+      invalidate: [
+        queryKeys.stations.root,
+        queryKeys.organizations.root,
+        queryKeys.portalResults.root,
+      ],
+      onSuccess: handleDeleteClose,
     });
-  }, [
-    deleteMutation,
-    handleDeleteClose,
-    invalidate,
-    invalidateOrg,
-    queryClient,
-  ]);
+  }, [deleteMutation, handleDeleteClose]);
 
   return (
     <>

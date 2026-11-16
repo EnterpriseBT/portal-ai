@@ -43,7 +43,6 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 const { render, screen, waitFor } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { QueryClient } = await import("@tanstack/react-query");
 const { queryKeys } = await import("../api/keys");
 const { ApiError } = await import("../utils/api.util");
 const { SettingsView } = await import("../views/Settings.view");
@@ -135,10 +134,8 @@ beforeEach(() => {
   });
 });
 
-const openOrganizationTab = async (
-  queryClient?: InstanceType<typeof QueryClient>
-) => {
-  render(<SettingsView />, queryClient ? { queryClient } : undefined);
+const openOrganizationTab = async () => {
+  render(<SettingsView />);
   await userEvent.click(screen.getByRole("tab", { name: "Organization" }));
 };
 
@@ -164,9 +161,7 @@ describe("SettingsView — Rename organization (#907)", () => {
   });
 
   it("submits the new name, invalidates organizations.root and closes", async () => {
-    const queryClient = new QueryClient();
-    const invalidate = jest.spyOn(queryClient, "invalidateQueries");
-    await openOrganizationTab(queryClient);
+    await openOrganizationTab();
     await userEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(mockReset).toHaveBeenCalled();
 
@@ -174,17 +169,16 @@ describe("SettingsView — Rename organization (#907)", () => {
     await userEvent.type(renameField(), "Acme Industries{Enter}");
 
     await waitFor(() =>
+      // #985: the refresh is the call's `invalidate` option, which runs
+      // from the request even if the page unmounts.
       expect(mockMutate).toHaveBeenCalledWith(
         { name: "Acme Industries" },
-        expect.objectContaining({ onSuccess: expect.any(Function) })
+        expect.objectContaining({
+          invalidate: [queryKeys.organizations.root, queryKeys.auditLog.root],
+          onSuccess: expect.any(Function),
+        })
       )
     );
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.organizations.root,
-    });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.auditLog.root,
-    });
     await waitFor(() =>
       expect(screen.queryByText("Rename organization")).toBeNull()
     );

@@ -216,14 +216,9 @@ export const SettingsView = () => {
     renameMutation.mutate(
       { name },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.organizations.root,
-          });
-          // The rename is recorded in Settings → Activity.
-          queryClient.invalidateQueries({ queryKey: queryKeys.auditLog.root });
-          setRenameDialogOpen(false);
-        },
+        // The rename is recorded in Settings → Activity.
+        invalidate: [queryKeys.organizations.root, queryKeys.auditLog.root],
+        onSuccess: () => setRenameDialogOpen(false),
       }
     );
 

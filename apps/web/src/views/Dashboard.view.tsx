@@ -104,14 +104,14 @@ export const DashboardView: React.FC = () => {
   const handleCreateSubmit = useCallback(
     (body: CreatePortalBody) => {
       createMutation.mutate(body, {
+        invalidate: [queryKeys.portals.root],
         onSuccess: (data) => {
           handleCreateClose();
-          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
           navigate({ to: `/portals/${data.portal.id}` });
         },
       });
     },
-    [createMutation, handleCreateClose, queryClient, navigate]
+    [createMutation, handleCreateClose, navigate]
   );
 
   // ── Delete portal ───────────────────────────────────────────
@@ -143,15 +143,10 @@ export const DashboardView: React.FC = () => {
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     deletePortal(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
-        setDeleteTarget(null);
-      },
+      invalidate: [queryKeys.portals.root, queryKeys.portalResults.root],
+      onSuccess: () => setDeleteTarget(null),
     });
-  }, [deleteTarget, deletePortal, queryClient]);
+  }, [deleteTarget, deletePortal]);
 
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
   // SDK; failures raise a persistent toast with Retry (Toast Pattern).

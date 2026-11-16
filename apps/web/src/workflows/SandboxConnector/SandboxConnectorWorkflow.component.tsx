@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import TextField from "@mui/material/TextField";
 import { ConnectorInstanceCreateRequestBodySchema } from "@portalai/core/contracts";
 import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { FormAlert } from "../../components/FormAlert.component";
@@ -109,7 +108,6 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   organizationId,
   connectorDefinitionId,
 }) => {
-  const queryClient = useQueryClient();
   const createMutation = sdk.connectorInstances.create();
 
   const [name, setName] = useState("Sandbox");
@@ -164,10 +162,8 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     }
 
     createMutation.mutate(result.data, {
+      invalidate: [queryKeys.connectorInstances.root],
       onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.connectorInstances.root,
-        });
         setName("Sandbox");
         setErrors({});
         setTouched(false);

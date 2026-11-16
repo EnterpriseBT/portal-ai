@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 
 import TextField from "@mui/material/TextField";
-import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Button,
@@ -166,7 +165,6 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
   const update = sdk.groups.update(group?.id ?? "");
   const setMembers = sdk.groups.setMembers();
   const toast = useToast();
-  const queryClient = useQueryClient();
   // Seed the Members field from the fetched membership once per open, so a later
   // user edit isn't clobbered when the query resolves.
   const membersSeededRef = React.useRef(false);
@@ -197,8 +195,7 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
 
   const upsert = group ? update : create;
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.groups.root });
+  const finish = () => {
     toast.success(group ? "Group updated" : "Group created");
     onClose();
   };
@@ -207,6 +204,8 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
     upsert.mutate(
       { name: name.trim(), description: description || null, policyIds },
       {
+        // #985: the refresh runs from the request, even if the page unmounts.
+        invalidate: [queryKeys.groups.root],
         onSuccess: (data) => {
           // Only (re)write membership when `memberIds` is authoritative: on create
           // always; on edit only after the roster has actually seeded (#637). If a
@@ -216,11 +215,14 @@ export const GroupEditorDialog: React.FC<GroupEditorDialogProps> = ({
           // leaves membership untouched; the name/policy update still lands.
           if (!group || membersSeededRef.current) {
             setMembers
-              .mutateAsync({ id: data.group.id, userIds: memberIds })
-              .then(invalidate)
-              .catch(() => invalidate());
+              .mutateAsync(
+                { id: data.group.id, userIds: memberIds },
+                { invalidate: [queryKeys.groups.root] }
+              )
+              .then(finish)
+              .catch(() => finish());
           } else {
-            invalidate();
+            finish();
           }
         },
       }

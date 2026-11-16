@@ -19,7 +19,6 @@ import {
 } from "@portalai/core/ui";
 import type { ActionGate } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import {
@@ -171,7 +170,6 @@ export const ColumnDefinitionListViewUI: React.FC<
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const ColumnDefinitionListView: React.FC = () => {
-  const queryClient = useQueryClient();
   // #708: Create decides from the create route's own check.
   const createGate = useCreateGate(
     "column_definition",
@@ -193,15 +191,11 @@ export const ColumnDefinitionListView: React.FC = () => {
   const handleCreateSubmit = useCallback(
     (body: ColumnDefinitionCreateRequestBody) => {
       createMutation.mutate(body, {
-        onSuccess: () => {
-          handleCreateClose();
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.columnDefinitions.root,
-          });
-        },
+        invalidate: [queryKeys.columnDefinitions.root],
+        onSuccess: handleCreateClose,
       });
     },
-    [createMutation, handleCreateClose, queryClient]
+    [createMutation, handleCreateClose]
   );
 
   // Delete
@@ -224,14 +218,10 @@ export const ColumnDefinitionListView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        handleDeleteClose();
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.columnDefinitions.root,
-        });
-      },
+      invalidate: [queryKeys.columnDefinitions.root],
+      onSuccess: handleDeleteClose,
     });
-  }, [deleteMutation, handleDeleteClose, queryClient]);
+  }, [deleteMutation, handleDeleteClose]);
 
   return (
     <>

@@ -85,27 +85,20 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
       renameMutation.mutate(
         { name },
         {
-          onSuccess: () => {
-            setRenameOpen(false);
-            queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-          },
+          invalidate: [queryKeys.portals.root],
+          onSuccess: () => setRenameOpen(false),
         }
       );
     },
-    [renameMutation, queryClient]
+    [renameMutation]
   );
 
   const handleDeleteConfirm = useCallback(() => {
     removeMutation.mutate(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
-        navigate({ to: "/" });
-      },
+      invalidate: [queryKeys.portals.root, queryKeys.portalResults.root],
+      onSuccess: () => navigate({ to: "/" }),
     });
-  }, [removeMutation, queryClient, navigate]);
+  }, [removeMutation, navigate]);
 
   return (
     <Box display="flex" flexDirection="column" flex={1} minHeight={0}>
