@@ -41,6 +41,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
+import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
 
@@ -121,12 +122,9 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleDeleteStation = useCallback(() => {
     deleteStationMutation.mutate(undefined, {
-      // A station's portals and their pins go with it (cascade).
-      invalidate: [
-        queryKeys.stations.root,
-        queryKeys.portals.root,
-        queryKeys.portalResults.root,
-      ],
+      // Its portals go with it, their pins lose their portal link, and the
+      // org's default station may have been this one (#1041).
+      invalidate: stationDeleteKeys(),
       // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
       // job lock) must surface as a toast rather than fail silently (#621).
       toast: { error: "Could not delete this station." },

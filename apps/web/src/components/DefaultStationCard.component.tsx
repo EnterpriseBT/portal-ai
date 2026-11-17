@@ -26,6 +26,7 @@ import {
 } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
+import { isStationUnavailable } from "../utils/portal-station.util";
 
 // ── Station data fetch ──────────────────────────────────────────────
 
@@ -178,22 +179,33 @@ export const DefaultStationCardConnected: React.FC<
 
             return (
               <StationData id={defaultStationId}>
-                {(stationResult) => (
-                  <DataResult results={{ station: stationResult }}>
-                    {(stationData) => {
-                      const payload =
-                        stationData.station as unknown as StationGetResponsePayload;
-                      return (
-                        <DefaultStationCardUI
-                          station={payload.station}
-                          onLaunchPortal={onLaunchPortal}
-                          onChangeDefault={onChangeDefault}
-                          entitledBuiltinSlugs={entitledBuiltinSlugs}
-                        />
-                      );
-                    }}
-                  </DataResult>
-                )}
+                {(stationResult) =>
+                  // #1041: the org's id can outlive the station for this
+                  // viewer (deleted elsewhere, or not shared with them). That
+                  // is "no default station", not an error.
+                  isStationUnavailable(stationResult.error) ? (
+                    <DefaultStationCardUI
+                      station={null}
+                      onLaunchPortal={onLaunchPortal}
+                      onChangeDefault={onChangeDefault}
+                    />
+                  ) : (
+                    <DataResult results={{ station: stationResult }}>
+                      {(stationData) => {
+                        const payload =
+                          stationData.station as unknown as StationGetResponsePayload;
+                        return (
+                          <DefaultStationCardUI
+                            station={payload.station}
+                            onLaunchPortal={onLaunchPortal}
+                            onChangeDefault={onChangeDefault}
+                            entitledBuiltinSlugs={entitledBuiltinSlugs}
+                          />
+                        );
+                      }}
+                    </DataResult>
+                  )
+                }
               </StationData>
             );
           }}

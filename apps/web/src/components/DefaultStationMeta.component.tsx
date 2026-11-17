@@ -11,31 +11,51 @@ import { Link } from "@tanstack/react-router";
 import DataResult from "./DataResult.component";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
+import { isStationUnavailable } from "../utils/portal-station.util";
 
-// ── Station name link ──────────────────────────────────────────────
+// ── The default station's line ─────────────────────────────────────
 
-interface StationNameLinkProps {
+interface DefaultStationLineProps {
   stationId: string;
 }
 
-const StationNameLink: React.FC<StationNameLinkProps> = ({ stationId }) => {
+const DefaultStationLine: React.FC<DefaultStationLineProps> = ({
+  stationId,
+}) => {
   const result = sdk.stations.get(stationId);
 
+  // #1041: the org's id can outlive the station for this viewer. It was
+  // deleted in another tab or by another member (the delete refreshes the
+  // org only in the session that ran it), or it isn't shared with them: an
+  // unreadable station answers 404 like a missing one. Either way they have
+  // no default station to show, which is not an error.
+  if (isStationUnavailable(result.error)) return null;
+
   return (
-    <DataResult results={{ station: result }}>
-      {(data) => {
-        const payload = data.station as unknown as StationGetResponsePayload;
-        return (
-          <MuiLink
-            component={Link}
-            to={`/stations/${payload.station.id}`}
-            variant="body2"
-          >
-            {payload.station.name}
-          </MuiLink>
-        );
-      }}
-    </DataResult>
+    <MetadataList
+      items={[
+        {
+          label: "Default Station",
+          value: (
+            <DataResult results={{ station: result }}>
+              {(data) => {
+                const payload =
+                  data.station as unknown as StationGetResponsePayload;
+                return (
+                  <MuiLink
+                    component={Link}
+                    to={`/stations/${payload.station.id}`}
+                    variant="body2"
+                  >
+                    {payload.station.name}
+                  </MuiLink>
+                );
+              }}
+            </DataResult>
+          ),
+        },
+      ]}
+    />
   );
 };
 
@@ -51,16 +71,7 @@ export const DefaultStationMeta: React.FC = () => (
 
           if (!defaultStationId) return null;
 
-          return (
-            <MetadataList
-              items={[
-                {
-                  label: "Default Station",
-                  value: <StationNameLink stationId={defaultStationId} />,
-                },
-              ]}
-            />
-          );
+          return <DefaultStationLine stationId={defaultStationId} />;
         }}
       </DataResult>
     )}

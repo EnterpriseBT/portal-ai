@@ -30,13 +30,15 @@ const failedUpdate = () => ({
 });
 
 const mockStationsGet = jest.fn();
+// #1041: the delete's refresh list, read off the call.
+const mockDeleteMutate = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     stations: {
       get: mockStationsGet,
       update: failedUpdate,
-      delete: mutation,
+      delete: () => ({ ...mutation(), mutate: mockDeleteMutate }),
     },
     portals: {
       list: () => result({ portals: [], total: 0, limit: 10, offset: 0 }),
@@ -190,5 +192,50 @@ describe("StationDetailView — a failed edit doesn't follow the dialog (#789)",
     );
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mockUpdateReset).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #1041: deleting the default station from its own page left the cached org
+// pointing at it, and the Stations page showed "Station not found". The
+// delete must refresh the organization along with what cascades.
+describe("StationDetailView — delete refreshes the organization (#1041)", () => {
+  beforeEach(() => {
+    mockStationsGet.mockReset();
+    mockDeleteMutate.mockReset();
+  });
+
+  it("passes the organization among the keys the delete invalidates", async () => {
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          instances: [],
+          views: [],
+          capabilities: { read: true, write: true, delete: true, share: true },
+        },
+      })
+    );
+    const user = userEvent.setup();
+    render(<StationDetailView stationId="st-1" />);
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    const { within } = await import("@testing-library/react");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(mockDeleteMutate).toHaveBeenCalledTimes(1);
+    const [, options] = mockDeleteMutate.mock.calls[0] as [
+      unknown,
+      { invalidate: unknown[] },
+    ];
+    expect(options.invalidate).toEqual(
+      expect.arrayContaining([
+        ["stations"],
+        ["portals"],
+        ["portalResults"],
+        ["organizations"],
+      ])
+    );
   });
 });

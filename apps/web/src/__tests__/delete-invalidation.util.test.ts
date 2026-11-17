@@ -16,6 +16,7 @@ import { queryKeys } from "../api/keys";
 import {
   connectorInstanceDeleteKeys,
   connectorEntityDeleteKeys,
+  stationDeleteKeys,
 } from "../utils/delete-invalidation.util";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,12 +50,39 @@ describe("connectorEntityDeleteKeys", () => {
   });
 });
 
+// #1041: the station page's delete had its own copy of this list, without the
+// organization. Deleting the default station there left the cached org
+// pointing at it, and the Stations page showed "Station not found" until a
+// reload.
+describe("stationDeleteKeys", () => {
+  it("refreshes the station, its portals and pins, and the organization", () => {
+    expect(stationDeleteKeys()).toEqual(
+      expect.arrayContaining([
+        queryKeys.stations.root,
+        queryKeys.portals.root,
+        queryKeys.portalResults.root,
+        queryKeys.organizations.root,
+      ])
+    );
+  });
+
+  // The delete unlinks the station's connectors, and a connector's delete
+  // dialog counts the stations it would unlink.
+  it("refreshes connector instances, whose station counts change", () => {
+    expect(stationDeleteKeys()).toContainEqual(
+      queryKeys.connectorInstances.root
+    );
+  });
+});
+
 describe("delete calls invalidate through the shared keys", () => {
   it.each([
     ["views/Connector.view.tsx", "connectorInstanceDeleteKeys"],
     ["views/ConnectorInstance.view.tsx", "connectorInstanceDeleteKeys"],
     ["views/Entities.view.tsx", "connectorEntityDeleteKeys"],
     ["views/EntityDetail.view.tsx", "connectorEntityDeleteKeys"],
+    ["views/Stations.view.tsx", "stationDeleteKeys"],
+    ["views/StationDetail.view.tsx", "stationDeleteKeys"],
   ])("%s calls %s", (file, helper) => {
     const source = readFileSync(join(here, "..", file), "utf8");
     expect(source).toContain(`invalidate: ${helper}()`);
