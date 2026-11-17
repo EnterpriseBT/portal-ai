@@ -35,6 +35,34 @@ const defaultProps = {
   serverError: null,
 };
 
+type StationProp = Parameters<typeof EditStationDialog>[0]["station"];
+
+const rename = (to: string) =>
+  fireEvent.change(screen.getByLabelText(/Name/), { target: { value: to } });
+
+/**
+ * Open the dialog on `opened`, let the page refetch `after` behind it, run
+ * this editor's `edit`, save, and return the body sent. A refetch reaches the
+ * open dialog as a new `station` prop.
+ */
+const saveAfterRefetch = async (
+  opened: StationProp,
+  after: StationProp,
+  edit: () => void
+) => {
+  const onSubmit = jest.fn();
+  const { rerender } = render(
+    <EditStationDialog {...defaultProps} station={opened} onSubmit={onSubmit} />
+  );
+  rerender(
+    <EditStationDialog {...defaultProps} station={after} onSubmit={onSubmit} />
+  );
+  edit();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  return onSubmit.mock.calls[0][0];
+};
+
 describe("EditStationDialog", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -395,32 +423,22 @@ describe("EditStationDialog — description (#848)", () => {
   // refetch while it was open made an untouched field read as edited, and
   // saving sent the old text back over someone else's change.
   it("doesn't send a description another editor changed while the dialog was open", async () => {
-    const onSubmit = jest.fn();
-    const { rerender } = render(
-      <EditStationDialog {...defaultProps} onSubmit={onSubmit} />
+    const body = await saveAfterRefetch(
+      sampleStation,
+      {
+        ...sampleStation,
+        name: "Renamed elsewhere",
+        description: "Changed elsewhere",
+      },
+      () => {
+        // The field still shows what the dialog opened with, untouched.
+        expect(screen.getByLabelText("Description")).toHaveValue(
+          "Sales data analysis station"
+        );
+        rename("Mine");
+      }
     );
-    rerender(
-      <EditStationDialog
-        {...defaultProps}
-        onSubmit={onSubmit}
-        station={{
-          ...sampleStation,
-          name: "Renamed elsewhere",
-          description: "Changed elsewhere",
-        }}
-      />
-    );
-    // The field still shows what the dialog opened with, untouched.
-    expect(screen.getByLabelText("Description")).toHaveValue(
-      "Sales data analysis station"
-    );
-    fireEvent.change(screen.getByLabelText(/Name/), {
-      target: { value: "Mine" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ name: "Mine" })
-    );
+    expect(body).toEqual({ name: "Mine" });
   });
 
   it("treats a stored name with surrounding whitespace as unchanged", () => {
@@ -584,29 +602,16 @@ describe("EditStationDialog — another editor's changes while open (#1043)", ()
   };
 
   /** Open on `opened`, let the page refetch `after`, then save a new name. */
-  const renameAfterRefetch = async (after: typeof opened) => {
-    const onSubmit = jest.fn();
-    const { rerender } = render(
-      <EditStationDialog
-        {...defaultProps}
-        station={opened}
-        onSubmit={onSubmit}
-      />
-    );
-    rerender(
-      <EditStationDialog
-        {...defaultProps}
-        station={after}
-        onSubmit={onSubmit}
-      />
-    );
-    fireEvent.change(screen.getByLabelText(/Name/), {
-      target: { value: "Mine" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    return onSubmit.mock.calls[0][0];
+  const renameAfterRefetch = (after: typeof opened) =>
+    saveAfterRefetch(opened, after, () => rename("Mine"));
+
+  const removeChip = (label: string | RegExp) => {
+    const chip = screen.getByText(label).closest(".MuiChip-root")!;
+    fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
   };
+  // A view's chip shows its id until the picker's label search resolves,
+  // which it doesn't here: match either.
+  const viewChip = (id: string) => new RegExp(`^(View )?${id}$`);
 
   it("doesn't put back a tool pack another editor removed", async () => {
     const body = await renameAfterRefetch({
@@ -639,6 +644,52 @@ describe("EditStationDialog — another editor's changes while open (#1043)", ()
       views: [...opened.views, view("cv-3")],
     });
     expect(body).toEqual({ name: "Mine" });
+  });
+
+  it("doesn't drop a tool pack another editor added", async () => {
+    const body = await renameAfterRefetch({
+      ...opened,
+      enabledToolpacks: [...opened.enabledToolpacks, "web_search"],
+    });
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  // Code review: packs were compared in order. Removing one and adding it
+  // back leaves the same packs in a different order, which read as an edit
+  // and sent the list the dialog opened with.
+  it("doesn't count the same packs in a different order as a pack edit", async () => {
+    const body = await saveAfterRefetch(
+      opened,
+      { ...opened, enabledToolpacks: ["data_query"] },
+      () => {
+        removeChip("Data Query");
+        const packs = screen.getByRole("combobox", { name: /Tool Packs/ });
+        fireEvent.mouseDown(packs);
+        fireEvent.click(screen.getByRole("option", { name: /Data Query/ }));
+        rename("Mine");
+      }
+    );
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  // A real edit after the station changed underneath sends this editor's
+  // own change and nothing else.
+  it("sends only this editor's own detach when another editor attached a view", async () => {
+    const body = await saveAfterRefetch(
+      opened,
+      { ...opened, views: [...opened.views, view("cv-3")] },
+      () => removeChip(viewChip("cv-1"))
+    );
+    expect(body).toEqual({ curatedViewChanges: { remove: ["cv-1"] } });
+  });
+
+  it("sends only this editor's own detach when another editor detached a different view", async () => {
+    const body = await saveAfterRefetch(
+      opened,
+      { ...opened, views: [view("cv-1")] },
+      () => removeChip(viewChip("cv-1"))
+    );
+    expect(body).toEqual({ curatedViewChanges: { remove: ["cv-1"] } });
   });
 
   it("closes without submitting when nothing was edited, whatever changed behind it", () => {

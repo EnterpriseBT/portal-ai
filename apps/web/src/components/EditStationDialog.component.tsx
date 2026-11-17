@@ -104,6 +104,16 @@ interface OriginalStation {
   /** #674: only the connectors and views the viewer can read. */
   connectorInstanceIds: string[];
   curatedViewIds: string[];
+  /** Labels for the attached views' chips, by view id. */
+  viewLabels: Record<string, string>;
+}
+
+/** Whether two lists hold the same members, in any order. Removing a pack
+ *  and adding it back reorders the list without changing it. */
+function sameMembers(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const members = new Set(a);
+  return b.every((value) => members.has(value));
 }
 
 /** Whether a text field was edited. Both sides are trimmed: what is sent is
@@ -197,39 +207,40 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   serverError,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
-  // #674: the pickers hold only what the viewer can read. Attachments they
-  // can't read aren't theirs to remove, and the dialog only ever sends what
-  // changed among the readable ones (see attachmentChanges).
-  const readableViews = (station.views ?? []).filter((v) => v.canRead);
-  // Seeded once: the dialog remounts per station, and a stable object keeps
-  // the picker from re-searching on every render.
-  const [viewLabels] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      readableViews.map((v) => [
-        v.curatedViewId,
-        v.curatedView?.label ?? v.curatedViewId,
-      ])
-    )
-  );
   // The dialog is mounted only while open, so this is the station as the
-  // dialog opened on it. #848: a station with no description edits as an
-  // empty field, and leaving it empty is not a change.
-  const [original] = useState<OriginalStation>(() => ({
-    name: station.name,
-    description: station.description ?? "",
-    toolPacks: [...(station.enabledToolpacks ?? [])],
-    connectorInstanceIds: (station.instances ?? [])
-      .filter((i) => i.canRead)
-      .map((i) => i.connectorInstanceId),
-    curatedViewIds: readableViews.map((v) => v.curatedViewId),
-  }));
-  const [form, setForm] = useState<FormState>({
+  // dialog opened on it, and the only place the dialog reads `station`.
+  const [original] = useState<OriginalStation>(() => {
+    // #674: the pickers hold only what the viewer can read. Attachments they
+    // can't read aren't theirs to remove, and the dialog only ever sends
+    // what changed among the readable ones (see attachmentChanges).
+    const readableViews = (station.views ?? []).filter((v) => v.canRead);
+    return {
+      name: station.name,
+      // #848: a station with no description edits as an empty field, and
+      // leaving it empty is not a change.
+      description: station.description ?? "",
+      toolPacks: station.enabledToolpacks ?? [],
+      connectorInstanceIds: (station.instances ?? [])
+        .filter((i) => i.canRead)
+        .map((i) => i.connectorInstanceId),
+      curatedViewIds: readableViews.map((v) => v.curatedViewId),
+      // Held here so the object is stable: the view picker re-searches when
+      // its labels change identity.
+      viewLabels: Object.fromEntries(
+        readableViews.map((v) => [
+          v.curatedViewId,
+          v.curatedView?.label ?? v.curatedViewId,
+        ])
+      ),
+    };
+  });
+  const [form, setForm] = useState<FormState>(() => ({
     name: original.name,
     description: original.description,
-    toolPacks: [...original.toolPacks],
-    connectorInstanceIds: [...original.connectorInstanceIds],
-    curatedViewIds: [...original.curatedViewIds],
-  });
+    toolPacks: original.toolPacks,
+    connectorInstanceIds: original.connectorInstanceIds,
+    curatedViewIds: original.curatedViewIds,
+  }));
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const nameRef = useDialogAutoFocus(open);
@@ -295,7 +306,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (descriptionChanged(form, original)) {
       body.description = form.description.trim();
     }
-    if (JSON.stringify(form.toolPacks) !== JSON.stringify(original.toolPacks)) {
+    if (!sameMembers(form.toolPacks, original.toolPacks)) {
       body.toolPacks = form.toolPacks;
     }
     const connectorChanges = attachmentChanges(
@@ -421,7 +432,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
         <CuratedViewPicker
           selected={form.curatedViewIds}
           onChange={(ids) => handleChange("curatedViewIds", ids)}
-          selectedLabels={viewLabels}
+          selectedLabels={original.viewLabels}
         />
         <FormAlert serverError={serverError} />
       </Stack>
