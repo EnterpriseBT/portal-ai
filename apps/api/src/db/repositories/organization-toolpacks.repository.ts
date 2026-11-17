@@ -298,6 +298,33 @@ export class OrganizationToolpacksRepository extends Repository<
   }
 
   /**
+   * #1045: the names of an org's live toolpacks among `ids`, and nothing
+   * else. For a caller that only needs to name a pack (one the plan
+   * excludes, say): it selects two columns, so the encrypted credential
+   * columns are never read or decrypted.
+   */
+  async findNamesByIds(
+    ids: string[],
+    options: { organizationId: string },
+    client: DbClient = db
+  ): Promise<{ id: string; name: string }[]> {
+    if (ids.length === 0) return [];
+    return (client as typeof db)
+      .select({
+        id: organizationToolpacks.id,
+        name: organizationToolpacks.name,
+      })
+      .from(organizationToolpacks)
+      .where(
+        and(
+          inArray(organizationToolpacks.id, ids),
+          eq(organizationToolpacks.organizationId, options.organizationId),
+          isNull(organizationToolpacks.deleted)
+        )
+      );
+  }
+
+  /**
    * Look up a toolpack by id, optionally constrained to an org.
    * Soft-deleted rows are excluded.
    */

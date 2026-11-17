@@ -93,6 +93,13 @@ export interface StationContext {
    * naming them would describe nothing.
    */
   customToolPacks?: CustomPackSummary[];
+  /**
+   * #1045: names of the custom packs attached to this station that the plan
+   * excludes. Their tools don't exist in the session and they are not in
+   * `customToolPacks`; they are named in "Not Included In This Plan" so the
+   * agent can say the plan is why. Absent or empty names nothing.
+   */
+  excludedCustomToolPacks?: string[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -896,10 +903,16 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     (stationContext.customToolPacks ?? []).length > 0
   );
   const missing = forData ? gaps.missing : null;
+  const excludedCustomPacks = stationContext.excludedCustomToolPacks ?? [];
   if (!forData) {
     lines.push(
-      "_This station has no tool pack that reads or writes entity data. That " +
-        "is how it is set up, not a fault._"
+      // #1045: with a custom pack the plan excludes attached, the plan is
+      // part of why, so this doesn't say the station was set up this way.
+      excludedCustomPacks.length > 0
+        ? "_This station has no tool pack in this session that reads or " +
+            "writes entity data._"
+        : "_This station has no tool pack that reads or writes entity " +
+            "data. That is how it is set up, not a fault._"
     );
     lines.push(
       // The station's page tells the user "Attach a view to query entity
@@ -1145,7 +1158,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // What the plan excludes (#284). Configured-but-unentitled packs are named
   // here so the agent can distinguish a plan limit from a product gap, and
   // never has to infer it from the absence of a tool.
-  if (stationContext.unentitledToolPacks.length > 0) {
+  if (
+    stationContext.unentitledToolPacks.length > 0 ||
+    excludedCustomPacks.length > 0
+  ) {
     lines.push("## Not Included In This Plan");
     lines.push("");
     lines.push(
@@ -1165,6 +1181,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         section
           ? `- \`${slug}\` — would let you **${section.capability}**`
           : `- \`${slug}\``
+      );
+    }
+    // #1045: a custom pack has no declared capability to name, so it is
+    // listed by its registered name. Before this it was invisible here, and
+    // the agent answered as if the pack weren't attached.
+    for (const name of excludedCustomPacks) {
+      lines.push(
+        `- \`${name}\` — a tool pack your organization registered; the ` +
+          "plan doesn't include organization-registered tool packs"
       );
     }
     lines.push("");

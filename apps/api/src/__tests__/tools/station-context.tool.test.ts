@@ -82,6 +82,7 @@ const mockResolveStationPacks = jest.fn<
       description: string | null;
       toolNames: string[];
     }[];
+    excludedCustomPacks?: string[];
     tier: string;
   }>
 >();
@@ -246,6 +247,7 @@ describe("StationContextTool", () => {
     mockResolveStationPacks.mockImplementation(async () => ({
       ...(await mockSplitBuiltinPacks()),
       customPacks: [],
+      excludedCustomPacks: [],
     }));
     mockFindColumnDefs.mockResolvedValue([
       {
@@ -563,6 +565,7 @@ describe("StationContextTool", () => {
       unentitled: ["entity_management"],
       // #306 added `custom`; empty here since no custom pack is attached.
       custom: [],
+      customNotInPlan: [],
     });
   });
 
@@ -572,7 +575,25 @@ describe("StationContextTool", () => {
       effective: ["data_query", "statistics"],
       unentitled: [],
       custom: [],
+      customNotInPlan: [],
     });
+  });
+
+  // #1045: a custom pack the plan excludes is reported by name, apart from
+  // the live `custom` packs.
+  it("reports custom packs the plan excludes as customNotInPlan", async () => {
+    mockResolveStationPacks.mockResolvedValueOnce({
+      effective: ["rbac_management"],
+      unentitled: [],
+      customPacks: [],
+      excludedCustomPacks: ["acme"],
+      tier: "standard",
+    });
+    const result = (await exec()) as {
+      toolPacks: { custom: unknown[]; customNotInPlan: string[] };
+    };
+    expect(result.toolPacks.custom).toEqual([]);
+    expect(result.toolPacks.customNotInPlan).toEqual(["acme"]);
   });
 
   // ── Custom packs in the inventory (#306) ───────────────────────────

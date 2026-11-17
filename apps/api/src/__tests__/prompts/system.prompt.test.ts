@@ -1810,3 +1810,104 @@ describe("buildSystemPrompt — Access & Roles notes (#615)", () => {
     expect(prompt).toContain("sharing of stations, pins and curated views");
   });
 });
+
+// #1045: a custom pack the plan excludes was invisible to the assistant, so
+// "why did the acme tools stop working?" was answered as if the pack weren't
+// attached. It is now named in the plan-limit section, like a built-in pack
+// the plan excludes.
+describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => {
+  const planSection = (prompt: string) => {
+    const start = prompt.indexOf("## Not Included In This Plan");
+    return start < 0
+      ? ""
+      : prompt.slice(start, prompt.indexOf("\n## ", start + 4));
+  };
+
+  it("names it in the plan-limit section, with no built-in pack excluded", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["rbac_management"],
+        unentitledToolPacks: [],
+        excludedCustomToolPacks: ["acme"],
+      })
+    );
+    const section = planSection(prompt);
+    expect(section).toContain(
+      "- `acme` — a tool pack your organization registered"
+    );
+    // The section's standing instruction applies to it.
+    expect(section).toContain("the plan is the reason");
+    expect(section).toContain("Settings → Subscription & Billing");
+  });
+
+  it("lists it beside an excluded built-in pack", () => {
+    const section = planSection(
+      buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ["data_query"],
+          unentitledToolPacks: ["gis"],
+          excludedCustomToolPacks: ["acme", "crm"],
+        })
+      )
+    );
+    expect(section).toContain("- `gis` — would let you");
+    expect(section).toContain("- `acme` —");
+    expect(section).toContain("- `crm` —");
+  });
+
+  it("never lists it among the organization's callable tools", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["rbac_management"],
+        customToolPacks: [],
+        excludedCustomToolPacks: ["acme"],
+      })
+    );
+    expect(prompt).not.toContain("## Organization-Provided Tools");
+  });
+
+  it("renders no plan-limit section when nothing is excluded", () => {
+    for (const excludedCustomToolPacks of [undefined, []]) {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ["rbac_management"],
+          unentitledToolPacks: [],
+          excludedCustomToolPacks,
+        })
+      );
+      expect(prompt).not.toContain("## Not Included In This Plan");
+    }
+  });
+
+  // On a station with no data pack the prompt says that is "how it is set
+  // up, not a fault". With an excluded custom pack attached, the plan is
+  // part of why, so the sentence stops short of that.
+  it("doesn't call a station with an excluded custom pack set up that way on purpose", () => {
+    const attachments = {
+      views: { attached: 0, readable: 0 },
+      connectors: { attached: 0, readable: 0 },
+    };
+    const withExcluded = buildSystemPrompt(
+      makeContext({
+        entities: [],
+        effectiveToolPacks: ["rbac_management"],
+        excludedCustomToolPacks: ["acme"],
+        attachments,
+      })
+    );
+    expect(withExcluded).toContain(
+      "_This station has no tool pack in this session that reads or writes " +
+        "entity data._"
+    );
+    expect(withExcluded).not.toContain("That is how it is set up, not a fault");
+
+    const without = buildSystemPrompt(
+      makeContext({
+        entities: [],
+        effectiveToolPacks: ["rbac_management"],
+        attachments,
+      })
+    );
+    expect(without).toContain("That is how it is set up, not a fault");
+  });
+});

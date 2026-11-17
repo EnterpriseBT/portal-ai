@@ -5,13 +5,18 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockFindById_org = jest.fn<() => Promise<unknown>>();
 const mockFindByStationId_packs = jest.fn<() => Promise<unknown[]>>();
 const mockFindManyByIds_customPacks = jest.fn<() => Promise<unknown[]>>();
+// #1045: the names-only read, for packs the plan excludes.
+const mockFindNamesByIds_customPacks = jest.fn<() => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       organizations: { findById: mockFindById_org },
       stationToolpacks: { findByStationId: mockFindByStationId_packs },
-      organizationToolpacks: { findManyByIds: mockFindManyByIds_customPacks },
+      organizationToolpacks: {
+        findManyByIds: mockFindManyByIds_customPacks,
+        findNamesByIds: mockFindNamesByIds_customPacks,
+      },
     },
   },
 }));
@@ -74,6 +79,7 @@ function makePolicy(
 beforeEach(() => {
   jest.clearAllMocks();
   mockFindById_org.mockResolvedValue({ id: ORG_ID, tier: "standard" });
+  mockFindNamesByIds_customPacks.mockResolvedValue([]);
   mockResolveTier.mockResolvedValue(makePolicy());
 });
 
@@ -501,6 +507,7 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
       otherPlanPacks: ["data_query"],
       configuredCustomPackCount: 1,
       customPacksEntitled: true,
+      excludedCustomPacks: [],
       tier: "standard",
     });
     expect(split).not.toHaveProperty("customPacks");
@@ -528,5 +535,80 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
       "rbac_management",
       "view_management",
     ]);
+  });
+});
+
+// #1045: a custom pack the plan excludes builds no tools, so it is left out of
+// `customPacks`. That also left the assistant unable to say why the pack's
+// tools were gone. Its name is reported separately, from a read that doesn't
+// touch the pack's stored credentials.
+describe("EntitlementService — excludedCustomPacks (#1045)", () => {
+  const STATION_ID = "station-1045";
+  const rows = [
+    { builtinSlug: "rbac_management", organizationToolpackId: null },
+    { builtinSlug: null, organizationToolpackId: "otp-1" },
+    { builtinSlug: null, organizationToolpackId: "otp-2" },
+  ];
+  const plan = (customToolpacks: boolean) =>
+    makePolicy({
+      builtinToolpacks: ["data_query", "rbac_management"],
+      customToolpacks,
+      customRbac: false,
+      advancedViewFilters: false,
+    });
+
+  beforeEach(() => {
+    mockFindByStationId_packs.mockResolvedValue(rows);
+    mockFindManyByIds_customPacks.mockResolvedValue([]);
+    mockFindNamesByIds_customPacks.mockResolvedValue([
+      { id: "otp-1", name: "acme" },
+      { id: "otp-2", name: "crm" },
+    ]);
+  });
+
+  it("names the attached custom packs when the plan excludes custom packs", async () => {
+    mockResolveTier.mockResolvedValue(plan(false));
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.excludedCustomPacks).toEqual(["acme", "crm"]);
+    expect(packs.customPacks).toEqual([]);
+    expect(mockFindNamesByIds_customPacks).toHaveBeenCalledWith(
+      ["otp-1", "otp-2"],
+      { organizationId: ORG_ID }
+    );
+    // The decrypting read is never used for them.
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  it("carries them on the split-only read too", async () => {
+    mockResolveTier.mockResolvedValue(plan(false));
+    const split = await EntitlementService.resolveStationPackSplit(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(split.excludedCustomPacks).toEqual(["acme", "crm"]);
+  });
+
+  it("is empty, with no names read, when the plan includes custom packs", async () => {
+    mockResolveTier.mockResolvedValue(plan(true));
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.excludedCustomPacks).toEqual([]);
+    expect(mockFindNamesByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  it("is empty, with no names read, when no custom pack is attached", async () => {
+    mockResolveTier.mockResolvedValue(plan(false));
+    mockFindByStationId_packs.mockResolvedValue([rows[0]]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.excludedCustomPacks).toEqual([]);
+    expect(mockFindNamesByIds_customPacks).not.toHaveBeenCalled();
   });
 });

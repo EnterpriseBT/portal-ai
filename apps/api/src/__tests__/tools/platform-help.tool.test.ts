@@ -32,6 +32,7 @@ const stationPacks = (
     unentitled: string[];
     configuredCustomPackCount: number;
     customPacksEntitled: boolean;
+    excludedCustomPacks: string[];
     tier: string;
   }> = {}
 ) => ({
@@ -40,6 +41,7 @@ const stationPacks = (
   otherPlanPacks: [],
   configuredCustomPackCount: 0,
   customPacksEntitled: false,
+  excludedCustomPacks: [],
   tier: "standard",
   ...over,
 });
@@ -279,6 +281,22 @@ describe("PlatformHelpTool — station situations", () => {
       const { answer } = await exec();
       expect(answer).not.toMatch(/are attached to this station/);
       expect(answer).not.toMatch(/attach the packs for what you want/);
+    });
+
+    // #1045: the plan answer names a custom pack the plan excludes.
+    it("names a custom pack the plan excludes in the plan-limit answer", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: ["rbac_management"],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+          excludedCustomPacks: ["acme"],
+        })
+      );
+      const { answer } = await exec("why did the acme tools stop working");
+      expect(answer).toMatch(/not included in your current plan/);
+      expect(answer).toContain("acme");
     });
 
     // One derivation with the prompt, through the split-only read: the

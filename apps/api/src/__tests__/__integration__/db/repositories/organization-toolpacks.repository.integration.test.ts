@@ -166,6 +166,34 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
     expect(result.map((r) => r.id)).toEqual([ours.id]);
   });
 
+  // #1045: names for packs whose credentials nothing needs.
+  it("findNamesByIds returns id and name for the org's live rows only", async () => {
+    const ours = await repo.create(makeRow() as never, db);
+    const deleted = await repo.create(
+      makeRow({ id: generateId(), name: "gone_pack" }) as never,
+      db
+    );
+    await repo.softDelete(deleted.id, "SYSTEM_TEST", db);
+    const theirs = await repo.create(
+      makeRow({
+        id: generateId(),
+        organizationId: otherOrgId,
+        name: "their_pack",
+      }) as never,
+      db
+    );
+
+    const names = await repo.findNamesByIds(
+      [ours.id, deleted.id, theirs.id],
+      { organizationId: orgId },
+      db
+    );
+    expect(names).toEqual([{ id: ours.id, name: ours.name }]);
+    expect(
+      await repo.findNamesByIds([], { organizationId: orgId }, db)
+    ).toEqual([]);
+  });
+
   // ── authHeaders encryption (phase 5) ─────────────────────────────
 
   /**

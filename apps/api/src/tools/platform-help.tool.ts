@@ -134,6 +134,7 @@ async function gatherFindings(
       unentitled,
       configuredCustomPackCount,
       customPacksEntitled,
+      excludedCustomPacks,
     } = await EntitlementService.resolveStationPackSplit(
       stationId,
       organizationId
@@ -171,7 +172,8 @@ async function gatherFindings(
       available: true,
       hasPacks: builtinSlugs.length > 0 || hasCustomPack,
       usesStationData: usesStationData(builtinSlugs, hasUsableCustomPack),
-      unentitledPacks: unentitled,
+      // #1045: custom packs the plan excludes are a plan limit too.
+      unentitledPacks: [...unentitled, ...excludedCustomPacks],
       entityCount: entityIds.length,
       recordCount,
       attachmentsMissing: gaps.missing,

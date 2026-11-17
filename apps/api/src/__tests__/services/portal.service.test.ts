@@ -926,6 +926,7 @@ describe("PortalService", () => {
         customPacks: [],
         configuredCustomPackCount: 1,
         customPacksEntitled: false,
+        excludedCustomPacks: ["acme"],
         tier: "standard",
       } as never);
 
@@ -940,6 +941,8 @@ describe("PortalService", () => {
       // by the summaries.
       expect(ctx.customToolPacks).toEqual([]);
       expect(ctx).not.toHaveProperty("configuredCustomPackCount");
+      // #1045: its name reaches the prompt's plan-limit section.
+      expect(ctx.excludedCustomToolPacks).toEqual(["acme"]);
     });
 
     it("splits configured packs into effective and unentitled", async () => {

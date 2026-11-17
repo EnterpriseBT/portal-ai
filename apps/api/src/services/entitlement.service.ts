@@ -47,6 +47,13 @@ export interface StationPackSplit extends BuiltinPackSplit {
   /** Whether the plan includes custom packs (#214). When it doesn't, the
    *  attached ones build no tools. */
   customPacksEntitled: boolean;
+  /**
+   * #1045: the names of the custom packs attached to this station that the
+   * plan excludes, in attachment order. Empty when the plan includes custom
+   * packs. They build no tools and are not in `customPacks`; they are named
+   * so the assistant can say the plan is why their tools are gone.
+   */
+  excludedCustomPacks: string[];
 }
 
 /** A station's packs: the built-in split plus its custom packs (#306). */
@@ -215,13 +222,30 @@ export class EntitlementService {
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
+    // #1045: names only, and only in the rare case there is something to
+    // name. Not the decrypting read: nothing here uses a pack's credentials.
+    const customPacksEntitled = policy.entitlements.customToolpacks;
+    let excludedCustomPacks: string[] = [];
+    if (customPackIds.length > 0 && !customPacksEntitled) {
+      const named =
+        await DbService.repository.organizationToolpacks.findNamesByIds(
+          customPackIds,
+          { organizationId }
+        );
+      const nameById = new Map(named.map((p) => [p.id, p.name]));
+      excludedCustomPacks = customPackIds
+        .map((id) => nameById.get(id))
+        .filter((name): name is string => name !== undefined);
+    }
+
     return {
       split: {
         effective,
         unentitled,
         otherPlanPacks,
         configuredCustomPackCount: customPackIds.length,
-        customPacksEntitled: policy.entitlements.customToolpacks,
+        customPacksEntitled,
+        excludedCustomPacks,
         tier,
       },
       customPackIds,
