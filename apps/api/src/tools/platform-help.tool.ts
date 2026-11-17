@@ -127,11 +127,24 @@ async function gatherFindings(
 
     // The one derivation of a station's packs (#306), which the system
     // prompt reads too: a second copy here classified a station with a custom
-    // pack differently from the prompt in the same session.
-    const { effective, unentitled, configuredCustomPackCount } =
-      await EntitlementService.resolveStationPacks(stationId, organizationId);
+    // pack differently from the prompt in the same session. Without the pack
+    // rows, which this answer doesn't use.
+    const {
+      effective,
+      unentitled,
+      configuredCustomPackCount,
+      customPacksEntitled,
+    } = await EntitlementService.resolveStationPacks(
+      stationId,
+      organizationId,
+      { customPackSummaries: false }
+    );
     const builtinSlugs = [...effective, ...unentitled];
     const hasCustomPack = configuredCustomPackCount > 0;
+    // A custom pack the plan excludes builds no tools, so it doesn't make the
+    // station one that works on data (the prompt goes by the entitled packs
+    // too). It is still a pack on the station for `hasPacks`.
+    const hasUsableCustomPack = hasCustomPack && customPacksEntitled;
 
     // Org-scoped, exactly as `station_context` reads.
     const stationData = await AnalyticsService.loadStation(
@@ -158,7 +171,7 @@ async function gatherFindings(
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || hasCustomPack,
-      usesStationData: usesStationData(builtinSlugs, hasCustomPack),
+      usesStationData: usesStationData(builtinSlugs, hasUsableCustomPack),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,

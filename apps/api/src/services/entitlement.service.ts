@@ -36,11 +36,13 @@ export interface StationPacks extends BuiltinPackSplit {
   otherPlanPacks: string[];
   /**
    * #848: how many custom packs are attached to the station, whether or not
-   * the plan includes custom packs. "What is this station set up for" reads
-   * the configured set, as it does for built-in packs; `customPacks` below is
-   * the entitled subset.
+   * the plan includes custom packs. A station carrying only these still has
+   * packs; whether they build any tools is `customPacksEntitled`.
    */
   configuredCustomPackCount: number;
+  /** Whether the plan includes custom packs (#214). When it doesn't, the
+   *  attached ones build no tools and `customPacks` is empty. */
+  customPacksEntitled: boolean;
   /**
    * Registered custom packs attached to this station. Empty when the org's
    * tier does not include custom toolpacks (#214) — their tools are not
@@ -133,7 +135,11 @@ export class EntitlementService {
    */
   static async resolveStationPacks(
     stationId: string,
-    organizationId: string
+    organizationId: string,
+    // `platform_help` needs the count and the entitlement only. The row read
+    // decrypts stored pack credentials, so a caller that doesn't use the
+    // summaries skips it and gets `customPacks: []`.
+    options: { customPackSummaries?: boolean } = {}
   ): Promise<StationPacks> {
     const rows =
       await DbService.repository.stationToolpacks.findByStationId(stationId);
@@ -158,18 +164,22 @@ export class EntitlementService {
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
-    const configuredCustomPackCount = customPackIds.length;
+    const base = {
+      effective,
+      unentitled,
+      otherPlanPacks,
+      configuredCustomPackCount: customPackIds.length,
+      customPacksEntitled: policy.entitlements.customToolpacks,
+      tier,
+    };
 
     // Gate before the lookup: an unentitled org shouldn't pay for the read.
-    if (customPackIds.length === 0 || !policy.entitlements.customToolpacks) {
-      return {
-        effective,
-        unentitled,
-        otherPlanPacks,
-        configuredCustomPackCount,
-        customPacks: [],
-        tier,
-      };
+    if (
+      customPackIds.length === 0 ||
+      !policy.entitlements.customToolpacks ||
+      options.customPackSummaries === false
+    ) {
+      return { ...base, customPacks: [] };
     }
 
     const packs =
@@ -179,16 +189,12 @@ export class EntitlementService {
       );
 
     return {
-      effective,
-      unentitled,
-      otherPlanPacks,
-      configuredCustomPackCount,
+      ...base,
       customPacks: packs.map((p) => ({
         name: p.name,
         description: p.description,
         toolNames: p.tools.map((t) => t.name),
       })),
-      tier,
     };
   }
 

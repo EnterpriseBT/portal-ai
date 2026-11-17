@@ -30,6 +30,7 @@ const stationPacks = (
     effective: string[];
     unentitled: string[];
     configuredCustomPackCount: number;
+    customPacksEntitled: boolean;
     tier: string;
   }> = {}
 ) => ({
@@ -38,6 +39,7 @@ const stationPacks = (
   otherPlanPacks: [],
   customPacks: [],
   configuredCustomPackCount: 0,
+  customPacksEntitled: false,
   tier: "standard",
   ...over,
 });
@@ -247,24 +249,47 @@ describe("PlatformHelpTool — station situations", () => {
       expect(answer).toContain("rbac_management");
     });
 
-    // A custom tool can read the station's records, so a custom pack makes
-    // missing data a real cause again. The configured count decides it, as
-    // in the prompt: a custom pack the plan excludes still counts.
+    // A custom tool can read the station's records, so a custom pack the
+    // plan includes makes missing data a real cause again.
     it("names the missing attachments when a custom pack is attached", async () => {
       accessOnly();
       mockResolveStationPacks.mockResolvedValue(
-        stationPacks({ effective: [], configuredCustomPackCount: 1 })
+        stationPacks({
+          effective: [],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: true,
+        })
       );
       const { answer } = await exec();
       expect(answer).toMatch(/^No views or connectors are attached/);
     });
 
-    it("reads the station's packs from the shared derivation", async () => {
+    // Code review: a custom pack the plan excludes builds no tools. Attaching
+    // a view wouldn't help, so missing data isn't given as the cause. It is
+    // still a pack on the station, so the answer isn't "no tool packs".
+    it("doesn't name missing attachments for a custom pack the plan excludes", async () => {
+      accessOnly();
+      mockResolveStationPacks.mockResolvedValue(
+        stationPacks({
+          effective: [],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+        })
+      );
+      const { answer } = await exec();
+      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).not.toMatch(/attach the packs for what you want/);
+    });
+
+    // One derivation with the prompt, without the custom-pack rows it
+    // doesn't use: that read decrypts stored pack credentials.
+    it("reads the station's packs from the shared derivation, without pack details", async () => {
       accessOnly();
       await exec();
       expect(mockResolveStationPacks).toHaveBeenCalledWith(
         "station-1",
-        "org-1"
+        "org-1",
+        { customPackSummaries: false }
       );
     });
   });

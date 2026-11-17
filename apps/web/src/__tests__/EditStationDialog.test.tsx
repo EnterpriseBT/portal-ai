@@ -423,6 +423,22 @@ describe("EditStationDialog — description (#848)", () => {
     );
   });
 
+  it("treats a stored name with surrounding whitespace as unchanged", () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, name: "  Sales Station " }}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("treats a stored description with surrounding whitespace as unchanged", () => {
     const onClose = jest.fn();
     const onSubmit = jest.fn();

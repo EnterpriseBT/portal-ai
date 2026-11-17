@@ -451,13 +451,13 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
     expect(packs.otherPlanPacks).toEqual(["data_query"]);
     expect(packs.customPacks.map((p) => p.name)).toEqual(["smoke"]);
     expect(packs.configuredCustomPackCount).toBe(1);
+    expect(packs.customPacksEntitled).toBe(true);
     expect(mockFindById_org).toHaveBeenCalledTimes(1);
     expect(mockResolveTier).toHaveBeenCalledTimes(1);
   });
 
-  // "What the station is set up for" counts a custom pack the plan
-  // excludes, as it counts an unentitled built-in one. platform_help and the
-  // prompt both read this, so they can't classify a station differently.
+  // The count says the station has packs; `customPacksEntitled` says whether
+  // they build any tools. platform_help reads both.
   it("counts attached custom packs whether or not the plan includes them", async () => {
     mockFindByStationId_packs.mockResolvedValue([
       { builtinSlug: "rbac_management", organizationToolpackId: null },
@@ -471,7 +471,34 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
     // The fixture tier has customToolpacks: false.
     expect(packs.customPacks).toEqual([]);
     expect(packs.configuredCustomPackCount).toBe(2);
+    expect(packs.customPacksEntitled).toBe(false);
     expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  // platform_help needs the count and the entitlement, not the packs: the
+  // row read decrypts stored credentials, and a failure there would cost it
+  // its whole answer.
+  it("skips the custom pack read when summaries aren't asked for", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: true,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID,
+      { customPackSummaries: false }
+    );
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+    expect(packs.customPacks).toEqual([]);
+    expect(packs.configuredCustomPackCount).toBe(1);
+    expect(packs.customPacksEntitled).toBe(true);
   });
 
   it("counts none for a station with only built-in packs", async () => {

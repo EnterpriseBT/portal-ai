@@ -33,9 +33,12 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
  * configured built-in set (effective and unentitled alike): the question is
  * what the station is set up for, not what the plan currently allows.
  *
- * An attached custom pack counts. A custom tool can take the station's
- * records as input (`consumption` in docs/CUSTOM_TOOLPACK_INTEGRATION.md), and
- * nothing here can classify one, so the safe reading is that it does.
+ * A custom pack counts when the plan includes custom packs. A custom tool can
+ * take the station's records as input (`consumption` in
+ * docs/CUSTOM_TOOLPACK_INTEGRATION.md), and nothing here can classify one, so
+ * the safe reading is that it does. One the plan excludes builds no tools, and
+ * unlike an excluded built-in pack nothing tells the user it is a plan limit,
+ * so it doesn't count: "attach a view" would be advice that can't work.
  */
 export function usesStationData(
   builtinSlugs: readonly string[],

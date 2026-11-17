@@ -95,15 +95,19 @@ interface OriginalText {
   description: string;
 }
 
-/** Whether the description was edited. Both sides are trimmed: what is sent
- *  is trimmed, and a stored value isn't always. */
+/** Whether a text field was edited. Both sides are trimmed: what is sent is
+ *  trimmed, and a stored value isn't always. */
+function nameChanged(form: FormState, original: OriginalText): boolean {
+  return form.name.trim() !== original.name.trim();
+}
+
 function descriptionChanged(form: FormState, original: OriginalText): boolean {
   return form.description.trim() !== original.description.trim();
 }
 
 function validateForm(form: FormState, original: OriginalText): FormErrors {
   const schema = editStationFormSchema(
-    form.name.trim() !== original.name,
+    nameChanged(form, original),
     descriptionChanged(form, original)
   );
   // The limit applies to the text that will be sent, which is trimmed.
@@ -272,7 +276,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     }
 
     const body: UpdateStationBody = {};
-    if (form.name.trim() !== original.name) {
+    if (nameChanged(form, original)) {
       body.name = form.name.trim();
     }
     // #848: sent only when edited. An emptied field clears the description.

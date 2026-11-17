@@ -1359,7 +1359,6 @@ export async function buildStationContext(args: {
     unentitled: unentitledToolPacks,
     otherPlanPacks: otherPlanToolPacks,
     customPacks: customToolPacks,
-    configuredCustomPackCount,
   } = await EntitlementService.resolveStationPacks(station.id, organizationId);
 
   const stationData = await AnalyticsService.loadStation(
@@ -1437,7 +1436,6 @@ export async function buildStationContext(args: {
     unentitledToolPacks,
     otherPlanToolPacks,
     customToolPacks,
-    configuredCustomPackCount,
     entityCapabilities,
     connectorInstances,
     stationWritable,

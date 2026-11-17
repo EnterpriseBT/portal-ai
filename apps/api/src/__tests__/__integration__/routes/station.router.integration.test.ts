@@ -296,6 +296,22 @@ describe("Station Router", () => {
       expect(res.body.payload.station.name).toBe("My Station");
     });
 
+    // #848: "no description" is null, whichever route wrote it.
+    it("stores null for an empty or whitespace-only description", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      for (const [name, description] of [
+        ["Empty", ""],
+        ["Blank", "  \n"],
+      ]) {
+        const res = await request(app)
+          .post("/api/stations")
+          .send({ name, description, toolPacks: ["data_query"] })
+          .expect(201);
+        expect(res.body.payload.station.description).toBeNull();
+      }
+    });
+
     // #805: a NUL passed the contract and failed at the insert as a 500.
     it("refuses a NUL in the name with 400 and writes nothing", async () => {
       const { organizationId } = await seedUserAndOrg(
