@@ -122,7 +122,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleDeleteStation = useCallback(() => {
     deleteStationMutation.mutate(undefined, {
-      // A station's portals and their pins go with it (cascade), and the
+      // Its portals go with it, their pins lose their portal link, and the
       // org's default station may have been this one (#1041).
       invalidate: stationDeleteKeys(),
       // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a

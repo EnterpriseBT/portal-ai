@@ -65,6 +65,14 @@ describe("stationDeleteKeys", () => {
       ])
     );
   });
+
+  // The delete unlinks the station's connectors, and a connector's delete
+  // dialog counts the stations it would unlink.
+  it("refreshes connector instances, whose station counts change", () => {
+    expect(stationDeleteKeys()).toContainEqual(
+      queryKeys.connectorInstances.root
+    );
+  });
 });
 
 describe("delete calls invalidate through the shared keys", () => {

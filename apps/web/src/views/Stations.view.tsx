@@ -159,8 +159,8 @@ export const StationsView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      // A station's portals and their pins go with it (cascade); the org's
-      // default station may have been this one.
+      // Its portals go with it, their pins lose their portal link, and the
+      // org's default station may have been this one.
       invalidate: stationDeleteKeys(),
       onSuccess: handleDeleteClose,
     });
