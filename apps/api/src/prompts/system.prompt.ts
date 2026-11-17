@@ -218,17 +218,22 @@ function geocodingGuidance(ctx: StationContext): string[] {
 }
 
 /**
- * #848: what each pack is for, as told to a user whose station doesn't have
- * it. Printed in "Station Scope" beside the pack's display name for the packs
- * in `otherPlanToolPacks`.
+ * #848: what each pack is mainly for, as told to a user whose station doesn't
+ * have it. Printed in "Station Scope" beside the pack's display name for the
+ * packs in `otherPlanToolPacks`.
  *
  * These are deliberately NOT the `capability` phrases below. Those are
  * `markers`, and the #284 guard asserts a marker appears only when its pack is
  * effective; this list names packs the session does not have. A guard test
  * asserts no phrase here contains a marker.
+ *
+ * A phrase is a hint for naming the right pack, not a boundary: packs overlap
+ * (a views station shares views, a charts station answers questions about
+ * entity data), so the section tells the agent its own tools come first. Keep
+ * each phrase to what only that pack does.
  */
 export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
-  data_query: "questions about entity data",
+  data_query: "SQL queries on entity data",
   visualize: "charts",
   gis: "maps and geocoding",
   statistics: "statistical tests",
@@ -236,8 +241,10 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   financial: "financial metrics",
   web_search: "looking things up on the web",
   entity_management: "creating and changing entities and their records",
-  rbac_management: "managing access, roles and shares",
-  view_management: "creating curated views and attaching them to stations",
+  rbac_management:
+    "roles, policies and groups, member assignments, and sharing stations and pins",
+  view_management:
+    "creating and sharing curated views and attaching them to stations",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -853,11 +860,18 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // Administrate station has only the access pack) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
   // "no data attached" and suggest attaching some. The configured set decides
-  // it, so a data pack the plan excludes still counts as "set up for data".
-  const forData = usesStationData([
-    ...stationContext.effectiveToolPacks,
-    ...stationContext.unentitledToolPacks,
-  ]);
+  // it, so a data pack the plan excludes still counts as "set up for data",
+  // and so does a custom pack, whose tools can take records as input.
+  const otherPlanPacks = (stationContext.otherPlanToolPacks ?? []).filter(
+    isBuiltinToolpackSlug
+  );
+  const forData = usesStationData(
+    [
+      ...stationContext.effectiveToolPacks,
+      ...stationContext.unentitledToolPacks,
+    ],
+    (stationContext.customToolPacks ?? []).length > 0
+  );
   const missing = forData ? gaps.missing : null;
   if (!forData) {
     lines.push(
@@ -865,10 +879,19 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "is how it is set up, not a fault._"
     );
     lines.push(
-      "Don't tell the user data is missing, and don't suggest attaching views " +
-        "or connectors here: without such a pack they would add nothing. A " +
-        "request about entity data belongs on a station set up for it (see " +
-        "Station Scope)."
+      // The station's page tells the user "Attach a view to query entity
+      // data here", so this must not say attaching adds nothing: it says the
+      // other half, that a pack is needed too.
+      "Don't tell the user data is missing, and don't bring up attaching " +
+        "views or connectors here unless the user asks. If they ask, say " +
+        "that working with entity data here would also need a tool pack " +
+        "for it. " +
+        // Only point at the list when it will hold a data pack.
+        (usesStationData(otherPlanPacks, false)
+          ? "A request about entity data needs one of the packs listed " +
+            "under Station Scope: follow the guidance there."
+          : "A request about entity data needs a tool pack this station " +
+            "doesn't have.")
     );
   }
   if (missing) {
@@ -1223,27 +1246,31 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // The agent can only "say what is missing" if it knows what exists. Without
   // this list it told a user that attaching views can't be done from a
   // session, on a station that simply lacked the pack for it.
-  const elsewhere = (stationContext.otherPlanToolPacks ?? []).filter(
-    isBuiltinToolpackSlug
-  );
-  if (elsewhere.length > 0) {
+  if (otherPlanPacks.length > 0) {
     lines.push(
       "Tool packs the organization's plan includes that are **not on this " +
-        "station** (you don't have their tools here, so never offer or " +
-        "attempt that work in this session):"
+        "station**, each with what it is mainly for:"
     );
     lines.push("");
-    for (const slug of elsewhere) {
+    for (const slug of otherPlanPacks) {
       lines.push(
         `- ${BUILTIN_TOOLPACK_BY_SLUG[slug].name}: ${PACK_ELSEWHERE[slug]}`
       );
     }
     lines.push("");
     lines.push(
-      "When a request needs one of these, name the pack, say this station " +
-        "doesn't have it, and suggest a station that does. Never say it " +
-        "can't be done in a portal session, and never say it will work here " +
-        "once data is attached."
+      // Packs overlap, so a purpose line can describe something this
+      // session's tools already do (sharing a view without the access pack).
+      "A tool you hold in this session always takes precedence over this " +
+        "list: when one of your tools can do what the user asked, use it. " +
+        "When a request needs a tool you don't hold and one of these packs " +
+        "provides it, don't attempt the work here: name the pack, say this " +
+        "station doesn't have it, and suggest opening a station that has " +
+        // No station may carry the pack yet; it is in the plan, so adding
+        // it here works.
+        "it, or having someone who can edit this station add the pack. " +
+        "Never say it can't be done in a portal session, and never say it " +
+        "will work here once data is attached."
     );
     lines.push("");
   }

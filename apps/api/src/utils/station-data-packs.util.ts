@@ -29,12 +29,22 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
 };
 
 /**
- * Whether any of a station's configured built-in packs reads or writes entity
- * data. Pass the configured set (effective and unentitled alike): the question
- * is what the station is set up for, not what the plan currently allows.
+ * Whether a station is set up to read or write entity data. Pass the
+ * configured built-in set (effective and unentitled alike): the question is
+ * what the station is set up for, not what the plan currently allows.
+ *
+ * An attached custom pack counts. A custom tool can take the station's
+ * records as input (`consumption` in docs/CUSTOM_TOOLPACK_INTEGRATION.md), and
+ * nothing here can classify one, so the safe reading is that it does.
  */
-export function usesStationData(slugs: readonly string[]): boolean {
-  return slugs.some(
-    (slug) => isBuiltinToolpackSlug(slug) && PACK_USES_STATION_DATA[slug]
+export function usesStationData(
+  builtinSlugs: readonly string[],
+  hasCustomPack: boolean
+): boolean {
+  return (
+    hasCustomPack ||
+    builtinSlugs.some(
+      (slug) => isBuiltinToolpackSlug(slug) && PACK_USES_STATION_DATA[slug]
+    )
   );
 }

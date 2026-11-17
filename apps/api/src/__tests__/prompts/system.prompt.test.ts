@@ -148,10 +148,71 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       );
       expect(prompt).toContain(NOT_FOR_DATA);
       expect(prompt).toMatch(
-        /Don't tell the user data is missing, and don't suggest attaching views or connectors here/
+        /Don't tell the user data is missing, and don't bring up attaching views or connectors here unless the user asks/
       );
       expect(prompt).not.toContain("are attached to this station.");
       expect(prompt).not.toContain("it isn't a request");
+    });
+
+    // The page's notice on the same station says "Attach a view to query
+    // entity data here", so the prompt must not say attaching adds nothing.
+    it("doesn't contradict the station page's notice", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain("would add nothing");
+      expect(prompt).toContain(
+        "If they ask, say that working with entity data here would also " +
+          "need a tool pack for it."
+      );
+    });
+
+    it("points at Station Scope's list only when the plan has a data pack elsewhere", () => {
+      const ctx = (otherPlanToolPacks: string[] | undefined) =>
+        buildSystemPrompt(
+          makeContext({
+            entities: [],
+            effectiveToolPacks: ["rbac_management"],
+            otherPlanToolPacks,
+            attachments: attach([0, 0], [0, 0]),
+          })
+        );
+      const LISTED =
+        "A request about entity data needs one of the packs listed under " +
+        "Station Scope: follow the guidance there.";
+      const UNLISTED =
+        "A request about entity data needs a tool pack this station " +
+        "doesn't have.";
+      expect(ctx(["view_management", "data_query"])).toContain(LISTED);
+      for (const none of [undefined, [], ["web_search", "view_management"]]) {
+        const prompt = ctx(none);
+        expect(prompt).not.toContain(LISTED);
+        expect(prompt).toContain(UNLISTED);
+        expect(prompt).not.toContain("a station set up for it");
+      }
+    });
+
+    // A custom tool can take the station's records as input, so a station
+    // with a custom pack is a data station.
+    it("treats a station with a custom pack as set up for data", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          customToolPacks: [
+            { name: "smoke", description: null, toolNames: ["smoke_tool"] },
+          ],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).toContain(
+        "_No views or connectors are attached to this station."
+      );
     });
 
     it("says so even when a connector is attached", () => {
@@ -657,14 +718,46 @@ describe("buildSystemPrompt — response style", () => {
           otherPlanToolPacks: ["data_query", "view_management"],
         });
         expect(section).toContain("**not on this station**");
-        expect(section).toContain("- Data Query: questions about entity data");
+        expect(section).toContain("- Data Query: SQL queries on entity data");
         expect(section).toContain(
-          "- Curated Views: creating curated views and attaching them to stations"
+          "- Curated Views: creating and sharing curated views and attaching them to stations"
         );
         expect(section).toMatch(
           /Never say it can't be done in a portal session/
         );
-        expect(section).toMatch(/never offer or attempt/);
+      });
+
+      // Code review: a purpose phrase is broader than its pack. "Shares" sat
+      // on the access pack's line while a views station holds
+      // curated_view_share, and a charts station can answer questions about
+      // entity data without Data Query.
+      it("puts the session's own tools ahead of the list", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["view_management"],
+          otherPlanToolPacks: ["rbac_management", "data_query"],
+        });
+        expect(section).toContain(
+          "A tool you hold in this session always takes precedence over " +
+            "this list: when one of your tools can do what the user asked, " +
+            "use it."
+        );
+        expect(section).not.toMatch(/never offer or attempt/);
+        expect(section).toContain(
+          "- Access & Roles: roles, policies and groups, member assignments, and sharing stations and pins"
+        );
+      });
+
+      // No station may carry the pack yet, and these packs are in the plan,
+      // so adding one to this station works.
+      it("offers adding the pack to this station as well as another station", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["data_query"],
+        });
+        expect(section).toContain(
+          "suggest opening a station that has it, or having someone who " +
+            "can edit this station add the pack"
+        );
       });
 
       it("renders no list when the plan has nothing else", () => {

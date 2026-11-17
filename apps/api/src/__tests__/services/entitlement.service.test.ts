@@ -438,6 +438,43 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
     ]);
   });
 
+  // The session's context is built on every turn: one org read and one tier
+  // resolve serve the split, the plan list and the custom-pack entitlement.
+  it("reads the org and resolves the tier once, custom packs included", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ["data_query", "rbac_management"],
+        customToolpacks: true,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+    ]);
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "smoke",
+        description: null,
+        tools: [{ name: "smoke_tool", description: "x" }],
+      },
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs.effective).toEqual(["rbac_management"]);
+    expect(packs.otherPlanPacks).toEqual(["data_query"]);
+    expect(packs.customPacks.map((p) => p.name)).toEqual(["smoke"]);
+    expect(mockFindById_org).toHaveBeenCalledTimes(1);
+    expect(mockResolveTier).toHaveBeenCalledTimes(1);
+  });
+
   it("lists the whole plan for a station with no built-in pack", async () => {
     mockFindByStationId_packs.mockResolvedValue([]);
     const packs = await EntitlementService.resolveStationPacks(

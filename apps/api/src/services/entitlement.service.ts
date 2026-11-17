@@ -1,3 +1,4 @@
+import type { TierPolicy } from "@portalai/core/models";
 import { isBuiltinToolpackSlug } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
@@ -75,6 +76,14 @@ export class EntitlementService {
     }
 
     const policy = await EntitlementService.resolvePolicy(organizationId);
+    return EntitlementService.splitByPolicy(policy, configuredSlugs);
+  }
+
+  /** The split itself, against a policy the caller already resolved. */
+  private static splitByPolicy(
+    policy: TierPolicy,
+    configuredSlugs: readonly string[]
+  ): BuiltinPackSplit {
     const entitled = new Set(policy.entitlements.builtinToolpacks);
 
     // A tier row may carry slugs for packs that ship in a later deploy.
@@ -129,25 +138,21 @@ export class EntitlementService {
       .map((r) => r.organizationToolpackId)
       .filter((id): id is string => id !== null);
 
-    const { effective, unentitled, tier } =
-      await EntitlementService.splitBuiltinPacks(organizationId, builtinSlugs);
-
-    // #848: resolved here rather than in `splitBuiltinPacks`, which skips the
-    // tier read for a station with no built-in pack.
-    const configured = new Set(builtinSlugs);
+    // One org read and one tier resolve serve the split, the plan's other
+    // packs (#848) and the custom-pack entitlement: this runs on every turn.
     const policy = await EntitlementService.resolvePolicy(organizationId);
+    const { effective, unentitled, tier } = EntitlementService.splitByPolicy(
+      policy,
+      builtinSlugs
+    );
+
+    const configured = new Set(builtinSlugs);
     const otherPlanPacks = policy.entitlements.builtinToolpacks.filter(
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
-    if (customPackIds.length === 0) {
-      return { effective, unentitled, otherPlanPacks, customPacks: [], tier };
-    }
-
     // Gate before the lookup: an unentitled org shouldn't pay for the read.
-    const entitled =
-      await EntitlementService.customPacksEntitled(organizationId);
-    if (!entitled) {
+    if (customPackIds.length === 0 || !policy.entitlements.customToolpacks) {
       return { effective, unentitled, otherPlanPacks, customPacks: [], tier };
     }
 

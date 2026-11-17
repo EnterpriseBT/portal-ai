@@ -166,7 +166,7 @@ async function gatherFindings(
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
-      usesStationData: usesStationData(builtinSlugs),
+      usesStationData: usesStationData(builtinSlugs, customPackIds.length > 0),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,

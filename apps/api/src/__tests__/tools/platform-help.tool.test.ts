@@ -249,7 +249,9 @@ describe("PlatformHelpTool — station situations", () => {
       expect(answer).toContain("rbac_management");
     });
 
-    it("an attached custom pack alone doesn't make missing data the cause", async () => {
+    // A custom tool can read the station's records, so a custom pack makes
+    // missing data a real cause again.
+    it("names the missing attachments when a custom pack is attached", async () => {
       accessOnly();
       mockFindByStationId.mockResolvedValue([
         { builtinSlug: null, organizationToolpackId: "otp-1" },
@@ -260,7 +262,7 @@ describe("PlatformHelpTool — station situations", () => {
         tier: "standard",
       });
       const { answer } = await exec();
-      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).toMatch(/^No views or connectors are attached/);
     });
   });
 

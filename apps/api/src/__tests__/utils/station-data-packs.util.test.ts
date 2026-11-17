@@ -18,10 +18,12 @@ describe("station data packs (#848)", () => {
   });
 
   it("treats the access, views and web-search packs as not using station data", () => {
-    expect(usesStationData(["rbac_management"])).toBe(false);
-    expect(usesStationData(["rbac_management", "view_management"])).toBe(false);
-    expect(usesStationData(["web_search"])).toBe(false);
-    expect(usesStationData([])).toBe(false);
+    expect(usesStationData(["rbac_management"], false)).toBe(false);
+    expect(usesStationData(["rbac_management", "view_management"], false)).toBe(
+      false
+    );
+    expect(usesStationData(["web_search"], false)).toBe(false);
+    expect(usesStationData([], false)).toBe(false);
   });
 
   it("is true as soon as one pack reads or writes entity data", () => {
@@ -34,11 +36,19 @@ describe("station data packs (#848)", () => {
       "visualize",
       "gis",
     ]) {
-      expect(usesStationData(["rbac_management", slug])).toBe(true);
+      expect(usesStationData(["rbac_management", slug], false)).toBe(true);
     }
   });
 
   it("ignores a slug the registry doesn't know", () => {
-    expect(usesStationData(["not_a_pack"])).toBe(false);
+    expect(usesStationData(["not_a_pack"], false)).toBe(false);
+  });
+
+  // A custom tool can take the station's records as input (`consumption` in
+  // docs/CUSTOM_TOOLPACK_INTEGRATION.md) and nothing here can classify one,
+  // so an attached custom pack counts.
+  it("counts an attached custom pack as working on station data", () => {
+    expect(usesStationData([], true)).toBe(true);
+    expect(usesStationData(["rbac_management"], true)).toBe(true);
   });
 });
