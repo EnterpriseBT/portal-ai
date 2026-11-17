@@ -73,9 +73,11 @@ Registering a pack in the app fetches its schema from a reachable webhook. Witho
 2. After the downgrade, same station, new portal: "Why did the <pack> tools stop working?" The assistant says the <pack> pack isn't included in the organization's current plan and points at Settings → Subscription & Billing. It doesn't say the station lacks the pack or suggest attaching it.
 3. Same portal: "What can I do on this station?" The answer doesn't offer the pack's tools, and if it mentions the pack it says the plan excludes it. Then: "Check with platform help and the station context: which tool packs on this station aren't working, and why?" Both tools name the pack as a plan limit. On a station where it is the only data-capable pack, `platform_help`'s answer opens with the plan limit and doesn't suggest attaching views or connectors.
 4. Move the org back to the plan with custom packs. A new portal lists the pack's tools again and doesn't mention a plan limit.
+5. The built-in case. On the plan with every pack, give a station only a built-in data pack the smaller plan lacks (GIS) plus a pack that doesn't work on data (Curated Views), leave it without views, then move the org to the smaller plan. Ask: "Why can't I make a map here?" and have it quote platform help on why answers are empty. Both name `gis` as a plan limit; neither opens with missing views.
 
 ## Out of scope
 
 - **A station pointing at a custom pack that no longer exists.** The prompt goes by the pack rows that resolve and `platform_help` by the count of attached ids, so they can differ for a dangling row. Rare, and a different cause.
 - **Showing excluded custom packs in the web app.** The station page's chips for them are unchanged.
+- **The station page's own notice.** It still says "No views are attached to this station. Attach a view to query entity data here." on a station whose data packs are all excluded by the plan, where the assistant now leads with the plan. The notice comes from shared copy that knows only attachment counts; making it plan-aware is a web change.
 - **The prompt and the session's tools resolve the plan separately.** Across a plan change within one turn they could disagree about a pack. That is how built-in packs already work.
