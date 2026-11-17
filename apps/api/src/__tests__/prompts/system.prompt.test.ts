@@ -342,11 +342,13 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
   describe("relaying a permission refusal (#1042)", () => {
     const RULE =
       "- **When a tool refuses for lack of permission, say which permission " +
-      "is missing and stop there.** Use the refusal's own wording. Don't add " +
-      "who could do it instead: don't name a role, and don't name a person. " +
-      "Permissions here aren't tied to roles, so that advice can be wrong. " +
-      "If the user asks how to get access, say they can ask for that " +
-      "permission to be granted.";
+      "is missing and stop there.** Use the refusal's own wording. Never say " +
+      "who could do it or grant it: don't name a role, and don't name or " +
+      "point at a person, even when the user asks and even when you can " +
+      "see the member list. Permissions here aren't tied to roles, so a " +
+      "guess from someone's role can be wrong. If the user asks how to get " +
+      "access, the whole answer is that they can ask for that permission " +
+      "to be granted.";
     const count = (prompt: string, text: string) =>
       prompt.split(text).length - 1;
 
@@ -375,7 +377,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
         makeContext({ effectiveToolPacks: ["view_management"] })
       );
       expect(prompt).not.toContain("don't point them to an admin");
-      expect(count(prompt, "name a role")).toBe(1);
+      expect(count(prompt, "don't name a role")).toBe(1);
     });
   });
 

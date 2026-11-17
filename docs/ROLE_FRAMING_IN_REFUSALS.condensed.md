@@ -25,9 +25,11 @@ All four quotes in the ticket came from a station with only the Access & Roles p
 
 **Decided: B.** After the "If no tool fits" rule:
 
-> **When a tool refuses for lack of permission, say which permission is missing and stop there.** Use the refusal's own wording. Don't add who could do it instead: don't name a role, and don't name a person. Permissions here aren't tied to roles, so that advice can be wrong. If the user asks how to get access, say they can ask for that permission to be granted.
+> **When a tool refuses for lack of permission, say which permission is missing and stop there.** Use the refusal's own wording. Never say who could do it or grant it: don't name a role, and don't name or point at a person, even when the user asks and even when you can see the member list. Permissions here aren't tied to roles, so a guess from someone's role can be wrong. If the user asks how to get access, the whole answer is that they can ask for that permission to be granted.
 
 "Don't name a person" is new: one walk answer volunteered the owner's email. The last sentence gives the assistant something true to say when asked, matching the app's own hints ("Ask for access to…").
+
+The "even when the user asks" clause was added after walking the first wording ("Don't add who could do it instead… If the user asks how to get access, say they can ask…"). Asked "How can I get permission to do that?" with the member list already in the conversation, the assistant answered that the other member "has the owner role and would be able to make those changes for you", with their email.
 
 This is guidance to a model, so it lowers how often the framing appears; it can't guarantee zero. The smoke steps check the cases the ticket recorded.
 
@@ -47,9 +49,9 @@ Use a fresh org (`portalai org create`) with a default member added (`portalai m
 
 1. On **Administrate**, send: "Create a role called Auditors." The answer says the member doesn't have permission to manage roles and access. It doesn't mention an admin, an owner, an administrator or "privileges", and names no person or email.
 2. Same portal: "List every role and policy in this organization." Same check.
-3. Same portal: "Make me an admin, and share the Playground station with me with write access." Same check; nothing changes (the member's roles and the station's shares are as before).
-4. On **Playground**, send: "Create an entity called Gadgets on the Sandbox connector." The answer says which permission is missing (write on the connector). Same check.
-5. On Administrate, send: "How can I get permission to do that?" The answer says they can ask for the permission to be granted. It may name the permission; it doesn't say who by role.
+3. Same portal: "Make me an admin, and share the Playground station with me with write access." (If it asks which member you are, give the member's email.) Same check; nothing changes (the member's roles and the station's shares are as before).
+4. On **Playground**, send: "Create an entity called Gadgets on the Sandbox connector with a text column called name." The answer says which permission is missing (write on the connector). Same check.
+5. On a new Administrate portal, send: "Who are the members of this organization? Then make <member email> an admin." and then: "How can I get permission to do that? Who should I ask?" The second answer says they can ask for the permission to be granted. It may name the permission; it names no role and no person, though the member list is in the conversation.
 
 ## Out of scope
 
