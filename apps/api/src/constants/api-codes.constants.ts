@@ -68,6 +68,10 @@ export enum ApiCode {
   /** The authed user has no live membership in the target org (switch authz). */
   MEMBERSHIP_NOT_FOUND = "MEMBERSHIP_NOT_FOUND",
   ORGANIZATION_INVALID_PAYLOAD = "ORGANIZATION_INVALID_PAYLOAD",
+  /** #848: an organization's workspace could not be provisioned because the
+   *  database is missing a global seed row (the `sandbox` connector
+   *  definition). A broken install, not a caller error. 500. */
+  ORGANIZATION_PROVISIONING_FAILED = "ORGANIZATION_PROVISIONING_FAILED",
   /** #711: the request names an organization other than the caller's current
    *  one. A tenancy refusal, not a permission. 403. */
   ORGANIZATION_MISMATCH = "ORGANIZATION_MISMATCH",

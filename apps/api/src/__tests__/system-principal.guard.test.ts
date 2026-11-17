@@ -39,7 +39,7 @@ const ALLOWED_SYSTEM: Array<{ file: string; reason: string }> = [
   {
     file: "services/application.service.ts",
     reason:
-      "org provisioning: the org, owner membership, user rows and the provisioned defaults (Sandbox, My Station)",
+      "org provisioning: the org, owner membership, user rows and the provisioned defaults (Sandbox, Administrate, Playground)",
   },
   {
     file: "services/seat.service.ts",

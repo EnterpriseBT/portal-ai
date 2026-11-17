@@ -35,6 +35,8 @@ const repos = {
         ) => Promise<Record<string, unknown>>
       >(),
     update: jest.fn<() => Promise<unknown>>(),
+    findById:
+      jest.fn<(id: string, tx?: unknown) => Promise<Record<string, unknown>>>(),
     findByName:
       jest.fn<
         (name: string) => Promise<{ id: string; ownerUserId: string } | null>
@@ -126,6 +128,10 @@ jest.unstable_mockModule("../../services/seed.service.js", () => ({
 
 const { ApplicationService } =
   await import("../../services/application.service.js");
+const { PROVISIONED_STATIONS } =
+  await import("../../constants/provisioned-stations.constants.js");
+const { ApiCode } = await import("../../constants/api-codes.constants.js");
+const { SystemUtilities } = await import("../../utils/system.util.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -147,7 +153,17 @@ const wireHappyPath = () => {
   repos.connectorInstances.create.mockImplementation(async () => ({
     id: "ci-1",
   }));
-  repos.stations.create.mockImplementation(async () => ({ id: "st-1" }));
+  // One id per provisioned station, in creation order.
+  let stationSeq = 0;
+  repos.stations.create.mockImplementation(async () => ({
+    id: `st-${++stationSeq}`,
+  }));
+  // The org as stored once provisioning has set its default station.
+  repos.organizations.findById.mockImplementation(async (id) => ({
+    ...(repos.organizations.create.mock.calls[0]?.[0] ?? {}),
+    id,
+    defaultStationId: "st-1",
+  }));
   repos.stationToolpacks.replaceForStation.mockResolvedValue(undefined);
   repos.stationInstances.create.mockResolvedValue({});
   repos.organizations.update.mockResolvedValue({});
@@ -165,7 +181,7 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("provisionOrganizationFor (the shared transaction body)", () => {
-  it("provisions the FULL set for an existing user: org, membership, column defs, sandbox, station, toolpack, link, defaultStationId", async () => {
+  it("provisions the FULL set for an existing user: org, membership, column defs, sandbox, both stations, their packs, the sandbox link, defaultStationId (#848)", async () => {
     const out = await ApplicationService.provisionOrganizationFor("u-77", {
       name: "Acme",
     });
@@ -185,42 +201,76 @@ describe("provisionOrganizationFor (the shared transaction body)", () => {
     });
 
     expect(mockSeedCols).toHaveBeenCalledWith(org.id, "TX");
+
+    // One Sandbox instance, shared by whichever stations attach it.
+    expect(repos.connectorInstances.create).toHaveBeenCalledTimes(1);
     expect(repos.connectorInstances.create.mock.calls[0][0]).toMatchObject({
       connectorDefinitionId: "def-sandbox",
       organizationId: org.id,
       name: "Sandbox",
     });
-    expect(repos.stations.create.mock.calls[0][0]).toMatchObject({
-      organizationId: org.id,
-      name: "My Station",
-    });
-    expect(repos.stationToolpacks.replaceForStation).toHaveBeenCalledWith(
-      "st-1",
-      { builtinSlugs: ["data_query"] },
-      expect.anything(),
-      "TX"
+
+    // One station per PROVISIONED_STATIONS entry, system-owned, in order.
+    expect(repos.stations.create).toHaveBeenCalledTimes(
+      PROVISIONED_STATIONS.length
     );
+    PROVISIONED_STATIONS.forEach((expected, i) => {
+      expect(repos.stations.create.mock.calls[i][0]).toMatchObject({
+        organizationId: org.id,
+        name: expected.name,
+        description: expected.description,
+        createdBy: SystemUtilities.id.system,
+      });
+      expect(repos.stationToolpacks.replaceForStation).toHaveBeenCalledWith(
+        `st-${i + 1}`,
+        { builtinSlugs: [...expected.builtinSlugs] },
+        { userId: SystemUtilities.id.system },
+        "TX"
+      );
+    });
+    expect(repos.stationToolpacks.replaceForStation).toHaveBeenCalledTimes(
+      PROVISIONED_STATIONS.length
+    );
+
+    // The Sandbox is linked only to the station that asks for it (Playground).
+    expect(repos.stationInstances.create).toHaveBeenCalledTimes(1);
     expect(repos.stationInstances.create.mock.calls[0][0]).toMatchObject({
-      stationId: "st-1",
+      stationId: "st-2",
       connectorInstanceId: "ci-1",
     });
+
+    // The default is the isDefault entry (Administrate, created first).
     expect(repos.organizations.update).toHaveBeenCalledWith(
       org.id,
       { defaultStationId: "st-1" },
       "TX"
     );
+    // The returned org is the stored row, re-read after provisioning.
+    expect(repos.organizations.findById).toHaveBeenCalledWith(org.id, "TX");
     expect(out.organization.defaultStationId).toBe("st-1");
     // No user was created — the owner already existed.
     expect(repos.users.create).not.toHaveBeenCalled();
   });
 
-  it("missing sandbox definition → early return, still org + membership + column defs", async () => {
+  it("provisionOrganizationWorkspace resolves to nothing (#848)", async () => {
+    await expect(
+      ApplicationService.provisionOrganizationWorkspace("org-9", "TX" as never)
+    ).resolves.toBeUndefined();
+  });
+
+  it("missing sandbox definition → throws and creates no instance, station or link (#848)", async () => {
     repos.connectorDefinitions.findBySlug.mockResolvedValue(null);
-    const out = await ApplicationService.provisionOrganizationFor("u-77");
-    expect(repos.organizations.create).toHaveBeenCalled();
-    expect(mockSeedCols).toHaveBeenCalled();
+    await expect(
+      ApplicationService.provisionOrganizationFor("u-77")
+    ).rejects.toMatchObject({
+      status: 500,
+      code: ApiCode.ORGANIZATION_PROVISIONING_FAILED,
+    });
+    expect(repos.connectorInstances.create).not.toHaveBeenCalled();
     expect(repos.stations.create).not.toHaveBeenCalled();
-    expect(out.organization).toBeDefined();
+    expect(repos.stationToolpacks.replaceForStation).not.toHaveBeenCalled();
+    expect(repos.stationInstances.create).not.toHaveBeenCalled();
+    expect(repos.organizations.update).not.toHaveBeenCalled();
   });
 });
 

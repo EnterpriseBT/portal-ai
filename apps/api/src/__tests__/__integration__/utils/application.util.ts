@@ -19,6 +19,7 @@ import {
 } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import { DbService } from "../../../services/db.service.js";
+import { db } from "../../../db/client.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { SeedService } from "../../../services/seed.service.js";
 
@@ -515,11 +516,16 @@ async function describeBlockers(pid: number): Promise<string> {
  * test helper, not on the service. Preserves the caller-supplied `id` and
  * returns the same `{ user, organization, organizationUser }` shape callers
  * relied on. First-login idempotency/concurrency is covered directly by the
- * `ensureProvisioned` integration tests.
+ * `ensureProvisioned` integration tests. Seeds the connector definitions
+ * first, since provisioning needs the `sandbox` one (#848).
  */
 export async function provisionTestOrg(
   owner: Record<string, unknown> & { id: string; auth0Id: string }
 ) {
+  // #848: provisioning fails without the `sandbox` connector definition (a
+  // global seed row that `teardownOrg` wipes), where it used to skip the
+  // station silently. Idempotent, so a suite that already seeded is fine.
+  await new SeedService().seedConnectorDefinitions(db);
   const user = await DbService.repository.users.create(owner as never);
   const provisioned = await ApplicationService.provisionOrganizationFor(
     user.id
