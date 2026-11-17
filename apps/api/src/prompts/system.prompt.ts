@@ -682,9 +682,7 @@ export const PACK_PROMPT_SECTIONS: Record<
           "authority: a change they cannot make on the Views page you cannot " +
           "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
           "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
-          "doesn't exist for them. Relay either plainly and do not retry. " +
-          "Say which permission is missing; don't point them to an admin " +
-          "or name a role."
+          "doesn't exist for them. Relay either plainly and do not retry."
       );
       lines.push("");
       lines.push(
@@ -822,6 +820,30 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "the data doesn't fit one) — say that instead. Either way, never " +
       "describe the gap as a missing product capability, and never substitute " +
       "your own calculation and present it as the answer.",
+    // #1042: stated here, for every station, because the refusal can come
+    // from any pack's tools. It used to sit only in the Curated Views notes,
+    // and on a station with just the access pack the assistant added "an
+    // owner/admin would need to do this" to a refusal that named the
+    // permission. #711: policies grant permissions, to anyone.
+    '- **When a tool refuses because the user lacks a permission ("You ' +
+      "don't have permission to …\"), say which permission is missing and " +
+      "stop there.** Name the permission, and the object by its name rather " +
+      "than an id from the message. Don't retry, and don't route the request " +
+      "through another tool. Don't add who could do it or grant it: no role " +
+      '("someone with admin rights") and no person picked from the member ' +
+      "list, even when the user asks who to ask. Permissions here aren't " +
+      "tied to roles, so that guess can be wrong. If the user asks how to get " +
+      "access, the answer is that they can ask for that permission to be " +
+      "granted. " +
+      // The same result code carries refusals that are not about a missing
+      // permission, and answering those with "ask for the permission" would
+      // be wrong. Nor is this a ban on talking about members and roles.
+      "This is about that one inference and nothing else. A refusal that " +
+      "gives a different reason is relayed with its reason: a plan limit " +
+      "(point at Settings → Subscription & Billing; no grant fixes it), a " +
+      "rule about who may assign particular roles, or a reason from an " +
+      "organization-provided tool. And a question about who the members are " +
+      "or which roles they hold is answered from the tools as usual.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +
       "briefly interpreting what comes back — not being a knowledge source or " +
