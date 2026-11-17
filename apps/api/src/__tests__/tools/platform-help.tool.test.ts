@@ -12,11 +12,6 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockCountByConnectorEntityIds = jest
   .fn<() => Promise<number>>()
   .mockResolvedValue(42);
-const mockFindByStationId = jest
-  .fn<() => Promise<unknown>>()
-  .mockResolvedValue([
-    { builtinSlug: "data_query", organizationToolpackId: null },
-  ]);
 const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
   entities: [
     {
@@ -28,13 +23,27 @@ const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
     },
   ],
 });
-const mockSplitBuiltinPacks = jest
+/** What `EntitlementService.resolveStationPacks` returns: the one derivation
+ *  of a station's packs, which the tool reads instead of the join table. */
+const stationPacks = (
+  over: Partial<{
+    effective: string[];
+    unentitled: string[];
+    configuredCustomPackCount: number;
+    tier: string;
+  }> = {}
+) => ({
+  effective: ["data_query"],
+  unentitled: [],
+  otherPlanPacks: [],
+  customPacks: [],
+  configuredCustomPackCount: 0,
+  tier: "standard",
+  ...over,
+});
+const mockResolveStationPacks = jest
   .fn<() => Promise<unknown>>()
-  .mockResolvedValue({
-    effective: ["data_query"],
-    unentitled: [],
-    tier: "standard",
-  });
+  .mockResolvedValue(stationPacks());
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -42,7 +51,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       entityRecords: {
         countByConnectorEntityIds: mockCountByConnectorEntityIds,
       },
-      stationToolpacks: { findByStationId: mockFindByStationId },
     },
   },
 }));
@@ -65,7 +73,7 @@ const counts = (views: [number, number], connectors: [number, number]) => ({
 });
 
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
-  EntitlementService: { splitBuiltinPacks: mockSplitBuiltinPacks },
+  EntitlementService: { resolveStationPacks: mockResolveStationPacks },
 }));
 
 const mockWarn = jest.fn();
@@ -93,9 +101,6 @@ const exec = async (question?: string): Promise<HelpResult> =>
 
 /** A healthy station: packs enabled, entities present, records imported. */
 const healthy = () => {
-  mockFindByStationId.mockResolvedValue([
-    { builtinSlug: "data_query", organizationToolpackId: null },
-  ]);
   mockLoadStation.mockResolvedValue({
     entities: [
       {
@@ -107,11 +112,7 @@ const healthy = () => {
       },
     ],
   });
-  mockSplitBuiltinPacks.mockResolvedValue({
-    effective: ["data_query"],
-    unentitled: [],
-    tier: "standard",
-  });
+  mockResolveStationPacks.mockResolvedValue(stationPacks());
   mockCountByConnectorEntityIds.mockResolvedValue(42);
   mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
 };
@@ -212,14 +213,9 @@ describe("PlatformHelpTool — station situations", () => {
   // empty" when it carries a pack that works on station data.
   describe("a station set up without data packs (#848)", () => {
     const accessOnly = () => {
-      mockFindByStationId.mockResolvedValue([
-        { builtinSlug: "rbac_management", organizationToolpackId: null },
-      ]);
-      mockSplitBuiltinPacks.mockResolvedValue({
-        effective: ["rbac_management"],
-        unentitled: [],
-        tier: "standard",
-      });
+      mockResolveStationPacks.mockResolvedValue(
+        stationPacks({ effective: ["rbac_management"] })
+      );
       mockLoadStation.mockResolvedValue({ entities: [] });
       mockCountsForCaller.mockResolvedValue(counts([0, 0], [0, 0]));
     };
@@ -239,30 +235,37 @@ describe("PlatformHelpTool — station situations", () => {
 
     it("still reaches the plan-limit answer for an unentitled pack", async () => {
       accessOnly();
-      mockSplitBuiltinPacks.mockResolvedValue({
-        effective: [],
-        unentitled: ["rbac_management"],
-        tier: "custom",
-      });
+      mockResolveStationPacks.mockResolvedValue(
+        stationPacks({
+          effective: [],
+          unentitled: ["rbac_management"],
+          tier: "custom",
+        })
+      );
       const { answer } = await exec("why can't the assistant manage access");
       expect(answer).toMatch(/not included in your current plan/);
       expect(answer).toContain("rbac_management");
     });
 
     // A custom tool can read the station's records, so a custom pack makes
-    // missing data a real cause again.
+    // missing data a real cause again. The configured count decides it, as
+    // in the prompt: a custom pack the plan excludes still counts.
     it("names the missing attachments when a custom pack is attached", async () => {
       accessOnly();
-      mockFindByStationId.mockResolvedValue([
-        { builtinSlug: null, organizationToolpackId: "otp-1" },
-      ]);
-      mockSplitBuiltinPacks.mockResolvedValue({
-        effective: [],
-        unentitled: [],
-        tier: "standard",
-      });
+      mockResolveStationPacks.mockResolvedValue(
+        stationPacks({ effective: [], configuredCustomPackCount: 1 })
+      );
       const { answer } = await exec();
       expect(answer).toMatch(/^No views or connectors are attached/);
+    });
+
+    it("reads the station's packs from the shared derivation", async () => {
+      accessOnly();
+      await exec();
+      expect(mockResolveStationPacks).toHaveBeenCalledWith(
+        "station-1",
+        "org-1"
+      );
     });
   });
 
@@ -283,12 +286,7 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("explains tool packs when the station has none attached", async () => {
-    mockFindByStationId.mockResolvedValue([]);
-    mockSplitBuiltinPacks.mockResolvedValue({
-      effective: [],
-      unentitled: [],
-      tier: "standard",
-    });
+    mockResolveStationPacks.mockResolvedValue(stationPacks({ effective: [] }));
 
     const { answer } = await exec("what can I do here");
 
@@ -297,12 +295,7 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("#848: a station with no packs is told to attach the packs for its work, not one fixed pack", async () => {
-    mockFindByStationId.mockResolvedValue([]);
-    mockSplitBuiltinPacks.mockResolvedValue({
-      effective: [],
-      unentitled: [],
-      tier: "standard",
-    });
+    mockResolveStationPacks.mockResolvedValue(stationPacks({ effective: [] }));
 
     const { answer } = await exec("what can I do here");
 
@@ -317,11 +310,9 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("says an unentitled pack is a plan limit, not a missing feature", async () => {
-    mockSplitBuiltinPacks.mockResolvedValue({
-      effective: ["data_query"],
-      unentitled: ["gis"],
-      tier: "standard",
-    });
+    mockResolveStationPacks.mockResolvedValue(
+      stationPacks({ unentitled: ["gis"] })
+    );
 
     const { answer } = await exec("why can't I make a map");
 

@@ -197,22 +197,32 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     });
 
     // A custom tool can take the station's records as input, so a station
-    // with a custom pack is a data station.
+    // with a custom pack is a data station. The configured count decides it,
+    // as for built-in packs: a custom pack the plan excludes (no summary in
+    // `customToolPacks`) still counts, which is what platform_help reads too.
     it("treats a station with a custom pack as set up for data", () => {
-      const prompt = buildSystemPrompt(
-        makeContext({
-          entities: [],
-          effectiveToolPacks: ["rbac_management"],
+      for (const custom of [
+        {
           customToolPacks: [
             { name: "smoke", description: null, toolNames: ["smoke_tool"] },
           ],
-          attachments: attach([0, 0], [0, 0]),
-        })
-      );
-      expect(prompt).not.toContain(NOT_FOR_DATA);
-      expect(prompt).toContain(
-        "_No views or connectors are attached to this station."
-      );
+          configuredCustomPackCount: 1,
+        },
+        { customToolPacks: [], configuredCustomPackCount: 1 },
+      ]) {
+        const prompt = buildSystemPrompt(
+          makeContext({
+            entities: [],
+            effectiveToolPacks: ["rbac_management"],
+            ...custom,
+            attachments: attach([0, 0], [0, 0]),
+          })
+        );
+        expect(prompt).not.toContain(NOT_FOR_DATA);
+        expect(prompt).toContain(
+          "_No views or connectors are attached to this station."
+        );
+      }
     });
 
     it("says so even when a connector is attached", () => {
@@ -741,9 +751,39 @@ describe("buildSystemPrompt — response style", () => {
             "this list: when one of your tools can do what the user asked, " +
             "use it."
         );
-        expect(section).not.toMatch(/never offer or attempt/);
         expect(section).toContain(
           "- Access & Roles: roles, policies and groups, member assignments, and sharing stations and pins"
+        );
+      });
+
+      // #284: the agent must not offer what it has no tool for ("I can also
+      // chart this"), and precedence isn't licence to push a request through
+      // a tool that doesn't fit.
+      it("still forbids offering work that needs a pack the station lacks", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["visualize", "data_query"],
+        });
+        expect(section).toContain(
+          "You don't hold these packs' tools in this session, so don't " +
+            "offer work that needs them."
+        );
+        expect(section).toContain(
+          "don't attempt the work here or stretch another tool to cover it"
+        );
+      });
+
+      // Walked: asked to share a station from one without the access pack,
+      // the agent named the pack and then added "Subscription & Billing can
+      // help if it's a plan matter". The listed packs are in the plan.
+      it("says a listed pack is not a plan limit", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["data_query"],
+          otherPlanToolPacks: ["rbac_management"],
+        });
+        expect(section).toContain(
+          "These packs are in the plan, so this is not a plan limit: don't " +
+            "point the user at their plan or billing."
         );
       });
 

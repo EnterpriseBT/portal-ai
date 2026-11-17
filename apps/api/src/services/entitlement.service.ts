@@ -35,6 +35,13 @@ export interface StationPacks extends BuiltinPackSplit {
    */
   otherPlanPacks: string[];
   /**
+   * #848: how many custom packs are attached to the station, whether or not
+   * the plan includes custom packs. "What is this station set up for" reads
+   * the configured set, as it does for built-in packs; `customPacks` below is
+   * the entitled subset.
+   */
+  configuredCustomPackCount: number;
+  /**
    * Registered custom packs attached to this station. Empty when the org's
    * tier does not include custom toolpacks (#214) — their tools are not
    * constructed in that case, so naming them would describe nothing.
@@ -151,9 +158,18 @@ export class EntitlementService {
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
+    const configuredCustomPackCount = customPackIds.length;
+
     // Gate before the lookup: an unentitled org shouldn't pay for the read.
     if (customPackIds.length === 0 || !policy.entitlements.customToolpacks) {
-      return { effective, unentitled, otherPlanPacks, customPacks: [], tier };
+      return {
+        effective,
+        unentitled,
+        otherPlanPacks,
+        configuredCustomPackCount,
+        customPacks: [],
+        tier,
+      };
     }
 
     const packs =
@@ -166,6 +182,7 @@ export class EntitlementService {
       effective,
       unentitled,
       otherPlanPacks,
+      configuredCustomPackCount,
       customPacks: packs.map((p) => ({
         name: p.name,
         description: p.description,
@@ -173,12 +190,6 @@ export class EntitlementService {
       })),
       tier,
     };
-  }
-
-  /** Whether the org's tier includes custom (webhook) toolpacks (#214). */
-  static async customPacksEntitled(organizationId: string): Promise<boolean> {
-    const policy = await EntitlementService.resolvePolicy(organizationId);
-    return policy.entitlements.customToolpacks;
   }
 
   /** Whether the org's tier includes custom RBAC authoring (#622). */

@@ -32,6 +32,7 @@ This spec fixes the contract for provisioning two system-owned stations in every
 - `platform_help`'s `no_packs` text and the generic scoping line in the system prompt.
 - Help content: glossary (Station, Default Station, Tool Pack), FAQ (station and tool-pack entries), Getting Started ("Create a station").
 - "My Station" references that describe the provisioned station: tests, `docs/A11Y_AUDIT.md`, `packages/admin-cli/COMMANDS.md`.
+- A Description field in the Edit Station dialog (added after the adversarial walk: provisioned stations carry descriptions an owner couldn't change in the app).
 
 ### Out of scope
 
@@ -144,11 +145,17 @@ A new always-rendered section, placed immediately before `## Response Style`:
 This station is set up for one kind of work: the tool packs and data described above. When a request needs a tool pack or data that isn't on this station, say what is missing and suggest the user open a station set up for that work, or have someone who can edit this station add it. Don't present it as something the product can't do. Two cases have their own guidance above, which takes precedence: data that is attached but not shared with the user (they ask for access; nothing needs attaching), and a tool pack the plan doesn't include (a plan limit; it can't be added to a station).
 ```
 
-**Packs not on this station.** When the session's context carries `otherPlanToolPacks` (built-in packs the org's plan includes that the station isn't configured with, from `EntitlementService.resolveStationPacks().otherPlanPacks`), the section lists each as `- <pack name>: <what it is mainly for>` under "Tool packs the organization's plan includes that are **not on this station**". A tool the session holds takes precedence over the list (packs overlap: a views station shares views without the access pack). For a request that needs a tool the session doesn't hold, the agent names the pack, says the station doesn't have it, and suggests a station that has it or having someone who can edit this station add the pack. The purposes come from `PACK_ELSEWHERE`, which is deliberately not the #284 capability markers; a guard test holds the two apart.
+**Packs not on this station.** When the session's context carries `otherPlanToolPacks` (built-in packs the org's plan includes that the station isn't configured with, from `EntitlementService.resolveStationPacks().otherPlanPacks`), the section lists each as `- <pack name>: <what it is mainly for>` under "Tool packs the organization's plan includes that are **not on this station**". A tool the session holds takes precedence over the list (packs overlap: a views station shares views without the access pack). The agent doesn't offer work that needs a listed pack. For a request that needs a tool the session doesn't hold, it doesn't attempt the work or stretch another tool to cover it: it names the pack, says the station doesn't have it, and suggests a station that has it or having someone who can edit this station add the pack. A listed pack is in the plan, so the agent doesn't point the user at their plan or billing. The purposes come from `PACK_ELSEWHERE`, which is deliberately not the #284 capability markers; a guard test holds the two apart.
 
 **A station with no pack that works on entity data** (`usesStationData`, `apps/api/src/utils/station-data-packs.util.ts`, over the configured built-in packs; an attached custom pack counts as working on data, since a custom tool can take records as input): Available Data renders "This station has no tool pack that reads or writes entity data. That is how it is set up, not a fault." in place of any `missing` sentence, and tells the agent not to bring up attaching views or connectors there unless the user asks. It doesn't say attaching would add nothing: the station page's notice says what a view or connector adds, and the agent adds only that a pack is needed too. It points at Station Scope's list only when that list holds a data pack. `platform_help` uses the same classification. The no-access sentences still render.
 
 When a `missing` sentence renders in Available Data, the prompt follows it with "That line describes the station; it isn't a request. Don't attach anything to the station unless the user asks."
+
+### Edit Station dialog (`apps/web/src/components/EditStationDialog.component.tsx`)
+
+A multiline **Description** field under the name. The dialog captures the station's name and description once when it opens and compares against those, so a refetch while it is open can't make an untouched field count as edited. The description is sent (trimmed) only when it differs from the stored one with both sides trimmed, and only then is it held to the 2000-character limit, checked on the trimmed text. Emptying the field sends `""`.
+
+`PATCH /api/stations/:id` stores null for an empty or whitespace-only `description`, matching a station created without one. The contract (`UpdateStationBodySchema`) is unchanged.
 
 ### Help content
 
@@ -252,6 +259,7 @@ API: `npm run test:unit -- --testPathPattern <file>` and `npm run test:integrati
 - [ ] The glossary, FAQ and Getting Started text state the station-scoping practice and name Administrate and Playground as the examples new orgs start with. The pinning tests pass.
 - [ ] `portalai org create --json` still returns `stationId`, now the Administrate station's id.
 - [ ] Provisioning against a database with no `sandbox` connector definition fails and creates nothing.
+- [ ] Someone who can edit a station can change or clear its description in the Edit Station dialog. A cleared description is stored as null.
 
 ## Risks & rollback
 

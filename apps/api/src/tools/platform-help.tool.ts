@@ -125,21 +125,13 @@ async function gatherFindings(
   try {
     const repo = DbService.repository;
 
-    const enabledRows = await repo.stationToolpacks.findByStationId(stationId);
-    const builtinSlugs = enabledRows
-      .map((r: { builtinSlug: string | null }) => r.builtinSlug)
-      .filter((s: string | null): s is string => s !== null);
-    const customPackIds = enabledRows
-      .map(
-        (r: { organizationToolpackId: string | null }) =>
-          r.organizationToolpackId
-      )
-      .filter((id: string | null): id is string => id !== null);
-
-    const { unentitled } = await EntitlementService.splitBuiltinPacks(
-      organizationId,
-      builtinSlugs
-    );
+    // The one derivation of a station's packs (#306), which the system
+    // prompt reads too: a second copy here classified a station with a custom
+    // pack differently from the prompt in the same session.
+    const { effective, unentitled, configuredCustomPackCount } =
+      await EntitlementService.resolveStationPacks(stationId, organizationId);
+    const builtinSlugs = [...effective, ...unentitled];
+    const hasCustomPack = configuredCustomPackCount > 0;
 
     // Org-scoped, exactly as `station_context` reads.
     const stationData = await AnalyticsService.loadStation(
@@ -165,8 +157,8 @@ async function gatherFindings(
 
     return {
       available: true,
-      hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
-      usesStationData: usesStationData(builtinSlugs, customPackIds.length > 0),
+      hasPacks: builtinSlugs.length > 0 || hasCustomPack,
+      usesStationData: usesStationData(builtinSlugs, hasCustomPack),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,

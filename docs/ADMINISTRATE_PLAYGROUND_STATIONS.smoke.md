@@ -92,6 +92,15 @@ Steps are agent-walkable unless tagged `— manual` (needs a person) or `— bac
 - [ ] — backend. Provisioning against a database with no `sandbox` connector definition fails with `ORGANIZATION_PROVISIONING_FAILED` and leaves no organization, station or connector instance. Don't delete connector definitions from a dev database to try it: it is covered by `application.service.integration.test.ts` ("fails, and leaves no organization behind…") — run `npm run test:integration -- --testPathPattern application.service` in `apps/api`.
 - [ ] — backend. The demo seed is unchanged by this PR and attaches to the first station it finds (#1035 replaces it). Don't run `demo seed` or `e2e:seed` against org A or B as part of this walk.
 
+## §11 — Editing a station's description
+
+Run before §5 (the reset restores the provisioned descriptions), or after it.
+
+- [ ] As the owner in org A, open **Administrate**, choose Edit, change **Description** to "Manage access for the pilot team." and save. The station page shows the new description, and so does the Stations list.
+- [ ] Open Edit again and save without changing anything. The dialog closes and no request is sent (no `PATCH /api/stations/…` in the network log).
+- [ ] Open Edit, empty the Description field and save. The station page shows no description.
+- [ ] — backend. After the previous step, `stations.description` for Administrate is null, not an empty string.
+
 ## Sign-off
 
 - [ ] Every section above verified

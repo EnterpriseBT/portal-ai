@@ -118,7 +118,6 @@ jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: {
     splitBuiltinPacks: mockSplitBuiltinPacks,
     resolveStationPacks: mockResolveStationPacks,
-    customPacksEntitled: jest.fn(),
   },
 }));
 
@@ -925,6 +924,7 @@ describe("PortalService", () => {
         unentitled: [],
         otherPlanPacks: ["data_query", "view_management"],
         customPacks: [],
+        configuredCustomPackCount: 1,
         tier: "standard",
       } as never);
 
@@ -935,6 +935,9 @@ describe("PortalService", () => {
       });
 
       expect(ctx.otherPlanToolPacks).toEqual(["data_query", "view_management"]);
+      // A custom pack the plan excludes: no summary, but still counted.
+      expect(ctx.customToolPacks).toEqual([]);
+      expect(ctx.configuredCustomPackCount).toBe(1);
     });
 
     it("splits configured packs into effective and unentitled", async () => {

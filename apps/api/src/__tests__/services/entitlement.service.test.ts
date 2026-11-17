@@ -139,27 +139,6 @@ describe("EntitlementService.splitBuiltinPacks (#284)", () => {
   });
 });
 
-// ── customPacksEntitled ───────────────────────────────────────────────
-
-describe("EntitlementService.customPacksEntitled (#284)", () => {
-  it("reflects the tier's customToolpacks boolean", async () => {
-    expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(false);
-
-    mockResolveTier.mockResolvedValue(
-      makePolicy(
-        {
-          builtinToolpacks: [],
-          customToolpacks: true,
-          customRbac: false,
-          advancedViewFilters: false,
-        },
-        "pro"
-      )
-    );
-    expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(true);
-  });
-});
-
 // ── customRbacEntitled (#622) ─────────────────────────────────────────
 
 describe("EntitlementService.customRbacEntitled (#622)", () => {
@@ -471,8 +450,39 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
     expect(packs.effective).toEqual(["rbac_management"]);
     expect(packs.otherPlanPacks).toEqual(["data_query"]);
     expect(packs.customPacks.map((p) => p.name)).toEqual(["smoke"]);
+    expect(packs.configuredCustomPackCount).toBe(1);
     expect(mockFindById_org).toHaveBeenCalledTimes(1);
     expect(mockResolveTier).toHaveBeenCalledTimes(1);
+  });
+
+  // "What the station is set up for" counts a custom pack the plan
+  // excludes, as it counts an unentitled built-in one. platform_help and the
+  // prompt both read this, so they can't classify a station differently.
+  it("counts attached custom packs whether or not the plan includes them", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+      { builtinSlug: null, organizationToolpackId: "otp-2" },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    // The fixture tier has customToolpacks: false.
+    expect(packs.customPacks).toEqual([]);
+    expect(packs.configuredCustomPackCount).toBe(2);
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  it("counts none for a station with only built-in packs", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "data_query", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.configuredCustomPackCount).toBe(0);
   });
 
   it("lists the whole plan for a station with no built-in pack", async () => {

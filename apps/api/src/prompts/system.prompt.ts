@@ -93,6 +93,13 @@ export interface StationContext {
    * naming them would describe nothing.
    */
   customToolPacks?: CustomPackSummary[];
+  /**
+   * #848: custom packs attached to the station, counted whether or not the
+   * plan includes them (`customToolPacks` holds only the entitled ones). Read
+   * for "is this station set up for data", which goes by what is configured.
+   * Absent reads as `customToolPacks.length`.
+   */
+  configuredCustomPackCount?: number;
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -870,7 +877,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       ...stationContext.effectiveToolPacks,
       ...stationContext.unentitledToolPacks,
     ],
-    (stationContext.customToolPacks ?? []).length > 0
+    (stationContext.configuredCustomPackCount ??
+      (stationContext.customToolPacks ?? []).length) > 0
   );
   const missing = forData ? gaps.missing : null;
   if (!forData) {
@@ -1249,7 +1257,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   if (otherPlanPacks.length > 0) {
     lines.push(
       "Tool packs the organization's plan includes that are **not on this " +
-        "station**, each with what it is mainly for:"
+        "station**, each with what it is mainly for. You don't hold these " +
+        "packs' tools in this session, so don't offer work that needs them."
     );
     lines.push("");
     for (const slug of otherPlanPacks) {
@@ -1264,11 +1273,14 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "A tool you hold in this session always takes precedence over this " +
         "list: when one of your tools can do what the user asked, use it. " +
         "When a request needs a tool you don't hold and one of these packs " +
-        "provides it, don't attempt the work here: name the pack, say this " +
-        "station doesn't have it, and suggest opening a station that has " +
+        "provides it, don't attempt the work here or stretch another tool " +
+        "to cover it: name the pack, say this station doesn't have it, and " +
+        "suggest opening a station that has " +
         // No station may carry the pack yet; it is in the plan, so adding
         // it here works.
         "it, or having someone who can edit this station add the pack. " +
+        "These packs are in the plan, so this is not a plan limit: don't " +
+        "point the user at their plan or billing. " +
         "Never say it can't be done in a portal session, and never say it " +
         "will work here once data is attached."
     );
