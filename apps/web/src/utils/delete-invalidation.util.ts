@@ -36,3 +36,19 @@ export function connectorEntityDeleteKeys(): QueryKey[] {
     queryKeys.curatedViews.root,
   ];
 }
+
+/**
+ * What a successful station delete makes stale: the station, the portals and
+ * pinned results that cascade from it, and the organization, whose default
+ * station is cleared when it was this one (#1041). Without the organization
+ * the app keeps the old `defaultStationId` and asks for a station that is
+ * gone. Pass it as the call's `invalidate` option (#985).
+ */
+export function stationDeleteKeys(): QueryKey[] {
+  return [
+    queryKeys.stations.root,
+    queryKeys.portals.root,
+    queryKeys.portalResults.root,
+    queryKeys.organizations.root,
+  ];
+}

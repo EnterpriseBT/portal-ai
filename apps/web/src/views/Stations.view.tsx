@@ -27,6 +27,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
+import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -160,12 +161,7 @@ export const StationsView: React.FC = () => {
     deleteMutation.mutate(undefined, {
       // A station's portals and their pins go with it (cascade); the org's
       // default station may have been this one.
-      invalidate: [
-        queryKeys.stations.root,
-        queryKeys.portals.root,
-        queryKeys.portalResults.root,
-        queryKeys.organizations.root,
-      ],
+      invalidate: stationDeleteKeys(),
       onSuccess: handleDeleteClose,
     });
   }, [deleteMutation, handleDeleteClose]);
