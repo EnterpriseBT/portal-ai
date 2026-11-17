@@ -335,6 +335,50 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     expect(prompt).toMatch(/If no tool fits, say so/i);
   });
 
+  // #1042: on a station with only the access pack the assistant relayed a
+  // refusal and then added "an owner/admin would need to do this", once with
+  // the owner's email. The rule against that lived only in the Curated Views
+  // notes, so it rendered only where that pack was on the station.
+  describe("relaying a permission refusal (#1042)", () => {
+    const RULE =
+      "- **When a tool refuses for lack of permission, say which permission " +
+      "is missing and stop there.** Use the refusal's own wording. Don't add " +
+      "who could do it instead: don't name a role, and don't name a person. " +
+      "Permissions here aren't tied to roles, so that advice can be wrong. " +
+      "If the user asks how to get access, say they can ask for that " +
+      "permission to be granted.";
+    const count = (prompt: string, text: string) =>
+      prompt.split(text).length - 1;
+
+    it.each<[string, StationContext["effectiveToolPacks"]]>([
+      ["no packs", []],
+      ["the access pack alone", ["rbac_management"]],
+      ["entity management", ["data_query", "entity_management"]],
+      ["curated views", ["view_management"]],
+    ])("renders once on a station with %s", (_label, effectiveToolPacks) => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+      expect(count(prompt, RULE)).toBe(1);
+    });
+
+    it('sits with the pack-independent rules, after "If no tool fits"', () => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
+      expect(prompt.indexOf("If no tool fits")).toBeLessThan(
+        prompt.indexOf(RULE)
+      );
+      expect(prompt.indexOf(RULE)).toBeLessThan(
+        prompt.indexOf("## Current time")
+      );
+    });
+
+    it("leaves the Curated Views notes without a second copy", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({ effectiveToolPacks: ["view_management"] })
+      );
+      expect(prompt).not.toContain("don't point them to an admin");
+      expect(count(prompt, "name a role")).toBe(1);
+    });
+  });
+
   it("is present even with a minimal toolpack set", () => {
     const prompt = buildSystemPrompt(
       makeContext({ effectiveToolPacks: ["data_query"] })

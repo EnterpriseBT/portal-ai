@@ -682,9 +682,7 @@ export const PACK_PROMPT_SECTIONS: Record<
           "authority: a change they cannot make on the Views page you cannot " +
           "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
           "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
-          "doesn't exist for them. Relay either plainly and do not retry. " +
-          "Say which permission is missing; don't point them to an admin " +
-          "or name a role."
+          "doesn't exist for them. Relay either plainly and do not retry."
       );
       lines.push("");
       lines.push(
@@ -822,6 +820,17 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "the data doesn't fit one) — say that instead. Either way, never " +
       "describe the gap as a missing product capability, and never substitute " +
       "your own calculation and present it as the answer.",
+    // #1042: stated here, for every station, because the refusal can come
+    // from any pack's tools. It used to sit only in the Curated Views notes,
+    // and on a station with just the access pack the assistant added "an
+    // owner/admin would need to do this" to a refusal that named the
+    // permission. #711: policies grant permissions, to anyone.
+    "- **When a tool refuses for lack of permission, say which permission " +
+      "is missing and stop there.** Use the refusal's own wording. Don't add " +
+      "who could do it instead: don't name a role, and don't name a person. " +
+      "Permissions here aren't tied to roles, so that advice can be wrong. " +
+      "If the user asks how to get access, say they can ask for that " +
+      "permission to be granted.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +
       "briefly interpreting what comes back — not being a knowledge source or " +
