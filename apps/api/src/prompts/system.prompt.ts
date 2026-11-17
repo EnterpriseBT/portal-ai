@@ -17,7 +17,10 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 import type { CustomPackSummary } from "../services/entitlement.service.js";
-import { usesStationData } from "../utils/station-data-packs.util.js";
+import {
+  stationDataSetup,
+  usesStationData,
+} from "../utils/station-data-packs.util.js";
 
 /**
  * Connector instance attached to this station — surfaced in the
@@ -888,23 +891,34 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #848: a station with no pack that works on entity data (the provisioned
   // Administrate station has only the access pack) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
-  // "no data attached" and suggest attaching some. The configured set decides
-  // it, so a pack the plan excludes still counts as "set up for data",
-  // built-in or custom: the plan-limit section names both (#284, #1045).
+  // "no data attached" and suggest attaching some.
+  // #1045: three states, not two. When packs that work on data are attached
+  // but the plan excludes every one, the plan is why nothing here reads
+  // data: say that, and don't suggest attaching views no tool could read.
   const otherPlanPacks = (stationContext.otherPlanToolPacks ?? []).filter(
     isBuiltinToolpackSlug
   );
   const excludedCustomPacks = stationContext.excludedCustomToolPacks ?? [];
-  const forData = usesStationData(
-    [
-      ...stationContext.effectiveToolPacks,
-      ...stationContext.unentitledToolPacks,
-    ],
-    (stationContext.customToolPacks ?? []).length > 0 ||
-      excludedCustomPacks.length > 0
-  );
+  const dataSetup = stationDataSetup({
+    effective: stationContext.effectiveToolPacks,
+    unentitled: stationContext.unentitledToolPacks,
+    hasUsableCustomPack: (stationContext.customToolPacks ?? []).length > 0,
+    hasExcludedCustomPack: excludedCustomPacks.length > 0,
+  });
+  const forData = dataSetup === "usable";
   const missing = forData ? gaps.missing : null;
-  if (!forData) {
+  if (dataSetup === "plan-excluded") {
+    lines.push(
+      "_The tool packs on this station that read or write entity data are " +
+        "not included in the organization's plan (see Not Included In This " +
+        "Plan), so no tool in this session can work with entity data._"
+    );
+    lines.push(
+      "Don't suggest attaching views or connectors here: no tool in this " +
+        "session could use them."
+    );
+  }
+  if (dataSetup === "none") {
     lines.push(
       "_This station has no tool pack that reads or writes entity data. That " +
         "is how it is set up, not a fault._"

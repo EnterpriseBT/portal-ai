@@ -137,6 +137,10 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     const NOT_FOR_DATA =
       "_This station has no tool pack that reads or writes entity data. That " +
       "is how it is set up, not a fault._";
+    const PLAN_EXCLUDED =
+      "_The tool packs on this station that read or write entity data are " +
+      "not included in the organization's plan (see Not Included In This " +
+      "Plan), so no tool in this session can work with entity data._";
 
     it("says so instead of naming missing views or connectors", () => {
       const prompt = buildSystemPrompt(
@@ -227,7 +231,10 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       expect(prompt).not.toContain("No views are attached to this station.");
     });
 
-    it("still names the missing kind when a data pack is configured but not in the plan", () => {
+    // Three states, not two (#1045). A data pack the plan excludes used to
+    // keep the missing-attachments line, so the agent suggested attaching a
+    // view that no tool in the session could read.
+    it("leads with the plan, not missing attachments, when the only data pack is excluded by the plan", () => {
       const prompt = buildSystemPrompt(
         makeContext({
           entities: [],
@@ -236,7 +243,26 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
           attachments: attach([0, 0], [0, 0]),
         })
       );
+      expect(prompt).toContain(PLAN_EXCLUDED);
+      expect(prompt).toContain(
+        "Don't suggest attaching views or connectors here: no tool in this " +
+          "session could use them."
+      );
       expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).not.toContain("are attached to this station.");
+      expect(prompt).not.toContain("it isn't a request");
+    });
+
+    it("keeps the missing-attachments line when a usable data pack sits beside an excluded one", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["visualize"],
+          unentitledToolPacks: ["data_query"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(PLAN_EXCLUDED);
       expect(prompt).toContain(
         "_No views or connectors are attached to this station."
       );
@@ -1879,12 +1905,9 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
     }
   });
 
-  // Code review: an excluded built-in data pack keeps a station "set up for
-  // data"; an excluded custom pack didn't, on the grounds that nothing named
-  // it as a plan limit. This section now does, so the two are treated alike.
-  // Otherwise the agent got "this station has no pack for that" beside "the
-  // plan is the reason".
-  it("counts an excluded custom pack as set up for data, like an excluded built-in pack", () => {
+  // An excluded custom pack is treated like an excluded built-in data pack:
+  // the plan leads, and nothing suggests attaching data no tool could read.
+  it("leads with the plan when the only data-capable pack is an excluded custom pack", () => {
     const attachments = {
       views: { attached: 0, readable: 0 },
       connectors: { attached: 0, readable: 0 },
@@ -1897,13 +1920,13 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
         attachments,
       })
     );
-    expect(prompt).not.toContain(
-      "This station has no tool pack that reads or writes entity data"
-    );
-    expect(prompt).not.toContain("no tool pack in this session");
     expect(prompt).toContain(
-      "_No views or connectors are attached to this station."
+      "_The tool packs on this station that read or write entity data are " +
+        "not included in the organization's plan (see Not Included In This " +
+        "Plan), so no tool in this session can work with entity data._"
     );
+    expect(prompt).not.toContain("That is how it is set up, not a fault");
+    expect(prompt).not.toContain("are attached to this station.");
     expect(planSection(prompt)).toContain("- `acme` —");
 
     // Without it, the same station is one with no data pack.
@@ -1915,5 +1938,18 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
       })
     );
     expect(without).toContain("That is how it is set up, not a fault");
+
+    // With a usable data pack beside it, missing attachments still lead.
+    const usable = buildSystemPrompt(
+      makeContext({
+        entities: [],
+        effectiveToolPacks: ["data_query"],
+        excludedCustomToolPacks: ["acme"],
+        attachments,
+      })
+    );
+    expect(usable).toContain(
+      "_No views or connectors are attached to this station."
+    );
   });
 });

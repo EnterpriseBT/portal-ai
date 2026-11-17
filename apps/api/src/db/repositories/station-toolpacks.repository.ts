@@ -45,15 +45,24 @@ export class StationToolpacksRepository extends Repository<
     stationId: string,
     client: DbClient = db
   ): Promise<StationToolpackSelect[]> {
-    return (await (client as typeof db)
-      .select()
-      .from(stationToolpacks)
-      .where(
-        and(
-          eq(stationToolpacks.stationId, stationId),
-          isNull(stationToolpacks.deleted)
+    return (
+      (await (client as typeof db)
+        .select()
+        .from(stationToolpacks)
+        .where(
+          and(
+            eq(stationToolpacks.stationId, stationId),
+            isNull(stationToolpacks.deleted)
+          )
         )
-      )) as StationToolpackSelect[];
+        // #1045: a defined order. The system prompt lists a station's packs
+        // from this read every turn, and without one the lists could reorder
+        // between turns for no reason.
+        .orderBy(
+          stationToolpacks.created,
+          stationToolpacks.id
+        )) as StationToolpackSelect[]
+    );
   }
 
   /**

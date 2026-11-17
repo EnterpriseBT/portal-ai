@@ -4,6 +4,7 @@ import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
 
 import {
   PACK_USES_STATION_DATA,
+  stationDataSetup,
   usesStationData,
 } from "../../utils/station-data-packs.util.js";
 
@@ -50,5 +51,50 @@ describe("station data packs (#848)", () => {
   it("counts an attached custom pack as working on station data", () => {
     expect(usesStationData([], true)).toBe(true);
     expect(usesStationData(["rbac_management"], true)).toBe(true);
+  });
+});
+
+// #1045: two states weren't enough. A station whose only data-capable packs
+// are excluded by the plan is neither "set up for data" (attaching a view
+// would do nothing) nor "not set up for data" (it was, and the plan is why
+// it can't). The prompt and platform_help both read this.
+describe("stationDataSetup (#1045)", () => {
+  const setup = (over: Partial<Parameters<typeof stationDataSetup>[0]>) =>
+    stationDataSetup({
+      effective: [],
+      unentitled: [],
+      hasUsableCustomPack: false,
+      hasExcludedCustomPack: false,
+      ...over,
+    });
+
+  it("is usable when a pack with tools in the session works on data", () => {
+    expect(setup({ effective: ["data_query"] })).toBe("usable");
+    expect(setup({ hasUsableCustomPack: true })).toBe("usable");
+    // A usable data pack outranks an excluded one.
+    expect(
+      setup({ effective: ["visualize"], unentitled: ["data_query"] })
+    ).toBe("usable");
+    expect(
+      setup({ effective: ["data_query"], hasExcludedCustomPack: true })
+    ).toBe("usable");
+  });
+
+  it("is plan-excluded when every data-capable pack is excluded by the plan", () => {
+    expect(
+      setup({ effective: ["rbac_management"], unentitled: ["data_query"] })
+    ).toBe("plan-excluded");
+    expect(
+      setup({ effective: ["rbac_management"], hasExcludedCustomPack: true })
+    ).toBe("plan-excluded");
+  });
+
+  it("is none when no pack on the station works on data", () => {
+    expect(setup({ effective: ["rbac_management"] })).toBe("none");
+    expect(setup({})).toBe("none");
+    // An excluded pack that doesn't work on data doesn't change that.
+    expect(
+      setup({ effective: ["view_management"], unentitled: ["web_search"] })
+    ).toBe("none");
   });
 });

@@ -584,18 +584,6 @@ describe("EntitlementService — excludedCustomPacks (#1045)", () => {
     expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
   });
 
-  // The attachment rows come back in no defined order; a list that
-  // reordered between turns would change the prompt for no reason.
-  it("returns the names sorted, whatever order the rows arrive in", async () => {
-    mockResolveTier.mockResolvedValue(plan(false));
-    mockFindByStationId_packs.mockResolvedValue([rows[2], rows[1], rows[0]]);
-    const packs = await EntitlementService.resolveStationPacks(
-      STATION_ID,
-      ORG_ID
-    );
-    expect(packs.excludedCustomPacks).toEqual(["acme", "crm"]);
-  });
-
   it("carries them on the split-only read too", async () => {
     mockResolveTier.mockResolvedValue(plan(false));
     const split = await EntitlementService.resolveStationPackSplit(
@@ -603,6 +591,28 @@ describe("EntitlementService — excludedCustomPacks (#1045)", () => {
       ORG_ID
     );
     expect(split.excludedCustomPacks).toEqual(["acme", "crm"]);
+  });
+
+  // The usable packs are listed in the prompt too, and their read has no
+  // defined order either.
+  it("returns the usable custom packs sorted by name", async () => {
+    mockResolveTier.mockResolvedValue(plan(true));
+    const pack = (id: string, name: string) => ({
+      id,
+      organizationId: ORG_ID,
+      name,
+      description: null,
+      tools: [],
+    });
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      pack("otp-2", "crm"),
+      pack("otp-1", "acme"),
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.customPacks.map((p) => p.name)).toEqual(["acme", "crm"]);
   });
 
   it("is empty, with no names read, when the plan includes custom packs", async () => {

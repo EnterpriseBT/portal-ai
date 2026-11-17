@@ -21,31 +21,46 @@
 - **A. A count.** "1 organization tool pack on this station isn't included in the plan." Needs no new read, but the assistant can't say which pack, and "why did the acme tools stop working?" gets a vague answer.
 - **B. The packs' names.** The assistant can answer by name. Needs a read of the attached packs' names; it must not go through the decrypting read, since nothing here uses credentials.
 
-**Decided: B.** A names-only repository read (`id`, `name`; org-scoped; not deleted), run only when the station has custom packs attached and the plan excludes them. The lookup returns them as `excludedCustomPacks: string[]` on the split, so `resolveStationPacks` and `resolveStationPackSplit` both carry it. Three readers use it:
+**Decided: B.** A names-only repository read (`id`, `name`; org-scoped; not deleted), run only when the station has custom packs attached and the plan excludes them. The lookup returns them as `excludedCustomPacks: string[]`, sorted by name, on the split, so `resolveStationPacks` and `resolveStationPackSplit` both carry it. Three readers use it:
 
 1. **System prompt.** "Not Included In This Plan" renders when either list is non-empty and lists each excluded custom pack by name, as a pack the organization registered itself. The section's existing instructions then apply to it (state the plan as the reason; point at Subscription & Billing).
-2. **`platform_help`.** Its plan-limit answer names them, labelled "(registered by your organization)" since a custom pack can share a built-in pack's slug. That answer now also follows whichever other answer leads (missing attachments, no records): it used to be given only when nothing else matched, which hid the plan on a station with a second problem.
+2. **`platform_help`.** Its plan-limit answer names them in one list, `(gis; registered by your organization: acme, crm)`: custom packs sit under their own label since one can share a built-in pack's slug. That answer also follows whichever other answer leads (missing attachments, no records); it used to be given only when nothing else matched, which hid the plan on a station with a second problem.
 3. **`station_context`.** `toolPacks` gains `customNotInPlan: string[]`, described in the tool's description next to `unentitled`.
 
-**A custom pack the plan excludes now counts as "set up for data"**, as an excluded built-in data pack already does. #848 left it out because nothing told the user it was a plan limit; this change does, so the exception had no reason left. (The first version of this fix kept the exception and swapped one sentence to soften it. Code review pointed out that left the assistant with "this station has no pack for that" beside "the plan is the reason".)
+## Decision — how such a station is described
 
-The names are sorted: the attachment rows have no defined order, and a list that reordered between turns would change the prompt for nothing.
+Before this, a station was either "set up for data" or not. Neither fits a station whose only data-capable packs are excluded by the plan, and review went back and forth: counted as set up for data, it is told to attach a view no tool could read; counted as not, it is told "that is how it is set up" beside "the plan is the reason". So there are three states (`stationDataSetup`, `apps/api/src/utils/station-data-packs.util.ts`), read by the prompt and `platform_help` alike:
+
+| State | When | What leads |
+|---|---|---|
+| `usable` | a pack whose tools exist in the session works on data | missing views or connectors, if any (as before) |
+| `plan-excluded` | packs that work on data are attached, and the plan excludes every one | the plan limit; no "attach a view" advice |
+| `none` | no pack on the station works on data | "that is how it is set up, not a fault" (#848) |
+
+**This applies to built-in packs too.** A station whose only data pack is an excluded built-in one used to get the missing-attachments line (#848 pinned it); it now leads with the plan, like the custom case.
+
+A custom pack counts as working on data (a custom tool can take records as input). An excluded one counts by its resolved name, so an attachment whose pack row is gone classifies nothing, in the prompt and in `platform_help` alike.
+
+Pack lists have a defined order: the station's attachment rows are read oldest first, and both custom-pack lists are sorted by name. Without one, the prompt's lists could reorder between turns.
 
 ## Plan — one slice
 
 **Files**
 - Edit: `organization-toolpacks.repository.ts` — `findNamesByIds(ids, { organizationId })`.
-- Edit: `entitlement.service.ts` — `excludedCustomPacks` on `StationPackSplit`, filled in the shared read.
-- Edit: `apps/api/src/services/portal.service.ts` — carry it into the prompt context.
-- Edit: `system.prompt.ts` — the plan-limit section and the one sentence above.
-- Edit: `platform-help.tool.ts`, `station-context.tool.ts` (field, type and description).
+- Edit: `station-toolpacks.repository.ts` — `findByStationId` orders by `created, id`.
+- Edit: `entitlement.service.ts` — `excludedCustomPacks` on `StationPackSplit`, filled in the shared read; custom packs sorted.
+- Edit: `apps/api/src/utils/station-data-packs.util.ts` — `stationDataSetup`.
+- Edit: `apps/api/src/services/portal.service.ts` — carry the names into the prompt context.
+- Edit: `system.prompt.ts` — the plan-limit section, and the Available Data block's three states.
+- Edit: `platform-help.tool.ts` (the three states, the list, the trailing plan note), `station-context.tool.ts` (field, type and description).
 
-**Tests** (written first; `npm run test:unit -- --testPathPattern "entitlement.service|system.prompt|platform-help|station-context|portal.service"` in `apps/api`)
-- `entitlement.service.test.ts`: names returned when the plan excludes custom packs; empty when it includes them or none are attached; the decrypting read is not called for them.
-- `system.prompt.test.ts`: the section renders for an excluded custom pack alone, names it, and still renders built-ins as before; "Organization-Provided Tools" never lists it; the "how it is set up" sentence is absent on such a station.
-- `platform-help.tool.test.ts`: the plan answer names it.
+**Tests** (written first; `npm run test:unit -- --testPathPattern "station-data-packs|entitlement.service|system.prompt|platform-help|station-context|portal.service"` in `apps/api`)
+- `station-data-packs.util.test.ts`: the three states.
+- `entitlement.service.test.ts`: names returned, sorted, when the plan excludes custom packs; empty when it includes them or none are attached; the decrypting read is not called for them; usable custom packs sorted.
+- `system.prompt.test.ts`: the plan section renders for an excluded custom pack alone and names it; "Organization-Provided Tools" never lists it; a station whose only data-capable pack is plan-excluded (built-in or custom) leads with the plan and has no missing-attachments line; with a usable data pack beside it the missing line stays.
+- `platform-help.tool.test.ts`: the plan answer names it; the plan leads on a `plan-excluded` station; the plan note follows another lead; the list format; a custom attachment whose row is gone counts for nothing.
 - `station-context.tool.test.ts`: `customNotInPlan` is returned.
-- An integration test for the repository read (org-scoped, skips deleted): `npm run test:integration -- --testPathPattern organization-toolpacks`.
+- Integration (`npm run test:integration -- --testPathPattern "organization-toolpacks.repository|station-toolpacks.repository"`): the names read is org-scoped and skips deleted rows; `findByStationId` returns oldest first.
 - Then `npm run lint`, `npm run type-check`, `npm run format:check`.
 
 ## Smoke (manual, against your dev stack)
@@ -56,7 +71,7 @@ Registering a pack in the app fetches its schema from a reachable webhook. Witho
 
 1. Before the downgrade, on that station: "What tools do you have from the <pack> pack?" The assistant lists them.
 2. After the downgrade, same station, new portal: "Why did the <pack> tools stop working?" The assistant says the <pack> pack isn't included in the organization's current plan and points at Settings → Subscription & Billing. It doesn't say the station lacks the pack or suggest attaching it.
-3. Same portal: "What can I do on this station?" The answer doesn't offer the pack's tools, and if it mentions the pack it says the plan excludes it. Then: "Check with platform help and the station context: which tool packs on this station aren't working, and why?" Both tools name the pack as a plan limit. On a station with nothing attached, `platform_help`'s answer opens with the missing views and connectors and then gives the plan limit.
+3. Same portal: "What can I do on this station?" The answer doesn't offer the pack's tools, and if it mentions the pack it says the plan excludes it. Then: "Check with platform help and the station context: which tool packs on this station aren't working, and why?" Both tools name the pack as a plan limit. On a station where it is the only data-capable pack, `platform_help`'s answer opens with the plan limit and doesn't suggest attaching views or connectors.
 4. Move the org back to the plan with custom packs. A new portal lists the pack's tools again and doesn't mention a plan limit.
 
 ## Out of scope

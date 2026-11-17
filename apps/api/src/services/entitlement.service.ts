@@ -50,8 +50,8 @@ export interface StationPackSplit extends BuiltinPackSplit {
   customPacksEntitled: boolean;
   /**
    * #1045: the names of the custom packs attached to this station that the
-   * plan excludes, sorted by name (the attachment rows have no defined
-   * order). Empty when the plan includes custom packs. They build no tools and are not in `customPacks`; they are named
+   * plan excludes, sorted by name. Empty when the plan includes custom
+   * packs. They build no tools and are not in `customPacks`; they are named
    * so the assistant can say the plan is why their tools are gone.
    */
   excludedCustomPacks: string[];
@@ -145,9 +145,11 @@ export class EntitlementService {
    * limit — which is where the spurious "check Subscription & Billing"
    * guidance came from.
    *
-   * Custom packs are omitted entirely when the tier's `customToolpacks`
-   * entitlement is false, matching #214: registrations survive a downgrade,
-   * their tools stop being offered, so the inventory must stop naming them.
+   * Custom packs are left out of `customPacks` when the tier's
+   * `customToolpacks` entitlement is false, matching #214: registrations
+   * survive a downgrade and their tools stop being offered, so the list of
+   * callable packs must not carry them. Their names are reported apart, in
+   * `excludedCustomPacks`, so the plan can be given as the reason (#1045).
    */
   static async resolveStationPacks(
     stationId: string,
@@ -172,11 +174,15 @@ export class EntitlementService {
 
     return {
       ...split,
-      customPacks: packs.map((p) => ({
-        name: p.name,
-        description: p.description,
-        toolNames: p.tools.map((t) => t.name),
-      })),
+      // Sorted, like the excluded names: this read has no defined order, and
+      // the prompt lists these every turn.
+      customPacks: packs
+        .map((p) => ({
+          name: p.name,
+          description: p.description,
+          toolNames: p.tools.map((t) => t.name),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 
