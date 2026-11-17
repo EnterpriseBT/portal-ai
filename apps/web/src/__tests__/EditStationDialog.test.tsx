@@ -557,3 +557,116 @@ describe("EditStationDialog — description (#848)", () => {
     await expectNoAxeViolations(await screen.findByRole("dialog"));
   });
 });
+
+// #1043: the dialog seeds its form once but compared it against the live
+// station. After a refetch behind the open dialog, what another editor had
+// changed read as this editor's edit, and a name-only save put it back.
+describe("EditStationDialog — another editor's changes while open (#1043)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const instance = (id: string) => ({
+    connectorInstanceId: id,
+    connectorInstance: { id, name: `Connector ${id}` },
+    canRead: true,
+  });
+  const view = (id: string) => ({
+    curatedViewId: id,
+    curatedView: { label: `View ${id}` },
+    canRead: true,
+  });
+  const opened = {
+    ...sampleStation,
+    enabledToolpacks: ["data_query", "statistics"],
+    instances: [instance("ci-1"), instance("ci-2")],
+    views: [view("cv-1"), view("cv-2")],
+  };
+
+  /** Open on `opened`, let the page refetch `after`, then save a new name. */
+  const renameAfterRefetch = async (after: typeof opened) => {
+    const onSubmit = jest.fn();
+    const { rerender } = render(
+      <EditStationDialog
+        {...defaultProps}
+        station={opened}
+        onSubmit={onSubmit}
+      />
+    );
+    rerender(
+      <EditStationDialog
+        {...defaultProps}
+        station={after}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Mine" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][0];
+  };
+
+  it("doesn't put back a tool pack another editor removed", async () => {
+    const body = await renameAfterRefetch({
+      ...opened,
+      enabledToolpacks: ["data_query"],
+    });
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  it("doesn't re-attach a connector another editor detached", async () => {
+    const body = await renameAfterRefetch({
+      ...opened,
+      instances: [instance("ci-1")],
+    });
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  it("doesn't re-attach a view another editor detached", async () => {
+    const body = await renameAfterRefetch({
+      ...opened,
+      views: [view("cv-1")],
+    });
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  it("doesn't detach a connector or view another editor attached", async () => {
+    const body = await renameAfterRefetch({
+      ...opened,
+      instances: [...opened.instances, instance("ci-3")],
+      views: [...opened.views, view("cv-3")],
+    });
+    expect(body).toEqual({ name: "Mine" });
+  });
+
+  it("closes without submitting when nothing was edited, whatever changed behind it", () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    const { rerender } = render(
+      <EditStationDialog
+        {...defaultProps}
+        station={opened}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    rerender(
+      <EditStationDialog
+        {...defaultProps}
+        station={{
+          ...opened,
+          enabledToolpacks: ["data_query"],
+          instances: [],
+          views: [],
+        }}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

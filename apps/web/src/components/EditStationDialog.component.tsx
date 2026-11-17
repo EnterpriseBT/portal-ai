@@ -90,22 +90,36 @@ const editStationFormSchema = (
     toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
   });
 
-interface OriginalText {
+/**
+ * The station as the dialog opened on it: what the form is seeded from and
+ * what a save is compared against. Captured once. Read from the live prop
+ * instead, a refetch while the dialog is open made an untouched field look
+ * edited, and saving put back what another editor had just changed (#848 for
+ * the text fields, #1043 for packs and attachments).
+ */
+interface OriginalStation {
   name: string;
   description: string;
+  toolPacks: string[];
+  /** #674: only the connectors and views the viewer can read. */
+  connectorInstanceIds: string[];
+  curatedViewIds: string[];
 }
 
 /** Whether a text field was edited. Both sides are trimmed: what is sent is
  *  trimmed, and a stored value isn't always. */
-function nameChanged(form: FormState, original: OriginalText): boolean {
+function nameChanged(form: FormState, original: OriginalStation): boolean {
   return form.name.trim() !== original.name.trim();
 }
 
-function descriptionChanged(form: FormState, original: OriginalText): boolean {
+function descriptionChanged(
+  form: FormState,
+  original: OriginalStation
+): boolean {
   return form.description.trim() !== original.description.trim();
 }
 
-function validateForm(form: FormState, original: OriginalText): FormErrors {
+function validateForm(form: FormState, original: OriginalStation): FormErrors {
   const schema = editStationFormSchema(
     nameChanged(form, original),
     descriptionChanged(form, original)
@@ -186,11 +200,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   // #674: the pickers hold only what the viewer can read. Attachments they
   // can't read aren't theirs to remove, and the dialog only ever sends what
   // changed among the readable ones (see attachmentChanges).
-  const initialInstanceIds = (station.instances ?? [])
-    .filter((i) => i.canRead)
-    .map((i) => i.connectorInstanceId);
   const readableViews = (station.views ?? []).filter((v) => v.canRead);
-  const initialViewIds = readableViews.map((v) => v.curatedViewId);
   // Seeded once: the dialog remounts per station, and a stable object keeps
   // the picker from re-searching on every render.
   const [viewLabels] = useState<Record<string, string>>(() =>
@@ -201,22 +211,24 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       ])
     )
   );
-  const initialToolpacks = station.enabledToolpacks ?? [];
-  // #848: a station with no description edits as an empty field, and leaving
-  // it empty is not a change. Captured once, like the form it is compared
-  // with: read from the live prop, a refetch while the dialog is open made an
-  // untouched field look edited, and saving sent the old text back over
-  // another editor's change.
-  const [original] = useState<OriginalText>(() => ({
+  // The dialog is mounted only while open, so this is the station as the
+  // dialog opened on it. #848: a station with no description edits as an
+  // empty field, and leaving it empty is not a change.
+  const [original] = useState<OriginalStation>(() => ({
     name: station.name,
     description: station.description ?? "",
+    toolPacks: [...(station.enabledToolpacks ?? [])],
+    connectorInstanceIds: (station.instances ?? [])
+      .filter((i) => i.canRead)
+      .map((i) => i.connectorInstanceId),
+    curatedViewIds: readableViews.map((v) => v.curatedViewId),
   }));
   const [form, setForm] = useState<FormState>({
-    name: station.name,
+    name: original.name,
     description: original.description,
-    toolPacks: [...initialToolpacks],
-    connectorInstanceIds: [...initialInstanceIds],
-    curatedViewIds: [...initialViewIds],
+    toolPacks: [...original.toolPacks],
+    connectorInstanceIds: [...original.connectorInstanceIds],
+    curatedViewIds: [...original.curatedViewIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -283,15 +295,18 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (descriptionChanged(form, original)) {
       body.description = form.description.trim();
     }
-    if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
+    if (JSON.stringify(form.toolPacks) !== JSON.stringify(original.toolPacks)) {
       body.toolPacks = form.toolPacks;
     }
     const connectorChanges = attachmentChanges(
-      initialInstanceIds,
+      original.connectorInstanceIds,
       form.connectorInstanceIds
     );
     if (connectorChanges) body.connectorInstanceChanges = connectorChanges;
-    const viewChanges = attachmentChanges(initialViewIds, form.curatedViewIds);
+    const viewChanges = attachmentChanges(
+      original.curatedViewIds,
+      form.curatedViewIds
+    );
     if (viewChanges) body.curatedViewChanges = viewChanges;
 
     if (Object.keys(body).length === 0) {
