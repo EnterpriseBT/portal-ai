@@ -42,11 +42,11 @@ The ticket guessed at a refetch-ordering race. The cause is simpler: the two del
 Use an org whose default station you can delete (a fresh `portalai org create` works; its default is Administrate).
 
 1. Open the default station's page, choose More actions → Delete and confirm. You land on **Stations**. There is no "Station not found" text, and no "Default Station" line (the org has no default now).
-2. Without reloading, open the **dashboard**. The default-station card shows its "no default station" state, not an error.
+2. Without reloading, open the **dashboard**. There is no default-station card and no error where it was.
 3. Set another station as the default from the Stations page, then delete it **from its card** on that page. Once the list settles there is no "Station not found" text.
-4. The browser console shows no `404` for `GET /api/stations/<deleted id>` after step 1's navigation. (One 404 from the station page's own query, fired before the navigation, is expected and predates this.)
+4. After step 1 the browser console shows one `404`, for `GET /api/stations/<deleted id>?include=…`: the station page's own query refetching as the page closes. There is none for the plain `GET /api/stations/<deleted id>` the picker makes. Step 3 still logs one picker `404` (see Out of scope).
 
 ## Out of scope
 
 - **A default station the viewer can't read.** The picker and the dashboard card fetch whatever id the org carries, and an unreadable station answers 404 like a missing one, so a member would see the same text if the default were a station not shared with them. Different cause, not reproduced; worth its own ticket if it happens.
-- **The 404 the station page's own query makes** between the delete and the navigation. Harmless and not user-visible.
+- **The two remaining console 404s.** The station page's own query refetches once between the delete and the navigation. On the Stations page, deleting the default from its card refetches the picker's station and the organization together, so the picker's request can 404 before the organization comes back without a default; no "Station not found" text was seen when sampled every 250 ms. Both are console noise, and the second was there before this fix.
