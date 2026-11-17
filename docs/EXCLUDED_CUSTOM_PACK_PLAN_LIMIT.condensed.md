@@ -50,9 +50,11 @@ Not changed: whether such a station counts as "set up for data". A custom pack t
 
 Needs an org on a plan with custom packs (enterprise), one custom pack registered and attached to a station, then the org moved to a plan without them (`portalai org set-tier <org> standard`; wait a minute for the plan cache or restart the API).
 
+Registering a pack in the app fetches its schema from a reachable webhook. Without one, a pack row can be created through `DbService.repository.organizationToolpacks.create` (so its credential columns are encrypted) and attached with `PATCH /api/stations/<id>` and `toolPacks: [..., "org:<packId>"]`. The steps below only list the pack's tools; they never call them.
+
 1. Before the downgrade, on that station: "What tools do you have from the <pack> pack?" The assistant lists them.
 2. After the downgrade, same station, new portal: "Why did the <pack> tools stop working?" The assistant says the <pack> pack isn't included in the organization's current plan and points at Settings → Subscription & Billing. It doesn't say the station lacks the pack or suggest attaching it.
-3. Same portal: "What can I do on this station?" The answer doesn't offer the pack's tools, and if it mentions the pack it says the plan excludes it.
+3. Same portal: "What can I do on this station?" The answer doesn't offer the pack's tools, and if it mentions the pack it says the plan excludes it. Then: "Check with platform help and the station context: which tool packs on this station aren't working, and why?" Both tools name the pack as a plan limit.
 4. Move the org back to the plan with custom packs. A new portal lists the pack's tools again and doesn't mention a plan limit.
 
 ## Out of scope
