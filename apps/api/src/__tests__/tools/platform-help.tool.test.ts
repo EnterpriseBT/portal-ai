@@ -12,11 +12,6 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockCountByConnectorEntityIds = jest
   .fn<() => Promise<number>>()
   .mockResolvedValue(42);
-const mockFindByStationId = jest
-  .fn<() => Promise<unknown>>()
-  .mockResolvedValue([
-    { builtinSlug: "data_query", organizationToolpackId: null },
-  ]);
 const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
   entities: [
     {
@@ -28,13 +23,29 @@ const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
     },
   ],
 });
-const mockSplitBuiltinPacks = jest
+/** What `EntitlementService.resolveStationPackSplit` returns: the one
+ *  derivation of a station's packs, which the tool reads instead of the join
+ *  table. */
+const stationPacks = (
+  over: Partial<{
+    effective: string[];
+    unentitled: string[];
+    configuredCustomPackCount: number;
+    customPacksEntitled: boolean;
+    tier: string;
+  }> = {}
+) => ({
+  effective: ["data_query"],
+  unentitled: [],
+  otherPlanPacks: [],
+  configuredCustomPackCount: 0,
+  customPacksEntitled: false,
+  tier: "standard",
+  ...over,
+});
+const mockResolveStationPackSplit = jest
   .fn<() => Promise<unknown>>()
-  .mockResolvedValue({
-    effective: ["data_query"],
-    unentitled: [],
-    tier: "standard",
-  });
+  .mockResolvedValue(stationPacks());
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -42,7 +53,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       entityRecords: {
         countByConnectorEntityIds: mockCountByConnectorEntityIds,
       },
-      stationToolpacks: { findByStationId: mockFindByStationId },
     },
   },
 }));
@@ -65,7 +75,7 @@ const counts = (views: [number, number], connectors: [number, number]) => ({
 });
 
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
-  EntitlementService: { splitBuiltinPacks: mockSplitBuiltinPacks },
+  EntitlementService: { resolveStationPackSplit: mockResolveStationPackSplit },
 }));
 
 const mockWarn = jest.fn();
@@ -93,9 +103,6 @@ const exec = async (question?: string): Promise<HelpResult> =>
 
 /** A healthy station: packs enabled, entities present, records imported. */
 const healthy = () => {
-  mockFindByStationId.mockResolvedValue([
-    { builtinSlug: "data_query", organizationToolpackId: null },
-  ]);
   mockLoadStation.mockResolvedValue({
     entities: [
       {
@@ -107,11 +114,7 @@ const healthy = () => {
       },
     ],
   });
-  mockSplitBuiltinPacks.mockResolvedValue({
-    effective: ["data_query"],
-    unentitled: [],
-    tier: "standard",
-  });
+  mockResolveStationPackSplit.mockResolvedValue(stationPacks());
   mockCountByConnectorEntityIds.mockResolvedValue(42);
   mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
 };
@@ -174,15 +177,19 @@ describe("PlatformHelpTool — station situations", () => {
     const { answer } = await exec("why are my answers empty");
 
     expect(answer).toBe(
-      "No views or connectors are attached to this station yet. " +
-        "Ask someone who can edit the station to attach them."
+      "No views or connectors are attached to this station. It works " +
+        "without them. Attach a view to query entity data here, or a " +
+        "connector to create and edit entities. " +
+        "Anyone who can edit the station can attach them."
     );
   });
 
   it("#674: names only the missing kind", async () => {
     mockCountsForCaller.mockResolvedValue(counts([0, 0], [1, 1]));
     const { answer } = await exec();
-    expect(answer).toMatch(/^No views are attached to this station yet\./);
+    expect(answer).toMatch(
+      /^No views are attached to this station\. Attach a view to query entity data here\./
+    );
   });
 
   it("#674: reports no access when attached views are all unreadable", async () => {
@@ -204,6 +211,95 @@ describe("PlatformHelpTool — station situations", () => {
     expect(answer).toMatch(/^No views are attached/);
   });
 
+  // #848: a station with no views or connectors is only "why answers are
+  // empty" when it carries a pack that works on station data.
+  describe("a station set up without data packs (#848)", () => {
+    const accessOnly = () => {
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({ effective: ["rbac_management"] })
+      );
+      mockLoadStation.mockResolvedValue({ entities: [] });
+      mockCountsForCaller.mockResolvedValue(counts([0, 0], [0, 0]));
+    };
+
+    it("doesn't lead with the missing-attachments sentence", async () => {
+      accessOnly();
+      const { answer } = await exec("what can I do here");
+      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).not.toMatch(/It works without them/);
+    });
+
+    it("doesn't claim entities are set up when the station has none", async () => {
+      accessOnly();
+      const { answer } = await exec("why are my answers empty");
+      expect(answer).not.toMatch(/has entities set up/);
+    });
+
+    it("still reaches the plan-limit answer for an unentitled pack", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: [],
+          unentitled: ["rbac_management"],
+          tier: "custom",
+        })
+      );
+      const { answer } = await exec("why can't the assistant manage access");
+      expect(answer).toMatch(/not included in your current plan/);
+      expect(answer).toContain("rbac_management");
+    });
+
+    // A custom tool can read the station's records, so a custom pack the
+    // plan includes makes missing data a real cause again.
+    it("names the missing attachments when a custom pack is attached", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: [],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: true,
+        })
+      );
+      const { answer } = await exec();
+      expect(answer).toMatch(/^No views or connectors are attached/);
+    });
+
+    // Code review: a custom pack the plan excludes builds no tools. Attaching
+    // a view wouldn't help, so missing data isn't given as the cause. It is
+    // still a pack on the station, so the answer isn't "no tool packs".
+    it("doesn't name missing attachments for a custom pack the plan excludes", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: [],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+        })
+      );
+      const { answer } = await exec();
+      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).not.toMatch(/attach the packs for what you want/);
+    });
+
+    // One derivation with the prompt, through the split-only read: the
+    // custom-pack rows it doesn't use decrypt stored pack credentials.
+    it("reads the station's packs from the shared derivation, without pack details", async () => {
+      accessOnly();
+      await exec();
+      expect(mockResolveStationPackSplit).toHaveBeenCalledWith(
+        "station-1",
+        "org-1"
+      );
+    });
+  });
+
+  it("a data station with nothing attached and no entities never says entities are set up (#848)", async () => {
+    // Everything attached, but no entity resolves: "no records" would be false.
+    mockLoadStation.mockResolvedValue({ entities: [] });
+    const { answer } = await exec("why are my answers empty");
+    expect(answer).not.toMatch(/has entities set up/);
+  });
+
   it("#674: reads the counts for the calling user", async () => {
     await exec();
     expect(mockCountsForCaller).toHaveBeenCalledWith(
@@ -214,12 +310,9 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("explains tool packs when the station has none attached", async () => {
-    mockFindByStationId.mockResolvedValue([]);
-    mockSplitBuiltinPacks.mockResolvedValue({
-      effective: [],
-      unentitled: [],
-      tier: "standard",
-    });
+    mockResolveStationPackSplit.mockResolvedValue(
+      stationPacks({ effective: [] })
+    );
 
     const { answer } = await exec("what can I do here");
 
@@ -227,12 +320,27 @@ describe("PlatformHelpTool — station situations", () => {
     expect(answer).toMatch(/none|no tool packs|isn't attached|not attached/i);
   });
 
+  it("#848: a station with no packs is told to attach the packs for its work, not one fixed pack", async () => {
+    mockResolveStationPackSplit.mockResolvedValue(
+      stationPacks({ effective: [] })
+    );
+
+    const { answer } = await exec("what can I do here");
+
+    // A station is set up for one kind of work, and data querying is only
+    // one of them (Administrate carries the access pack alone).
+    expect(answer).toContain(
+      "Open the station and attach the packs for what you want to do here, " +
+        "such as the data-query pack for questions about your data, then ask " +
+        "again."
+    );
+    expect(answer).not.toContain("at least the data-query pack");
+  });
+
   it("says an unentitled pack is a plan limit, not a missing feature", async () => {
-    mockSplitBuiltinPacks.mockResolvedValue({
-      effective: ["data_query"],
-      unentitled: ["gis"],
-      tier: "standard",
-    });
+    mockResolveStationPackSplit.mockResolvedValue(
+      stationPacks({ unentitled: ["gis"] })
+    );
 
     const { answer } = await exec("why can't I make a map");
 

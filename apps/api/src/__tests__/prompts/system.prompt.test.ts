@@ -4,6 +4,7 @@ import {
   buildSystemPrompt,
   PACK_PROMPT_SECTIONS,
   type StationContext,
+  PACK_ELSEWHERE,
 } from "../../prompts/system.prompt.js";
 
 // ---------------------------------------------------------------------------
@@ -106,16 +107,162 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       makeContext({ entities: [], attachments: attach([0, 0], [0, 0]) })
     );
     expect(prompt).toContain(
-      "_No views or connectors are attached to this station yet._"
+      "_No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities._"
     );
     expect(prompt).not.toContain("Entities on this station:");
+  });
+
+  // #848: the sentences now say what attaching would add, and a session may
+  // hold curated_view_attach. The prompt marks them as description.
+  it("#848: tells the agent a missing-attachment line is not a request to attach", () => {
+    const NOT_A_REQUEST =
+      "That line describes the station; it isn't a request. Don't attach " +
+      "anything to the station unless the user asks.";
+    const missing = buildSystemPrompt(
+      makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
+    );
+    expect(missing).toContain(
+      "_No views are attached to this station. Attach a view to query entity data here._\n" +
+        NOT_A_REQUEST
+    );
+    // Not rendered when nothing is missing.
+    expect(buildSystemPrompt(makeContext())).not.toContain(NOT_A_REQUEST);
+  });
+
+  // #848 walk finding: on a station with no pack that works on entity data
+  // (Administrate has only the access pack) the missing-attachments line made
+  // the agent open every answer with "no data attached" and suggest attaching
+  // some. There the prompt says the station isn't set up for data instead.
+  describe("#848: a station with no pack that works on entity data", () => {
+    const NOT_FOR_DATA =
+      "_This station has no tool pack that reads or writes entity data. That " +
+      "is how it is set up, not a fault._";
+
+    it("says so instead of naming missing views or connectors", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).toContain(NOT_FOR_DATA);
+      expect(prompt).toMatch(
+        /Don't tell the user data is missing, and don't bring up attaching views or connectors here unless the user asks/
+      );
+      expect(prompt).not.toContain("are attached to this station.");
+      expect(prompt).not.toContain("it isn't a request");
+    });
+
+    // The page's notice on the same station says "Attach a view to query
+    // entity data here", so the prompt must not say attaching adds nothing.
+    it("doesn't contradict the station page's notice", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain("would add nothing");
+      expect(prompt).toContain(
+        "If they ask, say that working with entity data here would also " +
+          "need a tool pack for it."
+      );
+    });
+
+    it("points at Station Scope's list only when the plan has a data pack elsewhere", () => {
+      const ctx = (otherPlanToolPacks: string[] | undefined) =>
+        buildSystemPrompt(
+          makeContext({
+            entities: [],
+            effectiveToolPacks: ["rbac_management"],
+            otherPlanToolPacks,
+            attachments: attach([0, 0], [0, 0]),
+          })
+        );
+      const LISTED =
+        "A request about entity data needs one of the packs listed under " +
+        "Station Scope: follow the guidance there.";
+      const UNLISTED =
+        "A request about entity data needs a tool pack this station " +
+        "doesn't have.";
+      expect(ctx(["view_management", "data_query"])).toContain(LISTED);
+      for (const none of [undefined, [], ["web_search", "view_management"]]) {
+        const prompt = ctx(none);
+        expect(prompt).not.toContain(LISTED);
+        expect(prompt).toContain(UNLISTED);
+        expect(prompt).not.toContain("a station set up for it");
+      }
+    });
+
+    // A custom tool can take the station's records as input, so a station
+    // with a custom pack the plan includes is a data station.
+    it("treats a station with a custom pack as set up for data", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          customToolPacks: [
+            { name: "smoke", description: null, toolNames: ["smoke_tool"] },
+          ],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).toContain(
+        "_No views or connectors are attached to this station."
+      );
+    });
+
+    it("says so even when a connector is attached", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management", "view_management"],
+          attachments: attach([0, 0], [1, 1]),
+        })
+      );
+      expect(prompt).toContain(NOT_FOR_DATA);
+      expect(prompt).not.toContain("No views are attached to this station.");
+    });
+
+    it("still names the missing kind when a data pack is configured but not in the plan", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          unentitledToolPacks: ["data_query"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).toContain(
+        "_No views or connectors are attached to this station."
+      );
+    });
+
+    it("still reports attached data the user can't read", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([2, 0], [0, 0]),
+        })
+      );
+      expect(prompt).toContain(
+        "_You don't have access to any views on this station."
+      );
+    });
   });
 
   it("#674: names only the missing kind when connectors are attached but views aren't", () => {
     const prompt = buildSystemPrompt(
       makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
     );
-    expect(prompt).toContain("_No views are attached to this station yet._");
+    expect(prompt).toContain(
+      "_No views are attached to this station. Attach a view to query entity data here._"
+    );
     expect(prompt).not.toContain("connectors are attached");
   });
 
@@ -144,7 +291,7 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     const prompt = buildSystemPrompt(makeContext());
     expect(prompt).toContain("Entities on this station:");
     expect(prompt).not.toMatch(
-      /attached to this station yet|don't have access/
+      /are attached to this station\.|don't have access/
     );
   });
 
@@ -506,6 +653,206 @@ describe("buildSystemPrompt — response style", () => {
       const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
       expect(prompt).toContain("## Response Style");
     }
+  });
+
+  // #848: stations are scoped to one kind of work, so the agent redirects a
+  // request the station isn't set up for instead of calling it impossible.
+  describe("## Station Scope (#848)", () => {
+    const SCOPE =
+      "This station is set up for one kind of work: the tool packs and data " +
+      "described above. When a request needs a tool pack or data that isn't " +
+      "on this station, say what is missing and suggest the user open a " +
+      "station set up for that work, or have someone who can edit this " +
+      "station add it. Don't present it as something the product can't do. " +
+      "Two cases have their own guidance above, which takes precedence: " +
+      "data that is attached but not shared with the user (they ask for " +
+      "access; nothing needs attaching), and a tool pack the plan doesn't " +
+      "include (a plan limit; it can't be added to a station).";
+
+    const compositions: StationContext["effectiveToolPacks"][] = [
+      [],
+      ["rbac_management"],
+      ["data_query", "entity_management", "view_management"],
+    ];
+
+    it("renders the section for every pack set, an empty one included", () => {
+      for (const effectiveToolPacks of compositions) {
+        const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+        expect(prompt).toContain(`## Station Scope\n\n${SCOPE}\n`);
+      }
+    });
+
+    it("sits immediately before ## Response Style", () => {
+      for (const effectiveToolPacks of compositions) {
+        const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+        expect(prompt).toContain(`${SCOPE}\n\n## Response Style`);
+      }
+    });
+
+    it("defers to the no-access and plan-limit guidance (#676, #284)", () => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
+      const section = prompt.slice(
+        prompt.indexOf("## Station Scope"),
+        prompt.indexOf("## Response Style")
+      );
+      expect(section).toMatch(/attached but not shared with the user/);
+      expect(section).toMatch(/a plan limit; it can't be added to a station/);
+    });
+
+    // The walk finding: on a station with only the access pack the agent
+    // said attaching views "can't be done from a session" and offered to query
+    // once data was attached. It couldn't name what was missing because the
+    // prompt never said which packs exist beyond this station's.
+    describe("packs the plan includes that aren't on this station", () => {
+      const scopeOf = (ctx: Partial<StationContext>) => {
+        const prompt = buildSystemPrompt(makeContext(ctx));
+        return prompt.slice(
+          prompt.indexOf("## Station Scope"),
+          prompt.indexOf("## Response Style")
+        );
+      };
+
+      it("lists each by name with what it is for", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["data_query", "view_management"],
+        });
+        expect(section).toContain("**not on this station**");
+        expect(section).toContain("- Data Query: SQL queries on entity data");
+        expect(section).toContain(
+          "- Curated Views: creating and sharing curated views and attaching them to stations"
+        );
+        expect(section).toMatch(
+          /Never say it can't be done in a portal session/
+        );
+      });
+
+      // Code review: a purpose phrase is broader than its pack. "Shares" sat
+      // on the access pack's line while a views station holds
+      // curated_view_share, and a charts station can answer questions about
+      // entity data without Data Query.
+      it("puts the session's own tools ahead of the list", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["view_management"],
+          otherPlanToolPacks: ["rbac_management", "data_query"],
+        });
+        const PRECEDENCE =
+          "A tool you hold in this session always takes precedence over " +
+          "this list: when one of your tools can do what the user asked, " +
+          "use it.";
+        expect(section).toContain(PRECEDENCE);
+        expect(section).toContain(
+          "- Access & Roles: roles, policies and groups, member assignments, and sharing stations and pins"
+        );
+        // Read before the list it qualifies, and before anything that
+        // restricts the agent.
+        expect(section.indexOf(PRECEDENCE)).toBeLessThan(
+          section.indexOf("- Access & Roles:")
+        );
+        expect(section.indexOf(PRECEDENCE)).toBeLessThan(
+          section.indexOf("Don't offer work")
+        );
+      });
+
+      // #284: the agent must not offer what it has no tool for ("I can also
+      // chart this"), and precedence isn't licence to push a request through
+      // a tool that doesn't fit.
+      // The ban is on what none of the session's tools can do, and comes
+      // after the list: worded against "work that needs these packs" and
+      // placed first, it could outweigh the precedence rule on a station
+      // whose own tools overlap a listed purpose.
+      it("still forbids offering work none of the session's tools can do", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["visualize", "data_query"],
+        });
+        expect(section).toContain(
+          "Don't offer work that none of your tools can do."
+        );
+        expect(section).not.toContain("don't offer work that needs them");
+        expect(section.indexOf("- Data Query:")).toBeLessThan(
+          section.indexOf("Don't offer work that none of your tools can do.")
+        );
+        expect(section).toContain(
+          "don't attempt the work here or stretch another tool to cover it"
+        );
+      });
+
+      // Walked: asked to share a station from one without the access pack,
+      // the agent named the pack and then added "Subscription & Billing can
+      // help if it's a plan matter". The listed packs are in the plan.
+      it("says a listed pack is not a plan limit", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["data_query"],
+          otherPlanToolPacks: ["rbac_management"],
+        });
+        expect(section).toContain(
+          "These packs are in the plan, so this is not a plan limit: don't " +
+            "point the user at their plan or billing."
+        );
+      });
+
+      // No station may carry the pack yet, and these packs are in the plan,
+      // so adding one to this station works.
+      it("offers adding the pack to this station as well as another station", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["data_query"],
+        });
+        expect(section).toContain(
+          "suggest opening a station that has it, or having someone who " +
+            "can edit this station add the pack"
+        );
+      });
+
+      it("renders no list when the plan has nothing else", () => {
+        for (const otherPlanToolPacks of [undefined, []]) {
+          const section = scopeOf({
+            effectiveToolPacks: ["rbac_management"],
+            otherPlanToolPacks,
+          });
+          expect(section).not.toContain("not on this station");
+        }
+      });
+
+      it("skips a slug the registry doesn't know", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["not_a_pack", "data_query"],
+        });
+        expect(section).toContain("- Data Query:");
+        expect(section).not.toContain("not_a_pack");
+      });
+
+      // #284's guard compares strings: a pack's markers must not appear
+      // unless the pack is effective. The list names packs the session does
+      // NOT have, so nothing it prints may be one of those markers.
+      it("GUARD: no listed name or purpose is a capability marker (#284)", () => {
+        const markers = ALL_SLUGS.flatMap(
+          (s) => PACK_PROMPT_SECTIONS[s].markers
+        );
+        const section = scopeOf({
+          effectiveToolPacks: [],
+          otherPlanToolPacks: [...ALL_SLUGS],
+        });
+        for (const slug of ALL_SLUGS) {
+          expect(section).toContain(PACK_ELSEWHERE[slug]);
+        }
+        for (const marker of markers) {
+          expect(section).not.toContain(marker);
+        }
+      });
+    });
+
+    it("names no particular station", () => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
+      expect(prompt).toContain("## Station Scope");
+      const section = prompt.slice(
+        prompt.indexOf("## Station Scope"),
+        prompt.indexOf("## Response Style")
+      );
+      expect(section).not.toMatch(/Administrate|Playground/);
+    });
   });
 
   it("places ## Response Style after all other sections", () => {

@@ -149,7 +149,7 @@ describe("StationDetailView — attachments (#674)", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toHaveTextContent(
-      "No views or connectors are attached to this station yet."
+      "No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities."
     );
     expect(screen.getAllByText("—")).toHaveLength(2);
     expect(
@@ -163,7 +163,7 @@ describe("StationDetailView — attachments (#674)", () => {
     );
     render(<StationDetailView stationId="st-1" />);
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "No views are attached to this station yet."
+      "No views are attached to this station. Attach a view to query entity data here."
     );
   });
 });

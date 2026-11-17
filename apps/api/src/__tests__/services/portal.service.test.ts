@@ -118,7 +118,6 @@ jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: {
     splitBuiltinPacks: mockSplitBuiltinPacks,
     resolveStationPacks: mockResolveStationPacks,
-    customPacksEntitled: jest.fn(),
   },
 }));
 
@@ -912,6 +911,36 @@ describe("PortalService", () => {
     // session actually has. Before #284 the prompt received the configured
     // set while buildAnalyticsTools built from the entitled subset, so the
     // agent was told about tools that had been stripped from its own session.
+
+    // #848: the plan's packs that aren't on this station reach the prompt, so
+    // the agent can name the pack a request needs.
+    it("carries the plan's other packs into the context (#848)", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockResolveStationPacks.mockResolvedValueOnce({
+        effective: ["rbac_management"],
+        unentitled: [],
+        otherPlanPacks: ["data_query", "view_management"],
+        customPacks: [],
+        configuredCustomPackCount: 1,
+        customPacksEntitled: false,
+        tier: "standard",
+      } as never);
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Administrate" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.otherPlanToolPacks).toEqual(["data_query", "view_management"]);
+      // A custom pack the plan excludes has no summary, and the prompt goes
+      // by the summaries.
+      expect(ctx.customToolPacks).toEqual([]);
+      expect(ctx).not.toHaveProperty("configuredCustomPackCount");
+    });
 
     it("splits configured packs into effective and unentitled", async () => {
       const { buildStationContext } =

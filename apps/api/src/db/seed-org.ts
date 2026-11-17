@@ -6,12 +6,12 @@
  * enterable as owner/admin/member. Every named user must already exist (have
  * logged in once) — this links rows, it does not mint logins.
  *
- * `--all-toolpacks` enables **every** built-in toolpack on the org's station(s)
- * (#629), instead of the minimal `data_query`-only default a new station gets.
+ * `--all-toolpacks` enables **every** built-in toolpack on each of the org's
+ * stations (#629), instead of the scoped packs provisioning gives them (#848:
+ * Administrate gets the access pack, Playground the data, entity and view packs).
  * The e2e/smoke fixture opts into this so an agent-guided smoke walk can exercise
- * any pack's features (rbac_management, entity_management, gis, …), not just
- * data_query. It is a fixture concern — production org provisioning keeps its
- * minimal default untouched.
+ * any pack's features (gis, statistics, …) on either station. It is a fixture
+ * concern — production org provisioning keeps its scoped packs.
  *
  * Usage: tsx src/db/seed-org.ts --name <name> [--owner-email <e>]
  *          [--admin-email <e>] [--member-email <e>] [--tier <slug>]

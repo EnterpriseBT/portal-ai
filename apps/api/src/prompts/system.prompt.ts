@@ -1,6 +1,8 @@
 import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
 import {
+  BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
+  isBuiltinToolpackSlug,
   type BuiltinToolpackSlug,
 } from "@portalai/core/registries";
 import {
@@ -15,6 +17,7 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 import type { CustomPackSummary } from "../services/entitlement.service.js";
+import { usesStationData } from "../utils/station-data-packs.util.js";
 
 /**
  * Connector instance attached to this station — surfaced in the
@@ -73,6 +76,13 @@ export interface StationContext {
    * missing product capability.
    */
   unentitledToolPacks: string[];
+  /**
+   * #848: built-in packs the plan includes that this station is NOT
+   * configured with. Named in "Station Scope" so the agent can say which pack
+   * a request needs and point at a station that has it. Absent or empty
+   * renders no list.
+   */
+  otherPlanToolPacks?: string[];
   /**
    * Org-registered (webhook) toolpacks attached to this station (#306).
    *
@@ -206,6 +216,36 @@ function geocodingGuidance(ctx: StationContext): string[] {
       neverFabricate,
   ];
 }
+
+/**
+ * #848: what each pack is mainly for, as told to a user whose station doesn't
+ * have it. Printed in "Station Scope" beside the pack's display name for the
+ * packs in `otherPlanToolPacks`.
+ *
+ * These are deliberately NOT the `capability` phrases below. Those are
+ * `markers`, and the #284 guard asserts a marker appears only when its pack is
+ * effective; this list names packs the session does not have. A guard test
+ * asserts no phrase here contains a marker.
+ *
+ * A phrase is a hint for naming the right pack, not a boundary: packs overlap
+ * (a views station shares views, a charts station answers questions about
+ * entity data), so the section tells the agent its own tools come first. Keep
+ * each phrase to what only that pack does.
+ */
+export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
+  data_query: "SQL queries on entity data",
+  visualize: "charts",
+  gis: "maps and geocoding",
+  statistics: "statistical tests",
+  regression: "regressions and forecasts",
+  financial: "financial metrics",
+  web_search: "looking things up on the web",
+  entity_management: "creating and changing entities and their records",
+  rbac_management:
+    "roles, policies and groups, member assignments, and sharing stations and pins",
+  view_management:
+    "creating and sharing curated views and attaching them to stations",
+};
 
 export const PACK_PROMPT_SECTIONS: Record<
   BuiltinToolpackSlug,
@@ -816,7 +856,54 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #674: what's missing from the station (the same for everyone) and what
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
-  if (gaps.missing) lines.push(`_${gaps.missing}_`);
+  // #848: a station with no pack that works on entity data (the provisioned
+  // Administrate station has only the access pack) is complete without views
+  // or connectors. Naming them as missing made the agent open its answers with
+  // "no data attached" and suggest attaching some. The configured set decides
+  // it, so a data pack the plan excludes still counts as "set up for data"
+  // (the plan-limit section names it). A custom pack counts when the plan
+  // includes it: `customToolPacks` holds only those.
+  const otherPlanPacks = (stationContext.otherPlanToolPacks ?? []).filter(
+    isBuiltinToolpackSlug
+  );
+  const forData = usesStationData(
+    [
+      ...stationContext.effectiveToolPacks,
+      ...stationContext.unentitledToolPacks,
+    ],
+    (stationContext.customToolPacks ?? []).length > 0
+  );
+  const missing = forData ? gaps.missing : null;
+  if (!forData) {
+    lines.push(
+      "_This station has no tool pack that reads or writes entity data. That " +
+        "is how it is set up, not a fault._"
+    );
+    lines.push(
+      // The station's page tells the user "Attach a view to query entity
+      // data here", so this must not say attaching adds nothing: it says the
+      // other half, that a pack is needed too.
+      "Don't tell the user data is missing, and don't bring up attaching " +
+        "views or connectors here unless the user asks. If they ask, say " +
+        "that working with entity data here would also need a tool pack " +
+        "for it. " +
+        // Only point at the list when it will hold a data pack.
+        (usesStationData(otherPlanPacks, false)
+          ? "A request about entity data needs one of the packs listed " +
+            "under Station Scope: follow the guidance there."
+          : "A request about entity data needs a tool pack this station " +
+            "doesn't have.")
+    );
+  }
+  if (missing) {
+    lines.push(`_${missing}_`);
+    // #848: the sentence says what attaching would add, and a session may
+    // hold `curated_view_attach`. It describes the station; it isn't a task.
+    lines.push(
+      "That line describes the station; it isn't a request. Don't attach " +
+        "anything to the station unless the user asks."
+    );
+  }
   if (gaps.noAccess) {
     // #676: the user can't read what's attached, which is not the same as
     // nothing being attached. Say so plainly, because a model relaying the bare
@@ -830,10 +917,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "with them."
     );
   }
-  if (gaps.missing || gaps.noAccess) lines.push("");
+  if (!forData || missing || gaps.noAccess) lines.push("");
 
   if (stationContext.entities.length === 0) {
-    if (!gaps.missing && !gaps.noAccess) {
+    if (forData && !missing && !gaps.noAccess) {
       lines.push("_No entities are available on this station yet._");
       lines.push("");
     }
@@ -1133,6 +1220,65 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "and that they can enable writes on a connector or attach a " +
         "write-enabled one to this station. It is not a plan limit: don't " +
         "point them at their plan or billing."
+    );
+    lines.push("");
+  }
+
+  // #848: stations are scoped to one kind of work (a new org starts with one
+  // for access and one for data), so a request this station can't serve is
+  // usually served by another. Rendered for every pack set and naming no
+  // station: the section describes the practice, not the provisioned pair.
+  lines.push("## Station Scope");
+  lines.push("");
+  lines.push(
+    "This station is set up for one kind of work: the tool packs and data " +
+      "described above. When a request needs a tool pack or data that isn't " +
+      "on this station, say what is missing and suggest the user open a " +
+      "station set up for that work, or have someone who can edit this " +
+      "station add it. Don't present it as something the product can't do. " +
+      // #676 and #284 already say what to do in these two cases; without
+      // this the section's "have someone add it" would override them.
+      "Two cases have their own guidance above, which takes precedence: " +
+      "data that is attached but not shared with the user (they ask for " +
+      "access; nothing needs attaching), and a tool pack the plan doesn't " +
+      "include (a plan limit; it can't be added to a station)."
+  );
+  lines.push("");
+  // The agent can only "say what is missing" if it knows what exists. Without
+  // this list it told a user that attaching views can't be done from a
+  // session, on a station that simply lacked the pack for it.
+  if (otherPlanPacks.length > 0) {
+    lines.push(
+      "Tool packs the organization's plan includes that are **not on this " +
+        "station**, each with what it is mainly for. " +
+        // Packs overlap, so a purpose line can describe something this
+        // session's tools already do (sharing a view without the access
+        // pack). Said before the list it qualifies.
+        "A tool you hold in this session always takes precedence over this " +
+        "list: when one of your tools can do what the user asked, use it."
+    );
+    lines.push("");
+    for (const slug of otherPlanPacks) {
+      lines.push(
+        `- ${BUILTIN_TOOLPACK_BY_SLUG[slug].name}: ${PACK_ELSEWHERE[slug]}`
+      );
+    }
+    lines.push("");
+    lines.push(
+      "When a request needs a tool you don't hold and one of these packs " +
+        "provides it, don't attempt the work here or stretch another tool " +
+        "to cover it: name the pack, say this station doesn't have it, and " +
+        "suggest opening a station that has " +
+        // No station may carry the pack yet; it is in the plan, so adding
+        // it here works.
+        "it, or having someone who can edit this station add the pack. " +
+        // #284: scoped to what no held tool can do, so it can't outweigh the
+        // precedence rule above.
+        "Don't offer work that none of your tools can do. " +
+        "These packs are in the plan, so this is not a plan limit: don't " +
+        "point the user at their plan or billing. " +
+        "Never say it can't be done in a portal session, and never say it " +
+        "will work here once data is attached."
     );
     lines.push("");
   }

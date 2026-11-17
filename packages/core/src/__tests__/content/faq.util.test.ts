@@ -349,6 +349,47 @@ describe("FAQ_ENTRIES source ordering", () => {
 
 // ── Curated views (#674) ────────────────────────────────────────────
 
+// #848: stations are scoped to one kind of work.
+describe("FAQ describes station scoping (#848)", () => {
+  const answer = (q: string) =>
+    FAQ_ENTRIES.find((e) => e.question === q)!.answer;
+
+  it("the station explainer states the practice and names both provisioned stations", () => {
+    const a = answer("What is a Station and why do I need one?");
+    expect(a).toContain(
+      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data."
+    );
+  });
+
+  // The default station of a new organization has no data by design, so the
+  // data answers send the reader to a data station instead of telling them to
+  // attach data to whichever station they are on.
+  it("the first-questions answer starts from a station set up for data", () => {
+    const a = answer("How do I start asking questions about my data?");
+    expect(a).toMatch(/^From a station set up for your data/);
+    expect(a).toContain(
+      "A new organization's default station, Administrate, is for managing access and has no data: use Playground or a station of your own."
+    );
+  });
+
+  it("the vague-answers answer checks the station is a data station first", () => {
+    const a = answer(
+      "Why are the assistant's answers vague or missing my data?"
+    );
+    expect(a).toMatch(
+      /^First check the station is set up for data\. A new organization's default station, Administrate, manages access and has no data by design: open Playground or another data station rather than attaching data to it\./
+    );
+    // The rest of the diagnosis is unchanged.
+    expect(a).toMatch(/view attached and shared with you/i);
+  });
+
+  it("the tool-pack explainer says to turn on only what the station's work needs", () => {
+    expect(answer("What are tool packs?")).toContain(
+      "Turn on only the packs a station's work needs."
+    );
+  });
+});
+
 describe("FAQ mentions views (#674)", () => {
   const answer = (q: string) =>
     FAQ_ENTRIES.find((e) => e.question === q)!.answer;

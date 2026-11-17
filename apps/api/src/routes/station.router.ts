@@ -38,6 +38,17 @@ const logger = createLogger({ module: "station" });
 export const stationRouter = Router();
 
 /**
+ * #848: "no description" is stored as null. An empty or whitespace-only one
+ * (the Edit Station dialog clears the field by sending "") is the same thing,
+ * so create and update both write null for it rather than a second "none".
+ */
+function storedDescription(description: string | undefined): string | null {
+  return description === undefined || description.trim() === ""
+    ? null
+    : description;
+}
+
+/**
  * #674: emit `station.attachments.change` after the write commits. Only a
  * real change is audited. `AuditService.record` is fail-open, so an audit
  * failure never fails the request.
@@ -499,7 +510,7 @@ stationRouter.post(
       model.update({
         organizationId,
         name,
-        description: description ?? null,
+        description: storedDescription(description),
       });
 
       // #674: the station row, its toolpacks and both attachment kinds land
@@ -581,7 +592,8 @@ stationRouter.post(
  *       `add` attaches ids not already attached (each must be readable by the
  *       caller), `remove` soft-deletes attached ids the caller can read and
  *       skips any they can't. Nothing else is touched, so a stale editor can't
- *       re-attach what another just removed (#674).
+ *       re-attach what another just removed (#674). An empty `description`
+ *       clears it: the station's description becomes null.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -725,7 +737,9 @@ stationRouter.patch(
         updatedBy: userId,
       };
       if (name !== undefined) updates.name = name;
-      if (description !== undefined) updates.description = description;
+      if (description !== undefined) {
+        updates.description = storedDescription(description);
+      }
 
       // #674: the row, toolpacks and attachment diffs commit together. Each
       // attachment kind is written only when its field is in the body.

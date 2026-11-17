@@ -60,7 +60,7 @@ portalai member switch <printed orgId> you@portalsai.io --env local
 portalai org reset <orgId> --env local
 ```
 
-`org create` and `seed org` run the **app's own provisioning transaction** (`ApplicationService`) — the org gets system column definitions, the Sandbox connector, a default station with the `data_query` toolpack, and `defaultStationId`, exactly like an org provisioned on a user's first sign-in. `org reset` spawns the app's `db:reset` (which stays as the app's own entrypoint).
+`org create` and `seed org` run the **app's own provisioning transaction** (`ApplicationService`) — the org gets system column definitions, the Sandbox connector, the Administrate and Playground stations with their toolpacks, and `defaultStationId` (Administrate), exactly like an org provisioned on a user's first sign-in. `org reset` spawns the app's `db:reset` (which stays as the app's own entrypoint).
 
 ## The rules
 

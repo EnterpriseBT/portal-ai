@@ -44,4 +44,15 @@ describe("Create a station step (#674)", () => {
     )!;
     expect(step.description).toMatch(/connector instances, views/i);
   });
+
+  // #848: a station is scoped to one kind of work, with the two a new
+  // organization starts with as the examples.
+  it("says to keep unrelated work in separate stations and names both provisioned ones (#848)", () => {
+    const step = GETTING_STARTED_STEPS.find(
+      (s) => s.title === "Create a station"
+    )!;
+    expect(step.description).toBe(
+      "Bundle the connector instances, views and tool packs one kind of work needs — for example data query and statistics for analysis. Keep unrelated work in separate stations: a new organization starts with Administrate (access) and Playground (the Sandbox data) as examples. A station is the workspace a portal runs against."
+    );
+  });
 });

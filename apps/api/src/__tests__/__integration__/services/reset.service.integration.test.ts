@@ -29,6 +29,7 @@ import postgres from "postgres";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { ResetService } from "../../../services/reset.service.js";
+import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
 import * as schema from "../../../db/schema/index.js";
 import { teardownOrg } from "../utils/application.util.js";
 import {
@@ -208,16 +209,17 @@ describe("ResetService integration tests (#295)", () => {
       for (const rows of counts) expect(rows).toHaveLength(0);
     });
 
-    it("re-provisions the default station and Sandbox instance (case 4b)", async () => {
+    it("re-provisions the provisioned stations and Sandbox instance (case 4b, #848)", async () => {
       // The org's three seeded instances and one station are gone; what
       // remains is what org creation would have built.
       const stations = await db
         .select()
         .from(schema.stations)
         .where(eq(schema.stations.organizationId, target.orgId));
-      expect(stations).toHaveLength(1);
-      expect(stations[0].name).toBe("My Station");
-      expect(stations[0].id).not.toBe(target.stationId);
+      expect(stations.map((s) => s.name).sort()).toEqual(
+        PROVISIONED_STATIONS.map((s) => s.name).sort()
+      );
+      expect(stations.map((s) => s.id)).not.toContain(target.stationId);
 
       const instances = await db
         .select()
@@ -226,18 +228,26 @@ describe("ResetService integration tests (#295)", () => {
       expect(instances).toHaveLength(1);
       expect(instances[0].name).toBe("Sandbox");
 
-      const links = await db
-        .select()
-        .from(schema.stationInstances)
-        .where(eq(schema.stationInstances.stationId, stations[0].id));
-      expect(links).toHaveLength(1);
-      expect(links[0].connectorInstanceId).toBe(instances[0].id);
+      for (const expected of PROVISIONED_STATIONS) {
+        const station = stations.find((s) => s.name === expected.name)!;
+        expect(station.description).toBe(expected.description);
 
-      const toolpacks = await db
-        .select()
-        .from(schema.stationToolpacks)
-        .where(eq(schema.stationToolpacks.stationId, stations[0].id));
-      expect(toolpacks.map((t) => t.builtinSlug)).toEqual(["data_query"]);
+        const links = await db
+          .select()
+          .from(schema.stationInstances)
+          .where(eq(schema.stationInstances.stationId, station.id));
+        expect(links.map((l) => l.connectorInstanceId)).toEqual(
+          expected.attachSandbox ? [instances[0].id] : []
+        );
+
+        const toolpacks = await db
+          .select()
+          .from(schema.stationToolpacks)
+          .where(eq(schema.stationToolpacks.stationId, station.id));
+        expect(toolpacks.map((t) => t.builtinSlug).sort()).toEqual(
+          [...expected.builtinSlugs].sort()
+        );
+      }
     });
 
     it("hands back an org that still has its system column definitions (case 5)", async () => {
@@ -288,6 +298,10 @@ describe("ResetService integration tests (#295)", () => {
         .from(schema.stations)
         .where(eq(schema.stations.id, org.defaultStationId as string));
       expect(station.organizationId).toBe(target.orgId);
+      // #848: the default is the provisioned default station, as on a new org.
+      expect(station.name).toBe(
+        PROVISIONED_STATIONS.find((p) => p.isDefault)!.name
+      );
     });
 
     it("keeps the owner's membership and drops the rest (case 7)", async () => {

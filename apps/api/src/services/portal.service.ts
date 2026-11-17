@@ -1357,6 +1357,7 @@ export async function buildStationContext(args: {
   const {
     effective: effectiveToolPacks,
     unentitled: unentitledToolPacks,
+    otherPlanPacks: otherPlanToolPacks,
     customPacks: customToolPacks,
   } = await EntitlementService.resolveStationPacks(station.id, organizationId);
 
@@ -1433,6 +1434,7 @@ export async function buildStationContext(args: {
     ),
     effectiveToolPacks,
     unentitledToolPacks,
+    otherPlanToolPacks,
     customToolPacks,
     entityCapabilities,
     connectorInstances,

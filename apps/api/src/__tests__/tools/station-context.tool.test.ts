@@ -89,7 +89,6 @@ jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: {
     splitBuiltinPacks: mockSplitBuiltinPacks,
     resolveStationPacks: mockResolveStationPacks,
-    customPacksEntitled: jest.fn(),
   },
 }));
 

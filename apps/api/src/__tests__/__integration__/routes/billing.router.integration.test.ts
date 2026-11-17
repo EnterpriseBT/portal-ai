@@ -22,6 +22,8 @@ import { eq } from "drizzle-orm";
 
 import * as schema from "../../../db/schema/index.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { SeedService } from "../../../services/seed.service.js";
+import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   generateId,
   teardownOrg,
@@ -117,6 +119,9 @@ describe("Billing router", () => {
       await db.delete(schema.tiers).where(eq(schema.tiers.slug, slug));
     }
     await teardownOrg(db);
+    // #848: the self-provisioning test creates an org, which fails without the
+    // Sandbox connector definition (a global seed the teardown removes).
+    await new SeedService().seedConnectorDefinitions(db as unknown as DbClient);
 
     const owner = createUser(OWNER_AUTH0);
     const member = createUser(MEMBER_AUTH0);

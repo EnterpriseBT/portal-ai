@@ -30,7 +30,7 @@ export const GETTING_STARTED_STEPS: GettingStartedStep[] = [
   {
     title: "Create a station",
     description:
-      "Bundle connector instances, views and the tool packs you want to use — data query, statistics, regression, and so on. A station is the workspace a portal runs against.",
+      "Bundle the connector instances, views and tool packs one kind of work needs — for example data query and statistics for analysis. Keep unrelated work in separate stations: a new organization starts with Administrate (access) and Playground (the Sandbox data) as examples. A station is the workspace a portal runs against.",
     ctaLabel: "Go to Stations",
     ctaRoute: ApplicationRoute.Stations,
   },

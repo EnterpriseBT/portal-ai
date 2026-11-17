@@ -11,12 +11,16 @@ export interface StationAttachmentAlertsUIProps {
 }
 
 /**
- * The station-level "nothing attached" warning (#674), worded by
+ * The station-level "nothing attached" notice (#674), worded by
  * `describeStationAttachmentGaps` — the same sentences the system prompt and
  * platform_help use. One alert: a combined sentence when both kinds are
  * missing, a single one otherwise, nothing when both are attached. It is the
  * same for every viewer; attachments a viewer can't read show as locked
  * chips, not as an alert.
+ *
+ * It is an `info` alert, not a warning (#848): a station without views or
+ * connectors is valid (the provisioned Administrate station has neither), so
+ * the notice says what attaching one would add.
  */
 export const StationAttachmentAlertsUI: React.FC<
   StationAttachmentAlertsUIProps
@@ -28,7 +32,7 @@ export const StationAttachmentAlertsUI: React.FC<
   });
   if (!missing) return null;
   return (
-    <Alert severity="warning" variant="outlined">
+    <Alert severity="info" variant="outlined">
       {missing}
     </Alert>
   );

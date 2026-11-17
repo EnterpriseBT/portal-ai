@@ -48,8 +48,8 @@ const logger = createLogger({ module: "reset" });
  *
  * The org it hands back is equivalent to a freshly-provisioned one: after
  * the cascade it re-runs `ApplicationService.provisionOrganizationWorkspace`,
- * so the system column definitions, Sandbox instance, default station and
- * its toolpack are all back exactly as org creation would have made them.
+ * so the system column definitions, Sandbox instance, provisioned stations and
+ * their toolpacks are all back exactly as org creation would have made them.
  */
 export class ResetService {
   /**
@@ -280,8 +280,8 @@ export class ResetService {
       );
 
       // Re-provision the scaffolding every organization is created with —
-      // system column definitions, the Sandbox instance, the default
-      // station and its toolpack, and `defaultStationId`. The cascade
+      // system column definitions, the Sandbox instance, the provisioned
+      // stations and their toolpacks (#848), and `defaultStationId`. The cascade
       // above deletes all of it, and an org handed back without it is one
       // the app can never otherwise produce: no station to open, no
       // sandbox to explore, no system columns to map against.
@@ -291,12 +291,11 @@ export class ResetService {
       // just deleted), so this also repairs orgs an earlier reset left in
       // that state. Sharing the provisioning path rather than copying it
       // is what keeps the two definitions of "a new org" from drifting.
-      const { stationId } =
-        await ApplicationService.provisionOrganizationWorkspace(
-          organizationId,
-          tx
-        );
-      logger.info({ stationId }, "Re-provisioned organization workspace");
+      await ApplicationService.provisionOrganizationWorkspace(
+        organizationId,
+        tx
+      );
+      logger.info({ organizationId }, "Re-provisioned organization workspace");
 
       const deletedJobs = await tx
         .delete(jobs)

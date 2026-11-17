@@ -18,6 +18,7 @@ import { AnalyticsService } from "../services/analytics.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { Tool } from "../types/tools.js";
+import { usesStationData } from "../utils/station-data-packs.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "platform-help-tool" });
@@ -40,6 +41,8 @@ interface StationFindings {
   /** False when the station read failed — the answer degrades, never errors. */
   available: boolean;
   hasPacks: boolean;
+  /** #848: a pack that works on attached data is on the station. */
+  usesStationData: boolean;
   unentitledPacks: string[];
   entityCount: number;
   recordCount: number;
@@ -122,21 +125,25 @@ async function gatherFindings(
   try {
     const repo = DbService.repository;
 
-    const enabledRows = await repo.stationToolpacks.findByStationId(stationId);
-    const builtinSlugs = enabledRows
-      .map((r: { builtinSlug: string | null }) => r.builtinSlug)
-      .filter((s: string | null): s is string => s !== null);
-    const customPackIds = enabledRows
-      .map(
-        (r: { organizationToolpackId: string | null }) =>
-          r.organizationToolpackId
-      )
-      .filter((id: string | null): id is string => id !== null);
-
-    const { unentitled } = await EntitlementService.splitBuiltinPacks(
-      organizationId,
-      builtinSlugs
+    // The one derivation of a station's packs (#306), which the system
+    // prompt reads too: a second copy here classified a station with a custom
+    // pack differently from the prompt in the same session. The split only:
+    // this answer doesn't name the custom packs.
+    const {
+      effective,
+      unentitled,
+      configuredCustomPackCount,
+      customPacksEntitled,
+    } = await EntitlementService.resolveStationPackSplit(
+      stationId,
+      organizationId
     );
+    const builtinSlugs = [...effective, ...unentitled];
+    const hasCustomPack = configuredCustomPackCount > 0;
+    // A custom pack the plan excludes builds no tools, so it doesn't make the
+    // station one that works on data (the prompt goes by the entitled packs
+    // too). It is still a pack on the station for `hasPacks`.
+    const hasUsableCustomPack = hasCustomPack && customPacksEntitled;
 
     // Org-scoped, exactly as `station_context` reads.
     const stationData = await AnalyticsService.loadStation(
@@ -162,7 +169,8 @@ async function gatherFindings(
 
     return {
       available: true,
-      hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
+      hasPacks: builtinSlugs.length > 0 || hasCustomPack,
+      usesStationData: usesStationData(builtinSlugs, hasUsableCustomPack),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,
@@ -177,6 +185,7 @@ async function gatherFindings(
     return {
       available: false,
       hasPacks: true,
+      usesStationData: true,
       unentitledPacks: [],
       entityCount: 0,
       recordCount: 0,
@@ -190,9 +199,16 @@ async function gatherFindings(
 function matchSituation(findings: StationFindings): Situation {
   if (!findings.available) return "default";
   if (!findings.hasPacks) return "no_packs";
-  if (findings.attachmentsMissing) return "attachments_missing";
+  // #848: missing views or connectors only explain an empty answer on a
+  // station whose packs work on attached data.
+  if (findings.usesStationData && findings.attachmentsMissing) {
+    return "attachments_missing";
+  }
   if (findings.attachmentsNoAccess) return "attachments_inaccessible";
-  if (findings.recordCount === 0) return "no_records";
+  // "Entities set up, nothing imported" needs entities to be true.
+  if (findings.entityCount > 0 && findings.recordCount === 0) {
+    return "no_records";
+  }
   if (findings.unentitledPacks.length > 0) return "unentitled_packs";
   return "default";
 }
@@ -229,11 +245,14 @@ function selectContent(question?: string): SelectedContent {
 }
 
 const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
+  // #848: a station is set up for one kind of work, so this names no one
+  // pack as the minimum. Data querying is an example, not a requirement.
   no_packs: () =>
     "This station has no tool packs attached, so a portal session on it can " +
     "only talk in generalities. Tool packs are what give the assistant its " +
     "abilities here — querying your data, statistics, charts, maps, and so " +
-    "on. Open the station and attach at least the data-query pack, then ask " +
+    "on. Open the station and attach the packs for what you want to do here, " +
+    "such as the data-query pack for questions about your data, then ask " +
     "again.",
   // #674: the sentences come from describeStationAttachmentGaps, shared with
   // the UI alerts and the system prompt, so all three say the same thing.

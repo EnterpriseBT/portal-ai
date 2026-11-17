@@ -139,27 +139,6 @@ describe("EntitlementService.splitBuiltinPacks (#284)", () => {
   });
 });
 
-// ── customPacksEntitled ───────────────────────────────────────────────
-
-describe("EntitlementService.customPacksEntitled (#284)", () => {
-  it("reflects the tier's customToolpacks boolean", async () => {
-    expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(false);
-
-    mockResolveTier.mockResolvedValue(
-      makePolicy(
-        {
-          builtinToolpacks: [],
-          customToolpacks: true,
-          customRbac: false,
-          advancedViewFilters: false,
-        },
-        "pro"
-      )
-    );
-    expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(true);
-  });
-});
-
 // ── customRbacEntitled (#622) ─────────────────────────────────────────
 
 describe("EntitlementService.customRbacEntitled (#622)", () => {
@@ -383,5 +362,171 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
       unentitled: [],
       customPacks: [],
     });
+  });
+});
+
+// #848: the packs the plan includes that this station doesn't carry. The
+// prompt names them so the agent can say which pack a request needs and point
+// at a station that has it.
+describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () => {
+  const STATION_ID = "station-848";
+
+  beforeEach(() => {
+    mockFindManyByIds_customPacks.mockResolvedValue([]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: [
+          "data_query",
+          "rbac_management",
+          "view_management",
+          "not_shipped_yet",
+        ],
+        customToolpacks: false,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+  });
+
+  it("lists the plan's packs that aren't configured on the station", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.effective).toEqual(["rbac_management"]);
+    // Plan order, known slugs only.
+    expect(packs.otherPlanPacks).toEqual(["data_query", "view_management"]);
+  });
+
+  it("leaves out a pack that is configured, entitled or not", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "data_query", organizationToolpackId: null },
+      { builtinSlug: "gis", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.unentitled).toEqual(["gis"]);
+    expect(packs.otherPlanPacks).toEqual([
+      "rbac_management",
+      "view_management",
+    ]);
+  });
+
+  // The session's context is built on every turn: one org read and one tier
+  // resolve serve the split, the plan list and the custom-pack entitlement.
+  it("reads the org and resolves the tier once, custom packs included", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ["data_query", "rbac_management"],
+        customToolpacks: true,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+    ]);
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "smoke",
+        description: null,
+        tools: [{ name: "smoke_tool", description: "x" }],
+      },
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs.effective).toEqual(["rbac_management"]);
+    expect(packs.otherPlanPacks).toEqual(["data_query"]);
+    expect(packs.customPacks.map((p) => p.name)).toEqual(["smoke"]);
+    expect(packs.configuredCustomPackCount).toBe(1);
+    expect(packs.customPacksEntitled).toBe(true);
+    expect(mockFindById_org).toHaveBeenCalledTimes(1);
+    expect(mockResolveTier).toHaveBeenCalledTimes(1);
+  });
+
+  // The count says the station has packs; `customPacksEntitled` says whether
+  // they build any tools. platform_help reads both.
+  it("counts attached custom packs whether or not the plan includes them", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+      { builtinSlug: null, organizationToolpackId: "otp-2" },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    // The fixture tier has customToolpacks: false.
+    expect(packs.customPacks).toEqual([]);
+    expect(packs.configuredCustomPackCount).toBe(2);
+    expect(packs.customPacksEntitled).toBe(false);
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  // platform_help needs the count and the entitlement, not the packs: the
+  // row read decrypts stored credentials, and a failure there would cost it
+  // its whole answer. The split has no `customPacks` to misread as "none".
+  it("resolveStationPackSplit returns the split without reading custom pack rows", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ["data_query"],
+        customToolpacks: true,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: null, organizationToolpackId: "otp-1" },
+    ]);
+    const split = await EntitlementService.resolveStationPackSplit(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+    expect(split).toEqual({
+      effective: [],
+      unentitled: [],
+      otherPlanPacks: ["data_query"],
+      configuredCustomPackCount: 1,
+      customPacksEntitled: true,
+      tier: "standard",
+    });
+    expect(split).not.toHaveProperty("customPacks");
+  });
+
+  it("counts none for a station with only built-in packs", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "data_query", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.configuredCustomPackCount).toBe(0);
+  });
+
+  it("lists the whole plan for a station with no built-in pack", async () => {
+    mockFindByStationId_packs.mockResolvedValue([]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.otherPlanPacks).toEqual([
+      "data_query",
+      "rbac_management",
+      "view_management",
+    ]);
   });
 });

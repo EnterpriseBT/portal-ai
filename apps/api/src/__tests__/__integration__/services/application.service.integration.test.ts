@@ -15,7 +15,10 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { StationToolpacksRepository } from "../../../db/repositories/station-toolpacks.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { DbService } from "../../../services/db.service.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
+import { SystemUtilities } from "../../../utils/system.util.js";
 import { SeedService } from "../../../services/seed.service.js";
 import {
   generateId,
@@ -205,56 +208,65 @@ describe("ApplicationService Integration Tests", () => {
       expect(sandbox?.connectorDefinitionId).toBe(sandboxDef?.id);
     });
 
-    it("should create a default station with data_query tool pack", async () => {
+    // #848: every new org gets the PROVISIONED_STATIONS, in place of the
+    // single "My Station".
+    const orgStations = async (organizationId: string) =>
+      (await new Repository(stations).findMany(undefined, {}, db)).filter(
+        (s) => s.organizationId === organizationId
+      );
+
+    it("creates the provisioned stations, system-owned, each with its description and packs (#848)", async () => {
       const owner = createOwner();
 
       const result = await provisionTestOrg(owner);
 
-      const stationsRepo = new Repository(stations);
-      const allStations = await stationsRepo.findMany(undefined, {}, db);
-      const station = allStations.find(
-        (s) => s.organizationId === result.organization.id
+      const created = await orgStations(result.organization.id);
+      expect(created.map((s) => s.name).sort()).toEqual(
+        PROVISIONED_STATIONS.map((s) => s.name).sort()
       );
-
-      expect(station).toBeDefined();
-      expect(station?.name).toBe("My Station");
 
       const stationToolpacksRepo = new StationToolpacksRepository();
-      const enabled = await stationToolpacksRepo.findByStationId(
-        station!.id,
-        db
-      );
-      expect(enabled.map((r) => r.builtinSlug)).toEqual(["data_query"]);
+      for (const expected of PROVISIONED_STATIONS) {
+        const station = created.find((s) => s.name === expected.name)!;
+        expect(station.description).toBe(expected.description);
+        expect(station.createdBy).toBe(SystemUtilities.id.system);
+        const enabled = await stationToolpacksRepo.findByStationId(
+          station.id,
+          db
+        );
+        expect(enabled.map((r) => r.builtinSlug).sort()).toEqual(
+          [...expected.builtinSlugs].sort()
+        );
+      }
     });
 
-    it("should link the sandbox connector instance to the default station", async () => {
+    it("links the sandbox connector instance only to the stations that attach it (#848)", async () => {
       const owner = createOwner();
 
       const result = await provisionTestOrg(owner);
 
       const instancesRepo = new Repository(connectorInstances);
-      const instances = await instancesRepo.findMany(undefined, {}, db);
-      const instance = instances.find(
-        (i) => i.organizationId === result.organization.id
-      );
+      const instances = (
+        await instancesRepo.findMany(undefined, {}, db)
+      ).filter((i) => i.organizationId === result.organization.id);
+      expect(instances).toHaveLength(1);
 
-      const stationsRepo = new Repository(stations);
-      const allStations = await stationsRepo.findMany(undefined, {}, db);
-      const station = allStations.find(
-        (s) => s.organizationId === result.organization.id
+      const created = await orgStations(result.organization.id);
+      const links = await new Repository(stationInstances).findMany(
+        undefined,
+        {},
+        db
       );
-
-      const stationInstancesRepo = new Repository(stationInstances);
-      const links = await stationInstancesRepo.findMany(undefined, {}, db);
-      const link = links.find(
-        (l) =>
-          l.stationId === station?.id && l.connectorInstanceId === instance?.id
-      );
-
-      expect(link).toBeDefined();
+      for (const expected of PROVISIONED_STATIONS) {
+        const station = created.find((s) => s.name === expected.name)!;
+        const linked = links
+          .filter((l) => l.stationId === station.id)
+          .map((l) => l.connectorInstanceId);
+        expect(linked).toEqual(expected.attachSandbox ? [instances[0].id] : []);
+      }
     });
 
-    it("should set defaultStationId on the organization", async () => {
+    it("sets defaultStationId to the default provisioned station (#848)", async () => {
       const owner = createOwner();
 
       const result = await provisionTestOrg(owner);
@@ -262,35 +274,35 @@ describe("ApplicationService Integration Tests", () => {
       const orgsRepo = new Repository(organizations);
       const found = await orgsRepo.findById(result.organization.id, db);
 
-      const stationsRepo = new Repository(stations);
-      const allStations = await stationsRepo.findMany(undefined, {}, db);
-      const station = allStations.find(
-        (s) => s.organizationId === result.organization.id
-      );
+      const created = await orgStations(result.organization.id);
+      const defaultName = PROVISIONED_STATIONS.find((s) => s.isDefault)!.name;
+      const station = created.find((s) => s.name === defaultName);
 
+      expect(station).toBeDefined();
       expect(found?.defaultStationId).toBe(station?.id);
       expect(result.organization.defaultStationId).toBe(station?.id);
     });
 
-    it("should still succeed if sandbox definition does not exist", async () => {
-      // Remove all connector definitions so sandbox def is missing
+    it("fails, and leaves no organization behind, when the sandbox definition does not exist (#848)", async () => {
+      // An unseeded database is a broken install. Provisioning used to skip
+      // the station silently; it now fails and its transaction rolls back.
       await db.delete(connectorDefinitions);
 
-      const owner = createOwner();
-      const result = await provisionTestOrg(owner);
+      // Not through `provisionTestOrg`, which seeds the definitions first.
+      const owner = await DbService.repository.users.create(
+        createOwner() as never
+      );
+      await expect(
+        ApplicationService.provisionOrganizationFor(owner.id)
+      ).rejects.toMatchObject({
+        code: ApiCode.ORGANIZATION_PROVISIONING_FAILED,
+      });
 
-      expect(result.user).toBeDefined();
-      expect(result.organization).toBeDefined();
-      expect(result.organizationUser).toBeDefined();
-
-      // No connector instances or stations should have been created
-      const instancesRepo = new Repository(connectorInstances);
-      const instanceCount = await instancesRepo.count(undefined, db);
-      expect(instanceCount).toBe(0);
-
-      const stationsRepo = new Repository(stations);
-      const stationCount = await stationsRepo.count(undefined, db);
-      expect(stationCount).toBe(0);
+      expect(await new Repository(organizations).count(undefined, db)).toBe(0);
+      expect(
+        await new Repository(connectorInstances).count(undefined, db)
+      ).toBe(0);
+      expect(await new Repository(stations).count(undefined, db)).toBe(0);
     });
 
     it("provisions no sandbox artifacts when the user create fails", async () => {

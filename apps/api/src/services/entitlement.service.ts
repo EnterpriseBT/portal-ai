@@ -1,3 +1,4 @@
+import type { TierPolicy } from "@portalai/core/models";
 import { isBuiltinToolpackSlug } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
@@ -24,8 +25,32 @@ export interface CustomPackSummary {
   toolNames: string[];
 }
 
+/**
+ * What a station is set up with, without its custom packs' details: enough to
+ * say which packs it has and which the plan includes. `platform_help` reads
+ * this; a caller that names the custom packs reads {@link StationPacks}.
+ */
+export interface StationPackSplit extends BuiltinPackSplit {
+  /**
+   * #848: built-in packs the org's plan includes that this station is not
+   * configured with, in the plan's order. The system prompt names them so the
+   * agent can say which pack a request needs and point at a station that has
+   * it, instead of calling the request impossible.
+   */
+  otherPlanPacks: string[];
+  /**
+   * #848: how many custom packs are attached to the station, whether or not
+   * the plan includes custom packs. A station carrying only these still has
+   * packs; whether they build any tools is `customPacksEntitled`.
+   */
+  configuredCustomPackCount: number;
+  /** Whether the plan includes custom packs (#214). When it doesn't, the
+   *  attached ones build no tools. */
+  customPacksEntitled: boolean;
+}
+
 /** A station's packs: the built-in split plus its custom packs (#306). */
-export interface StationPacks extends BuiltinPackSplit {
+export interface StationPacks extends StationPackSplit {
   /**
    * Registered custom packs attached to this station. Empty when the org's
    * tier does not include custom toolpacks (#214) — their tools are not
@@ -68,6 +93,14 @@ export class EntitlementService {
     }
 
     const policy = await EntitlementService.resolvePolicy(organizationId);
+    return EntitlementService.splitByPolicy(policy, configuredSlugs);
+  }
+
+  /** The split itself, against a policy the caller already resolved. */
+  private static splitByPolicy(
+    policy: TierPolicy,
+    configuredSlugs: readonly string[]
+  ): BuiltinPackSplit {
     const entitled = new Set(policy.entitlements.builtinToolpacks);
 
     // A tier row may carry slugs for packs that ship in a later deploy.
@@ -112,6 +145,53 @@ export class EntitlementService {
     stationId: string,
     organizationId: string
   ): Promise<StationPacks> {
+    const { split, customPackIds } = await EntitlementService.readStationPacks(
+      stationId,
+      organizationId
+    );
+
+    // Gate before the lookup: an unentitled org shouldn't pay for the read.
+    if (customPackIds.length === 0 || !split.customPacksEntitled) {
+      return { ...split, customPacks: [] };
+    }
+
+    const packs =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        customPackIds,
+        { organizationId }
+      );
+
+    return {
+      ...split,
+      customPacks: packs.map((p) => ({
+        name: p.name,
+        description: p.description,
+        toolNames: p.tools.map((t) => t.name),
+      })),
+    };
+  }
+
+  /**
+   * The same derivation without the custom packs' rows, for a caller that
+   * needs to know what the station has but not name its custom packs
+   * (`platform_help`). That read decrypts stored pack credentials, and its
+   * result has no `customPacks` to mistake for "none attached".
+   */
+  static async resolveStationPackSplit(
+    stationId: string,
+    organizationId: string
+  ): Promise<StationPackSplit> {
+    const { split } = await EntitlementService.readStationPacks(
+      stationId,
+      organizationId
+    );
+    return split;
+  }
+
+  private static async readStationPacks(
+    stationId: string,
+    organizationId: string
+  ): Promise<{ split: StationPackSplit; customPackIds: string[] }> {
     const rows =
       await DbService.repository.stationToolpacks.findByStationId(stationId);
 
@@ -122,42 +202,30 @@ export class EntitlementService {
       .map((r) => r.organizationToolpackId)
       .filter((id): id is string => id !== null);
 
-    const { effective, unentitled, tier } =
-      await EntitlementService.splitBuiltinPacks(organizationId, builtinSlugs);
+    // One org read and one tier resolve serve the split, the plan's other
+    // packs (#848) and the custom-pack entitlement: this runs on every turn.
+    const policy = await EntitlementService.resolvePolicy(organizationId);
+    const { effective, unentitled, tier } = EntitlementService.splitByPolicy(
+      policy,
+      builtinSlugs
+    );
 
-    if (customPackIds.length === 0) {
-      return { effective, unentitled, customPacks: [], tier };
-    }
-
-    // Gate before the lookup: an unentitled org shouldn't pay for the read.
-    const entitled =
-      await EntitlementService.customPacksEntitled(organizationId);
-    if (!entitled) {
-      return { effective, unentitled, customPacks: [], tier };
-    }
-
-    const packs =
-      await DbService.repository.organizationToolpacks.findManyByIds(
-        customPackIds,
-        { organizationId }
-      );
+    const configured = new Set(builtinSlugs);
+    const otherPlanPacks = policy.entitlements.builtinToolpacks.filter(
+      (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
+    );
 
     return {
-      effective,
-      unentitled,
-      customPacks: packs.map((p) => ({
-        name: p.name,
-        description: p.description,
-        toolNames: p.tools.map((t) => t.name),
-      })),
-      tier,
+      split: {
+        effective,
+        unentitled,
+        otherPlanPacks,
+        configuredCustomPackCount: customPackIds.length,
+        customPacksEntitled: policy.entitlements.customToolpacks,
+        tier,
+      },
+      customPackIds,
     };
-  }
-
-  /** Whether the org's tier includes custom (webhook) toolpacks (#214). */
-  static async customPacksEntitled(organizationId: string): Promise<boolean> {
-    const policy = await EntitlementService.resolvePolicy(organizationId);
-    return policy.entitlements.customToolpacks;
   }
 
   /** Whether the org's tier includes custom RBAC authoring (#622). */

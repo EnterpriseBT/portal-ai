@@ -20,19 +20,25 @@ describe("describeStationAttachmentGaps (#674)", () => {
     it("names both when neither views nor connectors are attached", () => {
       expect(
         describeStationAttachmentGaps(counts([0, 0], [0, 0])).missing
-      ).toBe("No views or connectors are attached to this station yet.");
+      ).toBe(
+        "No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities."
+      );
     });
 
     it("names views when only views are missing", () => {
       expect(
         describeStationAttachmentGaps(counts([0, 0], [2, 2])).missing
-      ).toBe("No views are attached to this station yet.");
+      ).toBe(
+        "No views are attached to this station. Attach a view to query entity data here."
+      );
     });
 
     it("names connectors when only connectors are missing", () => {
       expect(
         describeStationAttachmentGaps(counts([3, 3], [0, 0])).missing
-      ).toBe("No connectors are attached to this station yet.");
+      ).toBe(
+        "No connectors are attached to this station. Attach a connector to create and edit entities here."
+      );
     });
 
     it("is null when both are attached, whatever the caller can read", () => {
@@ -72,7 +78,8 @@ describe("describeStationAttachmentGaps (#674)", () => {
     it("never reports an unattached kind as no-access", () => {
       // No views attached: that's "missing", not "no access".
       expect(describeStationAttachmentGaps(counts([0, 0], [2, 0]))).toEqual({
-        missing: "No views are attached to this station yet.",
+        missing:
+          "No views are attached to this station. Attach a view to query entity data here.",
         noAccess: "You don't have access to any connectors on this station.",
       });
       expect(
@@ -86,9 +93,9 @@ describe("describeStationAttachmentGaps (#674)", () => {
 // items ARE attached, so an agent relaying it can't turn "no access" into
 // "nothing attached".
 describe("the follow-up actions (#676)", () => {
-  it("tells a missing-attachment reader who can fix it", () => {
+  it("tells a missing-attachment reader who can attach one (#848)", () => {
     expect(STATION_ATTACHMENT_MISSING_ACTION).toBe(
-      "Ask someone who can edit the station to attach them."
+      "Anyone who can edit the station can attach them."
     );
   });
 

@@ -24,6 +24,7 @@ import type {
 } from "../db/schema/zod.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { PROVISIONED_STATIONS } from "../constants/provisioned-stations.constants.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
@@ -505,7 +506,8 @@ export class ApplicationService {
   /** Provision a full organization for an EXISTING user (#190 — the
    *  portalai CLI's `org create` / `seed org` path). Same transaction body
    *  the webhook uses: org + owner membership + system column definitions +
-   *  sandbox instance + default station/toolpack/link + defaultStationId. */
+   *  the Sandbox instance + the provisioned stations (#848) and their packs +
+   *  defaultStationId. */
   static async provisionOrganizationFor(
     userId: string,
     opts: { name?: string } = {}
@@ -728,11 +730,7 @@ export class ApplicationService {
       tx
     );
 
-    const { stationId } =
-      await ApplicationService.provisionOrganizationWorkspace(
-        createdOrg.id,
-        tx
-      );
+    await ApplicationService.provisionOrganizationWorkspace(createdOrg.id, tx);
 
     // #620: assign the owner their role via the user_role join (the seeded
     // roles were created by provisionOrganizationWorkspace above). Deterministic
@@ -750,16 +748,32 @@ export class ApplicationService {
       tx
     );
 
+    // #848: provisioning set the org's default station, so hand back the row
+    // as stored rather than a patched copy of the one created above.
+    const organization = await DbService.repository.organizations.findById(
+      createdOrg.id,
+      tx
+    );
+    if (!organization) {
+      throw new ApiError(
+        500,
+        ApiCode.ORGANIZATION_PROVISIONING_FAILED,
+        `Organization ${createdOrg.id} was not found after provisioning.`
+      );
+    }
+
     return {
-      organization: { ...createdOrg, defaultStationId: stationId },
+      organization,
       organizationUser: createdOrgUser,
     };
   }
 
   /**
-   * The scaffolding every organization gets: system column definitions, a
-   * Sandbox connector instance, a default station wired to it, and the
-   * station's default toolpack.
+   * The scaffolding every organization gets: system column definitions, the
+   * RBAC system roles and policies, a Sandbox connector instance, and the
+   * {@link PROVISIONED_STATIONS} (#848): Administrate, the default, with the
+   * access tools and no data; and Playground, with the Sandbox and the packs
+   * to build, share and query entities and views.
    *
    * Extracted from provisioning (#295) because `ResetService` re-runs it
    * after its cascade — a reset org must be indistinguishable from a fresh
@@ -767,13 +781,18 @@ export class ApplicationService {
    * re-run: `seedSystemColumnDefinitions` upserts by key, and reset has
    * already deleted the station/instance rows this recreates.
    *
-   * Returns the new station id, or null when the `sandbox` connector
-   * definition is missing (an unseeded database — warn and carry on).
+   * Throws `ORGANIZATION_PROVISIONING_FAILED` when the `sandbox` connector
+   * definition is missing. That row is a global seed (`db:seed`,
+   * `db:upgrade`), so its absence is a broken install: failing rolls the
+   * caller's transaction back instead of leaving an org with no stations.
+   *
+   * Tier entitlement is deliberately not checked: a pack the plan lacks is
+   * attached all the same and shows as inactive (#284).
    */
   static async provisionOrganizationWorkspace(
     organizationId: string,
     tx: Parameters<Parameters<typeof DbService.transaction>[0]>[0]
-  ): Promise<{ stationId: string | null }> {
+  ): Promise<void> {
     const systemId = SystemUtilities.id.system;
 
     // ── System column definitions ────────────────────────────────────
@@ -784,20 +803,19 @@ export class ApplicationService {
     // these from the paired backfill migration; this covers new orgs + reset.
     await new SeedService().seedRbacSystemPolicies(organizationId, tx);
 
-    // ── Sandbox auto-provisioning ──────────────────────────────────
+    // ── Sandbox connector instance ─────────────────────────────────
     const sandboxDef =
       await DbService.repository.connectorDefinitions.findBySlug("sandbox", tx);
 
     if (!sandboxDef) {
-      logger.warn(
-        { organizationId },
-        "Sandbox connector definition not found — skipping auto-provisioning"
+      throw new ApiError(
+        500,
+        ApiCode.ORGANIZATION_PROVISIONING_FAILED,
+        "Sandbox connector definition not found. Run the global seed (db:seed or db:upgrade) before provisioning an organization."
       );
-      return { stationId: null };
     }
 
-    // Create connector instance — inherits capability flags from the
-    // sandbox definition's ceiling.
+    // Inherits capability flags from the sandbox definition's ceiling.
     const instanceModel = new ConnectorInstanceModelFactory()
       .create(systemId)
       .update({
@@ -818,43 +836,49 @@ export class ApplicationService {
         tx
       );
 
-    // Create default station
-    const stationModel = new StationModelFactory().create(systemId).update({
-      organizationId,
-      name: "My Station",
-      description: "Default organization sandbox station",
-    });
-
-    const createdStation = await DbService.repository.stations.create(
-      stationModel.parse(),
-      tx
-    );
-
-    // Seed the default toolpack for the new station.
-    await DbService.repository.stationToolpacks.replaceForStation(
-      createdStation.id,
-      { builtinSlugs: ["data_query"] },
-      { userId: systemId },
-      tx
-    );
-
-    // Link via station_instances
-    const stationInstanceModel = new StationInstanceModelFactory()
-      .create(systemId)
-      .update({
-        stationId: createdStation.id,
-        connectorInstanceId: createdInstance.id,
+    // ── Provisioned stations (#848) ────────────────────────────────
+    const stationIds: string[] = [];
+    let defaultStationId: string | null = null;
+    for (const provisioned of PROVISIONED_STATIONS) {
+      const stationModel = new StationModelFactory().create(systemId).update({
+        organizationId,
+        name: provisioned.name,
+        description: provisioned.description,
       });
 
-    await DbService.repository.stationInstances.create(
-      stationInstanceModel.parse(),
-      tx
-    );
+      const createdStation = await DbService.repository.stations.create(
+        stationModel.parse(),
+        tx
+      );
+      stationIds.push(createdStation.id);
+      if (provisioned.isDefault) defaultStationId = createdStation.id;
+
+      await DbService.repository.stationToolpacks.replaceForStation(
+        createdStation.id,
+        { builtinSlugs: [...provisioned.builtinSlugs] },
+        { userId: systemId },
+        tx
+      );
+
+      if (provisioned.attachSandbox) {
+        const stationInstanceModel = new StationInstanceModelFactory()
+          .create(systemId)
+          .update({
+            stationId: createdStation.id,
+            connectorInstanceId: createdInstance.id,
+          });
+
+        await DbService.repository.stationInstances.create(
+          stationInstanceModel.parse(),
+          tx
+        );
+      }
+    }
 
     // Set defaultStationId on organization
     await DbService.repository.organizations.update(
       organizationId,
-      { defaultStationId: createdStation.id },
+      { defaultStationId },
       tx
     );
 
@@ -862,11 +886,10 @@ export class ApplicationService {
       {
         organizationId,
         connectorInstanceId: createdInstance.id,
-        stationId: createdStation.id,
+        stationIds,
+        defaultStationId,
       },
-      "Sandbox auto-provisioning complete"
+      "Organization workspace provisioned"
     );
-
-    return { stationId: createdStation.id };
   }
 }
