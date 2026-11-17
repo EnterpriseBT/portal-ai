@@ -361,6 +361,28 @@ describe("FAQ describes station scoping (#848)", () => {
     );
   });
 
+  // The default station of a new organization has no data by design, so the
+  // data answers send the reader to a data station instead of telling them to
+  // attach data to whichever station they are on.
+  it("the first-questions answer starts from a station set up for data", () => {
+    const a = answer("How do I start asking questions about my data?");
+    expect(a).toMatch(/^From a station set up for your data/);
+    expect(a).toContain(
+      "A new organization's default station, Administrate, is for managing access and has no data: use Playground or a station of your own."
+    );
+  });
+
+  it("the vague-answers answer checks the station is a data station first", () => {
+    const a = answer(
+      "Why are the assistant's answers vague or missing my data?"
+    );
+    expect(a).toMatch(
+      /^First check the station is set up for data\. A new organization's default station, Administrate, manages access and has no data by design: open Playground or another data station rather than attaching data to it\./
+    );
+    // The rest of the diagnosis is unchanged.
+    expect(a).toMatch(/view attached and shared with you/i);
+  });
+
   it("the tool-pack explainer says to turn on only what the station's work needs", () => {
     expect(answer("What are tool packs?")).toContain(
       "Turn on only the packs a station's work needs."

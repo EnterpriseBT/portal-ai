@@ -208,6 +208,69 @@ describe("PlatformHelpTool — station situations", () => {
     expect(answer).toMatch(/^No views are attached/);
   });
 
+  // #848: a station with no views or connectors is only "why answers are
+  // empty" when it carries a pack that works on station data.
+  describe("a station set up without data packs (#848)", () => {
+    const accessOnly = () => {
+      mockFindByStationId.mockResolvedValue([
+        { builtinSlug: "rbac_management", organizationToolpackId: null },
+      ]);
+      mockSplitBuiltinPacks.mockResolvedValue({
+        effective: ["rbac_management"],
+        unentitled: [],
+        tier: "standard",
+      });
+      mockLoadStation.mockResolvedValue({ entities: [] });
+      mockCountsForCaller.mockResolvedValue(counts([0, 0], [0, 0]));
+    };
+
+    it("doesn't lead with the missing-attachments sentence", async () => {
+      accessOnly();
+      const { answer } = await exec("what can I do here");
+      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).not.toMatch(/It works without them/);
+    });
+
+    it("doesn't claim entities are set up when the station has none", async () => {
+      accessOnly();
+      const { answer } = await exec("why are my answers empty");
+      expect(answer).not.toMatch(/has entities set up/);
+    });
+
+    it("still reaches the plan-limit answer for an unentitled pack", async () => {
+      accessOnly();
+      mockSplitBuiltinPacks.mockResolvedValue({
+        effective: [],
+        unentitled: ["rbac_management"],
+        tier: "custom",
+      });
+      const { answer } = await exec("why can't the assistant manage access");
+      expect(answer).toMatch(/not included in your current plan/);
+      expect(answer).toContain("rbac_management");
+    });
+
+    it("an attached custom pack alone doesn't make missing data the cause", async () => {
+      accessOnly();
+      mockFindByStationId.mockResolvedValue([
+        { builtinSlug: null, organizationToolpackId: "otp-1" },
+      ]);
+      mockSplitBuiltinPacks.mockResolvedValue({
+        effective: [],
+        unentitled: [],
+        tier: "standard",
+      });
+      const { answer } = await exec();
+      expect(answer).not.toMatch(/are attached to this station/);
+    });
+  });
+
+  it("a data station with nothing attached and no entities never says entities are set up (#848)", async () => {
+    // Everything attached, but no entity resolves: "no records" would be false.
+    mockLoadStation.mockResolvedValue({ entities: [] });
+    const { answer } = await exec("why are my answers empty");
+    expect(answer).not.toMatch(/has entities set up/);
+  });
+
   it("#674: reads the counts for the calling user", async () => {
     await exec();
     expect(mockCountsForCaller).toHaveBeenCalledWith(

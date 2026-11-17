@@ -40,6 +40,17 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     expect(defaultStation.attachSandbox).toBe(false);
   });
 
+  it("Administrate's description doesn't promise custom access on every plan", () => {
+    // Authoring roles, policies and groups needs the plan's custom access
+    // (`customRbac`), which the self-serve tiers lack; shares work on all.
+    const administrate = PROVISIONED_STATIONS.find(
+      (s) => s.name === "Administrate"
+    )!;
+    expect(administrate.description).toBe(
+      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here."
+    );
+  });
+
   it("is Administrate (the default) and Playground", () => {
     expect(
       PROVISIONED_STATIONS.map((s) => ({

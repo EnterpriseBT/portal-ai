@@ -26,7 +26,7 @@ export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
   {
     name: "Administrate",
     description:
-      "Manage access through the assistant: policies, roles, groups and shares. No data is attached here.",
+      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here.",
     builtinSlugs: ["rbac_management"],
     attachSandbox: false,
     isDefault: true,

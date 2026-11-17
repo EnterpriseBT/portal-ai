@@ -280,8 +280,8 @@ export class ResetService {
       );
 
       // Re-provision the scaffolding every organization is created with —
-      // system column definitions, the Sandbox instance, the default
-      // station and its toolpack, and `defaultStationId`. The cascade
+      // system column definitions, the Sandbox instance, the provisioned
+      // stations and their toolpacks (#848), and `defaultStationId`. The cascade
       // above deletes all of it, and an org handed back without it is one
       // the app can never otherwise produce: no station to open, no
       // sandbox to explore, no system columns to map against.

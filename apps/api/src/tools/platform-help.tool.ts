@@ -12,6 +12,10 @@ import {
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
+import {
+  isBuiltinToolpackSlug,
+  type BuiltinToolpackSlug,
+} from "@portalai/core/registries";
 
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
@@ -36,10 +40,33 @@ const InputSchema = z.object({
 const MAX_FAQ = 3;
 const MAX_GLOSSARY = 3;
 
+/**
+ * #848: whether a built-in pack works on the station's attached data. A
+ * station carrying none of these (the provisioned Administrate station has
+ * only the access pack) is complete with no views or connectors, so their
+ * absence isn't why an answer came back empty. Exhaustive over the slugs, so
+ * a new pack has to be classified here to compile.
+ */
+const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
+  data_query: true,
+  statistics: true,
+  regression: true,
+  financial: true,
+  visualize: true,
+  gis: true,
+  entity_management: true,
+  // Control-plane and off-station work.
+  rbac_management: false,
+  view_management: false,
+  web_search: false,
+};
+
 interface StationFindings {
   /** False when the station read failed — the answer degrades, never errors. */
   available: boolean;
   hasPacks: boolean;
+  /** #848: a pack that works on attached data is on the station. */
+  usesStationData: boolean;
   unentitledPacks: string[];
   entityCount: number;
   recordCount: number;
@@ -163,6 +190,10 @@ async function gatherFindings(
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
+      usesStationData: builtinSlugs.some(
+        (slug: string) =>
+          isBuiltinToolpackSlug(slug) && PACK_USES_STATION_DATA[slug]
+      ),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,
@@ -177,6 +208,7 @@ async function gatherFindings(
     return {
       available: false,
       hasPacks: true,
+      usesStationData: true,
       unentitledPacks: [],
       entityCount: 0,
       recordCount: 0,
@@ -190,9 +222,16 @@ async function gatherFindings(
 function matchSituation(findings: StationFindings): Situation {
   if (!findings.available) return "default";
   if (!findings.hasPacks) return "no_packs";
-  if (findings.attachmentsMissing) return "attachments_missing";
+  // #848: missing views or connectors only explain an empty answer on a
+  // station whose packs work on attached data.
+  if (findings.usesStationData && findings.attachmentsMissing) {
+    return "attachments_missing";
+  }
   if (findings.attachmentsNoAccess) return "attachments_inaccessible";
-  if (findings.recordCount === 0) return "no_records";
+  // "Entities set up, nothing imported" needs entities to be true.
+  if (findings.entityCount > 0 && findings.recordCount === 0) {
+    return "no_records";
+  }
   if (findings.unentitledPacks.length > 0) return "unentitled_packs";
   return "default";
 }

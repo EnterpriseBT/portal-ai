@@ -111,6 +111,23 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     expect(prompt).not.toContain("Entities on this station:");
   });
 
+  // #848: the sentences now say what attaching would add, and a session may
+  // hold curated_view_attach. The prompt marks them as description.
+  it("#848: tells the agent a missing-attachment line is not a request to attach", () => {
+    const NOT_A_REQUEST =
+      "That line describes the station; it isn't a request. Don't attach " +
+      "anything to the station unless the user asks.";
+    const missing = buildSystemPrompt(
+      makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
+    );
+    expect(missing).toContain(
+      "_No views are attached to this station. Attach a view to query entity data here._\n" +
+        NOT_A_REQUEST
+    );
+    // Not rendered when nothing is missing.
+    expect(buildSystemPrompt(makeContext())).not.toContain(NOT_A_REQUEST);
+  });
+
   it("#674: names only the missing kind when connectors are attached but views aren't", () => {
     const prompt = buildSystemPrompt(
       makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
@@ -518,7 +535,11 @@ describe("buildSystemPrompt — response style", () => {
       "described above. When a request needs a tool pack or data that isn't " +
       "on this station, say what is missing and suggest the user open a " +
       "station set up for that work, or have someone who can edit this " +
-      "station add it. Don't present it as something the product can't do.";
+      "station add it. Don't present it as something the product can't do. " +
+      "Two cases have their own guidance above, which takes precedence: " +
+      "data that is attached but not shared with the user (they ask for " +
+      "access; nothing needs attaching), and a tool pack the plan doesn't " +
+      "include (a plan limit; it can't be added to a station).";
 
     const compositions: StationContext["effectiveToolPacks"][] = [
       [],
@@ -538,6 +559,16 @@ describe("buildSystemPrompt — response style", () => {
         const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
         expect(prompt).toContain(`${SCOPE}\n\n## Response Style`);
       }
+    });
+
+    it("defers to the no-access and plan-limit guidance (#676, #284)", () => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
+      const section = prompt.slice(
+        prompt.indexOf("## Station Scope"),
+        prompt.indexOf("## Response Style")
+      );
+      expect(section).toMatch(/attached but not shared with the user/);
+      expect(section).toMatch(/a plan limit; it can't be added to a station/);
     });
 
     it("names no particular station", () => {

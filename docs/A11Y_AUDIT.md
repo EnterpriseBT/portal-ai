@@ -81,7 +81,7 @@ Added for the ACR (#800), since the keyboard and screen-reader passes don't chec
 - **Orientation (1.3.4):** viewports 768×1024, 1024×768, 390×844 and 844×390. Also, no `orientation` media query, `screen.orientation.lock` or zoom-blocking viewport meta exists in `apps/web`, `apps/site` or `packages/core`.
 
 **Pages:**
-- **App:** dashboard, Stations and Playground, Entities and one entity's records, Connectors and two connector instances, Jobs and a job, Toolpacks, a column definition, Views (empty state), Settings, Help.
+- **App:** dashboard, Stations and My Station (the provisioned station at the time; new organizations now get Administrate and Playground, #848), Entities and one entity's records, Connectors and two connector instances, Jobs and a job, Toolpacks, a column definition, Views (empty state), Settings, Help.
 - **App, beyond pages:** the Edit Connector Instance dialog; the RegionEditor (File Upload wizard, Draw regions step, with `core-loop.csv`).
 - **Site:** home, features, use cases and one use case, pricing, contact, security, privacy, terms.
 

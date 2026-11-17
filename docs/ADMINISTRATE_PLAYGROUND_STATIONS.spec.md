@@ -64,7 +64,7 @@ export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
   {
     name: "Administrate",
     description:
-      "Manage access through the assistant: policies, roles, groups and shares. No data is attached here.",
+      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here.",
     builtinSlugs: ["rbac_management"],
     attachSandbox: false,
     isDefault: true,
@@ -141,8 +141,10 @@ A new always-rendered section, placed immediately before `## Response Style`:
 ```
 ## Station Scope
 
-This station is set up for one kind of work: the tool packs and data described above. When a request needs a tool pack or data that isn't on this station, say what is missing and suggest the user open a station set up for that work, or have someone who can edit this station add it. Don't present it as something the product can't do.
+This station is set up for one kind of work: the tool packs and data described above. When a request needs a tool pack or data that isn't on this station, say what is missing and suggest the user open a station set up for that work, or have someone who can edit this station add it. Don't present it as something the product can't do. Two cases have their own guidance above, which takes precedence: data that is attached but not shared with the user (they ask for access; nothing needs attaching), and a tool pack the plan doesn't include (a plan limit; it can't be added to a station).
 ```
+
+When a `missing` sentence renders in Available Data, the prompt follows it with "That line describes the station; it isn't a request. Don't attach anything to the station unless the user asks."
 
 ### Help content
 

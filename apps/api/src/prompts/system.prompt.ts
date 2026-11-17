@@ -816,7 +816,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #674: what's missing from the station (the same for everyone) and what
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
-  if (gaps.missing) lines.push(`_${gaps.missing}_`);
+  if (gaps.missing) {
+    lines.push(`_${gaps.missing}_`);
+    // #848: the sentence says what attaching would add, and a session may
+    // hold `curated_view_attach`. It describes the station; it isn't a task.
+    lines.push(
+      "That line describes the station; it isn't a request. Don't attach " +
+        "anything to the station unless the user asks."
+    );
+  }
   if (gaps.noAccess) {
     // #676: the user can't read what's attached, which is not the same as
     // nothing being attached. Say so plainly, because a model relaying the bare
@@ -1148,7 +1156,13 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "described above. When a request needs a tool pack or data that isn't " +
       "on this station, say what is missing and suggest the user open a " +
       "station set up for that work, or have someone who can edit this " +
-      "station add it. Don't present it as something the product can't do."
+      "station add it. Don't present it as something the product can't do. " +
+      // #676 and #284 already say what to do in these two cases; without
+      // this the section's "have someone add it" would override them.
+      "Two cases have their own guidance above, which takes precedence: " +
+      "data that is attached but not shared with the user (they ask for " +
+      "access; nothing needs attaching), and a tool pack the plan doesn't " +
+      "include (a plan limit; it can't be added to a station)."
   );
   lines.push("");
 
