@@ -1,6 +1,8 @@
 import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
 import {
+  BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
+  isBuiltinToolpackSlug,
   type BuiltinToolpackSlug,
 } from "@portalai/core/registries";
 import {
@@ -15,6 +17,7 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 import type { CustomPackSummary } from "../services/entitlement.service.js";
+import { usesStationData } from "../utils/station-data-packs.util.js";
 
 /**
  * Connector instance attached to this station — surfaced in the
@@ -73,6 +76,13 @@ export interface StationContext {
    * missing product capability.
    */
   unentitledToolPacks: string[];
+  /**
+   * #848: built-in packs the plan includes that this station is NOT
+   * configured with. Named in "Station Scope" so the agent can say which pack
+   * a request needs and point at a station that has it. Absent or empty
+   * renders no list.
+   */
+  otherPlanToolPacks?: string[];
   /**
    * Org-registered (webhook) toolpacks attached to this station (#306).
    *
@@ -206,6 +216,29 @@ function geocodingGuidance(ctx: StationContext): string[] {
       neverFabricate,
   ];
 }
+
+/**
+ * #848: what each pack is for, as told to a user whose station doesn't have
+ * it. Printed in "Station Scope" beside the pack's display name for the packs
+ * in `otherPlanToolPacks`.
+ *
+ * These are deliberately NOT the `capability` phrases below. Those are
+ * `markers`, and the #284 guard asserts a marker appears only when its pack is
+ * effective; this list names packs the session does not have. A guard test
+ * asserts no phrase here contains a marker.
+ */
+export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
+  data_query: "questions about entity data",
+  visualize: "charts",
+  gis: "maps and geocoding",
+  statistics: "statistical tests",
+  regression: "regressions and forecasts",
+  financial: "financial metrics",
+  web_search: "looking things up on the web",
+  entity_management: "creating and changing entities and their records",
+  rbac_management: "managing access, roles and shares",
+  view_management: "creating curated views and attaching them to stations",
+};
 
 export const PACK_PROMPT_SECTIONS: Record<
   BuiltinToolpackSlug,
@@ -816,8 +849,30 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #674: what's missing from the station (the same for everyone) and what
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
-  if (gaps.missing) {
-    lines.push(`_${gaps.missing}_`);
+  // #848: a station with no pack that works on entity data (the provisioned
+  // Administrate station has only the access pack) is complete without views
+  // or connectors. Naming them as missing made the agent open its answers with
+  // "no data attached" and suggest attaching some. The configured set decides
+  // it, so a data pack the plan excludes still counts as "set up for data".
+  const forData = usesStationData([
+    ...stationContext.effectiveToolPacks,
+    ...stationContext.unentitledToolPacks,
+  ]);
+  const missing = forData ? gaps.missing : null;
+  if (!forData) {
+    lines.push(
+      "_This station has no tool pack that reads or writes entity data. That " +
+        "is how it is set up, not a fault._"
+    );
+    lines.push(
+      "Don't tell the user data is missing, and don't suggest attaching views " +
+        "or connectors here: without such a pack they would add nothing. A " +
+        "request about entity data belongs on a station set up for it (see " +
+        "Station Scope)."
+    );
+  }
+  if (missing) {
+    lines.push(`_${missing}_`);
     // #848: the sentence says what attaching would add, and a session may
     // hold `curated_view_attach`. It describes the station; it isn't a task.
     lines.push(
@@ -838,10 +893,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "with them."
     );
   }
-  if (gaps.missing || gaps.noAccess) lines.push("");
+  if (!forData || missing || gaps.noAccess) lines.push("");
 
   if (stationContext.entities.length === 0) {
-    if (!gaps.missing && !gaps.noAccess) {
+    if (forData && !missing && !gaps.noAccess) {
       lines.push("_No entities are available on this station yet._");
       lines.push("");
     }
@@ -1165,6 +1220,33 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "include (a plan limit; it can't be added to a station)."
   );
   lines.push("");
+  // The agent can only "say what is missing" if it knows what exists. Without
+  // this list it told a user that attaching views can't be done from a
+  // session, on a station that simply lacked the pack for it.
+  const elsewhere = (stationContext.otherPlanToolPacks ?? []).filter(
+    isBuiltinToolpackSlug
+  );
+  if (elsewhere.length > 0) {
+    lines.push(
+      "Tool packs the organization's plan includes that are **not on this " +
+        "station** (you don't have their tools here, so never offer or " +
+        "attempt that work in this session):"
+    );
+    lines.push("");
+    for (const slug of elsewhere) {
+      lines.push(
+        `- ${BUILTIN_TOOLPACK_BY_SLUG[slug].name}: ${PACK_ELSEWHERE[slug]}`
+      );
+    }
+    lines.push("");
+    lines.push(
+      "When a request needs one of these, name the pack, say this station " +
+        "doesn't have it, and suggest a station that does. Never say it " +
+        "can't be done in a portal session, and never say it will work here " +
+        "once data is attached."
+    );
+    lines.push("");
+  }
 
   lines.push("## Response Style");
   lines.push("");

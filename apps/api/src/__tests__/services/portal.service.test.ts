@@ -913,6 +913,30 @@ describe("PortalService", () => {
     // set while buildAnalyticsTools built from the entitled subset, so the
     // agent was told about tools that had been stripped from its own session.
 
+    // #848: the plan's packs that aren't on this station reach the prompt, so
+    // the agent can name the pack a request needs.
+    it("carries the plan's other packs into the context (#848)", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockResolveStationPacks.mockResolvedValueOnce({
+        effective: ["rbac_management"],
+        unentitled: [],
+        otherPlanPacks: ["data_query", "view_management"],
+        customPacks: [],
+        tier: "standard",
+      } as never);
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Administrate" },
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(ctx.otherPlanToolPacks).toEqual(["data_query", "view_management"]);
+    });
+
     it("splits configured packs into effective and unentitled", async () => {
       const { buildStationContext } =
         await import("../../services/portal.service.js");

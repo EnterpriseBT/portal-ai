@@ -12,16 +12,13 @@ import {
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
-import {
-  isBuiltinToolpackSlug,
-  type BuiltinToolpackSlug,
-} from "@portalai/core/registries";
 
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { Tool } from "../types/tools.js";
+import { usesStationData } from "../utils/station-data-packs.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "platform-help-tool" });
@@ -39,27 +36,6 @@ const InputSchema = z.object({
 /** How much shipped content one answer may carry. */
 const MAX_FAQ = 3;
 const MAX_GLOSSARY = 3;
-
-/**
- * #848: whether a built-in pack works on the station's attached data. A
- * station carrying none of these (the provisioned Administrate station has
- * only the access pack) is complete with no views or connectors, so their
- * absence isn't why an answer came back empty. Exhaustive over the slugs, so
- * a new pack has to be classified here to compile.
- */
-const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
-  data_query: true,
-  statistics: true,
-  regression: true,
-  financial: true,
-  visualize: true,
-  gis: true,
-  entity_management: true,
-  // Control-plane and off-station work.
-  rbac_management: false,
-  view_management: false,
-  web_search: false,
-};
 
 interface StationFindings {
   /** False when the station read failed — the answer degrades, never errors. */
@@ -190,10 +166,7 @@ async function gatherFindings(
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || customPackIds.length > 0,
-      usesStationData: builtinSlugs.some(
-        (slug: string) =>
-          isBuiltinToolpackSlug(slug) && PACK_USES_STATION_DATA[slug]
-      ),
+      usesStationData: usesStationData(builtinSlugs),
       unentitledPacks: unentitled,
       entityCount: entityIds.length,
       recordCount,

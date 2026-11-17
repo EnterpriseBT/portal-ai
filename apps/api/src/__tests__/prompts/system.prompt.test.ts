@@ -4,6 +4,7 @@ import {
   buildSystemPrompt,
   PACK_PROMPT_SECTIONS,
   type StationContext,
+  PACK_ELSEWHERE,
 } from "../../prompts/system.prompt.js";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,72 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     );
     // Not rendered when nothing is missing.
     expect(buildSystemPrompt(makeContext())).not.toContain(NOT_A_REQUEST);
+  });
+
+  // #848 walk finding: on a station with no pack that works on entity data
+  // (Administrate has only the access pack) the missing-attachments line made
+  // the agent open every answer with "no data attached" and suggest attaching
+  // some. There the prompt says the station isn't set up for data instead.
+  describe("#848: a station with no pack that works on entity data", () => {
+    const NOT_FOR_DATA =
+      "_This station has no tool pack that reads or writes entity data. That " +
+      "is how it is set up, not a fault._";
+
+    it("says so instead of naming missing views or connectors", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).toContain(NOT_FOR_DATA);
+      expect(prompt).toMatch(
+        /Don't tell the user data is missing, and don't suggest attaching views or connectors here/
+      );
+      expect(prompt).not.toContain("are attached to this station.");
+      expect(prompt).not.toContain("it isn't a request");
+    });
+
+    it("says so even when a connector is attached", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management", "view_management"],
+          attachments: attach([0, 0], [1, 1]),
+        })
+      );
+      expect(prompt).toContain(NOT_FOR_DATA);
+      expect(prompt).not.toContain("No views are attached to this station.");
+    });
+
+    it("still names the missing kind when a data pack is configured but not in the plan", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          unentitledToolPacks: ["data_query"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).toContain(
+        "_No views or connectors are attached to this station."
+      );
+    });
+
+    it("still reports attached data the user can't read", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([2, 0], [0, 0]),
+        })
+      );
+      expect(prompt).toContain(
+        "_You don't have access to any views on this station."
+      );
+    });
   });
 
   it("#674: names only the missing kind when connectors are attached but views aren't", () => {
@@ -569,6 +636,74 @@ describe("buildSystemPrompt — response style", () => {
       );
       expect(section).toMatch(/attached but not shared with the user/);
       expect(section).toMatch(/a plan limit; it can't be added to a station/);
+    });
+
+    // The walk finding: on a station with only the access pack the agent
+    // said attaching views "can't be done from a session" and offered to query
+    // once data was attached. It couldn't name what was missing because the
+    // prompt never said which packs exist beyond this station's.
+    describe("packs the plan includes that aren't on this station", () => {
+      const scopeOf = (ctx: Partial<StationContext>) => {
+        const prompt = buildSystemPrompt(makeContext(ctx));
+        return prompt.slice(
+          prompt.indexOf("## Station Scope"),
+          prompt.indexOf("## Response Style")
+        );
+      };
+
+      it("lists each by name with what it is for", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["data_query", "view_management"],
+        });
+        expect(section).toContain("**not on this station**");
+        expect(section).toContain("- Data Query: questions about entity data");
+        expect(section).toContain(
+          "- Curated Views: creating curated views and attaching them to stations"
+        );
+        expect(section).toMatch(
+          /Never say it can't be done in a portal session/
+        );
+        expect(section).toMatch(/never offer or attempt/);
+      });
+
+      it("renders no list when the plan has nothing else", () => {
+        for (const otherPlanToolPacks of [undefined, []]) {
+          const section = scopeOf({
+            effectiveToolPacks: ["rbac_management"],
+            otherPlanToolPacks,
+          });
+          expect(section).not.toContain("not on this station");
+        }
+      });
+
+      it("skips a slug the registry doesn't know", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["rbac_management"],
+          otherPlanToolPacks: ["not_a_pack", "data_query"],
+        });
+        expect(section).toContain("- Data Query:");
+        expect(section).not.toContain("not_a_pack");
+      });
+
+      // #284's guard compares strings: a pack's markers must not appear
+      // unless the pack is effective. The list names packs the session does
+      // NOT have, so nothing it prints may be one of those markers.
+      it("GUARD: no listed name or purpose is a capability marker (#284)", () => {
+        const markers = ALL_SLUGS.flatMap(
+          (s) => PACK_PROMPT_SECTIONS[s].markers
+        );
+        const section = scopeOf({
+          effectiveToolPacks: [],
+          otherPlanToolPacks: [...ALL_SLUGS],
+        });
+        for (const slug of ALL_SLUGS) {
+          expect(section).toContain(PACK_ELSEWHERE[slug]);
+        }
+        for (const marker of markers) {
+          expect(section).not.toContain(marker);
+        }
+      });
     });
 
     it("names no particular station", () => {

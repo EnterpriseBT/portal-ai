@@ -385,3 +385,69 @@ describe("EntitlementService.resolveStationPacks (#306)", () => {
     });
   });
 });
+
+// #848: the packs the plan includes that this station doesn't carry. The
+// prompt names them so the agent can say which pack a request needs and point
+// at a station that has it.
+describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () => {
+  const STATION_ID = "station-848";
+
+  beforeEach(() => {
+    mockFindManyByIds_customPacks.mockResolvedValue([]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: [
+          "data_query",
+          "rbac_management",
+          "view_management",
+          "not_shipped_yet",
+        ],
+        customToolpacks: false,
+        customRbac: false,
+        advancedViewFilters: false,
+      })
+    );
+  });
+
+  it("lists the plan's packs that aren't configured on the station", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "rbac_management", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.effective).toEqual(["rbac_management"]);
+    // Plan order, known slugs only.
+    expect(packs.otherPlanPacks).toEqual(["data_query", "view_management"]);
+  });
+
+  it("leaves out a pack that is configured, entitled or not", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      { builtinSlug: "data_query", organizationToolpackId: null },
+      { builtinSlug: "gis", organizationToolpackId: null },
+    ]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.unentitled).toEqual(["gis"]);
+    expect(packs.otherPlanPacks).toEqual([
+      "rbac_management",
+      "view_management",
+    ]);
+  });
+
+  it("lists the whole plan for a station with no built-in pack", async () => {
+    mockFindByStationId_packs.mockResolvedValue([]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.otherPlanPacks).toEqual([
+      "data_query",
+      "rbac_management",
+      "view_management",
+    ]);
+  });
+});

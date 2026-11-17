@@ -27,6 +27,13 @@ export interface CustomPackSummary {
 /** A station's packs: the built-in split plus its custom packs (#306). */
 export interface StationPacks extends BuiltinPackSplit {
   /**
+   * #848: built-in packs the org's plan includes that this station is not
+   * configured with, in the plan's order. The system prompt names them so the
+   * agent can say which pack a request needs and point at a station that has
+   * it, instead of calling the request impossible.
+   */
+  otherPlanPacks: string[];
+  /**
    * Registered custom packs attached to this station. Empty when the org's
    * tier does not include custom toolpacks (#214) — their tools are not
    * constructed in that case, so naming them would describe nothing.
@@ -125,15 +132,23 @@ export class EntitlementService {
     const { effective, unentitled, tier } =
       await EntitlementService.splitBuiltinPacks(organizationId, builtinSlugs);
 
+    // #848: resolved here rather than in `splitBuiltinPacks`, which skips the
+    // tier read for a station with no built-in pack.
+    const configured = new Set(builtinSlugs);
+    const policy = await EntitlementService.resolvePolicy(organizationId);
+    const otherPlanPacks = policy.entitlements.builtinToolpacks.filter(
+      (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
+    );
+
     if (customPackIds.length === 0) {
-      return { effective, unentitled, customPacks: [], tier };
+      return { effective, unentitled, otherPlanPacks, customPacks: [], tier };
     }
 
     // Gate before the lookup: an unentitled org shouldn't pay for the read.
     const entitled =
       await EntitlementService.customPacksEntitled(organizationId);
     if (!entitled) {
-      return { effective, unentitled, customPacks: [], tier };
+      return { effective, unentitled, otherPlanPacks, customPacks: [], tier };
     }
 
     const packs =
@@ -145,6 +160,7 @@ export class EntitlementService {
     return {
       effective,
       unentitled,
+      otherPlanPacks,
       customPacks: packs.map((p) => ({
         name: p.name,
         description: p.description,
