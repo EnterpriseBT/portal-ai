@@ -153,7 +153,7 @@ When a `missing` sentence renders in Available Data, the prompt follows it with 
 
 ### Edit Station dialog (`apps/web/src/components/EditStationDialog.component.tsx`)
 
-A multiline **Description** field under the name. The dialog captures the station's name and description once when it opens and compares against those, so a refetch while it is open can't make an untouched field count as edited (tool packs and attachments are still compared against the live station: #1043). The name and the description are each sent (trimmed) only when they differ from the stored value with both sides trimmed; for the description, and only then is it held to the 2000-character limit, checked on the trimmed text. Emptying the field sends `""`.
+A multiline **Description** field under the name. The dialog captures the station's name and description once when it opens and compares against those, so a refetch while it is open can't make an untouched field count as edited (tool packs and attachments are still compared against the live station: #1043). The name and the description are each sent, trimmed, only when they differ from the stored value with both sides trimmed. A field is held to its length limit (120 characters for the name, 2000 for the description, checked on the trimmed text) only when it was edited, so a longer stored value doesn't block other saves. Emptying the field sends `""`.
 
 `POST /api/stations` and `PATCH /api/stations/:id` both store null for an empty or whitespace-only `description`, matching a station created without one. The contracts are unchanged.
 

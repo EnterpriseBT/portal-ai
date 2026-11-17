@@ -230,6 +230,46 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       expect(prompt).toContain(NOT_FOR_DATA);
       expect(prompt).not.toContain("are attached to this station.");
     });
+
+    it("says so even when a connector is attached", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management", "view_management"],
+          attachments: attach([0, 0], [1, 1]),
+        })
+      );
+      expect(prompt).toContain(NOT_FOR_DATA);
+      expect(prompt).not.toContain("No views are attached to this station.");
+    });
+
+    it("still names the missing kind when a data pack is configured but not in the plan", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          unentitledToolPacks: ["data_query"],
+          attachments: attach([0, 0], [0, 0]),
+        })
+      );
+      expect(prompt).not.toContain(NOT_FOR_DATA);
+      expect(prompt).toContain(
+        "_No views or connectors are attached to this station."
+      );
+    });
+
+    it("still reports attached data the user can't read", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({
+          entities: [],
+          effectiveToolPacks: ["rbac_management"],
+          attachments: attach([2, 0], [0, 0]),
+        })
+      );
+      expect(prompt).toContain(
+        "_You don't have access to any views on this station."
+      );
+    });
   });
 
   it("#674: names only the missing kind when connectors are attached but views aren't", () => {
