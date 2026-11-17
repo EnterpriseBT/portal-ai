@@ -1137,6 +1137,21 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
+  // #848: stations are scoped to one kind of work (a new org starts with one
+  // for access and one for data), so a request this station can't serve is
+  // usually served by another. Rendered for every pack set and naming no
+  // station: the section describes the practice, not the provisioned pair.
+  lines.push("## Station Scope");
+  lines.push("");
+  lines.push(
+    "This station is set up for one kind of work: the tool packs and data " +
+      "described above. When a request needs a tool pack or data that isn't " +
+      "on this station, say what is missing and suggest the user open a " +
+      "station set up for that work, or have someone who can edit this " +
+      "station add it. Don't present it as something the product can't do."
+  );
+  lines.push("");
+
   lines.push("## Response Style");
   lines.push("");
   const blocks = joinPhrases(sections.flatMap((s) => s.blocks));

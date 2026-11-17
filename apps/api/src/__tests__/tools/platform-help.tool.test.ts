@@ -231,6 +231,26 @@ describe("PlatformHelpTool — station situations", () => {
     expect(answer).toMatch(/none|no tool packs|isn't attached|not attached/i);
   });
 
+  it("#848: a station with no packs is told to attach the packs for its work, not one fixed pack", async () => {
+    mockFindByStationId.mockResolvedValue([]);
+    mockSplitBuiltinPacks.mockResolvedValue({
+      effective: [],
+      unentitled: [],
+      tier: "standard",
+    });
+
+    const { answer } = await exec("what can I do here");
+
+    // A station is set up for one kind of work, and data querying is only
+    // one of them (Administrate carries the access pack alone).
+    expect(answer).toContain(
+      "Open the station and attach the packs for what you want to do here, " +
+        "such as the data-query pack for questions about your data, then ask " +
+        "again."
+    );
+    expect(answer).not.toContain("at least the data-query pack");
+  });
+
   it("says an unentitled pack is a plan limit, not a missing feature", async () => {
     mockSplitBuiltinPacks.mockResolvedValue({
       effective: ["data_query"],

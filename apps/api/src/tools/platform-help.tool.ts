@@ -229,11 +229,14 @@ function selectContent(question?: string): SelectedContent {
 }
 
 const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
+  // #848: a station is set up for one kind of work, so this names no one
+  // pack as the minimum. Data querying is an example, not a requirement.
   no_packs: () =>
     "This station has no tool packs attached, so a portal session on it can " +
     "only talk in generalities. Tool packs are what give the assistant its " +
     "abilities here — querying your data, statistics, charts, maps, and so " +
-    "on. Open the station and attach at least the data-query pack, then ask " +
+    "on. Open the station and attach the packs for what you want to do here, " +
+    "such as the data-query pack for questions about your data, then ask " +
     "again.",
   // #674: the sentences come from describeStationAttachmentGaps, shared with
   // the UI alerts and the system prompt, so all three say the same thing.

@@ -510,6 +510,47 @@ describe("buildSystemPrompt — response style", () => {
     }
   });
 
+  // #848: stations are scoped to one kind of work, so the agent redirects a
+  // request the station isn't set up for instead of calling it impossible.
+  describe("## Station Scope (#848)", () => {
+    const SCOPE =
+      "This station is set up for one kind of work: the tool packs and data " +
+      "described above. When a request needs a tool pack or data that isn't " +
+      "on this station, say what is missing and suggest the user open a " +
+      "station set up for that work, or have someone who can edit this " +
+      "station add it. Don't present it as something the product can't do.";
+
+    const compositions: StationContext["effectiveToolPacks"][] = [
+      [],
+      ["rbac_management"],
+      ["data_query", "entity_management", "view_management"],
+    ];
+
+    it("renders the section for every pack set, an empty one included", () => {
+      for (const effectiveToolPacks of compositions) {
+        const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+        expect(prompt).toContain(`## Station Scope\n\n${SCOPE}\n`);
+      }
+    });
+
+    it("sits immediately before ## Response Style", () => {
+      for (const effectiveToolPacks of compositions) {
+        const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+        expect(prompt).toContain(`${SCOPE}\n\n## Response Style`);
+      }
+    });
+
+    it("names no particular station", () => {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
+      expect(prompt).toContain("## Station Scope");
+      const section = prompt.slice(
+        prompt.indexOf("## Station Scope"),
+        prompt.indexOf("## Response Style")
+      );
+      expect(section).not.toMatch(/Administrate|Playground/);
+    });
+  });
+
   it("places ## Response Style after all other sections", () => {
     const prompt = buildSystemPrompt(
       makeContext({
