@@ -39,12 +39,12 @@ After a refetch the three baselines reflect the other editor's change while the 
 
 ## Smoke (manual, against your dev stack)
 
-Steps 1–3 are agent-walkable. Step 4 needs two sessions and a page refetch under an open dialog, which a scripted browser doesn't produce; it is the case the unit tests pin.
+Steps 1–3 are regression checks. Step 4 is the bug. It needs a second session and a page refetch under the open dialog. A person gets the refetch by switching tabs; a scripted browser gets it by making `document.visibilityState` read `hidden`, dispatching `visibilitychange` on `window`, then the same with `visible`, once the page's data is over a minute old.
 
 1. Open a station you can edit, choose Edit, add a tool pack and save. The station page shows the pack.
 2. Edit again, attach a connector or a view and save; then edit and detach it and save. The page shows each change.
 3. Edit, change nothing, save. The dialog closes and no `PATCH /api/stations/…` is sent.
-4. — manual. Person A opens the Edit dialog on a station with a connector attached. Person B detaches that connector and saves. A waits over a minute, switches away from the tab and back (the page behind the dialog now shows no connector), changes only the name and saves. The connector stays detached, and A's request carries only the name.
+4. Person A opens the Edit dialog on a station with a connector attached. Person B (or a `PATCH /api/stations/<id>` from a shell) detaches that connector and removes a tool pack. A waits over a minute, switches away from the tab and back (the page behind the dialog now shows neither; the dialog still shows both), changes only the name and saves. A's request carries only the name, and the connector and the pack stay removed.
 
 ## Out of scope
 
