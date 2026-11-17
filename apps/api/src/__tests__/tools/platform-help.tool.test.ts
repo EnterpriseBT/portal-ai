@@ -32,6 +32,7 @@ const stationPacks = (
     unentitled: string[];
     configuredCustomPackCount: number;
     customPacksEntitled: boolean;
+    excludedCustomPacks: string[];
     tier: string;
   }> = {}
 ) => ({
@@ -40,6 +41,7 @@ const stationPacks = (
   otherPlanPacks: [],
   configuredCustomPackCount: 0,
   customPacksEntitled: false,
+  excludedCustomPacks: [],
   tier: "standard",
   ...over,
 });
@@ -264,21 +266,120 @@ describe("PlatformHelpTool — station situations", () => {
       expect(answer).toMatch(/^No views or connectors are attached/);
     });
 
-    // Code review: a custom pack the plan excludes builds no tools. Attaching
-    // a view wouldn't help, so missing data isn't given as the cause. It is
-    // still a pack on the station, so the answer isn't "no tool packs".
-    it("doesn't name missing attachments for a custom pack the plan excludes", async () => {
+    // #1045: when every data-capable pack on the station is excluded by the
+    // plan, the plan leads. Attaching a view wouldn't help, so the answer
+    // doesn't say to, and it isn't "no tool packs" either.
+    it("leads with the plan limit when the only data-capable pack is an excluded custom pack", async () => {
       accessOnly();
       mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({
           effective: [],
           configuredCustomPackCount: 1,
           customPacksEntitled: false,
+          excludedCustomPacks: ["acme"],
+        })
+      );
+      const { answer } = await exec();
+      expect(answer).toMatch(
+        /^Some tool packs on this station are not included in your current plan/
+      );
+      expect(answer).toContain("registered by your organization: acme");
+      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).not.toMatch(/attach the packs for what you want/);
+    });
+
+    it("leads with the plan limit when the only data pack is an excluded built-in pack", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: ["rbac_management"],
+          unentitled: ["data_query"],
+        })
+      );
+      const { answer } = await exec();
+      expect(answer).toMatch(
+        /^Some tool packs on this station are not included in your current plan \(data_query\)/
+      );
+      expect(answer).not.toMatch(/are attached to this station/);
+    });
+
+    // The prompt goes by the pack rows that resolve. A row pointing at a
+    // pack that no longer exists yields no name, and must not make this a
+    // data station here when it doesn't there.
+    it("doesn't count an excluded custom pack whose row no longer resolves", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: ["rbac_management"],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+          excludedCustomPacks: [],
         })
       );
       const { answer } = await exec();
       expect(answer).not.toMatch(/are attached to this station/);
-      expect(answer).not.toMatch(/attach the packs for what you want/);
+      expect(answer).not.toMatch(/not included in your current plan/);
+    });
+
+    // #1045: the plan answer names a custom pack the plan excludes.
+    it("names a custom pack the plan excludes in the plan-limit answer", async () => {
+      accessOnly();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          effective: ["rbac_management"],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+          excludedCustomPacks: ["acme"],
+        })
+      );
+      const { answer } = await exec("why did the acme tools stop working");
+      expect(answer).toMatch(/not included in your current plan/);
+      expect(answer).toContain("acme");
+    });
+
+    // Code review: the plan limit was only ever the last situation checked,
+    // so an earlier one (no records, missing or unreadable attachments) hid
+    // it. It now follows whichever answer leads.
+    it("adds the plan limit after another situation's answer", async () => {
+      healthy();
+      mockCountByConnectorEntityIds.mockResolvedValue(0);
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({ unentitled: ["gis"] })
+      );
+      const { answer } = await exec("why are my answers empty");
+      expect(answer).toMatch(/has entities set up/);
+      expect(answer).toMatch(/not included in your current plan \(gis\)/);
+      // Said once, not twice.
+      expect(answer.split("not included in your current plan").length).toBe(2);
+    });
+
+    // A custom pack can be registered under a built-in pack's slug.
+    it("tells a custom pack apart from a built-in pack of the same name", async () => {
+      healthy();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          unentitled: ["gis"],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+          excludedCustomPacks: ["gis"],
+        })
+      );
+      const { answer } = await exec("why can't I make a map");
+      // One list, no nested brackets.
+      expect(answer).toContain("(gis; registered by your organization: gis)");
+    });
+
+    it("lists several custom packs under one label", async () => {
+      healthy();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          configuredCustomPackCount: 2,
+          customPacksEntitled: false,
+          excludedCustomPacks: ["acme", "crm"],
+        })
+      );
+      const { answer } = await exec("why did my tools stop working");
+      expect(answer).toContain("(registered by your organization: acme, crm)");
     });
 
     // One derivation with the prompt, through the split-only read: the

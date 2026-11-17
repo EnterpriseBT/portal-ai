@@ -136,6 +136,12 @@ interface StationContextResponse {
       description: string | null;
       toolNames: string[];
     }>;
+    /**
+     * #1045: names of org-registered packs attached to this station that the
+     * plan excludes. Their tools do not exist here; asking for what they'd do
+     * is a plan limit, like `unentitled`.
+     */
+    customNotInPlan: string[];
   };
 }
 
@@ -152,9 +158,11 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "available to `field_mapping_create`), and `toolPacks` — the station's " +
     "packs split into `effective` (built-in, their tools exist in this " +
     "session), `unentitled` (built-in, attached but not included in the " +
-    "organization's plan, so their tools do NOT exist here), and `custom` " +
+    "organization's plan, so their tools do NOT exist here), `custom` " +
     "(toolpacks your organization registered itself, with the `toolNames` " +
-    "each provides — these are live, callable tools). **Call this " +
+    "each provides — these are live, callable tools), and `customNotInPlan` " +
+    "(names of organization-registered toolpacks attached here that the " +
+    "plan excludes, so their tools do NOT exist here either). **Call this " +
     "before any tool that " +
     "asks for a `connectorEntityId`, `connectorInstanceId`, " +
     "`columnDefinitionId`, `fieldMappingId`, or wide-column name** — do not " +
@@ -208,12 +216,17 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           // #306: one derivation for both kinds of pack. This used to read
           // `builtinSlug` only, so a registered custom pack was invisible here
           // and the agent denied holding tools it could call.
-          const { effective, unentitled, customPacks } =
+          const { effective, unentitled, customPacks, excludedCustomPacks } =
             await EntitlementService.resolveStationPacks(
               stationId,
               organizationId
             );
-          response.toolPacks = { effective, unentitled, custom: customPacks };
+          response.toolPacks = {
+            effective,
+            unentitled,
+            custom: customPacks,
+            customNotInPlan: excludedCustomPacks,
+          };
         }
 
         // Single round-trip for entities + groups (and connector

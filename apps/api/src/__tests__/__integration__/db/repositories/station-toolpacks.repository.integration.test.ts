@@ -160,6 +160,31 @@ describe("StationToolpacksRepository Integration Tests", () => {
     expect(found.map((r) => r.builtinSlug)).toEqual(["statistics"]);
   });
 
+  // #1045: the system prompt lists a station's packs from this read every
+  // turn, so its order is defined: oldest attachment first, id as tiebreak.
+  it("findByStationId returns rows oldest first, whatever order they were inserted in", async () => {
+    const t = Date.now();
+    await repo.create(
+      makeRow({ builtinSlug: "statistics", created: t + 2000 }) as never,
+      db
+    );
+    await repo.create(
+      makeRow({ builtinSlug: "gis", created: t + 3000 }) as never,
+      db
+    );
+    await repo.create(
+      makeRow({ builtinSlug: "data_query", created: t + 1000 }) as never,
+      db
+    );
+
+    const found = await repo.findByStationId(stationId, db);
+    expect(found.map((r) => r.builtinSlug)).toEqual([
+      "data_query",
+      "statistics",
+      "gis",
+    ]);
+  });
+
   // ── replaceForStation ───────────────────────────────────────────
 
   // Case 23

@@ -17,7 +17,10 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 import type { CustomPackSummary } from "../services/entitlement.service.js";
-import { usesStationData } from "../utils/station-data-packs.util.js";
+import {
+  stationDataSetup,
+  usesStationData,
+} from "../utils/station-data-packs.util.js";
 
 /**
  * Connector instance attached to this station — surfaced in the
@@ -93,6 +96,13 @@ export interface StationContext {
    * naming them would describe nothing.
    */
   customToolPacks?: CustomPackSummary[];
+  /**
+   * #1045: names of the custom packs attached to this station that the plan
+   * excludes. Their tools don't exist in the session and they are not in
+   * `customToolPacks`; they are named in "Not Included In This Plan" so the
+   * agent can say the plan is why. Absent or empty names nothing.
+   */
+  excludedCustomToolPacks?: string[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -881,22 +891,34 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // #848: a station with no pack that works on entity data (the provisioned
   // Administrate station has only the access pack) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
-  // "no data attached" and suggest attaching some. The configured set decides
-  // it, so a data pack the plan excludes still counts as "set up for data"
-  // (the plan-limit section names it). A custom pack counts when the plan
-  // includes it: `customToolPacks` holds only those.
+  // "no data attached" and suggest attaching some.
+  // #1045: three states, not two. When packs that work on data are attached
+  // but the plan excludes every one, the plan is why nothing here reads
+  // data: say that, and don't suggest attaching views no tool could read.
   const otherPlanPacks = (stationContext.otherPlanToolPacks ?? []).filter(
     isBuiltinToolpackSlug
   );
-  const forData = usesStationData(
-    [
-      ...stationContext.effectiveToolPacks,
-      ...stationContext.unentitledToolPacks,
-    ],
-    (stationContext.customToolPacks ?? []).length > 0
-  );
+  const excludedCustomPacks = stationContext.excludedCustomToolPacks ?? [];
+  const dataSetup = stationDataSetup({
+    effective: stationContext.effectiveToolPacks,
+    unentitled: stationContext.unentitledToolPacks,
+    hasUsableCustomPack: (stationContext.customToolPacks ?? []).length > 0,
+    hasExcludedCustomPack: excludedCustomPacks.length > 0,
+  });
+  const forData = dataSetup === "usable";
   const missing = forData ? gaps.missing : null;
-  if (!forData) {
+  if (dataSetup === "plan-excluded") {
+    lines.push(
+      "_The tool packs on this station that read or write entity data are " +
+        "not included in the organization's plan (see Not Included In This " +
+        "Plan), so no tool in this session can work with entity data._"
+    );
+    lines.push(
+      "Don't suggest attaching views or connectors here: no tool in this " +
+        "session could use them."
+    );
+  }
+  if (dataSetup === "none") {
     lines.push(
       "_This station has no tool pack that reads or writes entity data. That " +
         "is how it is set up, not a fault._"
@@ -1145,7 +1167,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // What the plan excludes (#284). Configured-but-unentitled packs are named
   // here so the agent can distinguish a plan limit from a product gap, and
   // never has to infer it from the absence of a tool.
-  if (stationContext.unentitledToolPacks.length > 0) {
+  if (
+    stationContext.unentitledToolPacks.length > 0 ||
+    excludedCustomPacks.length > 0
+  ) {
     lines.push("## Not Included In This Plan");
     lines.push("");
     lines.push(
@@ -1165,6 +1190,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         section
           ? `- \`${slug}\` — would let you **${section.capability}**`
           : `- \`${slug}\``
+      );
+    }
+    // #1045: a custom pack has no declared capability to name, so it is
+    // listed by its registered name. Before this it was invisible here, and
+    // the agent answered as if the pack weren't attached.
+    for (const name of excludedCustomPacks) {
+      lines.push(
+        `- \`${name}\` — a tool pack your organization registered; the ` +
+          "plan doesn't include organization-registered tool packs"
       );
     }
     lines.push("");

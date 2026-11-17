@@ -26,9 +26,10 @@ export interface CustomPackSummary {
 }
 
 /**
- * What a station is set up with, without its custom packs' details: enough to
- * say which packs it has and which the plan includes. `platform_help` reads
- * this; a caller that names the custom packs reads {@link StationPacks}.
+ * What a station is set up with, without its usable custom packs' details
+ * (description, tools): enough to say which packs it has and which the plan
+ * includes or excludes. `platform_help` reads this; a caller that lists the
+ * custom packs' tools reads {@link StationPacks}.
  */
 export interface StationPackSplit extends BuiltinPackSplit {
   /**
@@ -47,6 +48,13 @@ export interface StationPackSplit extends BuiltinPackSplit {
   /** Whether the plan includes custom packs (#214). When it doesn't, the
    *  attached ones build no tools. */
   customPacksEntitled: boolean;
+  /**
+   * #1045: the names of the custom packs attached to this station that the
+   * plan excludes, sorted by name. Empty when the plan includes custom
+   * packs. They build no tools and are not in `customPacks`; they are named
+   * so the assistant can say the plan is why their tools are gone.
+   */
+  excludedCustomPacks: string[];
 }
 
 /** A station's packs: the built-in split plus its custom packs (#306). */
@@ -137,9 +145,11 @@ export class EntitlementService {
    * limit — which is where the spurious "check Subscription & Billing"
    * guidance came from.
    *
-   * Custom packs are omitted entirely when the tier's `customToolpacks`
-   * entitlement is false, matching #214: registrations survive a downgrade,
-   * their tools stop being offered, so the inventory must stop naming them.
+   * Custom packs are left out of `customPacks` when the tier's
+   * `customToolpacks` entitlement is false, matching #214: registrations
+   * survive a downgrade and their tools stop being offered, so the list of
+   * callable packs must not carry them. Their names are reported apart, in
+   * `excludedCustomPacks`, so the plan can be given as the reason (#1045).
    */
   static async resolveStationPacks(
     stationId: string,
@@ -150,7 +160,8 @@ export class EntitlementService {
       organizationId
     );
 
-    // Gate before the lookup: an unentitled org shouldn't pay for the read.
+    // Gate before the lookup: an unentitled org shouldn't pay for the
+    // decrypting read (its excluded packs' names are already on the split).
     if (customPackIds.length === 0 || !split.customPacksEntitled) {
       return { ...split, customPacks: [] };
     }
@@ -163,19 +174,24 @@ export class EntitlementService {
 
     return {
       ...split,
-      customPacks: packs.map((p) => ({
-        name: p.name,
-        description: p.description,
-        toolNames: p.tools.map((t) => t.name),
-      })),
+      // Sorted, like the excluded names: this read has no defined order, and
+      // the prompt lists these every turn.
+      customPacks: packs
+        .map((p) => ({
+          name: p.name,
+          description: p.description,
+          toolNames: p.tools.map((t) => t.name),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 
   /**
-   * The same derivation without the custom packs' rows, for a caller that
-   * needs to know what the station has but not name its custom packs
-   * (`platform_help`). That read decrypts stored pack credentials, and its
-   * result has no `customPacks` to mistake for "none attached".
+   * The same derivation without the custom packs' full rows, for a caller
+   * that needs to know what the station has but not list its custom packs'
+   * tools (`platform_help`). That read decrypts stored pack credentials, and
+   * this result has no `customPacks` to mistake for "none attached". It does
+   * carry the names of custom packs the plan excludes.
    */
   static async resolveStationPackSplit(
     stationId: string,
@@ -215,13 +231,28 @@ export class EntitlementService {
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
+    // #1045: names only, and only when there is something to name. An org
+    // in this state pays one small extra query per derivation. Not the
+    // decrypting read: nothing here uses a pack's credentials.
+    const customPacksEntitled = policy.entitlements.customToolpacks;
+    let excludedCustomPacks: string[] = [];
+    if (customPackIds.length > 0 && !customPacksEntitled) {
+      const named =
+        await DbService.repository.organizationToolpacks.findNamesByIds(
+          customPackIds,
+          { organizationId }
+        );
+      excludedCustomPacks = named.map((p) => p.name).sort();
+    }
+
     return {
       split: {
         effective,
         unentitled,
         otherPlanPacks,
         configuredCustomPackCount: customPackIds.length,
-        customPacksEntitled: policy.entitlements.customToolpacks,
+        customPacksEntitled,
+        excludedCustomPacks,
         tier,
       },
       customPackIds,
