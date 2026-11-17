@@ -266,20 +266,24 @@ describe("PlatformHelpTool — station situations", () => {
       expect(answer).toMatch(/^No views or connectors are attached/);
     });
 
-    // Code review: a custom pack the plan excludes builds no tools. Attaching
-    // a view wouldn't help, so missing data isn't given as the cause. It is
-    // still a pack on the station, so the answer isn't "no tool packs".
-    it("doesn't name missing attachments for a custom pack the plan excludes", async () => {
+    // #1045: a custom pack the plan excludes counts as a pack that works
+    // on data, as an excluded built-in one does, now that the answer names it
+    // as a plan limit. The missing attachments lead, and the plan note
+    // follows: neither hides the other.
+    it("names the missing attachments and the plan limit for a custom pack the plan excludes", async () => {
       accessOnly();
       mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({
           effective: [],
           configuredCustomPackCount: 1,
           customPacksEntitled: false,
+          excludedCustomPacks: ["acme"],
         })
       );
       const { answer } = await exec();
-      expect(answer).not.toMatch(/are attached to this station/);
+      expect(answer).toMatch(/^No views or connectors are attached/);
+      expect(answer).toMatch(/not included in your current plan/);
+      expect(answer).toContain("acme (registered by your organization)");
       expect(answer).not.toMatch(/attach the packs for what you want/);
     });
 
@@ -297,6 +301,37 @@ describe("PlatformHelpTool — station situations", () => {
       const { answer } = await exec("why did the acme tools stop working");
       expect(answer).toMatch(/not included in your current plan/);
       expect(answer).toContain("acme");
+    });
+
+    // Code review: the plan limit was only ever the last situation checked,
+    // so an earlier one (no records, missing or unreadable attachments) hid
+    // it. It now follows whichever answer leads.
+    it("adds the plan limit after another situation's answer", async () => {
+      healthy();
+      mockCountByConnectorEntityIds.mockResolvedValue(0);
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({ unentitled: ["gis"] })
+      );
+      const { answer } = await exec("why are my answers empty");
+      expect(answer).toMatch(/has entities set up/);
+      expect(answer).toMatch(/not included in your current plan \(gis\)/);
+      // Said once, not twice.
+      expect(answer.split("not included in your current plan").length).toBe(2);
+    });
+
+    // A custom pack can be registered under a built-in pack's slug.
+    it("tells a custom pack apart from a built-in pack of the same name", async () => {
+      healthy();
+      mockResolveStationPackSplit.mockResolvedValue(
+        stationPacks({
+          unentitled: ["gis"],
+          configuredCustomPackCount: 1,
+          customPacksEntitled: false,
+          excludedCustomPacks: ["gis"],
+        })
+      );
+      const { answer } = await exec("why can't I make a map");
+      expect(answer).toContain("(gis, gis (registered by your organization))");
     });
 
     // One derivation with the prompt, through the split-only read: the

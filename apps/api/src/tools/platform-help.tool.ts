@@ -43,7 +43,10 @@ interface StationFindings {
   hasPacks: boolean;
   /** #848: a pack that works on attached data is on the station. */
   usesStationData: boolean;
+  /** Built-in pack slugs attached here that the plan excludes. */
   unentitledPacks: string[];
+  /** #1045: names of custom packs attached here that the plan excludes. */
+  excludedCustomPacks: string[];
   entityCount: number;
   recordCount: number;
   /** #674: the station-level gap (null when both kinds are attached). */
@@ -128,23 +131,22 @@ async function gatherFindings(
     // The one derivation of a station's packs (#306), which the system
     // prompt reads too: a second copy here classified a station with a custom
     // pack differently from the prompt in the same session. The split only:
-    // this answer doesn't name the custom packs.
+    // this answer needs the names of custom packs the plan excludes, which
+    // the split carries, and none of their details.
     const {
       effective,
       unentitled,
       configuredCustomPackCount,
-      customPacksEntitled,
       excludedCustomPacks,
     } = await EntitlementService.resolveStationPackSplit(
       stationId,
       organizationId
     );
     const builtinSlugs = [...effective, ...unentitled];
+    // Configured, like the built-in set: a custom pack the plan excludes
+    // still makes this a station set up for data, and is named below as a
+    // plan limit (#1045). The prompt classifies it the same way.
     const hasCustomPack = configuredCustomPackCount > 0;
-    // A custom pack the plan excludes builds no tools, so it doesn't make the
-    // station one that works on data (the prompt goes by the entitled packs
-    // too). It is still a pack on the station for `hasPacks`.
-    const hasUsableCustomPack = hasCustomPack && customPacksEntitled;
 
     // Org-scoped, exactly as `station_context` reads.
     const stationData = await AnalyticsService.loadStation(
@@ -171,9 +173,9 @@ async function gatherFindings(
     return {
       available: true,
       hasPacks: builtinSlugs.length > 0 || hasCustomPack,
-      usesStationData: usesStationData(builtinSlugs, hasUsableCustomPack),
-      // #1045: custom packs the plan excludes are a plan limit too.
-      unentitledPacks: [...unentitled, ...excludedCustomPacks],
+      usesStationData: usesStationData(builtinSlugs, hasCustomPack),
+      unentitledPacks: unentitled,
+      excludedCustomPacks,
       entityCount: entityIds.length,
       recordCount,
       attachmentsMissing: gaps.missing,
@@ -189,6 +191,7 @@ async function gatherFindings(
       hasPacks: true,
       usesStationData: true,
       unentitledPacks: [],
+      excludedCustomPacks: [],
       entityCount: 0,
       recordCount: 0,
       attachmentsMissing: null,
@@ -211,8 +214,22 @@ function matchSituation(findings: StationFindings): Situation {
   if (findings.entityCount > 0 && findings.recordCount === 0) {
     return "no_records";
   }
-  if (findings.unentitledPacks.length > 0) return "unentitled_packs";
+  if (excludedPackLabels(findings).length > 0) return "unentitled_packs";
   return "default";
+}
+
+/**
+ * The packs on this station that the plan excludes, as the answer names them.
+ * A custom pack is labelled: one can be registered under a built-in pack's
+ * slug, and the two are different things to the reader.
+ */
+function excludedPackLabels(findings: StationFindings): string[] {
+  return [
+    ...findings.unentitledPacks,
+    ...findings.excludedCustomPacks.map(
+      (name) => `${name} (registered by your organization)`
+    ),
+  ];
 }
 
 interface SelectedContent {
@@ -271,7 +288,9 @@ const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
     "there is nothing for it to read. Run a sync on the connector instance " +
     "and wait for the job to finish, then ask again.",
   unentitled_packs: (f) =>
-    `Some tool packs on this station are not included in your current plan (${f.unentitledPacks.join(
+    `Some tool packs on this station are not included in your current plan (${excludedPackLabels(
+      f
+    ).join(
       ", "
     )}). They stay attached and nothing was deleted — their tools are simply ` +
     "absent from portal sessions until the plan includes them again. That is " +
@@ -291,6 +310,16 @@ function composeAnswer(
   selected: SelectedContent
 ): { answer: string; links: { label: string; url: string }[] } {
   const parts: string[] = [SITUATION_PROSE[situation](findings)];
+
+  // #1045: a plan limit is the last situation matched, so a station with
+  // missing data as well never heard about it. It follows whichever answer
+  // leads instead.
+  if (
+    situation !== "unentitled_packs" &&
+    excludedPackLabels(findings).length > 0
+  ) {
+    parts.push(SITUATION_PROSE.unentitled_packs(findings));
+  }
 
   if (!findings.available) {
     parts.push(

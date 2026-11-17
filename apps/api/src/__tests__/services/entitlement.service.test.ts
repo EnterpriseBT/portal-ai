@@ -560,9 +560,11 @@ describe("EntitlementService — excludedCustomPacks (#1045)", () => {
   beforeEach(() => {
     mockFindByStationId_packs.mockResolvedValue(rows);
     mockFindManyByIds_customPacks.mockResolvedValue([]);
+    // Returned out of order: neither the attachment rows nor this read has
+    // a defined order, so the service sorts by name.
     mockFindNamesByIds_customPacks.mockResolvedValue([
-      { id: "otp-1", name: "acme" },
       { id: "otp-2", name: "crm" },
+      { id: "otp-1", name: "acme" },
     ]);
   });
 
@@ -580,6 +582,18 @@ describe("EntitlementService — excludedCustomPacks (#1045)", () => {
     );
     // The decrypting read is never used for them.
     expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+  });
+
+  // The attachment rows come back in no defined order; a list that
+  // reordered between turns would change the prompt for no reason.
+  it("returns the names sorted, whatever order the rows arrive in", async () => {
+    mockResolveTier.mockResolvedValue(plan(false));
+    mockFindByStationId_packs.mockResolvedValue([rows[2], rows[1], rows[0]]);
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+    expect(packs.excludedCustomPacks).toEqual(["acme", "crm"]);
   });
 
   it("carries them on the split-only read too", async () => {

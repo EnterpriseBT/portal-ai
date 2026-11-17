@@ -889,30 +889,25 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // Administrate station has only the access pack) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
   // "no data attached" and suggest attaching some. The configured set decides
-  // it, so a data pack the plan excludes still counts as "set up for data"
-  // (the plan-limit section names it). A custom pack counts when the plan
-  // includes it: `customToolPacks` holds only those.
+  // it, so a pack the plan excludes still counts as "set up for data",
+  // built-in or custom: the plan-limit section names both (#284, #1045).
   const otherPlanPacks = (stationContext.otherPlanToolPacks ?? []).filter(
     isBuiltinToolpackSlug
   );
+  const excludedCustomPacks = stationContext.excludedCustomToolPacks ?? [];
   const forData = usesStationData(
     [
       ...stationContext.effectiveToolPacks,
       ...stationContext.unentitledToolPacks,
     ],
-    (stationContext.customToolPacks ?? []).length > 0
+    (stationContext.customToolPacks ?? []).length > 0 ||
+      excludedCustomPacks.length > 0
   );
   const missing = forData ? gaps.missing : null;
-  const excludedCustomPacks = stationContext.excludedCustomToolPacks ?? [];
   if (!forData) {
     lines.push(
-      // #1045: with a custom pack the plan excludes attached, the plan is
-      // part of why, so this doesn't say the station was set up this way.
-      excludedCustomPacks.length > 0
-        ? "_This station has no tool pack in this session that reads or " +
-            "writes entity data._"
-        : "_This station has no tool pack that reads or writes entity " +
-            "data. That is how it is set up, not a fault._"
+      "_This station has no tool pack that reads or writes entity data. That " +
+        "is how it is set up, not a fault._"
     );
     lines.push(
       // The station's page tells the user "Attach a view to query entity

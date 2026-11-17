@@ -1879,15 +1879,17 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
     }
   });
 
-  // On a station with no data pack the prompt says that is "how it is set
-  // up, not a fault". With an excluded custom pack attached, the plan is
-  // part of why, so the sentence stops short of that.
-  it("doesn't call a station with an excluded custom pack set up that way on purpose", () => {
+  // Code review: an excluded built-in data pack keeps a station "set up for
+  // data"; an excluded custom pack didn't, on the grounds that nothing named
+  // it as a plan limit. This section now does, so the two are treated alike.
+  // Otherwise the agent got "this station has no pack for that" beside "the
+  // plan is the reason".
+  it("counts an excluded custom pack as set up for data, like an excluded built-in pack", () => {
     const attachments = {
       views: { attached: 0, readable: 0 },
       connectors: { attached: 0, readable: 0 },
     };
-    const withExcluded = buildSystemPrompt(
+    const prompt = buildSystemPrompt(
       makeContext({
         entities: [],
         effectiveToolPacks: ["rbac_management"],
@@ -1895,12 +1897,16 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
         attachments,
       })
     );
-    expect(withExcluded).toContain(
-      "_This station has no tool pack in this session that reads or writes " +
-        "entity data._"
+    expect(prompt).not.toContain(
+      "This station has no tool pack that reads or writes entity data"
     );
-    expect(withExcluded).not.toContain("That is how it is set up, not a fault");
+    expect(prompt).not.toContain("no tool pack in this session");
+    expect(prompt).toContain(
+      "_No views or connectors are attached to this station."
+    );
+    expect(planSection(prompt)).toContain("- `acme` —");
 
+    // Without it, the same station is one with no data pack.
     const without = buildSystemPrompt(
       makeContext({
         entities: [],
