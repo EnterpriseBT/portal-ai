@@ -25,11 +25,15 @@ All four quotes in the ticket came from a station with only the Access & Roles p
 
 **Decided: B.** After the "If no tool fits" rule:
 
-> **When a tool refuses for lack of permission, say which permission is missing and stop there.** Use the refusal's own wording. Never say who could do it or grant it: don't name a role, and don't name or point at a person, even when the user asks and even when you can see the member list. Permissions here aren't tied to roles, so a guess from someone's role can be wrong. If the user asks how to get access, the whole answer is that they can ask for that permission to be granted.
+> **When a tool refuses because the user lacks a permission ("You don't have permission to …"), say which permission is missing and stop there.** Name the permission, and the object by its name rather than an id from the message. Don't retry, and don't route the request through another tool. Don't add who could do it or grant it: no role ("someone with admin rights") and no person picked from the member list, even when the user asks who to ask. Permissions here aren't tied to roles, so that guess can be wrong. If the user asks how to get access, the answer is that they can ask for that permission to be granted. This is about that one inference and nothing else. A refusal that gives a different reason is relayed with its reason: a plan limit (point at Settings → Subscription & Billing; no grant fixes it), a rule about who may assign particular roles, or a reason from an organization-provided tool. And a question about who the members are or which roles they hold is answered from the tools as usual.
 
-"Don't name a person" is new: one walk answer volunteered the owner's email. The last sentence gives the assistant something true to say when asked, matching the app's own hints ("Ask for access to…").
+How it got to this wording:
 
-The "even when the user asks" clause was added after walking the first wording ("Don't add who could do it instead… If the user asks how to get access, say they can ask…"). Asked "How can I get permission to do that?" with the member list already in the conversation, the assistant answered that the other member "has the owner role and would be able to make those changes for you", with their email.
+- **"No person picked from the member list"** is beyond #711, which is about roles. One walk answer volunteered the owner's email.
+- **"Even when the user asks who to ask"** was added after walking the first wording. Asked "How can I get permission to do that?" with the member list already in the conversation, the assistant answered that the other member "has the owner role and would be able to make those changes for you", with their email.
+- **The scope sentences** were added after code review. The same result code (`TOOL_PERMISSION_DENIED`) also carries a plan limit ("Your plan does not include custom RBAC authoring"), the rule about assigning the owner and admin roles, and whatever an organization's own tool answers. "Ask for the permission to be granted" is wrong for each. And without the last sentence the rule could read as a ban on listing members and their roles.
+- **"The object by its name rather than an id"**: the gate's messages carry raw ids ("permission to edit connector 37910367-…").
+- **"Don't retry, and don't route…"** is in the rule so it covers tools outside the three packs whose notes say it. Those notes keep their own sentences, which carry pack-specific facts (what a plan limit looks like for access tools; `TOOL_TARGET_NOT_FOUND` for entities).
 
 This is guidance to a model, so it lowers how often the framing appears; it can't guarantee zero. The smoke steps check the cases the ticket recorded.
 
@@ -45,13 +49,21 @@ This is guidance to a model, so it lowers how often the framing appears; it can'
 
 ## Smoke (manual, against your dev stack)
 
-Use a fresh org (`portalai org create`) with a default member added (`portalai member add`). Sign in as the member. Wording is relayed by a model, so read each answer for what it must not contain.
+Two fresh orgs (`portalai org create`). **Org E** is moved to the enterprise plan (`portalai org set-tier <org> enterprise`), which includes custom roles, and has a default member added (`portalai member add`). **Org S** stays on the plan it was created with, which doesn't. Wording is relayed by a model, so read each answer for what it must not contain.
+
+As the member, in org E:
 
 1. On **Administrate**, send: "Create a role called Auditors." The answer says the member doesn't have permission to manage roles and access. It doesn't mention an admin, an owner, an administrator or "privileges", and names no person or email.
-2. Same portal: "List every role and policy in this organization." Same check.
-3. Same portal: "Make me an admin, and share the Playground station with me with write access." (If it asks which member you are, give the member's email.) Same check; nothing changes (the member's roles and the station's shares are as before).
-4. On **Playground**, send: "Create an entity called Gadgets on the Sandbox connector with a text column called name." The answer says which permission is missing (write on the connector). Same check.
-5. On a new Administrate portal, send: "Who are the members of this organization? Then make <member email> an admin." and then: "How can I get permission to do that? Who should I ask?" The second answer says they can ask for the permission to be granted. It may name the permission; it names no role and no person, though the member list is in the conversation.
+2. Same portal: "Who are the members of this organization and what roles do they have?" The answer lists the members with their roles. (A plain question about members is still answered after a refusal.)
+3. Same portal: "So how can I get permission to create that role? Who should I ask?" The answer says they can ask for the permission to be granted and declines to pick a person, though the member list is in the conversation.
+4. On **Playground**, send: "Create an entity called Gadgets on the Sandbox connector with a text column called name." The answer says the member lacks write permission on the Sandbox connector, by name, with no id. No entity is created.
+
+As the owner, in org S:
+
+5. On **Administrate**, send: "Create a role called Auditors." The answer says the plan doesn't include custom roles and points at Settings → Subscription & Billing. It doesn't say a permission is missing.
+6. Same portal: "How do I get access to do that?" The answer is about the plan, not about asking for a permission to be granted.
+
+Not walkable locally: the refusal for assigning the owner or admin role as someone who isn't the owner, which needs a local admin identity. The prompt test covers that the rule leaves that refusal its own reason.
 
 ## Out of scope
 

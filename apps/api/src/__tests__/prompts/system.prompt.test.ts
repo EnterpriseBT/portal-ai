@@ -340,17 +340,15 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
   // the owner's email. The rule against that lived only in the Curated Views
   // notes, so it rendered only where that pack was on the station.
   describe("relaying a permission refusal (#1042)", () => {
-    const RULE =
-      "- **When a tool refuses for lack of permission, say which permission " +
-      "is missing and stop there.** Use the refusal's own wording. Never say " +
-      "who could do it or grant it: don't name a role, and don't name or " +
-      "point at a person, even when the user asks and even when you can " +
-      "see the member list. Permissions here aren't tied to roles, so a " +
-      "guess from someone's role can be wrong. If the user asks how to get " +
-      "access, the whole answer is that they can ask for that permission " +
-      "to be granted.";
+    // The rule's opening, which is unique to it. The assertions below pin
+    // the phrases that carry behaviour, not the whole paragraph.
+    const LEAD = "- **When a tool refuses because the user lacks a permission";
     const count = (prompt: string, text: string) =>
       prompt.split(text).length - 1;
+    const ruleOf = (prompt: string) => {
+      const start = prompt.indexOf(LEAD);
+      return prompt.slice(start, prompt.indexOf("\n", start));
+    };
 
     it.each<[string, StationContext["effectiveToolPacks"]]>([
       ["no packs", []],
@@ -359,17 +357,71 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
       ["curated views", ["view_management"]],
     ])("renders once on a station with %s", (_label, effectiveToolPacks) => {
       const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
-      expect(count(prompt, RULE)).toBe(1);
+      expect(count(prompt, LEAD)).toBe(1);
     });
 
     it('sits with the pack-independent rules, after "If no tool fits"', () => {
       const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
       expect(prompt.indexOf("If no tool fits")).toBeLessThan(
-        prompt.indexOf(RULE)
+        prompt.indexOf(LEAD)
       );
-      expect(prompt.indexOf(RULE)).toBeLessThan(
+      expect(prompt.indexOf(LEAD)).toBeLessThan(
         prompt.indexOf("## Current time")
       );
+    });
+
+    it("says to name the permission, stop, and not retry or route around it", () => {
+      const rule = ruleOf(
+        buildSystemPrompt(makeContext({ effectiveToolPacks: [] }))
+      );
+      expect(rule).toContain("say which permission is missing and stop there");
+      expect(rule).toContain(
+        "Don't retry, and don't route the request through another tool"
+      );
+      // Gate messages carry raw ids ("permission to edit connector <uuid>").
+      expect(rule).toContain(
+        "the object by its name rather than an id from the message"
+      );
+    });
+
+    it("forbids saying who could grant it, even when asked", () => {
+      const rule = ruleOf(
+        buildSystemPrompt(makeContext({ effectiveToolPacks: [] }))
+      );
+      expect(rule).toContain("Don't add who could do it or grant it");
+      expect(rule).toContain("no person picked from the member list");
+      expect(rule).toContain("even when the user asks who to ask");
+      expect(rule).toContain("they can ask for that permission to be granted");
+    });
+
+    // Code review: TOOL_PERMISSION_DENIED also carries a plan limit, the rule
+    // about assigning particular roles, and whatever an organization's own
+    // tool answers. "Ask for the permission" is wrong for each, and the rule
+    // must not read as a ban on listing members and their roles.
+    it("is scoped to a missing permission and leaves other refusals their reason", () => {
+      const rule = ruleOf(
+        buildSystemPrompt(makeContext({ effectiveToolPacks: [] }))
+      );
+      expect(rule).toContain(
+        "A refusal that gives a different reason is relayed with its reason"
+      );
+      expect(rule).toContain("a plan limit");
+      expect(rule).toContain("no grant fixes it");
+      expect(rule).toContain("a rule about who may assign particular roles");
+      expect(rule).toContain("a reason from an organization-provided tool");
+      expect(rule).toContain(
+        "a question about who the members are or which roles they hold is " +
+          "answered from the tools as usual"
+      );
+    });
+
+    it("agrees with the Access & Roles notes on a plan limit", () => {
+      const prompt = buildSystemPrompt(
+        makeContext({ effectiveToolPacks: ["rbac_management"] })
+      );
+      // The pack's own instruction for the same refusal.
+      expect(prompt).toContain("relay as an upgrade prompt");
+      expect(ruleOf(prompt)).toContain("Settings → Subscription & Billing");
     });
 
     it("leaves the Curated Views notes without a second copy", () => {
@@ -377,7 +429,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
         makeContext({ effectiveToolPacks: ["view_management"] })
       );
       expect(prompt).not.toContain("don't point them to an admin");
-      expect(count(prompt, "don't name a role")).toBe(1);
+      expect(count(prompt, "who could do it or grant it")).toBe(1);
     });
   });
 
