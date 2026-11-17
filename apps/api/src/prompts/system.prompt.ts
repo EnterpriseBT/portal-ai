@@ -636,8 +636,9 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Curated Views Notes");
       lines.push("");
       lines.push(
-        "You can list, read, create, edit, delete, and share curated views " +
-          "with the view_management tools. They act on the user's own " +
+        "You can list, read, create, edit, delete, and share curated views, " +
+          "and attach them to stations, with the view_management tools. " +
+          "They act on the user's own " +
           "authority: a change they cannot make on the Views page you cannot " +
           "make here. `TOOL_PERMISSION_DENIED` means they lack that " +
           "permission; `TOOL_TARGET_NOT_FOUND` means the view (or its entity) " +
@@ -673,9 +674,22 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
-        "**You cannot attach a view to a station.** A view you create only " +
-          "shows up in a session after someone attaches it while creating " +
-          "or editing a station. Say so after you create one."
+        "**`sql_query` reads only views attached to this station.** When the " +
+          "user wants to query a view you created (or one not attached " +
+          "here), attach it with `curated_view_attach`; without a " +
+          "`stationId` it attaches to this station. Once attached here it " +
+          "can be queried in the same turn: the view's `key` is the table " +
+          "and each column's `wideColumnName` is the column, as the result " +
+          "returns them, since this station's summary only lists it from " +
+          "the next message. Attaching needs permission to edit the " +
+          "station; a " +
+          "refusal names that permission. `curated_view_detach` removes a " +
+          "view from a station without deleting it. To attach to another " +
+          "station, find its id with `station_list` (never guess one). If " +
+          "more than one station matches the name the user gave, ask which " +
+          "one before you attach or detach anything. If " +
+          "the user wants to query the view there, check that station has " +
+          "`data_query` in its tool packs."
       );
       lines.push("");
       lines.push(

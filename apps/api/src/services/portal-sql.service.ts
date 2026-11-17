@@ -52,7 +52,10 @@ import {
   renderFilterGroupToSql,
 } from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
-import { memoizeForRequest } from "../utils/request-context.util.js";
+import {
+  forgetForRequest,
+  memoizeForRequest,
+} from "../utils/request-context.util.js";
 import { isPgDataException, unwrapPgError } from "../utils/pg-error.util.js";
 import { stationViewsRepo } from "../db/repositories/station-views.repository.js";
 import { curatedViewsRepo } from "../db/repositories/curated-views.repository.js";
@@ -1211,7 +1214,9 @@ export class PortalSqlServiceImpl {
     // #647: dedupe the explain→run double-resolution within one request. The
     // build is pure data and a caller's grants don't change mid-request, so a
     // request-scoped memo is correctness-neutral (no store — a job worker or
-    // test — resolves normally). Only the default-connection path is memoized:
+    // test — resolves normally). The one in-request change, an agent attaching
+    // or detaching a view on its own station (#1036), calls
+    // forgetSessionViews. Only the default-connection path is memoized:
     // a caller passing a specific client (e.g. a transaction) needs that
     // client's visibility, and the key can't capture it, so it resolves fresh.
     if (client !== db) {
@@ -1223,9 +1228,33 @@ export class PortalSqlServiceImpl {
       );
     }
     return memoizeForRequest(
-      `views:${stationId}:${userId}:${organizationId}`,
+      this.sessionViewsKey(stationId, organizationId, userId),
       () => this.buildViewsForSession(stationId, organizationId, userId, client)
     );
+  }
+
+  /** #1036: the {@link resolveViewsForSession} memo key — its only definition. */
+  sessionViewsKey(
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ): string {
+    return `views:${stationId}:${userId}:${organizationId}`;
+  }
+
+  /**
+   * #1036: the caller's view set on `stationId` changed during this request
+   * (an agent attached or detached a view on its own station), so the next
+   * `sql_query` in the same turn re-resolves it. Safe by construction: a
+   * re-resolve goes through {@link resolveGrantedViewColumns} again, so it can
+   * never widen what the caller sees.
+   */
+  forgetSessionViews(
+    stationId: string,
+    organizationId: string,
+    userId: string
+  ): void {
+    forgetForRequest(this.sessionViewsKey(stationId, organizationId, userId));
   }
 
   private async buildViewsForSession(

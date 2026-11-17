@@ -239,7 +239,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Station",
     category: GlossaryCategory.Analytics,
     definition:
-      "A workspace that groups views, connector instances and tool packs together so you can analyze them in a portal. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read.",
+      "A workspace that groups views, connector instances and tool packs together so you can analyze them in a portal. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
     example:
       'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
     relatedTerms: [
@@ -254,7 +254,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Curated View",
     category: GlossaryCategory.Analytics,
     definition:
-      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there. With the Curated Views tool pack, the assistant can create, edit, delete and share views in a session; attaching a view to a station is still done when creating or editing the station.",
+      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there. With the Curated Views tool pack, the assistant can create, edit, delete and share views in a session, and attach a view to a station, its own session's station included, so a view it just created can be queried straight away. Attaching needs permission to edit the station.",
     example:
       'An "Active customers" view over the Customers entity, showing only name, region and plan for rows where status is active.',
     relatedTerms: [

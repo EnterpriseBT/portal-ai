@@ -194,4 +194,109 @@ describe("usePortalStream — tool step tracking (#279)", () => {
 
     expect(harness.result.current[0].toolSteps).toEqual([]);
   });
+
+  // #1036: the caller learns which tools the turn ran, so it can refresh what
+  // they changed (a station's views after curated_view_attach), however the
+  // turn ended.
+  describe("onTurnEnd (#1036)", () => {
+    // What the server sends for every tool. A scalar-result tool such as
+    // curated_view_attach sends no `tool_result` at all, so the tool names
+    // must come from here (the #1036 smoke walk found the header never
+    // refreshing because they didn't).
+    const result = (toolName: string) => ({
+      type: "tool_call_end",
+      toolCallId: `tc-${toolName}`,
+      toolName,
+    });
+
+    type TurnEnd = (turn: { toolNames: ReadonlySet<string> }) => void;
+    const reported = (fn: jest.Mock<TurnEnd>, call = 0) => [
+      ...fn.mock.calls[call]![0].toolNames,
+    ];
+
+    const startTurn = async () => {
+      const onTurnEnd = jest.fn<TurnEnd>();
+      const harness = renderHook(() => usePortalStream(undefined, onTurnEnd));
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const es = MockEventSource.lastInstance!;
+      act(() => es.__emit("tool_call_end", result("curated_view_attach")));
+      return { harness, es, onTurnEnd };
+    };
+
+    it("reports the turn's tools after a stream error", async () => {
+      const { es, onTurnEnd } = await startTurn();
+      act(() =>
+        es.__emit("stream_error", { type: "stream_error", message: "boom" })
+      );
+      expect(onTurnEnd).toHaveBeenCalledTimes(1);
+      expect(reported(onTurnEnd)).toEqual(["curated_view_attach"]);
+    });
+
+    it("reports the turn's tools after a lost connection", async () => {
+      const { es, onTurnEnd } = await startTurn();
+      act(() => es.__emitError());
+      expect(onTurnEnd).toHaveBeenCalledTimes(1);
+      expect(reported(onTurnEnd)).toEqual(["curated_view_attach"]);
+    });
+
+    it("reports the turn's tools after a cancel, once", async () => {
+      const { harness, onTurnEnd } = await startTurn();
+      act(() => harness.result.current[1].cancel());
+      act(() => harness.result.current[1].cancel());
+      expect(onTurnEnd).toHaveBeenCalledTimes(1);
+      expect(reported(onTurnEnd)).toEqual(["curated_view_attach"]);
+    });
+
+    it("reports on done alongside onDone, and resets per send", async () => {
+      const onDone = jest.fn<(clear: () => void) => void>();
+      const onTurnEnd = jest.fn<TurnEnd>();
+      const harness = renderHook(() => usePortalStream(onDone, onTurnEnd));
+
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const first = MockEventSource.lastInstance!;
+      act(() => first.__emit("tool_call_end", result("curated_view_attach")));
+      act(() => first.__emit("tool_call_end", result("sql_query")));
+      act(() => first.__emit("done", { type: "done", messageId: "m-1" }));
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(onTurnEnd).toHaveBeenCalledTimes(1);
+      expect(reported(onTurnEnd).sort()).toEqual([
+        "curated_view_attach",
+        "sql_query",
+      ]);
+
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const second = MockEventSource.lastInstance!;
+      act(() => second.__emit("done", { type: "done", messageId: "m-2" }));
+
+      expect(onTurnEnd).toHaveBeenCalledTimes(2);
+      expect(reported(onTurnEnd, 1)).toEqual([]);
+    });
+
+    it("also counts a tool whose result arrives without a tool_call_end", async () => {
+      // A job's completion result (transform_entity_records) is sent as a
+      // bare tool_result.
+      const onTurnEnd = jest.fn<TurnEnd>();
+      const harness = renderHook(() => usePortalStream(undefined, onTurnEnd));
+      await act(async () => {
+        await harness.result.current[1].send(PORTAL_ID);
+      });
+      const es = MockEventSource.lastInstance!;
+      act(() =>
+        es.__emit("tool_result", {
+          type: "tool_result",
+          toolName: "transform_entity_records",
+          result: { success: true },
+        })
+      );
+      act(() => es.__emit("done", { type: "done", messageId: "m-1" }));
+      expect(reported(onTurnEnd)).toEqual(["transform_entity_records"]);
+    });
+  });
 });

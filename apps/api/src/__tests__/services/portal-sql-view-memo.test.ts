@@ -68,4 +68,30 @@ describe("resolveViewsForSession request memo (#647)", () => {
     });
     expect(spy).toHaveBeenCalledTimes(2);
   });
+
+  it("memoizes under sessionViewsKey (#1036)", () => {
+    expect(PortalSqlService.sessionViewsKey("s1", "org1", "u1")).toBe(
+      "views:s1:u1:org1"
+    );
+  });
+
+  it("forgetSessionViews makes the next call in the same request re-resolve (#1036)", async () => {
+    const spy = mockResolution();
+    await requestContext.run(newStore(), async () => {
+      await PortalSqlService.resolveViewsForSession("s1", "org1", "u1");
+      PortalSqlService.forgetSessionViews("s1", "org1", "u1");
+      await PortalSqlService.resolveViewsForSession("s1", "org1", "u1");
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgetSessionViews leaves another caller's memo in place (#1036)", async () => {
+    const spy = mockResolution();
+    await requestContext.run(newStore(), async () => {
+      await PortalSqlService.resolveViewsForSession("s1", "org1", "u2");
+      PortalSqlService.forgetSessionViews("s1", "org1", "u1");
+      await PortalSqlService.resolveViewsForSession("s1", "org1", "u2");
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

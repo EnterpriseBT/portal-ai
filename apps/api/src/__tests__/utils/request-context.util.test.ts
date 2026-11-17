@@ -4,6 +4,7 @@ import type pino from "pino";
 import {
   requestContext,
   memoizeForRequest,
+  forgetForRequest,
 } from "../../utils/request-context.util.js";
 
 // A fresh store per run — the middleware creates one per request, so the memo
@@ -73,5 +74,38 @@ describe("memoizeForRequest (#647)", () => {
     await requestContext.run(newStore(), () => memoizeForRequest("k", factory));
     // A fresh store each run → no cross-request cache hit.
     expect(factory).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("forgetForRequest (#1036)", () => {
+  it("makes the next memoizeForRequest for that key recompute", async () => {
+    const factory = jest.fn(async () => ({ v: Math.random() }));
+    await requestContext.run(newStore(), async () => {
+      const a = await memoizeForRequest("k", factory);
+      forgetForRequest("k");
+      const b = await memoizeForRequest("k", factory);
+      expect(b).not.toBe(a);
+      expect(factory).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("removes only the named key", async () => {
+    const factory = jest.fn(async () => ({}));
+    await requestContext.run(newStore(), async () => {
+      await memoizeForRequest("k", factory);
+      await memoizeForRequest("other", factory);
+      forgetForRequest("k");
+      await memoizeForRequest("other", factory);
+      expect(factory).toHaveBeenCalledTimes(2);
+      await memoizeForRequest("k", factory);
+      expect(factory).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it("is a no-op outside a request context and for an unknown key", async () => {
+    expect(() => forgetForRequest("k")).not.toThrow();
+    await requestContext.run(newStore(), async () => {
+      expect(() => forgetForRequest("never-set")).not.toThrow();
+    });
   });
 });

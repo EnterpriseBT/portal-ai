@@ -10,6 +10,9 @@ import type { DbClient } from "../../db/repositories/base.repository.js";
 
 type Owner = { id: string; createdBy: string };
 
+/** The handle DbService.transaction passes to its callback. */
+const TX_HANDLE = { tx: "attach" };
+
 const mockViewOwners =
   jest.fn<(ids: string[], org: string, client?: unknown) => Promise<Owner[]>>();
 const mockInstanceOwners =
@@ -20,22 +23,38 @@ const mockViewInsert =
   jest.fn<
     (rows: { curatedViewId: string }[], tx: unknown) => Promise<unknown[]>
   >();
-const mockViewSoftDelete = jest.fn<(...a: unknown[]) => Promise<number>>();
+const mockViewSoftDelete = jest.fn<(...a: unknown[]) => Promise<string[]>>();
 const mockInstanceInsert =
   jest.fn<
     (rows: { connectorInstanceId: string }[], tx: unknown) => Promise<unknown[]>
   >();
 const mockInstanceSoftDelete = jest.fn<(...a: unknown[]) => Promise<number>>();
+const mockStationFindById =
+  jest.fn<(id: string, client?: unknown) => Promise<unknown>>();
+const mockLoadSet = jest.fn<(...a: unknown[]) => Promise<unknown>>();
+const mockViewLinksForStations =
+  jest.fn<(ids: string[], client?: unknown) => Promise<unknown[]>>();
+const mockViewSummaries =
+  jest.fn<
+    (ids: string[], org: string, client?: unknown) => Promise<unknown[]>
+  >();
+const mockAuditRecord = jest.fn<(e: unknown) => Promise<void>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
+    transaction: async <R>(fn: (tx: unknown) => Promise<R>) => fn(TX_HANDLE),
     repository: {
-      curatedViews: { findOwnersByIds: mockViewOwners },
+      stations: { findById: mockStationFindById },
+      curatedViews: {
+        findOwnersByIds: mockViewOwners,
+        findSummariesByIds: mockViewSummaries,
+      },
       connectorInstances: { findOwnersByIds: mockInstanceOwners },
       stationViews: {
         findByStationId: mockViewLinks,
         insertManyIgnoreConflicts: mockViewInsert,
         softDeleteByStationAndViews: mockViewSoftDelete,
+        findByStationIds: mockViewLinksForStations,
       },
       stationInstances: {
         findByStationId: mockInstanceLinks,
@@ -44,6 +63,14 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
     },
   },
+}));
+
+jest.unstable_mockModule("../../services/permission.service.js", () => ({
+  PermissionService: { loadSet: mockLoadSet },
+}));
+
+jest.unstable_mockModule("../../services/audit.service.js", () => ({
+  AuditService: { record: mockAuditRecord },
 }));
 
 const { StationAttachmentService } =
@@ -77,7 +104,7 @@ beforeEach(() => {
   mockInstanceLinks.mockResolvedValue([]);
   mockViewInsert.mockImplementation(async (rows) => rows);
   mockInstanceInsert.mockImplementation(async (rows) => rows);
-  mockViewSoftDelete.mockResolvedValue(0);
+  mockViewSoftDelete.mockResolvedValue([]);
   mockInstanceSoftDelete.mockResolvedValue(0);
 });
 
@@ -300,5 +327,303 @@ describe("StationAttachmentService.applyChanges", () => {
       "user-1",
       TX
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// attachViews / detachViews (#1036)
+// ---------------------------------------------------------------------------
+
+describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
+  const CTX = { userId: "user-1", organizationId: ORG, roles: [] as never[] };
+  const AUDIT = {
+    userId: "user-1",
+    organizationId: ORG,
+    sourceIp: null,
+    userAgent: "portal-agent",
+  };
+  const STATION = { id: "st-1", organizationId: ORG, createdBy: "owner" };
+
+  /** A set reading `readable` ids, writing only `writable` ids. */
+  const setFor = (readable: string[], writable: string[]) =>
+    ({
+      can: (_a: string, o?: { id?: string }) => readable.includes(o?.id ?? ""),
+      check: (_a: string, o?: { id?: string }) => {
+        if (!writable.includes(o?.id ?? "")) {
+          throw Object.assign(new Error("denied"), {
+            status: 403,
+            code: ApiCode.PERMISSION_DENIED,
+          });
+        }
+      },
+    }) as unknown as PermissionSet;
+
+  const status = async (p: Promise<unknown>) => {
+    const err = await p.then(
+      () => null,
+      (e: { status?: number; code?: string }) => e
+    );
+    return err && { status: err.status, code: err.code };
+  };
+
+  beforeEach(() => {
+    mockStationFindById.mockResolvedValue(STATION);
+    mockLoadSet.mockResolvedValue(setFor(["st-1", "v1", "v2"], ["st-1"]));
+    mockViewOwners.mockImplementation(ownersOf("v1", "v2", "v3"));
+  });
+
+  it("attaches deduped ids in one transaction and audits only what was added", async () => {
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "v2" }]);
+    const result = await StationAttachmentService.attachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1", "v1", "v2"] },
+      AUDIT
+    );
+    expect(result).toEqual({
+      stationId: "st-1",
+      added: ["v1"],
+      alreadyAttached: ["v2"],
+    });
+    const [rows, tx] = mockViewInsert.mock.calls[0];
+    expect(rows.map((r) => r.curatedViewId)).toEqual(["v1"]);
+    expect(tx).toBe(TX_HANDLE);
+    expect(mockAuditRecord).toHaveBeenCalledTimes(1);
+    expect(mockAuditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "station.attachments.change",
+        targetType: "station",
+        targetId: "st-1",
+        userAgent: "portal-agent",
+        metadata: {
+          added: { curatedViewIds: ["v1"], connectorInstanceIds: [] },
+          removed: { curatedViewIds: [], connectorInstanceIds: [] },
+        },
+      })
+    );
+  });
+
+  it("refuses the whole batch when one view is unreadable: no insert, no audit", async () => {
+    expect(
+      await status(
+        StationAttachmentService.attachViews(
+          CTX,
+          { stationId: "st-1", curatedViewIds: ["v1", "v3"] },
+          AUDIT
+        )
+      )
+    ).toEqual({ status: 403, code: ApiCode.STATION_ATTACHMENT_NOT_READABLE });
+    expect(mockViewInsert).not.toHaveBeenCalled();
+    expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("checks an already-attached view's readability too, like the route", async () => {
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "v3" }]);
+    expect(
+      await status(
+        StationAttachmentService.attachViews(
+          CTX,
+          { stationId: "st-1", curatedViewIds: ["v3"] },
+          AUDIT
+        )
+      )
+    ).toEqual({ status: 403, code: ApiCode.STATION_ATTACHMENT_NOT_READABLE });
+  });
+
+  it("does not audit an attach that added nothing", async () => {
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "v1" }]);
+    const result = await StationAttachmentService.attachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      AUDIT
+    );
+    expect(result.added).toEqual([]);
+    expect(result.alreadyAttached).toEqual(["v1"]);
+    expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["in another org", { ...STATION, organizationId: "org-2" }],
+  ])("answers 404 for a station that is %s", async (_label, station) => {
+    mockStationFindById.mockResolvedValue(station);
+    expect(
+      await status(
+        StationAttachmentService.attachViews(
+          CTX,
+          { stationId: "st-1", curatedViewIds: ["v1"] },
+          AUDIT
+        )
+      )
+    ).toEqual({ status: 404, code: ApiCode.STATION_NOT_FOUND });
+  });
+
+  it("answers 404 for an unreadable station before checking write", async () => {
+    mockLoadSet.mockResolvedValue(setFor(["v1"], []));
+    expect(
+      await status(
+        StationAttachmentService.detachViews(
+          CTX,
+          { stationId: "st-1", curatedViewIds: ["v1"] },
+          AUDIT
+        )
+      )
+    ).toEqual({ status: 404, code: ApiCode.STATION_NOT_FOUND });
+  });
+
+  it("answers 403 for a readable station without write", async () => {
+    mockLoadSet.mockResolvedValue(setFor(["st-1", "v1"], []));
+    expect(
+      await status(
+        StationAttachmentService.attachViews(
+          CTX,
+          { stationId: "st-1", curatedViewIds: ["v1"] },
+          AUDIT
+        )
+      )
+    ).toEqual({ status: 403, code: ApiCode.PERMISSION_DENIED });
+    expect(mockViewInsert).not.toHaveBeenCalled();
+  });
+
+  it("detaches with station write alone, reporting what wasn't attached", async () => {
+    // v3 is unreadable to the caller; detaching is an edit to the station.
+    // The delete reports which links it removed.
+    mockViewSoftDelete.mockResolvedValue(["v1", "v3"]);
+    const result = await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1", "v3", "v9"] },
+      AUDIT
+    );
+    expect(result).toEqual({
+      stationId: "st-1",
+      removed: ["v1", "v3"],
+      notAttached: ["v9"],
+    });
+    expect(mockViewSoftDelete).toHaveBeenCalledWith(
+      "st-1",
+      ["v1", "v3", "v9"],
+      "user-1",
+      TX_HANDLE
+    );
+    expect(mockAuditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          added: { curatedViewIds: [], connectorInstanceIds: [] },
+          removed: { curatedViewIds: ["v1", "v3"], connectorInstanceIds: [] },
+        },
+      })
+    );
+  });
+
+  it("detaching nothing attached is a no-op with no audit", async () => {
+    const result = await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      AUDIT
+    );
+    expect(result).toEqual({
+      stationId: "st-1",
+      removed: [],
+      notAttached: ["v1"],
+    });
+    expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("a detach that lost a race to another reports and audits nothing", async () => {
+    // Both read the link as attached; only one delete removes it. This one's
+    // delete removed no row, so it reports nothing and audits nothing.
+    mockViewLinks.mockResolvedValue([{ curatedViewId: "v1" }]);
+    mockViewSoftDelete.mockResolvedValue([]);
+    const result = await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      AUDIT
+    );
+    expect(result.removed).toEqual([]);
+    expect(mockAuditRecord).not.toHaveBeenCalled();
+  });
+
+  it("records the portal session in the audit metadata, never as a column", async () => {
+    mockViewSoftDelete.mockResolvedValue(["v1"]);
+    await StationAttachmentService.detachViews(
+      CTX,
+      { stationId: "st-1", curatedViewIds: ["v1"] },
+      { ...AUDIT, sourcePortalId: "portal-9" }
+    );
+    const event = mockAuditRecord.mock.calls[0]![0] as Record<string, unknown>;
+    expect(event).not.toHaveProperty("sourcePortalId");
+    expect(event.metadata).toMatchObject({ sourcePortalId: "portal-9" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listViewsForStations (#1036)
+// ---------------------------------------------------------------------------
+
+describe("StationAttachmentService.listViewsForStations (#1036)", () => {
+  const summary = (id: string, createdBy = "u") => ({
+    id,
+    key: `${id}_key`,
+    label: `${id} label`,
+    connectorEntityId: "e1",
+    createdBy,
+  });
+
+  it("reads every station's views in one batched lookup", async () => {
+    mockViewLinksForStations.mockResolvedValue([
+      { stationId: "st-1", curatedViewId: "v1" },
+      { stationId: "st-2", curatedViewId: "v1" },
+      { stationId: "st-2", curatedViewId: "v2" },
+    ]);
+    mockViewSummaries.mockResolvedValue([summary("v1"), summary("v2")]);
+
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading("v1", "v2"),
+      ORG,
+      ["st-1", "st-2", "st-3"]
+    );
+
+    expect(mockViewLinksForStations).toHaveBeenCalledTimes(1);
+    expect(mockViewSummaries).toHaveBeenCalledTimes(1);
+    expect(mockViewSummaries).toHaveBeenCalledWith(
+      ["v1", "v2"],
+      ORG,
+      undefined
+    );
+    expect(byStation.get("st-1")).toEqual([
+      { id: "v1", key: "v1_key", label: "v1 label", canRead: true },
+    ]);
+    expect(byStation.get("st-2")).toHaveLength(2);
+    expect(byStation.get("st-3")).toEqual([]);
+  });
+
+  it("gives an unreadable or deleted view no id, key or label", async () => {
+    mockViewLinksForStations.mockResolvedValue([
+      { stationId: "st-1", curatedViewId: "v1" },
+      { stationId: "st-1", curatedViewId: "v-secret" },
+      { stationId: "st-1", curatedViewId: "v-gone" },
+    ]);
+    mockViewSummaries.mockResolvedValue([summary("v1"), summary("v-secret")]);
+
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading("v1"),
+      ORG,
+      ["st-1"]
+    );
+
+    expect(byStation.get("st-1")).toEqual([
+      { id: "v1", key: "v1_key", label: "v1 label", canRead: true },
+      { canRead: false, label: null },
+      { canRead: false, label: null },
+    ]);
+  });
+
+  it("does no lookup for an empty station list", async () => {
+    const byStation = await StationAttachmentService.listViewsForStations(
+      setReading(),
+      ORG,
+      []
+    );
+    expect(byStation.size).toBe(0);
+    expect(mockViewLinksForStations).not.toHaveBeenCalled();
   });
 });

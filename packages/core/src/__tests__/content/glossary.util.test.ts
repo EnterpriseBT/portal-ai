@@ -418,10 +418,19 @@ describe("Curated View term (#674)", () => {
     );
   });
 
-  it("#645: says the assistant can manage views but not attach them", () => {
+  it("#1036: says the assistant can manage views and attach them, this session's station included", () => {
     const entry = find("Curated View");
     expect(entry.definition).toMatch(/Curated Views tool pack/);
-    expect(entry.definition).toMatch(/attaching a view to a station/i);
+    expect(entry.definition).toMatch(/attach a view to a station/i);
+    expect(entry.definition).toMatch(/queried straight away/i);
+    expect(entry.definition).not.toMatch(
+      /still done when creating or editing/i
+    );
+  });
+
+  it("#1036: the Station entry says the assistant can attach views too", () => {
+    const station = find("Station");
+    expect(station.definition).toMatch(/Curated Views tool pack/);
   });
 
   it("the Station entry mentions views and links to Curated View", () => {
