@@ -581,7 +581,8 @@ stationRouter.post(
  *       `add` attaches ids not already attached (each must be readable by the
  *       caller), `remove` soft-deletes attached ids the caller can read and
  *       skips any they can't. Nothing else is touched, so a stale editor can't
- *       re-attach what another just removed (#674).
+ *       re-attach what another just removed (#674). An empty `description`
+ *       clears it: the station's description becomes null.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -725,7 +726,11 @@ stationRouter.patch(
         updatedBy: userId,
       };
       if (name !== undefined) updates.name = name;
-      if (description !== undefined) updates.description = description;
+      // #848: an emptied description is no description. Create stores null
+      // for one, so update does too rather than a second "none" value.
+      if (description !== undefined) {
+        updates.description = description.trim() === "" ? null : description;
+      }
 
       // #674: the row, toolpacks and attachment diffs commit together. Each
       // attachment kind is written only when its field is in the body.

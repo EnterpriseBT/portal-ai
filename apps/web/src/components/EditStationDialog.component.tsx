@@ -95,12 +95,22 @@ interface OriginalText {
   description: string;
 }
 
+/** Whether the description was edited. Both sides are trimmed: what is sent
+ *  is trimmed, and a stored value isn't always. */
+function descriptionChanged(form: FormState, original: OriginalText): boolean {
+  return form.description.trim() !== original.description.trim();
+}
+
 function validateForm(form: FormState, original: OriginalText): FormErrors {
   const schema = editStationFormSchema(
     form.name.trim() !== original.name,
-    form.description.trim() !== original.description
+    descriptionChanged(form, original)
   );
-  const result = validateWithSchema(schema, form);
+  // The limit applies to the text that will be sent, which is trimmed.
+  const result = validateWithSchema(schema, {
+    ...form,
+    description: form.description.trim(),
+  });
   return result.success ? {} : result.errors;
 }
 
@@ -189,11 +199,14 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   );
   const initialToolpacks = station.enabledToolpacks ?? [];
   // #848: a station with no description edits as an empty field, and leaving
-  // it empty is not a change.
-  const original: OriginalText = {
+  // it empty is not a change. Captured once, like the form it is compared
+  // with: read from the live prop, a refetch while the dialog is open made an
+  // untouched field look edited, and saving sent the old text back over
+  // another editor's change.
+  const [original] = useState<OriginalText>(() => ({
     name: station.name,
     description: station.description ?? "",
-  };
+  }));
   const [form, setForm] = useState<FormState>({
     name: station.name,
     description: original.description,
@@ -259,11 +272,11 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     }
 
     const body: UpdateStationBody = {};
-    if (form.name.trim() !== station.name) {
+    if (form.name.trim() !== original.name) {
       body.name = form.name.trim();
     }
     // #848: sent only when edited. An emptied field clears the description.
-    if (form.description.trim() !== original.description) {
+    if (descriptionChanged(form, original)) {
       body.description = form.description.trim();
     }
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {

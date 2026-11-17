@@ -453,6 +453,34 @@ describe("Station Router", () => {
       expect(res.body.payload.station.description).toBe("new");
     });
 
+    // #848: the Edit Station dialog clears a description by sending "". A
+    // station created without one stores null, so clearing does too.
+    it("stores null when the description is emptied", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId, {
+        description: "Sales data",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      for (const empty of ["", "  \n"]) {
+        const res = await request(app)
+          .patch(`/api/stations/${station.id}`)
+          .send({ description: empty })
+          .expect(200);
+        expect(res.body.payload.station.description).toBeNull();
+      }
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.id, station.id));
+      expect(row.description).toBeNull();
+    });
+
     it("returns 404 for unknown station", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 

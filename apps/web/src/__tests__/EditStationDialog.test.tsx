@@ -391,6 +391,88 @@ describe("EditStationDialog — description (#848)", () => {
     );
   });
 
+  // Code review: the dialog's "original" came from the live prop, so a
+  // refetch while it was open made an untouched field read as edited, and
+  // saving sent the old text back over someone else's change.
+  it("doesn't send a description another editor changed while the dialog was open", async () => {
+    const onSubmit = jest.fn();
+    const { rerender } = render(
+      <EditStationDialog {...defaultProps} onSubmit={onSubmit} />
+    );
+    rerender(
+      <EditStationDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        station={{
+          ...sampleStation,
+          name: "Renamed elsewhere",
+          description: "Changed elsewhere",
+        }}
+      />
+    );
+    // The field still shows what the dialog opened with, untouched.
+    expect(screen.getByLabelText("Description")).toHaveValue(
+      "Sales data analysis station"
+    );
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Mine" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Mine" })
+    );
+  });
+
+  it("treats a stored description with surrounding whitespace as unchanged", () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, description: "  Sales data \n" }}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("doesn't hold an untouched over-long description with surrounding whitespace to the limit", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{
+          ...sampleStation,
+          description: `${"d".repeat(2500)}\n`,
+        }}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Renamed" })
+    );
+  });
+
+  it("checks the limit on the trimmed text it will send", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    const text = "d".repeat(1999);
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: `${text}\n\n` },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ description: text })
+    );
+  });
+
   it("closes without submitting when a null description is left empty", () => {
     const onClose = jest.fn();
     const onSubmit = jest.fn();
