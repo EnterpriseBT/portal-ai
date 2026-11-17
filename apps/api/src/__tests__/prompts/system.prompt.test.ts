@@ -425,6 +425,16 @@ describe("buildSystemPrompt — curated view notes (#645)", () => {
     expect(p).toContain("`data_query`");
   });
 
+  // #1036 adversarial walk: with "Smoke Sales" and "Smoke Sales 2" both
+  // matching "the sales station", the agent attached to the first without
+  // asking.
+  it("asks which station when several match the name (#1036)", () => {
+    expect(prompt()).toContain(
+      "If more than one station matches the name the user gave, ask which " +
+        "one before you attach or detach anything"
+    );
+  });
+
   it("explains both refusal codes and says not to retry", () => {
     const p = prompt();
     expect(p).toContain("TOOL_PERMISSION_DENIED");

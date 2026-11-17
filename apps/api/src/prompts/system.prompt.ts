@@ -685,7 +685,9 @@ export const PACK_PROMPT_SECTIONS: Record<
           "station; a " +
           "refusal names that permission. `curated_view_detach` removes a " +
           "view from a station without deleting it. To attach to another " +
-          "station, find its id with `station_list` (never guess one); if " +
+          "station, find its id with `station_list` (never guess one). If " +
+          "more than one station matches the name the user gave, ask which " +
+          "one before you attach or detach anything. If " +
           "the user wants to query the view there, check that station has " +
           "`data_query` in its tool packs."
       );
