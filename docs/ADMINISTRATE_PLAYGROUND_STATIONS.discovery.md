@@ -7,7 +7,7 @@
 New orgs and reset orgs should instead get two purpose-built stations that model the practice. Each one supports one workflow:
 
 1. **Administrate**, the org default: managing access and org membership. It has `rbac_management`, no data, and gains `member_management` from #847's own PR (split out 2026-11-16).
-2. **Playground**, which replaces My Station: managing and sharing entities and views, attaching views to this station or others, and querying the data in the same portal session. It has the Sandbox connector and `data_query` + `entity_management` + `view_management`. Attaching views from a session is #1036, which lands first.
+2. **Playground**, which replaces My Station: managing and sharing entities and views, attaching views to this station or others, and querying the data in the same portal session. It has the Sandbox connector and `data_query` + `entity_management` + `view_management`. Attaching views from a session is #1036, merged 2026-11-17 (PR #1037).
 
 The help content should state the principle and use these two stations as its worked examples.
 
@@ -169,11 +169,11 @@ Decided 2026-11-16: this ticket changes provisioning only, and the demo seed is 
 
 ## Open questions
 
-1. **Querying on Playground (resolved 2026-11-16).** `data_query`'s `sql_query` reads only curated views attached to the station (D3), and no agent tool could attach one, so data created on Playground couldn't be queried without leaving the portal. #1036 adds `curated_view_attach` / `curated_view_detach` / `station_list` to `view_management`. With them, an admin on Playground creates an entity, builds a view, attaches it to Playground (or to another station already shared with members) and queries it in the same turn. Members follow the same permissions and get typed refusals; there are no exceptions. #848 depends on #1036 and lands after it.
-2. **Should the system prompt describe station scoping?** For example, when a request needs a pack or data this station doesn't have, the agent would suggest another station rather than telling the user to attach it here. **Lean: yes, one generic line, without naming stations.** Names are editable, and existing orgs still have My Station.
-3. **`platform_help`'s `no_packs` text says "attach at least the data-query pack".** **Lean: reword it** to "the packs for what you want to do here, such as the data-query pack for questions about your data", to match the scoping principle.
-4. **Descriptions.** **Lean:**
-   - Administrate: "Manage access and membership through the assistant: policies, roles, groups and shares. No data is attached here."
+1. **Querying on Playground (resolved 2026-11-16).** `data_query`'s `sql_query` reads only curated views attached to the station (D3), and no agent tool could attach one, so data created on Playground couldn't be queried without leaving the portal. #1036 adds `curated_view_attach` / `curated_view_detach` / `station_list` to `view_management`. With them, an admin on Playground creates an entity, builds a view, attaches it to Playground (or to another station already shared with members) and queries it in the same turn. Members follow the same permissions and get typed refusals; there are no exceptions. #1036 merged on 2026-11-17 (PR #1037), so #848 is unblocked.
+2. **Should the system prompt describe station scoping?** For example, when a request needs a pack or data this station doesn't have, the agent would suggest another station rather than telling the user to attach it here. **Decided 2026-11-17: yes, one generic line, without naming stations.** Names are editable, and existing orgs still have My Station.
+3. **`platform_help`'s `no_packs` text says "attach at least the data-query pack".** **Decided 2026-11-17: reword it** to "the packs for what you want to do here, such as the data-query pack for questions about your data", to match the scoping principle.
+4. **Descriptions.** **Decided 2026-11-17:**
+   - Administrate: "Manage access through the assistant: policies, roles, groups and shares. No data is attached here." (#847 adds membership to the wording when it attaches `member_management`.)
    - Playground: "Build and share entities and views with the assistant, attach views to this or other stations, and query the data in the same session."
 
    The final copy belongs in the spec.
@@ -192,7 +192,7 @@ Decided 2026-11-16: this ticket changes provisioning only, and the demo seed is 
 ## What this doesn't decide
 
 - Attaching `member_management`. That's #847, which edits the constant.
-- The view-attach tools. That's #1036, which lands first.
+- The view-attach tools. That was #1036, now merged.
 - Backfilling or renaming stations in existing orgs. The issue decided against it.
 - Per-user default stations. The default stays org-wide.
 - The demo seed's choice of station (D5, #1035).
