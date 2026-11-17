@@ -25,8 +25,12 @@ export interface CustomPackSummary {
   toolNames: string[];
 }
 
-/** A station's packs: the built-in split plus its custom packs (#306). */
-export interface StationPacks extends BuiltinPackSplit {
+/**
+ * What a station is set up with, without its custom packs' details: enough to
+ * say which packs it has and which the plan includes. `platform_help` reads
+ * this; a caller that names the custom packs reads {@link StationPacks}.
+ */
+export interface StationPackSplit extends BuiltinPackSplit {
   /**
    * #848: built-in packs the org's plan includes that this station is not
    * configured with, in the plan's order. The system prompt names them so the
@@ -41,8 +45,12 @@ export interface StationPacks extends BuiltinPackSplit {
    */
   configuredCustomPackCount: number;
   /** Whether the plan includes custom packs (#214). When it doesn't, the
-   *  attached ones build no tools and `customPacks` is empty. */
+   *  attached ones build no tools. */
   customPacksEntitled: boolean;
+}
+
+/** A station's packs: the built-in split plus its custom packs (#306). */
+export interface StationPacks extends StationPackSplit {
   /**
    * Registered custom packs attached to this station. Empty when the org's
    * tier does not include custom toolpacks (#214) — their tools are not
@@ -135,12 +143,55 @@ export class EntitlementService {
    */
   static async resolveStationPacks(
     stationId: string,
-    organizationId: string,
-    // `platform_help` needs the count and the entitlement only. The row read
-    // decrypts stored pack credentials, so a caller that doesn't use the
-    // summaries skips it and gets `customPacks: []`.
-    options: { customPackSummaries?: boolean } = {}
+    organizationId: string
   ): Promise<StationPacks> {
+    const { split, customPackIds } = await EntitlementService.readStationPacks(
+      stationId,
+      organizationId
+    );
+
+    // Gate before the lookup: an unentitled org shouldn't pay for the read.
+    if (customPackIds.length === 0 || !split.customPacksEntitled) {
+      return { ...split, customPacks: [] };
+    }
+
+    const packs =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        customPackIds,
+        { organizationId }
+      );
+
+    return {
+      ...split,
+      customPacks: packs.map((p) => ({
+        name: p.name,
+        description: p.description,
+        toolNames: p.tools.map((t) => t.name),
+      })),
+    };
+  }
+
+  /**
+   * The same derivation without the custom packs' rows, for a caller that
+   * needs to know what the station has but not name its custom packs
+   * (`platform_help`). That read decrypts stored pack credentials, and its
+   * result has no `customPacks` to mistake for "none attached".
+   */
+  static async resolveStationPackSplit(
+    stationId: string,
+    organizationId: string
+  ): Promise<StationPackSplit> {
+    const { split } = await EntitlementService.readStationPacks(
+      stationId,
+      organizationId
+    );
+    return split;
+  }
+
+  private static async readStationPacks(
+    stationId: string,
+    organizationId: string
+  ): Promise<{ split: StationPackSplit; customPackIds: string[] }> {
     const rows =
       await DbService.repository.stationToolpacks.findByStationId(stationId);
 
@@ -164,37 +215,16 @@ export class EntitlementService {
       (slug) => isBuiltinToolpackSlug(slug) && !configured.has(slug)
     );
 
-    const base = {
-      effective,
-      unentitled,
-      otherPlanPacks,
-      configuredCustomPackCount: customPackIds.length,
-      customPacksEntitled: policy.entitlements.customToolpacks,
-      tier,
-    };
-
-    // Gate before the lookup: an unentitled org shouldn't pay for the read.
-    if (
-      customPackIds.length === 0 ||
-      !policy.entitlements.customToolpacks ||
-      options.customPackSummaries === false
-    ) {
-      return { ...base, customPacks: [] };
-    }
-
-    const packs =
-      await DbService.repository.organizationToolpacks.findManyByIds(
-        customPackIds,
-        { organizationId }
-      );
-
     return {
-      ...base,
-      customPacks: packs.map((p) => ({
-        name: p.name,
-        description: p.description,
-        toolNames: p.tools.map((t) => t.name),
-      })),
+      split: {
+        effective,
+        unentitled,
+        otherPlanPacks,
+        configuredCustomPackCount: customPackIds.length,
+        customPacksEntitled: policy.entitlements.customToolpacks,
+        tier,
+      },
+      customPackIds,
     };
   }
 

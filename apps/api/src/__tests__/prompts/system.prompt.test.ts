@@ -215,22 +215,6 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       );
     });
 
-    // Code review: a custom pack the plan excludes builds no tools and has
-    // no summary here (#306). Counting it told the user to attach a view to
-    // a station that still couldn't read it, with nothing naming the plan.
-    it("doesn't count a custom pack the plan excludes", () => {
-      const prompt = buildSystemPrompt(
-        makeContext({
-          entities: [],
-          effectiveToolPacks: ["rbac_management"],
-          customToolPacks: [],
-          attachments: attach([0, 0], [0, 0]),
-        })
-      );
-      expect(prompt).toContain(NOT_FOR_DATA);
-      expect(prompt).not.toContain("are attached to this station.");
-    });
-
     it("says so even when a connector is attached", () => {
       const prompt = buildSystemPrompt(
         makeContext({

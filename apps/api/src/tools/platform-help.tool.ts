@@ -127,17 +127,16 @@ async function gatherFindings(
 
     // The one derivation of a station's packs (#306), which the system
     // prompt reads too: a second copy here classified a station with a custom
-    // pack differently from the prompt in the same session. Without the pack
-    // rows, which this answer doesn't use.
+    // pack differently from the prompt in the same session. The split only:
+    // this answer doesn't name the custom packs.
     const {
       effective,
       unentitled,
       configuredCustomPackCount,
       customPacksEntitled,
-    } = await EntitlementService.resolveStationPacks(
+    } = await EntitlementService.resolveStationPackSplit(
       stationId,
-      organizationId,
-      { customPackSummaries: false }
+      organizationId
     );
     const builtinSlugs = [...effective, ...unentitled];
     const hasCustomPack = configuredCustomPackCount > 0;

@@ -23,8 +23,9 @@ const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
     },
   ],
 });
-/** What `EntitlementService.resolveStationPacks` returns: the one derivation
- *  of a station's packs, which the tool reads instead of the join table. */
+/** What `EntitlementService.resolveStationPackSplit` returns: the one
+ *  derivation of a station's packs, which the tool reads instead of the join
+ *  table. */
 const stationPacks = (
   over: Partial<{
     effective: string[];
@@ -37,13 +38,12 @@ const stationPacks = (
   effective: ["data_query"],
   unentitled: [],
   otherPlanPacks: [],
-  customPacks: [],
   configuredCustomPackCount: 0,
   customPacksEntitled: false,
   tier: "standard",
   ...over,
 });
-const mockResolveStationPacks = jest
+const mockResolveStationPackSplit = jest
   .fn<() => Promise<unknown>>()
   .mockResolvedValue(stationPacks());
 
@@ -75,7 +75,7 @@ const counts = (views: [number, number], connectors: [number, number]) => ({
 });
 
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
-  EntitlementService: { resolveStationPacks: mockResolveStationPacks },
+  EntitlementService: { resolveStationPackSplit: mockResolveStationPackSplit },
 }));
 
 const mockWarn = jest.fn();
@@ -114,7 +114,7 @@ const healthy = () => {
       },
     ],
   });
-  mockResolveStationPacks.mockResolvedValue(stationPacks());
+  mockResolveStationPackSplit.mockResolvedValue(stationPacks());
   mockCountByConnectorEntityIds.mockResolvedValue(42);
   mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
 };
@@ -215,7 +215,7 @@ describe("PlatformHelpTool — station situations", () => {
   // empty" when it carries a pack that works on station data.
   describe("a station set up without data packs (#848)", () => {
     const accessOnly = () => {
-      mockResolveStationPacks.mockResolvedValue(
+      mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({ effective: ["rbac_management"] })
       );
       mockLoadStation.mockResolvedValue({ entities: [] });
@@ -237,7 +237,7 @@ describe("PlatformHelpTool — station situations", () => {
 
     it("still reaches the plan-limit answer for an unentitled pack", async () => {
       accessOnly();
-      mockResolveStationPacks.mockResolvedValue(
+      mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({
           effective: [],
           unentitled: ["rbac_management"],
@@ -253,7 +253,7 @@ describe("PlatformHelpTool — station situations", () => {
     // plan includes makes missing data a real cause again.
     it("names the missing attachments when a custom pack is attached", async () => {
       accessOnly();
-      mockResolveStationPacks.mockResolvedValue(
+      mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({
           effective: [],
           configuredCustomPackCount: 1,
@@ -269,7 +269,7 @@ describe("PlatformHelpTool — station situations", () => {
     // still a pack on the station, so the answer isn't "no tool packs".
     it("doesn't name missing attachments for a custom pack the plan excludes", async () => {
       accessOnly();
-      mockResolveStationPacks.mockResolvedValue(
+      mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({
           effective: [],
           configuredCustomPackCount: 1,
@@ -281,15 +281,14 @@ describe("PlatformHelpTool — station situations", () => {
       expect(answer).not.toMatch(/attach the packs for what you want/);
     });
 
-    // One derivation with the prompt, without the custom-pack rows it
-    // doesn't use: that read decrypts stored pack credentials.
+    // One derivation with the prompt, through the split-only read: the
+    // custom-pack rows it doesn't use decrypt stored pack credentials.
     it("reads the station's packs from the shared derivation, without pack details", async () => {
       accessOnly();
       await exec();
-      expect(mockResolveStationPacks).toHaveBeenCalledWith(
+      expect(mockResolveStationPackSplit).toHaveBeenCalledWith(
         "station-1",
-        "org-1",
-        { customPackSummaries: false }
+        "org-1"
       );
     });
   });
@@ -311,7 +310,9 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("explains tool packs when the station has none attached", async () => {
-    mockResolveStationPacks.mockResolvedValue(stationPacks({ effective: [] }));
+    mockResolveStationPackSplit.mockResolvedValue(
+      stationPacks({ effective: [] })
+    );
 
     const { answer } = await exec("what can I do here");
 
@@ -320,7 +321,9 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("#848: a station with no packs is told to attach the packs for its work, not one fixed pack", async () => {
-    mockResolveStationPacks.mockResolvedValue(stationPacks({ effective: [] }));
+    mockResolveStationPackSplit.mockResolvedValue(
+      stationPacks({ effective: [] })
+    );
 
     const { answer } = await exec("what can I do here");
 
@@ -335,7 +338,7 @@ describe("PlatformHelpTool — station situations", () => {
   });
 
   it("says an unentitled pack is a plan limit, not a missing feature", async () => {
-    mockResolveStationPacks.mockResolvedValue(
+    mockResolveStationPackSplit.mockResolvedValue(
       stationPacks({ unentitled: ["gis"] })
     );
 

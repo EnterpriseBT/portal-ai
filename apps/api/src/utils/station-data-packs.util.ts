@@ -42,10 +42,10 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
  */
 export function usesStationData(
   builtinSlugs: readonly string[],
-  hasCustomPack: boolean
+  hasUsableCustomPack: boolean
 ): boolean {
   return (
-    hasCustomPack ||
+    hasUsableCustomPack ||
     builtinSlugs.some(
       (slug) => isBuiltinToolpackSlug(slug) && PACK_USES_STATION_DATA[slug]
     )

@@ -477,8 +477,8 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
 
   // platform_help needs the count and the entitlement, not the packs: the
   // row read decrypts stored credentials, and a failure there would cost it
-  // its whole answer.
-  it("skips the custom pack read when summaries aren't asked for", async () => {
+  // its whole answer. The split has no `customPacks` to misread as "none".
+  it("resolveStationPackSplit returns the split without reading custom pack rows", async () => {
     mockResolveTier.mockResolvedValue(
       makePolicy({
         builtinToolpacks: ["data_query"],
@@ -490,15 +490,20 @@ describe("EntitlementService.resolveStationPacks — otherPlanPacks (#848)", () 
     mockFindByStationId_packs.mockResolvedValue([
       { builtinSlug: null, organizationToolpackId: "otp-1" },
     ]);
-    const packs = await EntitlementService.resolveStationPacks(
+    const split = await EntitlementService.resolveStationPackSplit(
       STATION_ID,
-      ORG_ID,
-      { customPackSummaries: false }
+      ORG_ID
     );
     expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
-    expect(packs.customPacks).toEqual([]);
-    expect(packs.configuredCustomPackCount).toBe(1);
-    expect(packs.customPacksEntitled).toBe(true);
+    expect(split).toEqual({
+      effective: [],
+      unentitled: [],
+      otherPlanPacks: ["data_query"],
+      configuredCustomPackCount: 1,
+      customPacksEntitled: true,
+      tier: "standard",
+    });
+    expect(split).not.toHaveProperty("customPacks");
   });
 
   it("counts none for a station with only built-in packs", async () => {
