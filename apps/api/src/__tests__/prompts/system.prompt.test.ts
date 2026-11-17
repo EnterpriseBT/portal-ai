@@ -106,7 +106,7 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
       makeContext({ entities: [], attachments: attach([0, 0], [0, 0]) })
     );
     expect(prompt).toContain(
-      "_No views or connectors are attached to this station yet._"
+      "_No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities._"
     );
     expect(prompt).not.toContain("Entities on this station:");
   });
@@ -115,7 +115,9 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     const prompt = buildSystemPrompt(
       makeContext({ entities: [], attachments: attach([0, 0], [1, 1]) })
     );
-    expect(prompt).toContain("_No views are attached to this station yet._");
+    expect(prompt).toContain(
+      "_No views are attached to this station. Attach a view to query entity data here._"
+    );
     expect(prompt).not.toContain("connectors are attached");
   });
 
@@ -144,7 +146,7 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     const prompt = buildSystemPrompt(makeContext());
     expect(prompt).toContain("Entities on this station:");
     expect(prompt).not.toMatch(
-      /attached to this station yet|don't have access/
+      /are attached to this station\.|don't have access/
     );
   });
 

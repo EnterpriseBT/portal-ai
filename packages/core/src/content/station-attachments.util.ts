@@ -7,6 +7,11 @@
  * view-scoped data, while connectors give entity data through the
  * entity-management toolpack. So a missing kind is named for what it is,
  * never as "no data".
+ *
+ * #848: a station with neither is valid. A station set up for access work
+ * (the provisioned Administrate station) attaches no data on purpose, so a
+ * `missing` sentence says what attaching the kind would add rather than
+ * reading as something left unfinished.
  */
 
 export interface StationAttachmentCounts {
@@ -24,9 +29,9 @@ export interface StationAttachmentGaps {
   noAccess: string | null;
 }
 
-/** Follows a `missing` sentence: who can fix it. */
+/** Follows a `missing` sentence: who can attach one. */
 export const STATION_ATTACHMENT_MISSING_ACTION =
-  "Ask someone who can edit the station to attach them.";
+  "Anyone who can edit the station can attach them.";
 
 /**
  * #676: follows a `noAccess` sentence. It says the items ARE attached: without
@@ -43,11 +48,11 @@ export function describeStationAttachmentGaps(
   const noConnectors = c.connectors.attached === 0;
   const missing =
     noViews && noConnectors
-      ? "No views or connectors are attached to this station yet."
+      ? "No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities."
       : noViews
-        ? "No views are attached to this station yet."
+        ? "No views are attached to this station. Attach a view to query entity data here."
         : noConnectors
-          ? "No connectors are attached to this station yet."
+          ? "No connectors are attached to this station. Attach a connector to create and edit entities here."
           : null;
 
   const viewsLocked = !noViews && c.views.readable === 0;

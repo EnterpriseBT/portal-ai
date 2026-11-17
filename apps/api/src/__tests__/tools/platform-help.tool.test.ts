@@ -174,15 +174,19 @@ describe("PlatformHelpTool — station situations", () => {
     const { answer } = await exec("why are my answers empty");
 
     expect(answer).toBe(
-      "No views or connectors are attached to this station yet. " +
-        "Ask someone who can edit the station to attach them."
+      "No views or connectors are attached to this station. It works " +
+        "without them. Attach a view to query entity data here, or a " +
+        "connector to create and edit entities. " +
+        "Anyone who can edit the station can attach them."
     );
   });
 
   it("#674: names only the missing kind", async () => {
     mockCountsForCaller.mockResolvedValue(counts([0, 0], [1, 1]));
     const { answer } = await exec();
-    expect(answer).toMatch(/^No views are attached to this station yet\./);
+    expect(answer).toMatch(
+      /^No views are attached to this station\. Attach a view to query entity data here\./
+    );
   });
 
   it("#674: reports no access when attached views are all unreadable", async () => {
