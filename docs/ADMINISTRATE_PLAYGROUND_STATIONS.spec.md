@@ -157,7 +157,7 @@ This station is set up for one kind of work: the tool packs and data described a
 - **"What is a Station and why do I need one?"**: the answer gains "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data."
 - **"What are tool packs?"**: the answer gains "Turn on only the packs a station's work needs."
 
-No question is added or renamed, so the count stays 32.
+No question is added or renamed, so the audited question list the suite pins (32 names) is unchanged.
 
 **Getting Started, `apps/web/src/utils/getting-started.util.ts`**
 
@@ -224,7 +224,7 @@ API: `npm run test:unit -- --testPathPattern <file>` and `npm run test:integrati
   - no other entry repeats "one set of goals or tasks" (single source);
   - Tool Pack still matches `/only attach the packs/` and points at Station;
   - Default Station names Administrate.
-- **`__tests__/content/faq.util.test.ts`**: the station answer names both stations; the count stays 32.
+- **`__tests__/content/faq.util.test.ts`**: the station answer names both stations; no question is added or renamed.
 
 ### `apps/web`
 

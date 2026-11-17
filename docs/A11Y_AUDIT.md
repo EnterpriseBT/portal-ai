@@ -81,7 +81,7 @@ Added for the ACR (#800), since the keyboard and screen-reader passes don't chec
 - **Orientation (1.3.4):** viewports 768×1024, 1024×768, 390×844 and 844×390. Also, no `orientation` media query, `screen.orientation.lock` or zoom-blocking viewport meta exists in `apps/web`, `apps/site` or `packages/core`.
 
 **Pages:**
-- **App:** dashboard, Stations and My Station, Entities and one entity's records, Connectors and two connector instances, Jobs and a job, Toolpacks, a column definition, Views (empty state), Settings, Help.
+- **App:** dashboard, Stations and Playground, Entities and one entity's records, Connectors and two connector instances, Jobs and a job, Toolpacks, a column definition, Views (empty state), Settings, Help.
 - **App, beyond pages:** the Edit Connector Instance dialog; the RegionEditor (File Upload wizard, Draw regions step, with `core-loop.csv`).
 - **Site:** home, features, use cases and one use case, pricing, contact, security, privacy, terms.
 
@@ -142,7 +142,7 @@ Each step says what you **do** and what you should **hear**. Anything you hear t
 
 | Step | Do | Expect to hear |
 |---|---|---|
-| 1 | Go to Stations, open My Station | Page titles; the station's name as a heading |
+| 1 | Go to Stations, open Playground | Page titles; the station's name as a heading |
 | 2 | Start a portal and send "How many customers are there?" | The message field's label; your message; the reply announced or reachable as it arrives (4.1.3), not only visible |
 | 3 | Ask for a chart ("Chart orders by month") | The chart as an image or region with a **name**, and some text alternative to its data. Silence or "frame" alone is a finding (#796) |
 | 4 | Pin the result | The pin button's name; a confirmation announced |

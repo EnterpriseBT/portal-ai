@@ -45,8 +45,8 @@ Read. Live orgs, name-ILIKE search, created desc.
 Read. `--json`: `{ "org": Organization }` · absent/soft-deleted → 8.
 
 ### `portalai org create --name <name> --owner-email <email> --env <env> --yes [--confirm-prod] [--json]`
-Mutation. **Full app provisioning** via `db:create-org` (org + owner membership + system column definitions + Sandbox connector + default station/toolpack + `defaultStationId`). Owner must be an existing user (users originate in Auth0) → else 8-shaped failure from the script (exit 7 envelope carries the message).
-`--json`: `{ "organizationId", "stationId" }`
+Mutation. **Full app provisioning** via `db:create-org` (org + owner membership + system column definitions + Sandbox connector + the Administrate and Playground stations with their toolpacks + `defaultStationId`, which is Administrate). Owner must be an existing user (users originate in Auth0) → else 8-shaped failure from the script (exit 7 envelope carries the message).
+`--json`: `{ "organizationId", "stationId" }` (`stationId` is the default station, Administrate)
 
 ### `portalai org update <id> [--name] [--timezone] [--default-station-id] --env <env> --yes [--json]`
 Mutation, in one transaction with the org row locked. Pass at least one field (else `ADMIN_INVALID_INPUT`, exit 2). `--name` follows the app's rule: trimmed, 1–120 characters, one line (else exit 2, nothing runs). A value equal to the current one writes nothing (the row isn't stamped as edited).

@@ -138,7 +138,7 @@ The glossary, FAQ and Getting Started state the scoping practice with the two st
    - Station's definition contains "one set of goals or tasks" and names both stations; no other entry repeats that phrase.
    - Tool Pack still matches `/only attach the packs/` and points at Station.
    - Default Station names Administrate.
-   - The station FAQ answer names both stations; the FAQ count stays 32.
+   - The station FAQ answer names both stations; no question is added or renamed.
    - "Create a station" names both stations.
 
    Run; they fail.

@@ -484,7 +484,7 @@ A new entry therefore ships with **two** things:
 
 Ownership is `createdBy`, and authorization reads nothing else. Every object falls into one of three categories:
 
-- **Platform seed or provisioned default.** `createdBy = SystemUtilities.id.system`, which members read through the `created_by_system` condition. This covers tiers, connector definitions, system column definitions, system roles and policies, and the defaults provisioned into a new org (the Sandbox connector, My Station). Housekeeping writes (seats, billing, tier grants) and platform materializations (wide-table columns, dissolve geometries) use it too.
+- **Platform seed or provisioned default.** `createdBy = SystemUtilities.id.system`, which members read through the `created_by_system` condition. This covers tiers, connector definitions, system column definitions, system roles and policies, and the defaults provisioned into a new org (the Sandbox connector, the Administrate and Playground stations). Housekeeping writes (seats, billing, tier grants) and platform materializations (wide-table columns, dissolve geometries) use it too.
 - **Session-generated.** An object the agent creates in a portal session is owned by the **prompting user** (`createdBy = caller`) and records the session as `sourcePortalId`, on `connector_entities`, `field_mappings`, `entity_records`, `roles`, `permission_policies` and `groups`. It is provenance only: it never changes who owns, sees or can share the object. The web derives the "Created in a portal session" chip with `isSessionGenerated` from `@portalai/core` (a record the agent created before #641 counts through `origin = 'portal'`).
 - **User-created.** `createdBy = caller`, `sourcePortalId = null`.
 

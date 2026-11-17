@@ -54,7 +54,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What is a Station and why do I need one?",
     answer:
-      "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions.",
+      "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions. Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: [
       "Station",
@@ -248,7 +248,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What are tool packs?",
     answer:
-      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Your plan decides which ones are available. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station.",
+      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Your plan decides which ones are available. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station. Turn on only the packs a station's work needs.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Tool Pack", "Station", "Portal"],
   },

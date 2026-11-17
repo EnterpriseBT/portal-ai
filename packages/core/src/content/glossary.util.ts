@@ -239,7 +239,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Station",
     category: GlossaryCategory.Analytics,
     definition:
-      "A workspace that groups views, connector instances and tool packs together so you can analyze them in a portal. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
+      "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the access tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
     example:
       'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
     relatedTerms: [
@@ -287,7 +287,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Tool Pack",
     category: GlossaryCategory.Analytics,
     definition:
-      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs.",
+      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs (see Station for scoping a station to one kind of work).",
     example:
       "Enable the regression tool pack on a station so the assistant has the `regression`, `logistic_regression`, and `forecast` tools available for trend and prediction questions.",
     relatedTerms: ["Tool", "Station", "Portal", "Custom Toolpack"],
@@ -521,7 +521,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Default Station",
     category: GlossaryCategory.System,
     definition:
-      "The station opened by default on your dashboard and used when you launch a portal without picking a station explicitly.",
+      "The station opened by default on your dashboard and used when you launch a portal without picking a station explicitly. New organizations start with Administrate as the default; set a different one from the Stations page.",
     example:
       "Set your most-used station as the default so the dashboard surfaces its portals and pinned results first.",
     relatedTerms: ["Station", "Pinned Result"],

@@ -349,6 +349,25 @@ describe("FAQ_ENTRIES source ordering", () => {
 
 // ── Curated views (#674) ────────────────────────────────────────────
 
+// #848: stations are scoped to one kind of work.
+describe("FAQ describes station scoping (#848)", () => {
+  const answer = (q: string) =>
+    FAQ_ENTRIES.find((e) => e.question === q)!.answer;
+
+  it("the station explainer states the practice and names both provisioned stations", () => {
+    const a = answer("What is a Station and why do I need one?");
+    expect(a).toContain(
+      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data."
+    );
+  });
+
+  it("the tool-pack explainer says to turn on only what the station's work needs", () => {
+    expect(answer("What are tool packs?")).toContain(
+      "Turn on only the packs a station's work needs."
+    );
+  });
+});
+
 describe("FAQ mentions views (#674)", () => {
   const answer = (q: string) =>
     FAQ_ENTRIES.find((e) => e.question === q)!.answer;

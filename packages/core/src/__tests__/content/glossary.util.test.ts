@@ -440,6 +440,52 @@ describe("Curated View term (#674)", () => {
   });
 });
 
+// #848: a station is scoped to one kind of work. Station owns that practice,
+// with the two stations a new organization starts with as its examples.
+describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
+  const find = (term: string) => GLOSSARY_ENTRIES.find((e) => e.term === term)!;
+
+  it("Station states the practice and names both provisioned stations", () => {
+    const { definition } = find("Station");
+    expect(definition).toMatch(/one set of goals or tasks/);
+    expect(definition).toMatch(/attach only what that work needs/);
+    expect(definition).toMatch(/Administrate, the default/);
+    expect(definition).toMatch(/Playground, with the Sandbox connector/);
+  });
+
+  it("keeps the scoping practice single-sourced on Station", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      if (entry.term === "Station") continue;
+      expect(entry.definition).not.toMatch(/one set of goals or tasks/);
+    }
+  });
+
+  it("Tool Pack keeps its own practice and points at Station for scoping", () => {
+    const toolPack = find("Tool Pack");
+    expect(toolPack.definition).toMatch(/only attach the packs/i);
+    expect(toolPack.definition).toMatch(
+      /see Station for scoping a station to one kind of work/
+    );
+    expect(toolPack.relatedTerms).toContain("Station");
+  });
+
+  it("Default Station says a new organization's default is Administrate", () => {
+    const { definition } = find("Default Station");
+    expect(definition).toMatch(
+      /New organizations start with Administrate as the default/
+    );
+    expect(definition).toMatch(/set a different one from the Stations page/);
+  });
+
+  it("no entry still names the retired My Station", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      expect(`${entry.definition} ${entry.example ?? ""}`).not.toMatch(
+        /My Station/
+      );
+    }
+  });
+});
+
 // #711 (spec case 21): policies govern permissions; roles and groups only
 // package them. These entries describe access by permission, not by role.
 describe("GLOSSARY_ENTRIES describe access by permission (#711)", () => {
