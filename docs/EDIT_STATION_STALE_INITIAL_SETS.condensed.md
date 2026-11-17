@@ -21,7 +21,9 @@ After a refetch the three baselines reflect the other editor's change while the 
 - **A. Capture the three sets once, in the state that already holds the name and description baseline.** The comparison is then form-as-opened against baseline-as-opened, so an untouched field is never a change whatever the page does behind the dialog.
 - **B. Re-seed the form when the station prop changes.** Keeps the dialog current, but discards what the editor has typed, or needs a merge of their edits with the new data.
 
-**Decided: A.** One `useState` holds `name`, `description`, `toolPacks`, `connectorInstanceIds` and `curatedViewIds` as the dialog opened; the form is seeded from it and the submit compares against it. No behaviour changes for an editor whose page doesn't refetch.
+**Decided: A.** One `useState` holds `name`, `description`, `toolPacks`, `connectorInstanceIds`, `curatedViewIds` and the view chips' labels as the dialog opened; the form is seeded from it and the submit compares against it. It is the only place the dialog reads the station. No behaviour changes for an editor whose page doesn't refetch.
+
+Tool packs are compared as a set, not in order (added after code review): removing a pack and adding it back reorders the list without changing it, and an ordered comparison sent the whole opened-on list for that.
 
 ## Plan — one slice
 
@@ -43,10 +45,11 @@ Steps 1–3 are regression checks. Step 4 is the bug. It needs a second session 
 
 1. Open a station you can edit, choose Edit, add a tool pack and save. The station page shows the pack.
 2. Edit again, attach a connector or a view and save; then edit and detach it and save. The page shows each change.
-3. Edit, change nothing, save. The dialog closes and no `PATCH /api/stations/…` is sent.
+3. Edit, change nothing, save. The dialog closes and no `PATCH /api/stations/…` is sent. Then: edit, remove a tool pack and add the same one back, change the name and save. The request carries only the name.
 4. Person A opens the Edit dialog on a station with a connector attached. Person B (or a `PATCH /api/stations/<id>` from a shell) detaches that connector and removes a tool pack. A waits over a minute, switches away from the tab and back (the page behind the dialog now shows neither; the dialog still shows both), changes only the name and saves. A's request carries only the name, and the connector and the pack stay removed.
 
 ## Out of scope
 
-- **Tool packs are saved as a full set.** When an editor does change the packs, the dialog sends the whole list, which replaces whatever another editor did to the packs meanwhile. Connectors and views are saved by difference; doing the same for packs is a change to the update API.
+- **Tool packs are saved as a full set.** When an editor does change the packs, the dialog sends the whole list, which replaces whatever another editor did to the packs meanwhile. Connectors and views are saved by difference; doing the same for packs is a change to the update API. Filed as #1052, with a second pack problem the review found: the picker drops custom packs that haven't loaded when the packs are edited.
+- **The same baseline problem in other edit dialogs** (entity groups, tags, column definitions). Filed as #1053.
 - **Telling the editor the station changed underneath them.** The dialog keeps showing what it opened with.
