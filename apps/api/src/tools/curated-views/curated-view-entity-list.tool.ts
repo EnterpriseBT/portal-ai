@@ -38,7 +38,7 @@ export class CuratedViewEntityListTool extends Tool<typeof InputSchema> {
   slug = "curated_view_entity_list";
   name = "curated_view_entity_list";
   description =
-    "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, a view on them must be attached to the station.";
+    "Lists the connector entities the user can read, sorted by label, each with its id, key, label, connector, and its columns (key, label, type). Use this to find the `connectorEntityId` and column keys for curated_view_create, including entities this station has no view on yet. It lists entities only; to query their data, create a view on one and attach it to the station with curated_view_attach.";
 
   get schema() {
     return InputSchema;

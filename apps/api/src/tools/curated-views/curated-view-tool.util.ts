@@ -18,6 +18,8 @@ export type ViewToolError = { error: { code: ApiCode; message: string } };
  * outcome is a typed tool result the agent can relay, never a throw that ends
  * the turn:
  *
+ * - **An unattachable view** (`STATION_ATTACHMENT_NOT_READABLE`, a 403 from
+ *   the attach path) becomes `TOOL_TARGET_NOT_FOUND` (#1036).
  * - **A permission 403** is re-thrown. The per-caller tool gate
  *   (`wrapWithPermissionGate`) turns it into `TOOL_PERMISSION_DENIED`, as for
  *   the rbac_management tools.
@@ -40,6 +42,15 @@ export async function runViewTool<T>(
     return await fn();
   } catch (err) {
     if (err instanceof ApiError) {
+      // #1036: a view that can't be attached (missing, cross-org or
+      // unreadable — one message for all three) doesn't exist for this
+      // caller, so it reads as not found, as an unreadable view does
+      // everywhere else in this pack.
+      if (err.code === ApiCode.STATION_ATTACHMENT_NOT_READABLE) {
+        return {
+          error: { code: ApiCode.TOOL_TARGET_NOT_FOUND, message: err.message },
+        };
+      }
       if (err.status === 403 && !isPlanRefusal(err.code)) throw err;
       if (err.status === 404) {
         // The same result the permission gate's `targetNotFound` gives.

@@ -31,6 +31,19 @@ export class StationViewsRepository extends Repository<
     return this.findMany(eq(stationViews.stationId, stationId), {}, client);
   }
 
+  /** #1036: non-deleted view attachments for many stations, in one query. */
+  async findByStationIds(
+    stationIds: string[],
+    client: DbClient = db
+  ): Promise<StationViewSelect[]> {
+    if (stationIds.length === 0) return [];
+    return this.findMany(
+      inArray(stationViews.stationId, stationIds),
+      {},
+      client
+    );
+  }
+
   /**
    * #827: the entities behind a station's live views, and their connectors,
    * in one query. Deleted attachments, views and entities don't count.
@@ -83,14 +96,18 @@ export class StationViewsRepository extends Repository<
       .returning()) as StationViewSelect[];
   }
 
-  /** #674: soft-delete a station's live attachments to the given views. */
+  /**
+   * #674: soft-delete a station's live attachments to the given views.
+   * #1036: returns the view ids whose link this call removed — an already
+   * removed link (a concurrent detach) isn't counted.
+   */
   async softDeleteByStationAndViews(
     stationId: string,
     curatedViewIds: string[],
     deletedBy: string,
     client: DbClient = db
-  ): Promise<number> {
-    if (curatedViewIds.length === 0) return 0;
+  ): Promise<string[]> {
+    if (curatedViewIds.length === 0) return [];
     const rows = await this.updateWhere(
       and(
         eq(stationViews.stationId, stationId),
@@ -99,7 +116,7 @@ export class StationViewsRepository extends Repository<
       { deleted: Date.now(), deletedBy },
       client
     );
-    return rows.length;
+    return rows.map((r) => r.curatedViewId);
   }
 
   /** #802: soft-delete every live attachment of the given views (the view

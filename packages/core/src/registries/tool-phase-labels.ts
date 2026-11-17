@@ -116,6 +116,10 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   curated_view_update: "Updating the view",
   curated_view_delete: "Deleting the view",
   curated_view_share: "Sharing the view",
+  // #1036
+  curated_view_attach: "Attaching the view",
+  curated_view_detach: "Detaching the view",
+  station_list: "Listing stations",
 };
 
 /** Truncate to the ceiling, marking the cut so it doesn't read as the name. */

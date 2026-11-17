@@ -40,6 +40,12 @@ export interface PortalStreamState {
   toolSteps: ToolStep[];
 }
 
+/** #1036: what a finished turn did, passed to `onTurnEnd`. */
+export interface PortalStreamTurn {
+  /** Every tool whose result arrived during the turn. */
+  toolNames: ReadonlySet<string>;
+}
+
 export interface PortalStreamActions {
   send: (portalId: string) => Promise<void>;
   cancel: () => void;
@@ -83,9 +89,14 @@ export function streamingBlockFor(
  * @param onDone - Optional callback invoked after a stream completes.
  *   Receives `clearLocalMessages` so the caller can clear optimistic messages
  *   after refetching server data without a circular dependency.
+ * @param onTurnEnd - #1036: invoked once per turn however it ended — done, a
+ *   stream error, a lost connection or a cancel — with the tools whose results
+ *   arrived. A tool's write commits when its result does, so a turn that
+ *   failed later still changed what it changed; the caller refreshes that.
  */
 export const usePortalStream = (
-  onDone?: (clearLocalMessages: () => void) => void
+  onDone?: (clearLocalMessages: () => void) => void,
+  onTurnEnd?: (turn: PortalStreamTurn) => void
 ): [PortalStreamState, PortalStreamActions] => {
   const createSSEConnection = sse.create();
 
@@ -102,21 +113,40 @@ export const usePortalStream = (
   // Keep a ref to the latest streaming blocks so the done handler can
   // read the current value without stale closure issues.
   const streamingBlocksRef = useRef<PortalMessageBlock[]>([]);
+  // #1036: the tools this turn ran, reported once to onTurnEnd. Collected
+  // from `tool_call_end`, which the server sends for every tool: `tool_result`
+  // only comes for a result with a display shape, so a scalar-result tool
+  // (curated_view_attach) never sends one. Found in the #1036 smoke walk.
+  const turnToolNamesRef = useRef<Set<string>>(new Set());
+  const turnEndedRef = useRef(true);
   const esRef = useRef<EventSource | null>(null);
   const onDoneRef = useRef(onDone);
+  const onTurnEndRef = useRef(onTurnEnd);
 
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
 
+  useEffect(() => {
+    onTurnEndRef.current = onTurnEnd;
+  }, [onTurnEnd]);
+
+  /** Report the turn once, whichever of done/error/lost/cancel ends it. */
+  const endTurn = useCallback(() => {
+    if (turnEndedRef.current) return;
+    turnEndedRef.current = true;
+    onTurnEndRef.current?.({ toolNames: turnToolNamesRef.current });
+  }, []);
+
   const cancel = useCallback(() => {
+    endTurn();
     esRef.current?.close();
     esRef.current = null;
     setIsStreaming(false);
     setStreamingBlocks(null);
     streamingBlocksRef.current = [];
     setToolSteps([]);
-  }, []);
+  }, [endTurn]);
 
   const addLocalMessage = useCallback((msg: PortalMessageResponse) => {
     setLocalMessages((prev) => [...prev, msg]);
@@ -144,6 +174,8 @@ export const usePortalStream = (
       }
 
       streamingBlocksRef.current = [];
+      turnToolNamesRef.current = new Set();
+      turnEndedRef.current = false;
       setStreamingBlocks([]);
       setIsStreaming(true);
       setToolSteps([]);
@@ -184,6 +216,7 @@ export const usePortalStream = (
 
       es.addEventListener("tool_call_end", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as ToolCallEndEvent;
+        turnToolNamesRef.current.add(data.toolName);
         setToolSteps((prev) =>
           prev.filter((s) => s.toolCallId !== data.toolCallId)
         );
@@ -192,6 +225,9 @@ export const usePortalStream = (
       es.addEventListener("tool_result", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as ToolResultEvent;
         const result = data.result as Record<string, unknown> | null;
+        // A job's completion result arrives with no tool_call_end, so it
+        // counts here too.
+        turnToolNamesRef.current.add(data.toolName);
 
         const block = streamingBlockFor(data.toolName, result);
 
@@ -228,11 +264,13 @@ export const usePortalStream = (
         setIsStreaming(false);
         setToolSteps([]);
 
+        endTurn();
         onDoneRef.current?.(clearLocalMessages);
       });
 
       es.addEventListener("stream_error", (e: MessageEvent) => {
         const data = JSON.parse(e.data) as StreamErrorEvent;
+        endTurn();
         es.close();
         esRef.current = null;
         setIsStreaming(false);
@@ -243,6 +281,7 @@ export const usePortalStream = (
       });
 
       es.onerror = () => {
+        endTurn();
         es.close();
         esRef.current = null;
         setIsStreaming(false);
@@ -252,7 +291,7 @@ export const usePortalStream = (
         setStreamError("Connection to the server was lost. Please try again.");
       };
     },
-    [createSSEConnection, clearLocalMessages]
+    [createSSEConnection, clearLocalMessages, endTurn]
   );
 
   // Cleanup EventSource on unmount.

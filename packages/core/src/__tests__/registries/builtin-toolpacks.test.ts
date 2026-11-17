@@ -441,6 +441,9 @@ describe("view_management pack (#645)", () => {
       "curated_view_update",
       "curated_view_delete",
       "curated_view_share",
+      "station_list",
+      "curated_view_attach",
+      "curated_view_detach",
       "member_list",
     ]);
   });
@@ -463,9 +466,16 @@ describe("view_management pack (#645)", () => {
     }
   });
 
-  it("never offers station attachment", () => {
-    for (const tool of pack.tools) {
-      expect(tool.name).not.toMatch(/attach/);
+  it("offers attaching and detaching views on stations (#1036)", () => {
+    const names = pack.tools.map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["curated_view_attach", "curated_view_detach"])
+    );
+    // Both take the views and an optional station, defaulting to the session's.
+    for (const name of ["curated_view_attach", "curated_view_detach"]) {
+      const schema = pack.tools.find((t) => t.name === name)!
+        .parameterSchema as { required?: string[] };
+      expect(schema.required).toEqual(["curatedViewIds"]);
     }
   });
 });
