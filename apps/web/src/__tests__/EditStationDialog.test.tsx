@@ -327,3 +327,135 @@ describe("EditStationDialog — length limits (#801)", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });
+
+// #848: every new organization's stations carry a description stating what
+// the station is for. An owner who repurposes one has to be able to change it;
+// the dialog had no Description field, though the API always took one.
+describe("EditStationDialog — description (#848)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("pre-populates the description", () => {
+    render(<EditStationDialog {...defaultProps} />);
+    expect(screen.getByLabelText("Description")).toHaveValue(
+      "Sales data analysis station"
+    );
+  });
+
+  it("shows an empty field for a station with no description", () => {
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, description: null }}
+      />
+    );
+    expect(screen.getByLabelText("Description")).toHaveValue("");
+  });
+
+  it("submits only the description when only it changed", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "  Quarterly sales reviews  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        description: "Quarterly sales reviews",
+      })
+    );
+  });
+
+  it("clears the description when the field is emptied", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ description: "" })
+    );
+  });
+
+  it("doesn't send an unchanged description with another change", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Renamed" })
+    );
+  });
+
+  it("closes without submitting when a null description is left empty", () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, description: null }}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("holds an edited description to the limit and doesn't submit", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const description = screen.getByLabelText("Description");
+    fireEvent.change(description, { target: { value: "d".repeat(2001) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Description must be 2000 characters or fewer")
+    ).toBeInTheDocument();
+    expect(description).toHaveAttribute("aria-invalid", "true");
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the limit after blur, before any save", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const description = screen.getByLabelText("Description");
+    fireEvent.change(description, { target: { value: "d".repeat(2001) } });
+    fireEvent.blur(description);
+    expect(
+      await screen.findByText("Description must be 2000 characters or fewer")
+    ).toBeInTheDocument();
+  });
+
+  // As with the name (#801): a description stored before the limit isn't
+  // sent or checked unless the user edits it.
+  it("saves other changes to a station whose stored description is longer", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, description: "D".repeat(5000) }}
+        onSubmit={onSubmit}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Renamed" })
+    );
+  });
+
+  it("has no axe violations with a description error showing", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "d".repeat(2001) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Description must be 2000 characters or fewer");
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+});

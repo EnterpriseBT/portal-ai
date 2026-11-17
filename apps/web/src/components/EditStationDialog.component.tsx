@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
-import { nameField } from "@portalai/core/contracts";
+import { descriptionField, nameField } from "@portalai/core/contracts";
 import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
@@ -69,23 +69,37 @@ function withEntitlements(
 
 interface FormState {
   name: string;
+  description: string;
   toolPacks: string[];
   connectorInstanceIds: string[];
   curatedViewIds: string[];
 }
 
 /** #801: an edited name is held to the name limit. An unchanged one isn't
- *  (it isn't sent), so a station saved before the limit stays editable. */
-const editStationFormSchema = (nameChanged: boolean) =>
+ *  (it isn't sent), so a station saved before the limit stays editable. The
+ *  description follows the same rule (#848). */
+const editStationFormSchema = (
+  nameChanged: boolean,
+  descriptionChanged: boolean
+) =>
   z.object({
     name: nameChanged
       ? nameField()
       : z.string().trim().min(1, "Name is required"),
+    description: descriptionChanged ? descriptionField() : z.string(),
     toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
   });
 
-function validateForm(form: FormState, originalName: string): FormErrors {
-  const schema = editStationFormSchema(form.name.trim() !== originalName);
+interface OriginalText {
+  name: string;
+  description: string;
+}
+
+function validateForm(form: FormState, original: OriginalText): FormErrors {
+  const schema = editStationFormSchema(
+    form.name.trim() !== original.name,
+    form.description.trim() !== original.description
+  );
   const result = validateWithSchema(schema, form);
   return result.success ? {} : result.errors;
 }
@@ -174,8 +188,15 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     )
   );
   const initialToolpacks = station.enabledToolpacks ?? [];
+  // #848: a station with no description edits as an empty field, and leaving
+  // it empty is not a change.
+  const original: OriginalText = {
+    name: station.name,
+    description: station.description ?? "",
+  };
   const [form, setForm] = useState<FormState>({
     name: station.name,
+    description: original.description,
     toolPacks: [...initialToolpacks],
     connectorInstanceIds: [...initialInstanceIds],
     curatedViewIds: [...initialViewIds],
@@ -219,18 +240,18 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     const next = { ...form, [field]: value };
     setForm(next);
     if (touched[field]) {
-      setErrors(validateForm(next, station.name));
+      setErrors(validateForm(next, original));
     }
   };
 
   const handleBlur = (field: keyof FormState) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    setErrors(validateForm(form, station.name));
+    setErrors(validateForm(form, original));
   };
 
   const handleSubmit = () => {
-    setTouched({ name: true, toolPacks: true });
-    const formErrors = validateForm(form, station.name);
+    setTouched({ name: true, description: true, toolPacks: true });
+    const formErrors = validateForm(form, original);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
       requestAnimationFrame(() => focusFirstInvalidField());
@@ -240,6 +261,10 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     const body: UpdateStationBody = {};
     if (form.name.trim() !== station.name) {
       body.name = form.name.trim();
+    }
+    // #848: sent only when edited. An emptied field clears the description.
+    if (form.description.trim() !== original.description) {
+      body.description = form.description.trim();
     }
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
@@ -305,6 +330,22 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           }}
           required
           fullWidth
+        />
+        <TextField
+          label="Description"
+          value={form.description}
+          onChange={(e) => handleChange("description", e.target.value)}
+          onBlur={blurUnlessDialogControl(() => handleBlur("description"))}
+          error={touched.description && !!errors.description}
+          helperText={touched.description && errors.description}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.description && !!errors.description,
+            },
+          }}
+          fullWidth
+          multiline
+          rows={3}
         />
         <MultiSearchableSelect
           options={allOptions}

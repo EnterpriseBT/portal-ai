@@ -85,9 +85,9 @@ Through the API, with the member's token:
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
 | §7 attach on Administrate; §6 "What can I do here?" on org B; smoke §8 | On a station with only the access pack the assistant led with missing data, suggested attaching data there, and once said attaching views can't be done from any session. The prompt showed the missing-attachments line on every station and never said which packs exist beyond this station's. | med | fixed-in-PR: on a station with no pack that works on entity data the prompt says so instead of naming missing views or connectors, and Station Scope lists the plan's packs that aren't on the station. Re-walked: all three prompts now name the missing pack and point at a station that has it. |
-| §7 edit Administrate | A provisioned station's description can't be edited in the app: the Edit Station dialog has no Description field, though the API accepts one. Predates this branch; provisioned descriptions make it visible. | low | _awaiting decision_ |
-| §6 delete the default | Right after deleting the default station the Stations page shows "Station not found" in the default picker until a reload. The API clears the default correctly. Predates this branch. | low | _awaiting decision_ |
-| §4 member on Administrate | The assistant sometimes adds role framing to a refusal ("an owner/admin would need to do this"). The refusal itself names the permission. Predates this branch. | low | _awaiting decision_ |
+| §7 edit Administrate | A provisioned station's description can't be edited in the app: the Edit Station dialog has no Description field, though the API accepts one. Predates this branch; provisioned descriptions make it visible. | low | fixed-in-PR: the Edit Station dialog has a Description field (sent only when edited; emptying it clears the description). Checked live on Administrate. |
+| §6 delete the default | Right after deleting the default station the Stations page shows "Station not found" in the default picker until a reload. The API clears the default correctly. Predates this branch. | low | waived: ticketed as #1041. |
+| §4 member on Administrate | The assistant sometimes adds role framing to a refusal ("an owner/admin would need to do this"). The refusal itself names the permission. Predates this branch. | low | waived: ticketed as #1042. |
 
 ## Sign-off
 
