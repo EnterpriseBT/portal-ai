@@ -25,7 +25,7 @@ Manual smoke test for [#1055](https://github.com/EnterpriseBT/portal-ai/issues/1
 ## §1 — Station page: the plan is the reason
 
 - [ ] Open **Smoke GIS**. The notice reads exactly: "GIS isn't included in your plan, so attaching a view won't make data available on this station." followed by a **View plans** link. It doesn't contain "Attach a view".
-- [ ] The tool pack chips show GIS as "Inactive on your plan", consistent with the notice.
+- [ ] The GIS chip is labelled "GIS — Not included in your plan" (its accessible name), consistent with the notice.
 - [ ] Click **View plans**. Settings opens on **Subscription & Billing** (`/settings?tab=billing`).
 - [ ] Open **Smoke Many**. The notice names up to four packs in the station's order and summarizes the rest: "GIS, Statistics, Visualize and 2 more aren't included in your plan, …" (the order follows the station's chips).
 
