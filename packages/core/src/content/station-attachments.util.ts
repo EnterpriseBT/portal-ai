@@ -55,9 +55,10 @@ export interface StationAttachmentGapsOptions {
 
 /**
  * "A", "A and B", … up to four names; beyond that the first three and
- * "and N more" (N is at least 2).
+ * "and N more" (N is at least 2). Shared with the web's Edit Station, which
+ * names the packs it can't change (#1063).
  */
-function listPacks(names: readonly string[]): string {
+export function listPackNames(names: readonly string[]): string {
   if (names.length > 4) {
     return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
   }
@@ -71,7 +72,7 @@ function listPacks(names: readonly string[]): string {
  */
 function planExcludedSentence(names: readonly string[]): string {
   const subject =
-    names.length > 0 ? listPacks(names) : "Some tool packs on this station";
+    names.length > 0 ? listPackNames(names) : "Some tool packs on this station";
   const verb = names.length === 1 ? "isn't" : "aren't";
   return `${subject} ${verb} included in your plan, so attaching a view won't make data available on this station.`;
 }

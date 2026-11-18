@@ -110,8 +110,10 @@ static async customPacksEntitlement(
 ```
 
 **POST** (`station.router.ts:600-620`):
-- `parseToolpackRefs` also returns `customNames: string[]`, taken from the `findManyByIds` rows it already loads, in request order.
-- After `denyUnentitledBuiltins` and before the insert, a new `denyUnentitledCustom(organizationId, customNames)` refuses with `toolpacksNotEntitled(organizationId, tier, customNames)` when the list isn't empty and the tier excludes custom packs.
+- `parseToolpackRefs` takes the caller's `PermissionSet` and also returns `customNames: string[]`, taken from the `findManyByIds` rows it already loads, in request order.
+- **A custom pack the caller can't read is answered like a missing one** (400 `STATION_INVALID_TOOLPACK` "Unknown toolpack"), as PATCH has done since #1052 (#832's reference rule). Without it, the new refusal and the new `toolpacks` field would name a pack the caller can't read. (Found in code review.)
+- `denyUnentitledBuiltins` becomes `denyUnentitledPacks(organizationId, builtinSlugs, customPacks)`, run before the insert. One refusal names every excluded pack of both kinds, as PATCH does.
+- `toolpacksNotEntitled` takes `{ ref, label }[]`: the message names labels, and the warn log records refs (a name is user-written and needn't be unique).
 - A refusal leaves no station row.
 
 **PATCH**:

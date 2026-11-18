@@ -92,6 +92,9 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
     );
   }
 
+  // #1063: the station read names its packs; one map per station.
+  const packLabels = stationToolpackLabels(station.toolpacks);
+
   return (
     <DetailCard
       title={station.name}
@@ -145,10 +148,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
                     <ToolPackChip
                       key={pack}
                       pack={pack}
-                      label={ToolPackUtil.getLabel(
-                        pack,
-                        stationToolpackLabels(station.toolpacks)
-                      )}
+                      label={ToolPackUtil.getLabel(pack, packLabels)}
                       entitled={isPackEntitled(
                         pack,
                         entitledBuiltinSlugs,

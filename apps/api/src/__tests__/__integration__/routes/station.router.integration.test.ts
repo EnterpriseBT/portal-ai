@@ -909,6 +909,21 @@ describe("Station Router", () => {
       expect(rows.filter((r) => r.deleted === null)).toHaveLength(0);
     });
 
+    it("#1063: one POST refusal names both an excluded built-in and an excluded custom pack", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Blocked", toolPacks: ["web_search", `org:${packId}`] })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toBe(
+        "Tool packs not included in your plan: web_search, Acme CRM"
+      );
+    });
+
     it("#1063: 403s a PATCH adding a custom pack the plan excludes", async () => {
       const { organizationId } = await seedRestrictedOrg();
       const packId = await insertCustomPack(organizationId, "Acme CRM");

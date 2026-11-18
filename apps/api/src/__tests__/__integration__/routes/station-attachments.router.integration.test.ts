@@ -1012,6 +1012,25 @@ describe("station attachments (#674)", () => {
         ]);
       });
 
+      // #832's rule for references, as PATCH has applied it since #1052.
+      it("a member can't create a station with a custom pack they can't read", async () => {
+        const packId = await insertCustomPack();
+
+        currentSub = MEMBER_SUB;
+        const res = await request(app)
+          .post("/api/stations")
+          .send({ name: "Mine", toolPacks: ["data_query", `org:${packId}`] })
+          .expect(400);
+
+        expect(res.body.code).toBe(ApiCode.STATION_INVALID_TOOLPACK);
+        expect(res.body.message).toBe(`Unknown toolpack: "org:${packId}"`);
+        const rows = await db
+          .select()
+          .from(stations)
+          .where(eq(stations.organizationId, orgId));
+        expect(rows.filter((r) => r.name === "Mine")).toHaveLength(0);
+      });
+
       it("create and update responses name the packs", async () => {
         const packId = await insertCustomPack();
         const name = `pack_${packId.slice(0, 8)}`;

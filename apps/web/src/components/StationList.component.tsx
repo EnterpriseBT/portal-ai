@@ -103,6 +103,8 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   customPacksEntitled = true,
 }) => {
   // #690: what this caller may do to this station.
+  // #1063: the station read names its packs; one map per station.
+  const packLabels = stationToolpackLabels(station.toolpacks);
   const actions: ActionSuiteItem[] = [
     ...(!isDefault
       ? [
@@ -162,10 +164,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
                   <ToolPackChip
                     key={pack}
                     pack={pack}
-                    label={ToolPackUtil.getLabel(
-                      pack,
-                      stationToolpackLabels(station.toolpacks)
-                    )}
+                    label={ToolPackUtil.getLabel(pack, packLabels)}
                     entitled={isPackEntitled(
                       pack,
                       entitledBuiltinSlugs,

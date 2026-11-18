@@ -3,7 +3,6 @@ import {
   ALL_BUILTIN_SLUGS,
   isBuiltinPackEntitled,
   isPackEntitled,
-  listPackNames,
   stationDataSetupFor,
   stationToolpackLabels,
   unentitledBuiltins,
@@ -45,14 +44,6 @@ describe("stationToolpackLabels (#1063)", () => {
 
   it("is empty for a station without named packs", () => {
     expect(stationToolpackLabels(undefined).size).toBe(0);
-  });
-});
-
-describe("listPackNames (#1063)", () => {
-  it("joins names the way a sentence does", () => {
-    expect(listPackNames(["Acme CRM"])).toBe("Acme CRM");
-    expect(listPackNames(["Acme CRM", "Beta"])).toBe("Acme CRM and Beta");
-    expect(listPackNames(["A", "B", "C"])).toBe("A, B and C");
   });
 });
 

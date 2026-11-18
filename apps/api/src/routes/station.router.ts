@@ -92,7 +92,8 @@ function toolpackRef(
  */
 async function parseToolpackRefs(
   toolPacks: string[],
-  organizationId: string
+  organizationId: string,
+  set: PermissionSet
 ): Promise<
   | {
       ok: true;
@@ -118,7 +119,20 @@ async function parseToolpackRefs(
         customIds,
         { organizationId }
       );
-    const nameById = new Map(found.map((p) => [p.id, p.name]));
+    // #832: attaching a pack references it, so the caller must read it, as
+    // PATCH has required since #1052. An unreadable pack is answered like a
+    // missing one, so the answer neither confirms it exists nor names it.
+    const nameById = new Map(
+      found
+        .filter((pack) =>
+          set.can("resource.read", {
+            type: "toolpack",
+            id: pack.id,
+            createdBy: pack.createdBy,
+          })
+        )
+        .map((pack) => [pack.id, pack.name])
+    );
     const missing = customIds.find((id) => !nameById.has(id));
     if (missing) return { ok: false, value: `org:${missing}` };
     for (const id of customIds) customNames.push(nameById.get(id)!);
@@ -127,63 +141,70 @@ async function parseToolpackRefs(
 }
 
 /**
- * Reject built-in slugs the org's tier doesn't include (#284).
+ * Reject packs the org's plan doesn't include: built-in slugs outside the
+ * tier's list (#284), and any custom pack on a tier without custom packs
+ * (#1063, since the runtime drops them from every session). One refusal
+ * names both kinds.
  *
- * Runs over **newly added** slugs only. Already-persisted unentitled packs
+ * Runs over **newly added** packs only. Already-persisted unentitled packs
  * are tolerated forever: a tier downgrade must never make an existing
  * station un-editable, and an upgrade must never need a re-attach. That is
  * the same non-destructive posture #214 took for custom packs.
  *
  * Returns the `ApiError` to hand to `next()`, or null when everything is
- * allowed. An empty slug list short-circuits without touching the DB, so a
+ * allowed. An empty list short-circuits without touching the DB, so a
  * rename-only PATCH costs no entitlement queries.
  *
- * Fail-closed: if the tier policy can't be resolved, `splitBuiltinPacks`
+ * Fail-closed: if the tier policy can't be resolved, the entitlement read
  * throws and the write fails. A guard that failed open here would recreate
  * the silent state this ticket removes.
  */
-async function denyUnentitledBuiltins(
+async function denyUnentitledPacks(
   organizationId: string,
-  newBuiltinSlugs: string[]
+  newBuiltinSlugs: string[],
+  newCustomPacks: { id: string; name: string }[]
 ): Promise<ApiError | null> {
-  if (newBuiltinSlugs.length === 0) return null;
-
-  const { unentitled, tier } = await EntitlementService.splitBuiltinPacks(
-    organizationId,
-    newBuiltinSlugs
-  );
-  if (unentitled.length === 0) return null;
-
-  return toolpacksNotEntitled(organizationId, tier, unentitled);
+  const { unentitled, tier: builtinTier } =
+    await EntitlementService.splitBuiltinPacks(organizationId, newBuiltinSlugs);
+  const denied: DeniedPack[] = unentitled.map((slug) => ({
+    ref: slug,
+    label: slug,
+  }));
+  let tier = builtinTier;
+  if (newCustomPacks.length > 0) {
+    const custom =
+      await EntitlementService.customPacksEntitlement(organizationId);
+    if (!custom.entitled) {
+      tier = custom.tier;
+      for (const pack of newCustomPacks) {
+        denied.push({ ref: `org:${pack.id}`, label: pack.name });
+      }
+    }
+  }
+  if (denied.length === 0) return null;
+  return toolpacksNotEntitled(organizationId, tier, denied);
 }
 
-/**
- * #1063: refuse custom packs on a plan without custom packs. A plan that
- * drops them drops their tools from every session (#214), so attaching one
- * would show a pack that never runs. Like `denyUnentitledBuiltins`, this runs
- * over newly added packs only, and fails closed.
- */
-async function denyUnentitledCustom(
-  organizationId: string,
-  newCustomNames: string[]
-): Promise<ApiError | null> {
-  if (newCustomNames.length === 0) return null;
-  const { entitled, tier } =
-    await EntitlementService.customPacksEntitlement(organizationId);
-  if (entitled) return null;
-  return toolpacksNotEntitled(organizationId, tier, newCustomNames);
+/** A pack a write may not add: its ref, and the name the refusal gives it
+ *  (a built-in's slug, a custom pack's name). */
+interface DeniedPack {
+  ref: string;
+  label: string;
 }
 
 /** The #284 refusal, logged. One place so create and update word it alike. */
 function toolpacksNotEntitled(
   organizationId: string,
   tier: string,
-  unentitled: string[]
+  denied: DeniedPack[]
 ): ApiError {
+  // Refs, not names: a custom pack's name is user-written and needn't be
+  // unique, so the log keeps the id an operator can trace.
   logger.warn(
-    { organizationId, tier, denied: unentitled },
+    { organizationId, tier, denied: denied.map((pack) => pack.ref) },
     "Station write denied unentitled toolpacks"
   );
+  const unentitled = denied.map((pack) => pack.label);
   return new ApiError(
     403,
     ApiCode.STATION_TOOLPACK_NOT_ENTITLED,
@@ -199,7 +220,7 @@ interface ToolPackChangePlan {
    *  the label the refusal names it by (a built-in's slug, a custom pack's
    *  name). Refused only where the pack isn't already attached, which is
    *  known inside the transaction. */
-  unentitled: { ref: string; label: string }[];
+  unentitled: DeniedPack[];
   tier: string;
 }
 
@@ -652,7 +673,7 @@ stationRouter.post(
       } = parsed.data;
 
       const requestedRefs = toolPacks ?? ["data_query"];
-      const refs = await parseToolpackRefs(requestedRefs, organizationId);
+      const refs = await parseToolpackRefs(requestedRefs, organizationId, set);
       if (!refs.ok) {
         return next(
           new ApiError(
@@ -667,9 +688,11 @@ stationRouter.post(
       // the `["data_query"]` default above, which is safe only because every
       // tier entitles it (pinned by a tier-catalog invariant). Guard BEFORE
       // the station insert so a denial leaves no orphan row.
-      const denial =
-        (await denyUnentitledBuiltins(organizationId, refs.builtinSlugs)) ??
-        (await denyUnentitledCustom(organizationId, refs.customNames));
+      const denial = await denyUnentitledPacks(
+        organizationId,
+        refs.builtinSlugs,
+        refs.customIds.map((id, i) => ({ id, name: refs.customNames[i] }))
+      );
       if (denial) return next(denial);
 
       const factory = new StationModelFactory();
@@ -944,11 +967,7 @@ stationRouter.patch(
             (pack) => !live.has(pack.ref)
           );
           if (denied.length > 0) {
-            throw toolpacksNotEntitled(
-              organizationId,
-              packPlan.tier,
-              denied.map((pack) => pack.label)
-            );
+            throw toolpacksNotEntitled(organizationId, packPlan.tier, denied);
           }
           const result =
             await DbService.repository.stationToolpacks.applyChanges(

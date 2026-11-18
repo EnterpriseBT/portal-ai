@@ -23,6 +23,7 @@ import { ToolPackChipWithMetadata } from "./ToolPackChipWithMetadata.component";
 import { sdk } from "../api/sdk";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
 import {
+  ToolPackUtil,
   stationDataSetupFor,
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
@@ -118,6 +119,8 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
 
   const attachments = toStationAttachmentItems(station);
   const toolPacks = station.enabledToolpacks ?? [];
+  // #1063: the station read names its packs; one map per station.
+  const packLabels = stationToolpackLabels(station.toolpacks);
 
   const metadata = (
     <MetadataList
@@ -163,8 +166,7 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
                 <ToolPackChipWithMetadata
                   key={pack}
                   pack={pack}
-                  // #1063: the station read names its packs.
-                  name={station.toolpacks?.find((p) => p.ref === pack)?.name}
+                  name={ToolPackUtil.getLabel(pack, packLabels)}
                   entitled={isEntitled(pack)}
                 />
               ))}
@@ -215,7 +217,7 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
           toolPacks,
           isEntitled,
           customPacksEntitled,
-          stationToolpackLabels(station.toolpacks)
+          packLabels
         )}
       />
       {sessionDetails}

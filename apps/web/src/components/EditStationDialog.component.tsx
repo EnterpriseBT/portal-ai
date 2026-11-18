@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
 import { descriptionField, nameField } from "@portalai/core/contracts";
+import { listPackNames } from "@portalai/core/content";
 import type {
   AttachedToolpack,
   UpdateStationBody,
@@ -37,7 +38,6 @@ import {
   ALL_BUILTIN_SLUGS,
   someBuiltinUnentitled,
   isBuiltinPackEntitled,
-  listPackNames,
   UNENTITLED_PACK_REASON,
 } from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";

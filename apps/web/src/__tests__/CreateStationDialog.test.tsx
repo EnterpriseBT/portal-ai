@@ -392,6 +392,9 @@ describe("CreateStationDialog — length limits (#801)", () => {
 
   it("shows the description limit on submit and focuses it", async () => {
     render(<CreateStationDialog {...defaultProps} />);
+    // The dialog auto-focuses Name after it opens. Wait for that first, or it
+    // can land after the submit and take focus back from Description.
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveFocus());
     fireEvent.change(screen.getByLabelText(/Name/), {
       target: { value: "Ops" },
     });

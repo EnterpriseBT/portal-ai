@@ -54,12 +54,6 @@ export function stationToolpackLabels(
   return labels;
 }
 
-/** #1063: "A", "A and B", "A, B and C": packs named in a sentence. */
-export function listPackNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
 // ── Built-in entitlements (#284) ─────────────────────────────────────
 //
 // #214 shipped `TierPolicy.entitlements` with two axes: `customToolpacks`

@@ -45,6 +45,7 @@ import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
 import {
+  ToolPackUtil,
   stationDataSetupFor,
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
@@ -179,6 +180,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
             {({ item }: { item: StationGetResponsePayload }) => {
               const station = item.station;
               const attachments = toStationAttachmentItems(station);
+              // #1063: the station read names its packs; one map per station.
+              const packLabels = stationToolpackLabels(station.toolpacks);
               return (
                 <>
                   <Stack spacing={4}>
@@ -256,13 +259,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                     <ToolPackChipWithMetadata
                                       key={pack}
                                       pack={pack}
-                                      // #1063: the station read names
-                                      // its packs.
-                                      name={
-                                        station.toolpacks?.find(
-                                          (p) => p.ref === pack
-                                        )?.name
-                                      }
+                                      name={ToolPackUtil.getLabel(
+                                        pack,
+                                        packLabels
+                                      )}
                                       entitled={isEntitled(pack)}
                                     />
                                   )
@@ -313,7 +313,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           station.enabledToolpacks ?? [],
                           isEntitled,
                           customPacksEntitled,
-                          stationToolpackLabels(station.toolpacks)
+                          packLabels
                         )}
                       />
                     </PageHeader>

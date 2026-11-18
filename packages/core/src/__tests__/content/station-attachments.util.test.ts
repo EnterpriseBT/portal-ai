@@ -2,6 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   describeStationAttachmentGaps,
+  listPackNames,
   STATION_ATTACHMENT_MISSING_ACTION,
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
   type StationAttachmentCounts,
@@ -197,5 +198,16 @@ describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
         excludedPackNames: ["GIS"],
       }).noAccess
     ).toBe(describeStationAttachmentGaps(c).noAccess);
+  });
+});
+
+describe("listPackNames (#1063)", () => {
+  it.each([
+    [["A"], "A"],
+    [["A", "B"], "A and B"],
+    [["A", "B", "C", "D"], "A, B, C and D"],
+    [["A", "B", "C", "D", "E", "F"], "A, B, C and 3 more"],
+  ])("lists %j", (names, text) => {
+    expect(listPackNames(names)).toBe(text);
   });
 });
