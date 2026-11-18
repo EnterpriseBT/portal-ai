@@ -23,6 +23,7 @@ import {
   teardownOrg,
   seedRbacForOrg,
 } from "../utils/application.util.js";
+import { eventually } from "../utils/eventually.util.js";
 
 const CALLER_AUTH0 = "auth0|role-assign-caller";
 
@@ -153,17 +154,20 @@ describe("PUT /api/organization/members/:userId/roles (#620 set-the-set)", () =>
       );
     expect(row.role).toBe("admin");
 
-    // Audits member.role.add (post-commit, fail-open — give it a tick).
-    await new Promise((r) => setTimeout(r, 75));
-    const audits = await db
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.organizationId, orgId),
-          eq(auditLog.action, "member.role.add")
-        )
-      );
+    // Audits member.role.add (post-commit, fail-open): wait for the row.
+    const audits = await eventually(
+      () =>
+        db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.organizationId, orgId),
+              eq(auditLog.action, "member.role.add")
+            )
+          ),
+      (rows) => rows.some((a) => a.targetId === target)
+    );
     expect(audits.some((a) => a.targetId === target)).toBe(true);
   });
 

@@ -23,6 +23,7 @@ import {
   teardownOrg,
   seedRbacForOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const CALLER_AUTH0 = "auth0|policy-caller";
 
@@ -172,15 +173,20 @@ describe("/api/policies (#622 slice 3)", () => {
       .where(eq(permissionStatements.policyId, policyId));
     expect(stmts).toHaveLength(1);
 
-    const audits = await db
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.organizationId, orgId),
-          eq(auditLog.action, "policy.create")
-        )
-      );
+    // The audit write runs after the response (#1048): wait for the row.
+    const audits = await eventually(
+      () =>
+        db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.organizationId, orgId),
+              eq(auditLog.action, "policy.create")
+            )
+          ),
+      atLeast(1)
+    );
     expect(audits).toHaveLength(1);
   });
 
