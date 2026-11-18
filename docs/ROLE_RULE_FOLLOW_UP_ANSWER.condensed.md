@@ -21,21 +21,24 @@ The carve-out covers the relay and stops. The only sentence in the prompt about 
 - **A. Say it in the prompt rule.** The carve-out states that the refusal's reason is also the answer to "how do I get access", and gives the role rule its own: it isn't a permission, and someone who holds the role the message names has to make the change.
 - **B. Say it in the refusal's message** (`seat.service.ts`: "…This isn't a permission that can be granted."). It reaches the model at the moment it matters, and the web shows the same text. But the prompt sentence that produces the wrong answer would still be there, the message is allowlisted verbatim in the copy guard, and the web dialog showing it doesn't have this problem.
 
-**Decided: A.** The carve-out becomes:
+**Decided: A.** The rule's last part becomes (changes in bold):
 
-> This is about that one inference and nothing else. A refusal that gives a different reason is relayed with its reason, **and that reason is still the answer if the user asks how to get access**: a plan limit (point at Settings → Subscription & Billing; no grant fixes it), a rule about who may assign particular roles **(it isn't a permission, so there is nothing to ask for: someone who holds the role the message names has to make the change)**, or a reason from an organization-provided tool. And a question about who the members are or which roles they hold is answered from the tools as usual.
+> If the user asks how to get access **after a missing permission refused them**, the answer is that they can ask for that permission to be granted. This is about that one inference and nothing else. A refusal that gives a different reason is relayed with its reason, **and that reason is still the answer if the user asks how to get access**: a plan limit (point at Settings → Subscription & Billing; no grant fixes it), a rule about who may assign particular roles, or a reason from an organization-provided tool. **For the role rule, "how do I get access?" has one answer: an owner has to make that change themselves. Nothing is granted here, so don't suggest asking for a permission or for the owner role, and still don't pick out a person from the member list.** And a question about who the members are or which roles they hold is answered from the tools as usual.
 
-Why this wording:
+The Access & Roles notes said every refusal means "the user (or their plan) lacks that permission", on the only stations where this rule can fire. They now say a refusal to assign particular roles is a rule, not a permission the user lacks.
 
-- **"the role the message names", not "the owner".** The prompt doesn't restate the rule, so it stays right if the rule changes, and it passes the copy guard without a new allowlist entry. The message itself names the owner, which #711 allows for this one rule.
-- **One general clause plus one specific.** The general clause covers the organization tool's reason, where the prompt can't know the answer in advance. The role rule gets the explicit version because it is the one that was answered wrongly.
-- **It names a role, not a person.** "Don't pick a person from the member list" still holds; "who is the owner?" is a members question and is answered from the tools, as the rule's last sentence already says.
+How it got to this wording (each step is something a walk or the review produced):
+
+- **"someone who holds the role the message names"** (first draft). The message names the roles being assigned as well as the one that may assign them. The relay then listed "someone with the owner role" from the member list, including the caller, who is an admin.
+- **"the message says who can make the change"**, then **"neither a permission nor a role"** in a parenthesis. The follow-up became "You can ask for the owner role to be granted to you", four times in five.
+- **The general sentence was the cause.** "They can ask for that permission to be granted" was being applied with the owner role in place of the permission. Scoping it to a missing permission, and giving the role rule its answer as its own sentence, got "Only an owner can make that change. You'd need to ask an owner of the organization…" on both samples.
+- **It names the owner.** Leaving the role to the message kept the prompt from restating the rule, and that was what made it ambiguous. #711 allows this one rule to name a role; the wording passes the copy guard as written.
 
 ## Plan — one slice
 
 **Files**
-- Edit: `apps/api/src/prompts/system.prompt.ts` — the carve-out sentence, and its code comment.
-- Edit: `apps/api/src/__tests__/prompts/system.prompt.test.ts` — in "is scoped to a missing permission and leaves other refusals their reason", pin the two new phrases; add a case that the rule's general follow-up sentence ("they can ask for that permission to be granted") comes before the carve-out, so the carve-out reads as its exception.
+- Edit: `apps/api/src/prompts/system.prompt.ts` — the refusal rule's last part and its code comment; the Access & Roles notes' sentence about refusals.
+- Edit: `apps/api/src/__tests__/prompts/system.prompt.test.ts` — a "the role-assignment rule (#1056)" block, built with the access pack (the only pack whose tool returns this refusal): the follow-up clause, the owner sentence, the scoped general sentence, no person from the member list, and the pack notes not contradicting it.
 
 **Tests**
 - `npm run test:unit` in `apps/api`, limited to `system.prompt` and `permission-copy.guard`.
@@ -43,12 +46,12 @@ Why this wording:
 
 **Docs check.** The agent contract's third surface is the prompt itself. No tool description, `builtin-toolpacks.ts` mirror, Help content or durable doc describes this follow-up.
 
-## Smoke (against your dev stack)
+## Smoke (manual, against your dev stack)
 
 Signed in as a member who holds the admin role and is not an owner, in a portal on a station with the Access & Roles pack, on a plan that includes it.
 
 1. "Make <another member> an admin, keeping their member role." → refused with the rule's reason (only an owner can assign or remove the admin and owner roles). No retry.
-2. "How do I get access to do that?" → says an owner has to make the change and that it isn't a permission that can be granted. Doesn't say to ask for a permission. Names no person.
+2. "How do I get access to do that?" → says an owner has to make the change. Doesn't say to ask for a permission or for the owner role. Names no person.
 3. "Who is the owner?" → answered from the member list.
 4. Regression (#1042), as a member who can't manage roles: "Create a role called Analysts", then "How do I get access?" → names the missing permission (manage roles and access), says to ask for it to be granted, and names no role and no person.
 

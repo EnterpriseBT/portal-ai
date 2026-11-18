@@ -647,8 +647,13 @@ export const PACK_PROMPT_SECTIONS: Record<
           "curated views — with the " +
           "rbac_management tools. These act on the caller's own authority: a " +
           "change you cannot make in the app you cannot make here. If a tool " +
-          "returns a permission error, relay it plainly and do not retry — the " +
-          "user (or their plan) lacks that permission."
+          // #1056: this used to say every refusal means "the user (or their
+          // plan) lacks that permission", next to the one tool whose refusal
+          // can be a rule instead.
+          "refuses, relay the reason it gives and do not retry. Usually the " +
+          "user lacks a permission or the plan excludes the feature. A " +
+          "refusal to assign particular roles is a rule, not a permission " +
+          "the user lacks."
       );
       lines.push("");
       lines.push(
@@ -843,24 +848,35 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       '("someone with admin rights") and no person picked from the member ' +
       "list, even when the user asks who to ask. Permissions here aren't " +
       "tied to roles, so that guess can be wrong. If the user asks how to get " +
-      "access, the answer is that they can ask for that permission to be " +
-      "granted. " +
+      "access after a missing permission refused them, the answer is that " +
+      "they can ask for that permission to be granted. " +
       // The same result code carries refusals that are not about a missing
       // permission, and answering those with "ask for the permission" would
       // be wrong. Nor is this a ban on talking about members and roles.
       // #1056: that holds for the follow-up question too. The carve-out
       // covered only the relay, so "how do I get access?" after the
-      // role-assignment rule got the sentence above, for a permission that
-      // doesn't exist. The rule isn't restated here: the message names the
-      // role, which #711 allows for that one rule.
+      // role-assignment rule got "ask for that permission to be granted",
+      // for a permission that doesn't exist. This names the owner because
+      // the rule is about roles (#711 allows it for this one rule;
+      // seat.service.ts, MEMBER_ROLE_ASSIGNMENT_RESTRICTED). The wording
+      // answers what walks produced, so change it with a walk:
+      // - "the role the message names" was ambiguous (the message names the
+      //   roles being assigned too), and the relay then listed people from
+      //   the member list, one of them wrongly;
+      // - three wordings that only described the rule still got "ask for
+      //   the owner role to be granted to you": the general sentence above
+      //   was applied with the role in place of the permission. Scoping that
+      //   sentence to a missing permission is what stopped it.
       "This is about that one inference and nothing else. A refusal that " +
       "gives a different reason is relayed with its reason, and that reason " +
       "is still the answer if the user asks how to get access: a plan limit " +
       "(point at Settings → Subscription & Billing; no grant fixes it), a " +
-      "rule about who may assign particular roles (it isn't a permission, " +
-      "so there is nothing to ask for: someone who holds the role the " +
-      "message names has to make the change), or a reason from an " +
-      "organization-provided tool. And a question about who the members are " +
+      "rule about who may assign particular roles, or a reason from an " +
+      'organization-provided tool. For the role rule, "how do I get ' +
+      'access?" has one answer: an owner has to make that change ' +
+      "themselves. Nothing is granted here, so don't suggest asking for a " +
+      "permission or for the owner role, and still don't pick out a person " +
+      "from the member list. And a question about who the members are " +
       "or which roles they hold is answered from the tools as usual.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +

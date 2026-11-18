@@ -444,24 +444,68 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     // #1056: asked "how do I get access?" after the role-assignment rule
     // refused, the assistant said to ask for a permission that doesn't exist.
     // The carve-out covered the relay and said nothing about the follow-up.
-    it("gives a refusal with another reason that reason as the follow-up answer", () => {
-      const rule = ruleOf(
-        buildSystemPrompt(makeContext({ effectiveToolPacks: [] }))
-      );
-      const general = rule.indexOf(
-        "they can ask for that permission to be granted"
-      );
-      const exception = rule.indexOf(
-        "that reason is still the answer if the user asks how to get access"
-      );
-      expect(general).toBeGreaterThan(-1);
-      // The exception follows the general answer it overrides.
-      expect(exception).toBeGreaterThan(general);
-      expect(rule).toContain(
-        "a rule about who may assign particular roles (it isn't a " +
-          "permission, so there is nothing to ask for: someone who holds the " +
-          "role the message names has to make the change)"
-      );
+    // Built with the access pack: `member_set_roles` is the only tool that
+    // returns this refusal.
+    describe("the role-assignment rule (#1056)", () => {
+      const prompt = () =>
+        buildSystemPrompt(
+          makeContext({ effectiveToolPacks: ["rbac_management"] })
+        );
+
+      it("makes a refusal's own reason the answer to a follow-up", () => {
+        expect(ruleOf(prompt())).toContain(
+          "that reason is still the answer if the user asks how to get access"
+        );
+      });
+
+      it("says an owner has to make the change, as its own sentence", () => {
+        const rule = ruleOf(prompt());
+        expect(rule).toContain(
+          'For the role rule, "how do I get access?" has one answer: an ' +
+            "owner has to make that change themselves."
+        );
+        // Code review: the message names the roles being assigned as well
+        // as the one that may assign them, so the prompt doesn't point at
+        // "the role the message names".
+        expect(rule).not.toContain("the role the message names");
+      });
+
+      // Smoke walk: three wordings in a row still got "ask for the owner
+      // role to be granted to you". The general sentence was being applied
+      // with the owner role in place of the permission, so it is now scoped
+      // to a missing permission, and this rules both requests out.
+      it("rules out asking for a permission or for the owner role", () => {
+        const rule = ruleOf(prompt());
+        expect(rule).toContain(
+          "If the user asks how to get access after a missing permission " +
+            "refused them, the answer is that they can ask for that " +
+            "permission to be granted."
+        );
+        expect(rule).toContain(
+          "Nothing is granted here, so don't suggest asking for a " +
+            "permission or for the owner role"
+        );
+      });
+
+      // Smoke walk: without this the relay itself listed "someone with the
+      // owner role (…)" from the member list, one of them wrongly.
+      it("still doesn't pick a person from the member list", () => {
+        expect(ruleOf(prompt())).toContain(
+          "still don't pick out a person from the member list"
+        );
+      });
+
+      // Code review: the pack's notes said every refusal means "the user (or
+      // their plan) lacks that permission", on the stations where this rule
+      // can fire.
+      it("isn't contradicted by the Access & Roles notes", () => {
+        const text = prompt();
+        expect(text).not.toContain("lacks that permission");
+        expect(text).toContain(
+          "A refusal to assign particular roles is a rule, not a permission " +
+            "the user lacks."
+        );
+      });
     });
 
     it("agrees with the Access & Roles notes on a plan limit", () => {
