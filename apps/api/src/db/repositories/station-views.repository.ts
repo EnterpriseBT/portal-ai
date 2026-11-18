@@ -139,11 +139,12 @@ export class StationViewsRepository extends Repository<
   async softDeleteByStation(
     stationId: string,
     deletedBy: string,
-    client: DbClient = db
+    client: DbClient = db,
+    at: number = Date.now()
   ): Promise<number> {
     const rows = await this.updateWhere(
       eq(stationViews.stationId, stationId),
-      { deleted: Date.now(), deletedBy },
+      { deleted: at, deletedBy },
       client
     );
     return rows.length;
