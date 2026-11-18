@@ -8,6 +8,7 @@ import {
   ApiEndpointWireSchema,
   ColumnBindingSchema,
   ConnectorInstanceSyncRequestBodySchema,
+  FieldMappingUpdateRequestBodySchema,
   CreateApiEndpointRequestBodySchema,
   DeleteApiEndpointResponsePayloadSchema,
   DiscoverColumnsRequestBodySchema,
@@ -242,6 +243,11 @@ const restApiConnectorSchemas: Record<string, unknown> = {
   ),
   PatchApiEndpointRequestBody: z.toJSONSchema(
     PatchApiEndpointRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  // #1061: every field optional; an editor sends only what it changed.
+  FieldMappingUpdateRequestBody: z.toJSONSchema(
+    FieldMappingUpdateRequestBodySchema,
     JSON_SCHEMA_OPTS
   ),
   DeleteApiEndpointResponse: z.toJSONSchema(

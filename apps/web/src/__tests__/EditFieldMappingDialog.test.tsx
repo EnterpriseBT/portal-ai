@@ -141,22 +141,216 @@ describe("EditFieldMappingDialog", () => {
 
   // ── Submit payload ─────────────────────────────────────────────────
 
-  it("should include new fields in submit payload", async () => {
+  // #1061: a save sends only what this editor changed from the mapping the
+  // dialog opened on, so it can't put back another editor's change to a
+  // field it never touched.
+  it("closes without saving when nothing changed", async () => {
+    const onSubmit = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onClose={onClose}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByText(/trigger re-validation/)).not.toBeInTheDocument();
+  });
+
+  it("sends a renamed source field alone", async () => {
     const onSubmit = jest.fn();
     render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          required: true,
-          defaultValue: null,
-          format: null,
-          enumValues: null,
-        })
-      );
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: " email_address " },
     });
-    // #801: an unchanged key isn't resent (see the length-limit cases).
-    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("normalizedKey");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "email_address",
+    });
+  });
+
+  it("sends only the changed field, leaving the others out (#1061)", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{
+          ...defaultFieldMapping,
+          required: false,
+          defaultValue: "n/a",
+          refNormalizedKey: "id",
+          refEntityKey: "contacts",
+        }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "lowercase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({ format: "lowercase" });
+  });
+
+  it("sends required when it's toggled, and asks to revalidate", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByLabelText("Required"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({ required: false });
+  });
+
+  it("sends isPrimaryKey only when it's toggled", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByLabelText("Primary Key"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({ isPrimaryKey: true });
+  });
+
+  it("treats a whitespace-only change to format as unchanged", async () => {
+    const onSubmit = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        fieldMapping={{ ...defaultFieldMapping, format: "lowercase" }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "  lowercase " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("removes stray whitespace stored in a format", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{ ...defaultFieldMapping, format: " lowercase " }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "lowercase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({ format: "lowercase" });
+  });
+
+  it("treats an enum list differing only in spacing as unchanged", async () => {
+    const onSubmit = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onClose={onClose}
+        columnDefinitionType="enum"
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["a", " b", ""] }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Enum Values/), {
+      target: { value: "a,  b" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("sends the parsed enum list when it was edited", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        columnDefinitionType="enum"
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["a", "b"] }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Enum Values/), {
+      target: { value: "a, b, c" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      enumValues: ["a", "b", "c"],
+    });
+  });
+
+  it("clears a stale enum list on a column that's no longer an enum", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["stale"] }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({ enumValues: null });
+  });
+
+  it("asks to revalidate when a reference key changes", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        columnDefinitionType="reference"
+        fieldMapping={{
+          ...defaultFieldMapping,
+          refEntityKey: "contacts",
+          refNormalizedKey: "id",
+        }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Ref Normalized Key/), {
+      target: { value: "email" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText(/trigger re-validation/)
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("an edit after the revalidation warning retires it", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByLabelText("Required"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: /Confirm/ });
+    // Toggled back and a source rename instead: Confirm & Save would have
+    // sent the stale `required` change and dropped the rename.
+    fireEvent.click(screen.getByLabelText("Required"));
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "email_address" },
+    });
+    expect(screen.queryByRole("button", { name: /Confirm/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "email_address",
+    });
   });
 
   it("should send trimmed defaultValue and format, or null when empty", async () => {
@@ -330,9 +524,12 @@ describe("EditFieldMappingDialog", () => {
   it("should support Enter key submission", async () => {
     const onSubmit = jest.fn();
     render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "email_address" },
+    });
     await pressEnter(screen.getByLabelText(/Source Field/));
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalled();
+      expect(onSubmit).toHaveBeenCalledWith({ sourceField: "email_address" });
     });
   });
 

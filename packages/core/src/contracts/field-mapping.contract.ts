@@ -141,11 +141,15 @@ export type FieldMappingCreateResponsePayload = z.infer<
 // ── Update ────────────────────────────────────────────────────────────
 
 // #745: an unknown key is a 400 naming it, not silently dropped.
+// #1061: every field is optional and an editor sends only what it changed, so
+// a save can't put back another editor's change to a field it didn't touch.
+// The route writes exactly the keys it receives. An empty body changes nothing
+// and is refused.
 export const FieldMappingUpdateRequestBodySchema = z
   .object({
-    sourceField: z.string().min(1),
+    sourceField: z.string().min(1).optional(),
     isPrimaryKey: z.boolean().optional(),
-    columnDefinitionId: z.string(),
+    columnDefinitionId: z.string().optional(),
     normalizedKey: normalizedKeyBase.optional(),
     required: z.boolean().optional(),
     defaultValue: nullableString.optional(),
@@ -154,7 +158,10 @@ export const FieldMappingUpdateRequestBodySchema = z
     refNormalizedKey: nullableString.optional(),
     refEntityKey: nullableString.optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "Send at least one field to change",
+  });
 
 export type FieldMappingUpdateRequestBody = z.infer<
   typeof FieldMappingUpdateRequestBodySchema

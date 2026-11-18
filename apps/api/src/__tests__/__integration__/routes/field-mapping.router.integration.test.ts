@@ -836,6 +836,55 @@ describe("Field Mapping Router", () => {
       expect(res.body.details.issues[0].path).toEqual(["sourceField"]);
     });
 
+    it("#1061: writes only the fields sent, leaving the others as stored", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        { sourceField: "renamed_by_b", isPrimaryKey: false }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ isPrimaryKey: true });
+
+      expect(res.status).toBe(200);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, mapping.id));
+      expect(row.isPrimaryKey).toBe(true);
+      expect(row.sourceField).toBe("renamed_by_b");
+      expect(row.columnDefinitionId).toBe(columnDefinitionId);
+    });
+
+    it("#1061: an empty body changes nothing and is a 400", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+    });
+
     it("should return 404 when field mapping does not exist", async () => {
       const { columnDefinitionId } = await seedFullChain(
         db as ReturnType<typeof drizzle>

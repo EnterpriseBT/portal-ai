@@ -633,21 +633,17 @@ fieldMappingRouter.post(
  *         schema:
  *           type: string
  *         description: Field mapping ID
+ *     description: >-
+ *       Writes only the fields sent (#1061). Send just what changed, so a save
+ *       doesn't put back another editor's change to a field it didn't touch.
+ *       A `columnDefinitionId` that differs from the stored one reassigns the
+ *       mapping. An empty body is a 400.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               sourceField:
- *                 type: string
- *                 minLength: 1
- *               isPrimaryKey:
- *                 type: boolean
- *               columnDefinitionId:
- *                 type: string
- *                 description: Reassign this field mapping to a different column definition
+ *             $ref: '#/components/schemas/FieldMappingUpdateRequestBody'
  *     responses:
  *       200:
  *         description: Field mapping updated
@@ -740,9 +736,10 @@ fieldMappingRouter.patch(
         const colDef = await DbService.repository.columnDefinitions.findById(
           parsed.data.columnDefinitionId
         );
-        // #832: switching to another column definition needs read on it;
-        // the editor resends the stored id on every save, which isn't a
-        // change and isn't re-checked.
+        // #832: switching to another column definition needs read on it.
+        // Resending the stored id (an older client, or a tool) isn't a
+        // change and isn't re-checked; the editor omits it unless it changed
+        // (#1061).
         const switching =
           parsed.data.columnDefinitionId !== existing.columnDefinitionId;
         if (
