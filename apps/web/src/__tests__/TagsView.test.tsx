@@ -14,6 +14,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TagsViewUI } = await import("../views/Tags.view");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 const listResult = (
   entityTags: Array<{
@@ -123,15 +125,23 @@ describe("TagsViewUI", () => {
     mockTagList.mockReturnValue(listResult([]));
     render(<TagsViewUI {...props} createGate={{ kind: "hide" }} />);
     expect(screen.getByText("No tags found")).toBeInTheDocument();
+    expectEmptyListHelp("tags");
     expect(screen.queryByRole("button", { name: "Create Tag" })).toBeNull();
   });
 
-  it("offers Create in the empty state for an allow gate", () => {
+  it("keeps No results for a search that matches nothing (#1059)", async () => {
     mockTagList.mockReturnValue(listResult([]));
     render(<TagsViewUI {...props} />);
-    // Header + empty state.
+    await expectFilteredEmptyKeepsNoResults("tags");
+  });
+
+  // #1059: the header's Create is the only one; the empty state explains the
+  // list and links to Help instead of repeating it.
+  it("offers Create only in the header for an allow gate", () => {
+    mockTagList.mockReturnValue(listResult([]));
+    render(<TagsViewUI {...props} />);
     expect(screen.getAllByRole("button", { name: "Create Tag" })).toHaveLength(
-      2
+      1
     );
   });
 });

@@ -44,6 +44,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionListView } =
   await import("../views/ColumnDefinitionList.view");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 type Capabilities = { read: boolean; write: boolean; delete: boolean };
 
@@ -118,7 +120,7 @@ describe("ColumnDefinitionListView", () => {
     expect(screen.getByText("Email")).toBeInTheDocument();
   });
 
-  it("should display empty state when no results", () => {
+  it("should display empty state when no results", async () => {
     currentListQuery = {
       data: { columnDefinitions: [], total: 0, limit: 10, offset: 0 },
       isLoading: false,
@@ -128,6 +130,9 @@ describe("ColumnDefinitionListView", () => {
 
     render(<ColumnDefinitionListView />);
     expect(screen.getByText("No column definitions found")).toBeInTheDocument();
+    expectEmptyListHelp("columnDefinitions");
+    // #1059: a search that matches nothing keeps "No results".
+    await expectFilteredEmptyKeepsNoResults("columnDefinitions");
   });
 
   it("should display error state", () => {

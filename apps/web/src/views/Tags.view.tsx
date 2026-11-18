@@ -13,7 +13,7 @@ import {
   GatedButton,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
@@ -26,6 +26,7 @@ import { TagFormModal } from "../components/TagFormModal.component";
 import { DeleteTagDialog } from "../components/DeleteTagDialog.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -115,19 +116,14 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityTagListResponsePayload;
                     if (list.entityTags.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
-                        <PageEmptyState
+                        <EmptyState
                           icon={<Icon name={IconName.Label} />}
                           title="No tags found"
-                          description="Create your first tag to get started."
-                          action={createButton}
+                          {...emptyListHelp("tags")}
                         />
                       );
                     }

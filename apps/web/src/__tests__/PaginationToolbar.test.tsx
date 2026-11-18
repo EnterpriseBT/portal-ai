@@ -150,6 +150,59 @@ describe("usePagination", () => {
     });
   });
 
+  // #1059: an empty list shows its explainer unless the caller filtered it.
+  // A filter still at its configured default isn't the caller filtering:
+  // the Catalog's default `isActive` filter made an empty catalog read as
+  // filtered, so it never showed the explainer.
+  describe("isFiltered", () => {
+    const withDefault: FilterConfig[] = [
+      {
+        type: "boolean",
+        field: "isActive",
+        label: "Active",
+        defaultValue: ["true"],
+      },
+      {
+        type: "multi-select",
+        field: "status",
+        label: "Status",
+        options: [{ label: "Active", value: "active" }],
+      },
+    ];
+
+    it("is false with no search and every filter at its default", () => {
+      const { result } = renderHook(() =>
+        usePagination({ filters: withDefault })
+      );
+      expect(result.current.filters.isActive).toEqual(["true"]);
+      expect(result.current.isFiltered).toBe(false);
+    });
+
+    it("is true once a filter moves off its default", () => {
+      const { result } = renderHook(() =>
+        usePagination({ filters: withDefault })
+      );
+      act(() => result.current.setFilter("isActive", ["false"]));
+      expect(result.current.isFiltered).toBe(true);
+      act(() => result.current.setFilter("isActive", []));
+      expect(result.current.isFiltered).toBe(true);
+    });
+
+    it("is true for a filter without a default once it has a value", () => {
+      const { result } = renderHook(() =>
+        usePagination({ filters: withDefault })
+      );
+      act(() => result.current.setFilter("status", ["active"]));
+      expect(result.current.isFiltered).toBe(true);
+    });
+
+    it("is true while the search has text", () => {
+      const { result } = renderHook(() => usePagination());
+      act(() => result.current.setSearch("acme"));
+      expect(result.current.isFiltered).toBe(true);
+    });
+  });
+
   describe("search", () => {
     // #433 made the search debounced: the input updates immediately, the
     // query waits for typing to settle. These two assert the same behaviour

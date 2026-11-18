@@ -12,11 +12,12 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   Stack,
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { EmptyResults } from "./EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import { RouterLink } from "./RouterLink.component";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -199,10 +200,10 @@ export const StationListUI: React.FC<StationListUIProps> = ({
     return hasActiveFilters ? (
       <EmptyResults />
     ) : (
-      <PageEmptyState
+      <EmptyState
         icon={<Icon name={IconName.SatelliteAlt} />}
         title="No stations found"
-        description="Create your first station to get started."
+        {...emptyListHelp("stations")}
       />
     );
   }

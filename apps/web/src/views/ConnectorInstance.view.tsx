@@ -13,7 +13,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   PageSection,
   Stack,
@@ -585,7 +585,7 @@ export const ConnectorInstanceView = ({
                               }) => {
                                 if (entities.connectorEntities.length === 0) {
                                   return (
-                                    <PageEmptyState
+                                    <EmptyState
                                       icon={<Icon name={IconName.DataObject} />}
                                       title="No entities found"
                                     />

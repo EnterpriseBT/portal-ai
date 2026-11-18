@@ -15,7 +15,29 @@ export interface RouterLinkProps extends Omit<
  * `Link` wants `to`. Pass this as `linkComponent` wherever core links navigate.
  */
 export const RouterLink = React.forwardRef<HTMLAnchorElement, RouterLinkProps>(
-  ({ href, ...rest }, ref) => <Link ref={ref} to={href} {...rest} />
+  ({ href, ...rest }, ref) => {
+    // #1059: TanStack's `to` is a path. A query goes as `search` and a
+    // fragment (a Help entry's `#faq-entry-…`) as `hash`; left in `to`, they
+    // name a route that doesn't exist or stop short of the entry.
+    if (!/[?#]/.test(href)) return <Link ref={ref} to={href} {...rest} />;
+    const hashAt = href.indexOf("#");
+    const beforeHash = hashAt === -1 ? href : href.slice(0, hashAt);
+    const hash = hashAt === -1 ? "" : href.slice(hashAt + 1);
+    const queryAt = beforeHash.indexOf("?");
+    const path = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
+    const query = queryAt === -1 ? "" : beforeHash.slice(queryAt + 1);
+    const search = Object.fromEntries(new URLSearchParams(query));
+    const to = path || ".";
+    return (
+      <Link
+        ref={ref}
+        to={to}
+        {...(query ? { search } : {})}
+        {...(hash ? { hash } : {})}
+        {...rest}
+      />
+    );
+  }
 );
 
 RouterLink.displayName = "RouterLink";

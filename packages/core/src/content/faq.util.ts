@@ -125,6 +125,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Column Definition", "Field Mapping", "Data Types"],
   },
   {
+    question: "What is a view?",
+    answer:
+      "A view is a named, filtered window onto one entity's records: a chosen set of its columns and an optional row filter. You attach views to a station, and a portal session queries the station's views to answer your questions, so a view decides exactly which data the assistant can see. Views are created on the Views page and attached to a station, and a view can be shared, so the views you see include any shared with you.",
+    category: FAQCategory.Data,
+    relatedGlossaryTerms: ["Curated View", "Station"],
+  },
+  {
     question: "What are field mappings?",
     answer:
       'A field mapping links a raw field on a connector entity to a column definition. Mapping the CRM\'s "Email Address" and the CSV\'s "email" to the same email column definition is what makes records from different sources comparable.',
@@ -347,6 +354,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Job Status", "Portal", "Connector Instance"],
   },
   // Jobs & Background Tasks
+  {
+    question: "What are jobs?",
+    answer:
+      "A job is a background task the platform runs for you: a sync, a file import, a revalidation, a bulk geocode or transform, a long query, or deleting an entity's data. The Jobs page lists them with their status and progress. While a job runs, the data it works on is locked from edits, and it unlocks when the job finishes.",
+    category: FAQCategory.Jobs,
+    relatedGlossaryTerms: ["Job", "Job Status"],
+  },
   {
     question: "What do job statuses mean?",
     answer:

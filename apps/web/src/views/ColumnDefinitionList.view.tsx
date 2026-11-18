@@ -13,7 +13,7 @@ import {
   GatedButton,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
@@ -28,6 +28,7 @@ import {
 import { CreateColumnDefinitionDialog } from "../components/CreateColumnDefinitionDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -128,17 +129,14 @@ export const ColumnDefinitionListViewUI: React.FC<
                     list: ColumnDefinitionListResponsePayload;
                   }) => {
                     if (list.columnDefinitions.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
-                        <PageEmptyState
+                        <EmptyState
                           icon={<Icon name={IconName.ViewColumn} />}
                           title="No column definitions found"
+                          {...emptyListHelp("columnDefinitions")}
                         />
                       );
                     }

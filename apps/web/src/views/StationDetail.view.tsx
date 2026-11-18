@@ -13,7 +13,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   PageSection,
   Stack,
@@ -327,7 +327,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                 }) => {
                                   if (portals.portals.length === 0) {
                                     return (
-                                      <PageEmptyState
+                                      <EmptyState
                                         icon={<Icon name={IconName.Portal} />}
                                         title="No portals yet"
                                       />

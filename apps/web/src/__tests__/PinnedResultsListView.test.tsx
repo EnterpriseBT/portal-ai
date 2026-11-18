@@ -32,6 +32,8 @@ const { QueryClient } = await import("@tanstack/react-query");
 const { ToastContext } = await import("../utils/toast.context");
 const { PinnedResultsListView } =
   await import("../views/PinnedResultsListView.view");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 const mockToast = {
   success: jest.fn<ToastApi["success"]>(),
@@ -139,7 +141,7 @@ describe("PinnedResultsListView", () => {
     ).toBeInTheDocument();
   });
 
-  it("should display empty results when no pinned results exist", () => {
+  it("should display empty results when no pinned results exist", async () => {
     currentListQuery = {
       data: { portalResults: [], total: 0, limit: 20, offset: 0 },
       isLoading: false,
@@ -149,6 +151,9 @@ describe("PinnedResultsListView", () => {
 
     render(<PinnedResultsListView />);
     expect(screen.getByText("No pinned results")).toBeInTheDocument();
+    expectEmptyListHelp("pinnedResults");
+    // #1059: a search that matches nothing keeps "No results".
+    await expectFilteredEmptyKeepsNoResults("pinnedResults");
   });
 
   it("should display pinned result cards when results exist", () => {

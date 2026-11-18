@@ -5,6 +5,7 @@ const { expectNoAxeViolations, render, screen, fireEvent, within } =
   await import("./test-utils");
 const { StationListUI, StationCardUI } =
   await import("../components/StationList.component");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 type StationFixture = StationListResponsePayload["stations"][number];
 const makeStation = (
@@ -219,6 +220,15 @@ describe("StationListUI", () => {
   it("should show empty state when no stations", () => {
     render(<StationListUI {...defaultListProps} stations={[]} />);
     expect(screen.getByText("No stations found")).toBeInTheDocument();
+    expectEmptyListHelp("stations");
+  });
+
+  it("keeps No results for a filter that matches nothing (#1059)", () => {
+    render(
+      <StationListUI {...defaultListProps} stations={[]} hasActiveFilters />
+    );
+    expect(screen.getByText(/No results found/)).toBeInTheDocument();
+    expect(screen.queryByText("No stations found")).toBeNull();
   });
 
   it("should mark the correct station as default", () => {

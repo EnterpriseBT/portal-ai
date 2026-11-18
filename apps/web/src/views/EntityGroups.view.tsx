@@ -9,7 +9,7 @@ import {
   Box,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   CardList,
   DetailCard,
@@ -27,6 +27,7 @@ import { CreateEntityGroupDialog } from "../components/CreateEntityGroupDialog.c
 import DataResult from "../components/DataResult.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { RouterLink } from "../components/RouterLink.component";
 import {
@@ -180,19 +181,14 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityGroupListResponsePayload;
                     if (list.entityGroups.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
-                        <PageEmptyState
+                        <EmptyState
                           icon={<Icon name={IconName.Hub} />}
                           title="No entity groups found"
-                          description="Create your first entity group to get started."
-                          action={createButton}
+                          {...emptyListHelp("entityGroups")}
                         />
                       );
                     }

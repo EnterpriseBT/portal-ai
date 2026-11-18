@@ -6,7 +6,7 @@ import {
   CardList,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
   Tab,
@@ -37,6 +37,7 @@ import {
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import {
   PaginationToolbar,
   usePagination,
@@ -209,15 +210,13 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorInstances: response }}>
                     {({ connectorInstances }) =>
                       connectorInstances.total === 0 ? (
-                        instancePagination.search ||
-                        Object.values(instancePagination.filters).some(
-                          (v) => v.length > 0
-                        ) ? (
+                        instancePagination.isFiltered ? (
                           <EmptyResults />
                         ) : (
-                          <PageEmptyState
+                          <EmptyState
                             icon={<Icon name={IconName.MemoryChip} />}
                             title="No connectors found"
+                            {...emptyListHelp("connectors")}
                           />
                         )
                       ) : (
@@ -264,15 +263,13 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorDefinitions: response }}>
                     {({ connectorDefinitions }) =>
                       connectorDefinitions.total === 0 ? (
-                        catalogPagination.search ||
-                        Object.values(catalogPagination.filters).some(
-                          (v) => v.length > 0
-                        ) ? (
+                        catalogPagination.isFiltered ? (
                           <EmptyResults />
                         ) : (
-                          <PageEmptyState
+                          <EmptyState
                             icon={<Icon name={IconName.MemoryChip} />}
                             title="No connector definitions found"
+                            {...emptyListHelp("connectorDefinitions")}
                           />
                         )
                       ) : (

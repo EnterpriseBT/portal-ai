@@ -43,6 +43,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntitiesViewUI } = await import("../views/Entities.view");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -162,11 +164,14 @@ describe("EntitiesView", () => {
     expect(screen.getByText("deals")).toBeInTheDocument();
   });
 
-  it("renders empty state when no entities", () => {
+  it("renders empty state when no entities", async () => {
     mockEntityList.mockReturnValue(emptyEntities);
 
     render(<EntitiesViewUI {...sharedProps} />);
     expect(screen.getByText("No entities found")).toBeInTheDocument();
+    expectEmptyListHelp("entities");
+    // #1059: a search that matches nothing keeps "No results".
+    await expectFilteredEmptyKeepsNoResults("entities");
   });
 
   it("renders pagination toolbar", () => {

@@ -13,7 +13,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   PageSection,
   Stack,
@@ -94,7 +94,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
     );
   } else if (!recordsLoading && records.length === 0) {
     recordsBody = (
-      <PageEmptyState
+      <EmptyState
         icon={<Icon name={IconName.Layers} />}
         title="No rows"
         description="This view currently returns no rows for you."
@@ -282,7 +282,7 @@ export const CuratedViewDetail: React.FC = () => {
       <>
         <HiddenPageHeading>View</HiddenPageHeading>
         {viewResult.isError && (
-          <PageEmptyState
+          <EmptyState
             icon={<Icon name={IconName.Layers} />}
             title="View not found"
             description="This view does not exist or is not available to you."
