@@ -232,6 +232,50 @@ describe("UpdateStationBodySchema", () => {
     ).toBe(false);
   });
 
+  // #1052: tool packs change by difference, like connectors and views.
+  describe("toolPackChanges (#1052)", () => {
+    it("accepts packs to add", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPackChanges: { add: ["web_search", "org:pack-1"] },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts packs to remove", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPackChanges: { remove: ["statistics"] },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts both, and alone satisfies 'at least one field'", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPackChanges: { add: ["web_search"], remove: ["statistics"] },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.toolPackChanges).toEqual({
+          add: ["web_search"],
+          remove: ["statistics"],
+        });
+      }
+    });
+
+    it("rejects a pack that is both added and removed", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPackChanges: { add: ["statistics"], remove: ["statistics"] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects an unknown key inside it", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPackChanges: { added: ["web_search"] },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   it("should reject empty object (at least one field required)", () => {
     const result = UpdateStationBodySchema.safeParse({});
     expect(result.success).toBe(false);

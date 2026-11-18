@@ -176,6 +176,12 @@ export const UpdateStationBodySchema = z
     description: descriptionField().optional(),
     connectorInstanceChanges: StationAttachmentChangesSchema.optional(),
     curatedViewChanges: StationAttachmentChangesSchema.optional(),
+    /**
+     * #1052: tool packs change by difference too. Values are built-in slugs
+     * and `org:<id>` refs. A whole list goes stale while a dialog is open,
+     * and a save of it put back what another editor had removed.
+     */
+    toolPackChanges: StationAttachmentChangesSchema.optional(),
     toolPacks: z.array(z.string()).min(1).optional(),
   })
   // #706: an unknown key (e.g. create's `curatedViewIds`) is a 400, not a
