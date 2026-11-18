@@ -721,7 +721,7 @@ describe("Station Router", () => {
 
       const res = await request(app)
         .patch(`/api/stations/${station.id}`)
-        .send({ toolPacks: ["data_query", "visualize"] })
+        .send({ toolPackChanges: { add: ["visualize"] } })
         .expect(403);
 
       expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
@@ -762,10 +762,11 @@ describe("Station Router", () => {
       await attachPack(station.id, "data_query");
       await attachPack(station.id, "entity_management");
 
-      // Nothing is newly added, so nothing is denied.
+      // Nothing is newly added, so nothing is denied. (#1052: an update
+      // sends differences; adding an attached pack is the same no-op.)
       await request(app)
         .patch(`/api/stations/${station.id}`)
-        .send({ toolPacks: ["data_query", "entity_management"] })
+        .send({ toolPackChanges: { add: ["entity_management"] } })
         .expect(200);
 
       const packs = await livePackRows(station.id);
@@ -787,7 +788,7 @@ describe("Station Router", () => {
       // Dropping an unentitled pack is always allowed.
       await request(app)
         .patch(`/api/stations/${station.id}`)
-        .send({ toolPacks: ["data_query"] })
+        .send({ toolPackChanges: { remove: ["entity_management"] } })
         .expect(200);
       expect(
         (await livePackRows(station.id)).map((p) => p.builtinSlug)
@@ -796,7 +797,7 @@ describe("Station Router", () => {
       // Re-adding it is a new attach, and denied.
       const res = await request(app)
         .patch(`/api/stations/${station.id}`)
-        .send({ toolPacks: ["data_query", "entity_management"] })
+        .send({ toolPackChanges: { add: ["entity_management"] } })
         .expect(403);
       expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
     });
@@ -1094,6 +1095,22 @@ describe("Station Router", () => {
       }).expect(200);
 
       expect(await livePacks(station.id)).toEqual(["data_query"]);
+    });
+
+    it("400s create's whole-list toolPacks, naming the key, and changes nothing", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "statistics",
+      ]);
+
+      const res = await patch(station.id, {
+        toolPacks: ["data_query"],
+      }).expect(400);
+
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_PAYLOAD);
+      expect(res.body.message).toContain("toolPacks");
+      expect(await livePacks(station.id)).toEqual(["data_query", "statistics"]);
     });
 
     // ── Audit ───────────────────────────────────────────────────────

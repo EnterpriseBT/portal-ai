@@ -274,6 +274,18 @@ describe("UpdateStationBodySchema", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    // The whole list is gone from updates, not kept beside the difference:
+    // two ways to change packs on one route is how the next bug starts.
+    it("rejects create's whole-list toolPacks as an unknown key", () => {
+      const result = UpdateStationBodySchema.safeParse({
+        toolPacks: ["data_query"],
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(JSON.stringify(result.error.issues)).toContain("toolPacks");
+      }
+    });
   });
 
   it("should reject empty object (at least one field required)", () => {

@@ -751,9 +751,10 @@ stationRouter.post(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
  *         description: >
- *           The caller can't write the station; a built-in tool pack in the
- *           payload is not included in the organization's plan (only newly
- *           attached packs are rejected); or an attachment id is missing, in
+ *           The caller can't write the station; a built-in tool pack in
+ *           `toolPackChanges.add` that isn't already attached is not included
+ *           in the organization's plan (`STATION_TOOLPACK_NOT_ENTITLED`;
+ *           removing an attached one always works); or an attachment id is missing, in
  *           another organization, or not readable by the caller
  *           (`STATION_ATTACHMENT_NOT_READABLE`, one code for all three).
  *         content:
@@ -804,7 +805,6 @@ stationRouter.patch(
         description,
         connectorInstanceChanges,
         curatedViewChanges,
-        toolPacks,
         toolPackChanges,
       } = parsed.data;
 
@@ -825,41 +825,6 @@ stationRouter.patch(
           );
         }
         packPlan = planned.plan;
-      }
-
-      let parsedRefs: { builtinSlugs: string[]; customIds: string[] } | null =
-        null;
-      if (toolPacks !== undefined) {
-        const refs = await parseToolpackRefs(toolPacks, organizationId);
-        if (!refs.ok) {
-          return next(
-            new ApiError(
-              400,
-              ApiCode.STATION_INVALID_TOOLPACK,
-              `Unknown toolpack: "${refs.value}"`
-            )
-          );
-        }
-        parsedRefs = {
-          builtinSlugs: refs.builtinSlugs,
-          customIds: refs.customIds,
-        };
-
-        // #284: only NEWLY added built-ins are gated. Diff the payload against
-        // what's already persisted (the same read GET performs) so re-sending
-        // or removing an already-attached unentitled pack keeps working.
-        const existingRows =
-          await DbService.repository.stationToolpacks.findByStationId(id);
-        const existingBuiltins = new Set(
-          existingRows
-            .map((r) => r.builtinSlug)
-            .filter((slug): slug is string => slug !== null)
-        );
-        const denial = await denyUnentitledBuiltins(
-          organizationId,
-          refs.builtinSlugs.filter((slug) => !existingBuiltins.has(slug))
-        );
-        if (denial) return next(denial);
       }
 
       const updates: Record<string, unknown> = {
@@ -884,17 +849,6 @@ stationRouter.patch(
           updates as never,
           tx
         );
-        if (parsedRefs !== null) {
-          await DbService.repository.stationToolpacks.replaceForStation(
-            id,
-            {
-              builtinSlugs: parsedRefs.builtinSlugs,
-              organizationToolpackIds: parsedRefs.customIds,
-            },
-            { userId },
-            tx
-          );
-        }
         let packs = { added: [] as string[], removed: [] as string[] };
         if (packPlan !== null) {
           // #284: only a pack that isn't attached yet is held to the plan.
