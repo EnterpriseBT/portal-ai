@@ -1090,23 +1090,34 @@ stationRouter.delete(
 
         // #674: the station's attachments go with it (soft delete, like the
         // station row). #1064: its tool pack rows too; they used to outlive it.
+        // One stamp for all of it, the same one migration 0135 copies onto
+        // pack rows left behind before.
+        const deletedAt = Date.now();
         await DbService.repository.stationViews.softDeleteByStation(
           id,
           userId,
-          tx
+          tx,
+          deletedAt
         );
         await DbService.repository.stationInstances.softDeleteByStation(
           id,
           userId,
-          tx
+          tx,
+          deletedAt
         );
         await DbService.repository.stationToolpacks.softDeleteByStation(
           id,
           userId,
-          tx
+          tx,
+          deletedAt
         );
 
-        await DbService.repository.stations.softDelete(id, userId, tx);
+        await DbService.repository.stations.softDelete(
+          id,
+          userId,
+          tx,
+          deletedAt
+        );
         return cleared.length > 0
           ? { name: deleting?.name ?? station.name }
           : null;

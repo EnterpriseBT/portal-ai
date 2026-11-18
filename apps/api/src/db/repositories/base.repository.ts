@@ -359,9 +359,11 @@ export class Repository<
   async softDelete(
     id: string,
     deletedBy: string,
-    client: DbClient = db
+    client: DbClient = db,
+    /** #1064: a cascade passes one stamp for the row and what goes with it. */
+    at: number = Date.now()
   ): Promise<TSelect | undefined> {
-    const now = Date.now();
+    const now = at;
     const [row] = await (client as typeof db)
       .update(this.table)
       .set({ deleted: now, deletedBy } as any)

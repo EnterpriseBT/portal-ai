@@ -1221,13 +1221,19 @@ describe("Station Router", () => {
 
       await request(app).delete(`/api/stations/${doomed.id}`).expect(200);
 
+      const [deletedStation] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.id, doomed.id));
       const rows = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(stationToolpacks);
       const doomedRows = rows.filter((r) => r.stationId === doomed.id);
       expect(doomedRows).toHaveLength(2);
       for (const row of doomedRows) {
-        expect(row.deleted).not.toBeNull();
+        // One stamp for the station and everything that goes with it, the
+        // same one migration 0135 copies onto rows left behind before.
+        expect(row.deleted).toBe(deletedStation.deleted);
         expect(row.deletedBy).toBe(userId);
       }
       const keptRows = rows.filter((r) => r.stationId === kept.id);

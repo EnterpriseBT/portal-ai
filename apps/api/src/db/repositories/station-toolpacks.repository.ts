@@ -276,11 +276,12 @@ export class StationToolpacksRepository extends Repository<
   async softDeleteByStation(
     stationId: string,
     deletedBy: string,
-    client: DbClient = db
+    client: DbClient = db,
+    at: number = Date.now()
   ): Promise<number> {
     const rows = await this.updateWhere(
       eq(stationToolpacks.stationId, stationId),
-      { deleted: Date.now(), deletedBy },
+      { deleted: at, deletedBy },
       client
     );
     return rows.length;

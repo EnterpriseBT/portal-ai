@@ -34,7 +34,7 @@ describe("0135 retire-deleted-station-toolpacks (#1064)", () => {
     }
   };
 
-  async function station(deleted: { at: number; by: string } | null) {
+  async function station(deleted: { at: number; by: string | null } | null) {
     const id = generateId();
     await db.insert(schema.stations).values({
       id,
@@ -51,17 +51,39 @@ describe("0135 retire-deleted-station-toolpacks (#1064)", () => {
     return id;
   }
 
+  async function customPack() {
+    const id = generateId();
+    await db.insert(schema.organizationToolpacks).values({
+      id,
+      organizationId: orgId,
+      name: `Custom ${id.slice(0, 8)}`,
+      endpoints: [],
+      signingSecret: "secret",
+      tools: [],
+      schemaFetchedAt: Date.now(),
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return id;
+  }
+
+  /** A built-in slug, or `org:<id>` for a custom pack's row. */
   async function pack(
     stationId: string,
-    slug: string,
+    ref: string,
     deleted: { at: number; by: string } | null = null
   ) {
+    const custom = ref.startsWith("org:");
     const id = generateId();
     await db.insert(schema.stationToolpacks).values({
       id,
       stationId,
-      builtinSlug: slug,
-      organizationToolpackId: null,
+      builtinSlug: custom ? null : ref,
+      organizationToolpackId: custom ? ref.slice("org:".length) : null,
       created: Date.now(),
       createdBy: "SYSTEM_TEST",
       updated: null,
@@ -103,6 +125,7 @@ describe("0135 retire-deleted-station-toolpacks (#1064)", () => {
     const orphanB = await pack(gone, "statistics");
     const alreadyDetached = await pack(gone, "web_search", earlier);
     const liveRow = await pack(live, "data_query");
+    const customOrphan = await pack(gone, `org:${await customPack()}`);
 
     await runMigration();
     // Idempotent: nothing is left for a second run to match.
@@ -121,5 +144,23 @@ describe("0135 retire-deleted-station-toolpacks (#1064)", () => {
       deletedBy: earlier.by,
     });
     expect(await liveRow()).toEqual({ deleted: null, deletedBy: null });
+    // A custom pack's row is retired the same way as a built-in's.
+    expect(await customOrphan()).toEqual({
+      deleted: stationDeleted.at,
+      deletedBy: stationDeleted.by,
+    });
+  });
+
+  // deleted_by is copied as it is, so a station deleted without one passes
+  // the NULL on: the row is still retired, by deleted, which is what every
+  // live-row read checks.
+  it("retires the rows of a station deleted with no deleted_by", async () => {
+    const at = 1_700_000_000_000;
+    const gone = await station({ at, by: null });
+    const orphan = await pack(gone, "data_query");
+
+    await runMigration();
+
+    expect(await orphan()).toEqual({ deleted: at, deletedBy: null });
   });
 });
