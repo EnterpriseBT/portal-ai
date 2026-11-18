@@ -8,7 +8,7 @@ const { EditEntityGroupDialog } =
 const defaultProps = {
   open: true,
   onClose: jest.fn(),
-  group: { name: "Customers", description: null },
+  group: { id: "group-1", name: "Customers", description: null },
   onSubmit: jest.fn(),
   isPending: false,
   serverError: null,
@@ -127,7 +127,7 @@ describe("EditEntityGroupDialog — a name saved before the limit (#801)", () =>
     render(
       <EditEntityGroupDialog
         {...defaultProps}
-        group={{ name: "G".repeat(500), description: null }}
+        group={{ id: "group-1", name: "G".repeat(500), description: null }}
         onSubmit={onSubmit}
       />
     );
@@ -150,5 +150,118 @@ describe("EditEntityGroupDialog — a name saved before the limit (#801)", () =>
       await screen.findByText("Description must be 2000 characters or fewer")
     ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// #1053: the form compared its fields with the live group and was keyed on
+// the group's values. When the page refetched another editor's rename behind
+// the open dialog, the form remounted on the new values and what this editor
+// had typed was gone.
+describe("EditEntityGroupDialog — another editor's changes while open (#1053)", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => jest.clearAllMocks());
+
+  const opened = {
+    id: "group-1",
+    name: "Customers",
+    description: "Accounts we bill",
+  };
+  const descriptionField = () =>
+    screen.getByRole("textbox", { name: /description/i });
+
+  /** Open on `opened`; `refetch(after)` is the page refetching behind it. */
+  const open = () => {
+    const onSubmit = jest.fn();
+    const props = { ...defaultProps, onSubmit };
+    const { rerender } = render(
+      <EditEntityGroupDialog {...props} group={opened} />
+    );
+    const refetch = (after: typeof opened) =>
+      rerender(<EditEntityGroupDialog {...props} group={after} />);
+    return { onSubmit, refetch };
+  };
+
+  it("keeps what this editor typed when another editor's rename arrives", async () => {
+    const { refetch } = open();
+    await user.clear(descriptionField());
+    await user.type(descriptionField(), "Mine");
+    refetch({ ...opened, name: "Clients" });
+    expect(descriptionField()).toHaveValue("Mine");
+  });
+
+  it("doesn't put back a name another editor changed", async () => {
+    const { onSubmit, refetch } = open();
+    await user.clear(descriptionField());
+    await user.type(descriptionField(), "Mine");
+    refetch({ ...opened, name: "Clients" });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({ description: "Mine" });
+  });
+
+  it("doesn't put back a description another editor changed", async () => {
+    const { onSubmit, refetch } = open();
+    refetch({ ...opened, description: "Theirs" });
+    await user.clear(nameField());
+    await user.type(nameField(), "Mine");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Mine" });
+  });
+
+  // Code review: with no key at all, browser Back to another group with the
+  // dialog open kept the first group's form, and a save sent its edits to
+  // the second.
+  it("starts over when the page moves to another group", async () => {
+    const { onSubmit, refetch } = open();
+    await user.clear(descriptionField());
+    await user.type(descriptionField(), "Mine");
+    refetch({ id: "group-2", name: "Suppliers", description: "Who we pay" });
+    expect(nameField()).toHaveValue("Suppliers");
+    expect(descriptionField()).toHaveValue("Who we pay");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// Code review: an emptied description was sent as `undefined`, which drops
+// out of the JSON. Alone it left a body the API refuses; with a rename, the
+// rename saved and the description stayed.
+describe("EditEntityGroupDialog — clearing the description", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => jest.clearAllMocks());
+
+  const group = { id: "group-1", name: "Customers", description: "Accounts" };
+
+  it("sends an empty description", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditEntityGroupDialog
+        {...defaultProps}
+        group={group}
+        onSubmit={onSubmit}
+      />
+    );
+    await user.clear(screen.getByRole("textbox", { name: /description/i }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledWith({ description: "" });
+  });
+
+  it("sends it with a rename", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditEntityGroupDialog
+        {...defaultProps}
+        group={group}
+        onSubmit={onSubmit}
+      />
+    );
+    await user.clear(screen.getByRole("textbox", { name: /description/i }));
+    await user.clear(nameField());
+    await user.type(nameField(), "Clients");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Clients", description: "" });
   });
 });

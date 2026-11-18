@@ -487,3 +487,93 @@ describe("EditColumnDefinitionDialog — a label saved before the limit (#801)",
     ).not.toBeInTheDocument();
   });
 });
+
+// #1053: the form seeds its fields once but compared them with the live
+// definition. After the page refetched behind the open dialog, a field
+// another editor had changed read as this editor's edit, and a save of
+// anything else put the old value back.
+describe("EditColumnDefinitionDialog — another editor's changes while open (#1053)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const opened = makeColumnDefinition({
+    description: "Given name",
+    validationPattern: "^[A-Z]",
+    validationMessage: "Start with a capital",
+  });
+
+  /**
+   * Open on `opened`, let the page refetch `after` behind the dialog, run
+   * this editor's `edit` and save. A refetch reaches the open dialog as a
+   * new `columnDefinition` prop.
+   */
+  const saveAfterRefetch = (
+    after: ColumnDefinition,
+    edit: () => void = () => {}
+  ) => {
+    const onSubmit = jest.fn();
+    const onClose = jest.fn();
+    const props = { ...defaultProps, onSubmit, onClose };
+    const { rerender } = render(
+      <EditColumnDefinitionDialog {...props} columnDefinition={opened} />
+    );
+    rerender(
+      <EditColumnDefinitionDialog {...props} columnDefinition={after} />
+    );
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    return { onSubmit, onClose };
+  };
+
+  const setLabel = (to: string) =>
+    fireEvent.change(screen.getByLabelText(/^Label/), {
+      target: { value: to },
+    });
+
+  it("doesn't put back a label another editor changed", async () => {
+    const { onSubmit } = saveAfterRefetch(
+      { ...opened, label: "Forename" },
+      () =>
+        fireEvent.change(screen.getByLabelText(/^Description/), {
+          target: { value: "Mine" },
+        })
+    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ description: "Mine" });
+  });
+
+  it("doesn't put back a description or type another editor changed", async () => {
+    const { onSubmit } = saveAfterRefetch(
+      { ...opened, description: "Theirs", type: "enum" },
+      () => setLabel("Mine")
+    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ label: "Mine" });
+  });
+
+  it("doesn't put back validation another editor changed, or ask to revalidate for it", async () => {
+    const { onSubmit } = saveAfterRefetch(
+      {
+        ...opened,
+        validationPattern: "^[a-z]",
+        validationMessage: "Start lowercase",
+        canonicalFormat: "lowercase",
+      },
+      () => setLabel("Mine")
+    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ label: "Mine" });
+    expect(screen.queryByText(/trigger re-validation/)).not.toBeInTheDocument();
+  });
+
+  it("sends nothing when this editor changed nothing", async () => {
+    const { onSubmit, onClose } = saveAfterRefetch({
+      ...opened,
+      label: "Forename",
+      description: "Theirs",
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
