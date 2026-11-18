@@ -10,7 +10,7 @@
  * but unused until phase 2.
  */
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { StationToolpackModelFactory } from "@portalai/core/models";
 
@@ -27,6 +27,15 @@ export interface ReplacePacksPayload {
   builtinSlugs: string[];
   /** Custom toolpack IDs to enable. Phase 1 always passes []. */
   organizationToolpackIds?: string[];
+}
+
+/** #1052: what `applyChanges` did. Refs are wire values: a built-in slug or
+ *  `org:<id>`. */
+export interface PackChangeResult {
+  added: string[];
+  removed: string[];
+  /** Live packs on the station afterwards. */
+  remaining: number;
 }
 
 export class StationToolpacksRepository extends Repository<
@@ -152,6 +161,92 @@ export class StationToolpacksRepository extends Repository<
     await db.transaction(async (tx) => {
       await exec(tx);
     });
+  }
+
+  /**
+   * #1052: attach and detach packs against the station's live rows, leaving
+   * every pack the caller didn't name as it is. `replaceForStation` takes a
+   * whole target list, which is right for a create and wrong for an edit: a
+   * list read when a dialog opened puts back what another editor removed.
+   *
+   * Adding an attached pack and removing an unattached one are no-ops.
+   * `client` must be the caller's transaction: the result is only true of
+   * the rows as that transaction sees them.
+   */
+  async applyChanges(
+    stationId: string,
+    changes: { add: ReplacePacksPayload; remove: ReplacePacksPayload },
+    actor: { userId: string },
+    client: DbClient
+  ): Promise<PackChangeResult> {
+    const live = await this.findByStationId(stationId, client);
+    const liveSlugs = new Set(live.map((r) => r.builtinSlug));
+    const liveOrgIds = new Set(live.map((r) => r.organizationToolpackId));
+
+    const removeSlugs = new Set(changes.remove.builtinSlugs);
+    const removeOrgIds = new Set(changes.remove.organizationToolpackIds ?? []);
+    const toRemove = live.filter((r) =>
+      r.builtinSlug !== null
+        ? removeSlugs.has(r.builtinSlug)
+        : removeOrgIds.has(r.organizationToolpackId!)
+    );
+    if (toRemove.length > 0) {
+      await this.softDeleteMany(
+        toRemove.map((r) => r.id),
+        actor.userId,
+        client
+      );
+    }
+
+    const factory = new StationToolpackModelFactory();
+    const row = (ref: {
+      builtinSlug: string | null;
+      organizationToolpackId: string | null;
+    }) => {
+      const m = factory.create(actor.userId);
+      m.update({ stationId, ...ref });
+      return m.parse() as unknown as StationToolpackInsert;
+    };
+    // Each insert names its partial unique index, predicate included, or
+    // Postgres doesn't match it and a duplicate is an error, not a no-op.
+    const added: string[] = [];
+    for (const slug of new Set(changes.add.builtinSlugs)) {
+      if (liveSlugs.has(slug)) continue;
+      const inserted = await (client as typeof db)
+        .insert(stationToolpacks)
+        .values(row({ builtinSlug: slug, organizationToolpackId: null }))
+        .onConflictDoNothing({
+          target: [stationToolpacks.stationId, stationToolpacks.builtinSlug],
+          where: sql`deleted IS NULL AND ${stationToolpacks.builtinSlug} IS NOT NULL`,
+        })
+        .returning({ id: stationToolpacks.id });
+      if (inserted.length > 0) added.push(slug);
+    }
+    for (const orgId of new Set(changes.add.organizationToolpackIds ?? [])) {
+      if (liveOrgIds.has(orgId)) continue;
+      const inserted = await (client as typeof db)
+        .insert(stationToolpacks)
+        .values(row({ builtinSlug: null, organizationToolpackId: orgId }))
+        .onConflictDoNothing({
+          target: [
+            stationToolpacks.stationId,
+            stationToolpacks.organizationToolpackId,
+          ],
+          where: sql`deleted IS NULL AND ${stationToolpacks.organizationToolpackId} IS NOT NULL`,
+        })
+        .returning({ id: stationToolpacks.id });
+      if (inserted.length > 0) added.push(`org:${orgId}`);
+    }
+
+    return {
+      added,
+      removed: toRemove.map((r) =>
+        r.builtinSlug !== null
+          ? r.builtinSlug
+          : `org:${r.organizationToolpackId}`
+      ),
+      remaining: live.length - toRemove.length + added.length,
+    };
   }
 
   /**
