@@ -4,6 +4,7 @@ import {
   describeStationAttachmentGaps,
   STATION_ATTACHMENT_MISSING_ACTION,
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
+  STATION_PLAN_EXCLUDED_CUSTOM_PACKS,
   type StationAttachmentCounts,
 } from "../../content/station-attachments.util.js";
 
@@ -105,5 +106,92 @@ describe("the follow-up actions (#676)", () => {
       /shared with your account/
     );
     expect(STATION_ATTACHMENT_NO_ACCESS_ACTION).not.toMatch(/attach them/);
+  });
+});
+
+// #1055: when the plan excludes every pack on the station whose tools would
+// read its records, the plan is the reason, not a missing view. The sentence
+// names those packs and never suggests attaching.
+describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
+  const all = [
+    counts([0, 0], [0, 0]),
+    counts([0, 0], [2, 2]),
+    counts([2, 2], [0, 0]),
+    counts([2, 2], [2, 2]),
+    counts([2, 0], [2, 0]),
+  ];
+
+  it.each(["usable", "none", undefined] as const)(
+    "leaves the output unchanged for %s",
+    (dataSetup) => {
+      for (const c of all) {
+        expect(
+          describeStationAttachmentGaps(c, {
+            dataSetup,
+            excludedPackNames: ["GIS"],
+          })
+        ).toEqual(describeStationAttachmentGaps(c));
+      }
+    }
+  );
+
+  it("names the pack instead of suggesting a view, whatever the counts", () => {
+    for (const c of [counts([0, 0], [0, 0]), counts([2, 2], [2, 2])]) {
+      expect(
+        describeStationAttachmentGaps(c, {
+          dataSetup: "plan-excluded",
+          excludedPackNames: ["GIS"],
+        }).missing
+      ).toBe(
+        "GIS isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+    }
+  });
+
+  const missingFor = (names: string[]) =>
+    describeStationAttachmentGaps(counts([0, 0], [2, 2]), {
+      dataSetup: "plan-excluded",
+      excludedPackNames: names,
+    }).missing;
+
+  it.each([
+    [["Data Query", "GIS"], "Data Query and GIS aren't"],
+    [
+      ["Data Query", "Statistics", "GIS"],
+      "Data Query, Statistics and GIS aren't",
+    ],
+    [
+      ["Data Query", "Statistics", "Regression", "Financial", "GIS"],
+      "Data Query, Statistics, Regression and 2 more aren't",
+    ],
+  ])("lists %j", (names, start) => {
+    expect(missingFor(names)).toBe(
+      `${start} included in your plan, so attaching a view won't make data available on this station.`
+    );
+  });
+
+  it("falls back to a general subject with no names", () => {
+    expect(missingFor([])).toBe(
+      "Some tool packs on this station aren't included in your plan, so attaching a view won't make data available on this station."
+    );
+  });
+
+  it("reads the organization's packs lowercase after another name", () => {
+    expect(missingFor([STATION_PLAN_EXCLUDED_CUSTOM_PACKS])).toMatch(
+      /^Your organization's tool packs aren't included/
+    );
+    expect(missingFor(["GIS", STATION_PLAN_EXCLUDED_CUSTOM_PACKS])).toMatch(
+      /^GIS and your organization's tool packs aren't included/
+    );
+  });
+
+  it("leaves noAccess unchanged", () => {
+    const c = counts([2, 0], [2, 0]);
+    expect(
+      describeStationAttachmentGaps(c, {
+        dataSetup: "plan-excluded",
+        excludedPackNames: ["GIS"],
+      }).noAccess
+    ).toBe(describeStationAttachmentGaps(c).noAccess);
   });
 });

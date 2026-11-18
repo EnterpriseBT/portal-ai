@@ -41,19 +41,70 @@ export const STATION_ATTACHMENT_MISSING_ACTION =
 export const STATION_ATTACHMENT_NO_ACCESS_ACTION =
   "They're attached, but they haven't been shared with your account. Ask someone who can share them to give you access.";
 
+/**
+ * #1055: names the organization's own packs in the plan sentence. The web
+ * passes it among `excludedPackNames` when the plan excludes custom packs.
+ */
+export const STATION_PLAN_EXCLUDED_CUSTOM_PACKS =
+  "Your organization's tool packs";
+
+export interface StationAttachmentGapsOptions {
+  /**
+   * How the station stands with entity data. It repeats `StationDataSetup`
+   * from `@portalai/core/registries`, which content can't import; a test
+   * there holds the two equal.
+   */
+  dataSetup?: "usable" | "plan-excluded" | "none";
+  /** The plan-excluded packs whose tools would read the station's records,
+   *  by display name, in the order to name them. */
+  excludedPackNames?: readonly string[];
+}
+
+/** "A", "A and B", "A, B and C", "A, B, C and 2 more". */
+function listPacks(names: readonly string[]): string {
+  const shown = names
+    .slice(0, 3)
+    .map((name, i) =>
+      i > 0 && name === STATION_PLAN_EXCLUDED_CUSTOM_PACKS
+        ? name.charAt(0).toLowerCase() + name.slice(1)
+        : name
+    );
+  const rest = names.length - shown.length;
+  if (rest > 0) return `${shown.join(", ")} and ${rest} more`;
+  if (shown.length === 1) return shown[0];
+  return `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+}
+
+/**
+ * #1055: the plan excludes every pack on the station whose tools would read
+ * its records, so attaching a view changes nothing. Names those packs.
+ */
+function planExcludedSentence(names: readonly string[]): string {
+  const subject =
+    names.length > 0 ? listPacks(names) : "Some tool packs on this station";
+  // "Your organization's tool packs" is plural on its own.
+  const singular =
+    names.length === 1 && names[0] !== STATION_PLAN_EXCLUDED_CUSTOM_PACKS;
+  const verb = singular ? "isn't" : "aren't";
+  return `${subject} ${verb} included in your plan, so attaching a view won't make data available on this station.`;
+}
+
 export function describeStationAttachmentGaps(
-  c: StationAttachmentCounts
+  c: StationAttachmentCounts,
+  options: StationAttachmentGapsOptions = {}
 ): StationAttachmentGaps {
   const noViews = c.views.attached === 0;
   const noConnectors = c.connectors.attached === 0;
   const missing =
-    noViews && noConnectors
-      ? "No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities."
-      : noViews
-        ? "No views are attached to this station. Attach a view to query entity data here."
-        : noConnectors
-          ? "No connectors are attached to this station. Attach a connector to create and edit entities here."
-          : null;
+    options.dataSetup === "plan-excluded"
+      ? planExcludedSentence(options.excludedPackNames ?? [])
+      : noViews && noConnectors
+        ? "No views or connectors are attached to this station. It works without them. Attach a view to query entity data here, or a connector to create and edit entities."
+        : noViews
+          ? "No views are attached to this station. Attach a view to query entity data here."
+          : noConnectors
+            ? "No connectors are attached to this station. Attach a connector to create and edit entities here."
+            : null;
 
   const viewsLocked = !noViews && c.views.readable === 0;
   const connectorsLocked = !noConnectors && c.connectors.readable === 0;
