@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#1059](https://github.com/EnterpriseBT/portal-ai/issues/1059) · Feature · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** An empty top-level list says only that it's empty ("No pinned results"), and it's the first thing a new user sees. The fix gives each one sentence on what the list holds plus a link to the matching Help FAQ entry, in one shape on every page. It touches `packages/core` (`PageEmptyState` takes a help link, and two new FAQ entries) and `apps/web` (the ten empty states). There's no API or contract change.
+**Why.** An empty top-level list says only that it's empty ("No pinned results"), and it's the first thing a new user sees. The fix gives each one sentence on what the list holds plus a link to the matching Help FAQ entry, in one shape on every page. It touches `packages/core` (`EmptyState` takes a help link, and two new FAQ entries) and `apps/web` (the ten empty states). There's no API or contract change.
 
 ## Current shape
 
@@ -18,12 +18,13 @@
 
 ## Decision: core owns the layout, web owns the page→FAQ map
 
-- **Core.** `PageEmptyState` gains `helpLink?: { href: string; label: string }` and `linkComponent?: React.ElementType` (the `DetailCard` precedent, since core can't import the router). It renders, in this order:
+- **Rename.** `PageEmptyState` becomes `EmptyState`. "Page" was misleading: it renders a list's empty state and two non-list states (the default-station card, "View not found"). It's a clean cut, with no alias.
+- **Core.** `EmptyState` gains `helpLink?: { href: string; label: string }` and `linkComponent?: React.ElementType` (the `DetailCard` precedent, since core can't import the router). It renders, in this order:
   - the title;
   - the `description` sentence;
   - the link, as `Help: <label>`;
   - any `action`, kept for the out-of-scope detail pages.
-- **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink }`, with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `PageEmptyState`, so no page writes its own copy.
+- **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink }`, with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `EmptyState`, so no page writes its own copy.
 - **Web: links with a fragment.** `RouterLink` splits a `#fragment` off `href` and passes it as TanStack's `hash`. Without that, the link can't reach the anchor.
 - **No permission-based copy, no Create in the empty state.**
   - Views, Entity Groups and Tags drop `action={createButton}`, leaving the header's gated Create as the only one.
@@ -34,7 +35,7 @@
 |---|---|---|
 | Stations | A station bundles the views, connectors and tool packs a portal session works with. | What is a Station and why do I need one? |
 | Connectors | A connector links a data source, such as a file, a spreadsheet or an API, and brings its data in. | How do I connect my first data source? |
-| Connector definitions | Connector definitions are the kinds of data source you can connect. | How do I connect my first data source? |
+| Connector definitions | Connector definitions are the kinds of data source a connector links, such as file uploads and APIs. | How do I connect my first data source? |
 | Entities | An entity is one table of records from a connector, such as a sheet or an API endpoint. | What's the difference between a connector and an entity? |
 | Views | A view is a chosen set of an entity's columns and rows that stations query. | What is a view? |
 | Entity groups | An entity group joins entities from different sources that describe the same things. | What are entity groups and when should I use them? |
@@ -46,11 +47,11 @@
 ## Plan: 1 slice
 
 **Files**
-- Core: `ui/PageEmptyState.tsx` and `content/faq.util.ts`.
+- Core: `ui/EmptyState.tsx` and `content/faq.util.ts`.
 - Web: new `utils/empty-list-help.util.ts`, `components/RouterLink.component.tsx`, and the nine files in Current shape.
 
 **Tests** (test first)
-- Core, `__tests__/ui/PageEmptyState.test.tsx`:
+- Core, `__tests__/ui/EmptyState.test.tsx`:
   - the elements render in order: title, sentence, link;
   - the link's text is `Help: <label>` and it uses `linkComponent`;
   - axe passes.

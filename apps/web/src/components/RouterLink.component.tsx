@@ -15,7 +15,21 @@ export interface RouterLinkProps extends Omit<
  * `Link` wants `to`. Pass this as `linkComponent` wherever core links navigate.
  */
 export const RouterLink = React.forwardRef<HTMLAnchorElement, RouterLinkProps>(
-  ({ href, ...rest }, ref) => <Link ref={ref} to={href} {...rest} />
+  ({ href, ...rest }, ref) => {
+    // #1059: TanStack's `to` is a path; a fragment (a Help entry's
+    // `#faq-entry-…`) goes as `hash`, or the link stops short of the entry.
+    const at = href.indexOf("#");
+    return at === -1 ? (
+      <Link ref={ref} to={href} {...rest} />
+    ) : (
+      <Link
+        ref={ref}
+        to={href.slice(0, at)}
+        hash={href.slice(at + 1)}
+        {...rest}
+      />
+    );
+  }
 );
 
 RouterLink.displayName = "RouterLink";

@@ -164,7 +164,7 @@ describe("filterFAQ", () => {
     const result = filterFAQ(FAQ_ENTRIES, {
       category: FAQCategory.Jobs,
     });
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
     for (const entry of result) {
       expect(entry.category).toBe(FAQCategory.Jobs);
     }

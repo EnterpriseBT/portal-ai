@@ -11,7 +11,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -62,7 +62,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
 }) => {
   if (!station) {
     return (
-      <PageEmptyState
+      <EmptyState
         data-testid="default-station-card"
         icon={<Icon name={IconName.SatelliteAlt} />}
         title="No default station"

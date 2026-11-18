@@ -32,7 +32,7 @@ export * from "./PageSection.js";
 export * from "./DetailCard.js";
 export * from "./CardList.js";
 export * from "./PageGrid.js";
-export * from "./PageEmptyState.js";
+export * from "./EmptyState.js";
 export * from "./MetadataList.js";
 export * from "./DataTable.js";
 export * from "./use-grid-navigation.js";

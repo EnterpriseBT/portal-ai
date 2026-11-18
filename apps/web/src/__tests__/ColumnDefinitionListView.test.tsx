@@ -44,6 +44,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionListView } =
   await import("../views/ColumnDefinitionList.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 type Capabilities = { read: boolean; write: boolean; delete: boolean };
 
@@ -128,6 +129,7 @@ describe("ColumnDefinitionListView", () => {
 
     render(<ColumnDefinitionListView />);
     expect(screen.getByText("No column definitions found")).toBeInTheDocument();
+    expectEmptyListHelp("columnDefinitions");
   });
 
   it("should display error state", () => {

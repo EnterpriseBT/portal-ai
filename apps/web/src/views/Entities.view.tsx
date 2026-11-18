@@ -14,7 +14,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
@@ -28,6 +28,7 @@ import { ConnectorEntityDataList } from "../components/ConnectorEntity.component
 import { CreateConnectorEntityDialog } from "../components/CreateConnectorEntityDialog.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { RouterLink } from "../components/RouterLink.component";
@@ -217,9 +218,11 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
-                        <PageEmptyState
+                        <EmptyState
                           icon={<Icon name={IconName.DataObject} />}
                           title="No entities found"
+                          {...emptyListHelp("entities")}
+                          linkComponent={RouterLink}
                         />
                       );
                     }

@@ -2,7 +2,7 @@ import {
   CardList,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
@@ -13,6 +13,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { JobDataStream } from "../components/Job.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { RouterLink } from "../components/RouterLink.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import { JobCard, JobDataList } from "../components/Job.component";
 import {
   PaginationToolbar,
@@ -83,9 +85,11 @@ export const JobsView = () => {
                     ) ? (
                       <EmptyResults />
                     ) : (
-                      <PageEmptyState
+                      <EmptyState
                         icon={<Icon name={IconName.Work} />}
                         title="No jobs found"
+                        {...emptyListHelp("jobs")}
+                        linkComponent={RouterLink}
                       />
                     )
                   ) : (

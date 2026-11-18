@@ -31,6 +31,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 const { render, screen } = await import("./test-utils");
 const { JobsView } = await import("../views/Jobs.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 const makeJob = (overrides: Partial<Job> = {}): Job => ({
   id: "job-1",
@@ -96,6 +97,7 @@ describe("JobsView", () => {
 
     render(<JobsView />);
     expect(screen.getByText("No jobs found")).toBeInTheDocument();
+    expectEmptyListHelp("jobs");
   });
 
   it("should display job rows when jobs exist", () => {

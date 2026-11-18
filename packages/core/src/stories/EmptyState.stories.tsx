@@ -2,13 +2,13 @@ import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import Box from "@mui/material/Box";
 
-import { PageEmptyState } from "../ui/PageEmptyState";
+import { EmptyState } from "../ui/EmptyState";
 import { Button } from "../ui/Button";
 import { Icon, IconName } from "../ui/Icon";
 
 const meta = {
-  title: "Components/PageEmptyState",
-  component: PageEmptyState,
+  title: "Components/EmptyState",
+  component: EmptyState,
   parameters: {
     layout: "padded",
   },
@@ -30,7 +30,7 @@ const meta = {
       </Box>
     ),
   ],
-} satisfies Meta<typeof PageEmptyState>;
+} satisfies Meta<typeof EmptyState>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -54,6 +54,20 @@ export const WithDescription: Story = {
     title: "No stations found",
     description:
       "Stations collect and organize data from your connectors. Create your first station to get started.",
+  },
+};
+
+// #1059: a top-level list's empty state — one sentence and its Help entry.
+export const WithHelpLink: Story = {
+  args: {
+    icon: <Icon name={IconName.Label} sx={{ fontSize: "inherit" }} />,
+    title: "No tags found",
+    description:
+      "Tags are color-coded labels you attach to entities to group and filter them.",
+    helpLink: {
+      href: "/help#faq-entry-how-do-tags-work",
+      label: "How do tags work?",
+    },
   },
 };
 

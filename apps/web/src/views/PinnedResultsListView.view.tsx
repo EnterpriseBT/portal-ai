@@ -4,7 +4,7 @@ import {
   CardList,
   Icon,
   IconName,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
@@ -14,6 +14,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { PinnedResultCardUI } from "../components/PinnedResultsList.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
+import { RouterLink } from "../components/RouterLink.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import {
   PaginationToolbar,
   usePagination,
@@ -109,9 +111,11 @@ export const PinnedResultsListView: React.FC = () => {
                     return hasActiveFilters ? (
                       <EmptyResults />
                     ) : (
-                      <PageEmptyState
+                      <EmptyState
                         icon={<Icon name={IconName.PushPin} />}
                         title="No pinned results"
+                        {...emptyListHelp("pinnedResults")}
+                        linkComponent={RouterLink}
                       />
                     );
                   }

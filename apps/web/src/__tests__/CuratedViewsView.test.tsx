@@ -10,6 +10,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CuratedViewsUI } = await import("../views/CuratedViews.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 type ActionGate = import("@portalai/core/ui").ActionGate;
 
 const views = [
@@ -132,6 +133,7 @@ describe("CuratedViewsUI", () => {
   it("renders the empty state when there are no views", () => {
     render(<CuratedViewsUI {...baseProps()} views={[]} />);
     expect(screen.getByText("No views available")).toBeInTheDocument();
+    expectEmptyListHelp("views");
   });
 
   it("#688: Create is disabled with the grant hint for a caller who reads views but can't create them", async () => {

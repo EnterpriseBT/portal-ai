@@ -32,6 +32,7 @@ const { QueryClient } = await import("@tanstack/react-query");
 const { ToastContext } = await import("../utils/toast.context");
 const { PinnedResultsListView } =
   await import("../views/PinnedResultsListView.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 const mockToast = {
   success: jest.fn<ToastApi["success"]>(),
@@ -149,6 +150,7 @@ describe("PinnedResultsListView", () => {
 
     render(<PinnedResultsListView />);
     expect(screen.getByText("No pinned results")).toBeInTheDocument();
+    expectEmptyListHelp("pinnedResults");
   });
 
   it("should display pinned result cards when results exist", () => {

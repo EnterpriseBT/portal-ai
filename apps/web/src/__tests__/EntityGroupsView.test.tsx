@@ -34,6 +34,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityGroupsViewUI } = await import("../views/EntityGroups.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -151,6 +152,7 @@ describe("EntityGroupsView", () => {
       />
     );
     expect(screen.getByText("No entity groups found")).toBeInTheDocument();
+    expectEmptyListHelp("entityGroups");
   });
 
   it("renders search bar in pagination toolbar", () => {

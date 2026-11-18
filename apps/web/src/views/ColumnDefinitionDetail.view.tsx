@@ -18,7 +18,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   PageSection,
   Stack,
@@ -378,7 +378,7 @@ export const ColumnDefinitionDetailView: React.FC<
                               }) => {
                                 if (mappings.fieldMappings.length === 0) {
                                   return (
-                                    <PageEmptyState
+                                    <EmptyState
                                       icon={<Icon name={IconName.Link} />}
                                       title="No field mappings found"
                                     />

@@ -10,7 +10,7 @@ import {
   Icon,
   IconName,
   MetadataList,
-  PageEmptyState,
+  EmptyState,
   PageHeader,
   Stack,
   type ActionGate,
@@ -22,6 +22,7 @@ import ShareIcon from "@mui/icons-material/Share";
 import { useNavigate } from "@tanstack/react-router";
 
 import { EmptyResults } from "../components/EmptyResults.component";
+import { emptyListHelp } from "../utils/empty-list-help.util";
 import { RouterLink } from "../components/RouterLink.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import {
@@ -89,15 +90,11 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
     body = hasActiveFilters ? (
       <EmptyResults />
     ) : (
-      <PageEmptyState
+      <EmptyState
         icon={<Icon name={IconName.Layers} />}
         title="No views available"
-        description={
-          createGate.kind === "allow"
-            ? "Create a view to expose a curated slice of connector data."
-            : "No views have been shared with you yet."
-        }
-        action={createButton}
+        {...emptyListHelp("views")}
+        linkComponent={RouterLink}
       />
     );
   } else {

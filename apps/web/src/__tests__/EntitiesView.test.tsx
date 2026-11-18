@@ -43,6 +43,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntitiesViewUI } = await import("../views/Entities.view");
+const { expectEmptyListHelp } = await import("./empty-list-help.assert");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ describe("EntitiesView", () => {
 
     render(<EntitiesViewUI {...sharedProps} />);
     expect(screen.getByText("No entities found")).toBeInTheDocument();
+    expectEmptyListHelp("entities");
   });
 
   it("renders pagination toolbar", () => {
