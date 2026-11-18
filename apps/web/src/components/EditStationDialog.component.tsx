@@ -108,14 +108,6 @@ interface OriginalStation {
   viewLabels: Record<string, string>;
 }
 
-/** Whether two lists hold the same members, in any order. Removing a pack
- *  and adding it back reorders the list without changing it. */
-function sameMembers(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  const members = new Set(a);
-  return b.every((value) => members.has(value));
-}
-
 /** Whether a text field was edited. Both sides are trimmed: what is sent is
  *  trimmed, and a stored value isn't always. */
 function nameChanged(form: FormState, original: OriginalStation): boolean {
@@ -160,6 +152,8 @@ interface StationViewAttachment {
  * add/remove changes the update API takes, or undefined when nothing did. The
  * dialog never sends its full set: that set goes stale while the dialog is
  * open, and saving it re-attached what another editor had just removed.
+ * #1052: tool packs are saved the same way. Order doesn't matter, so a pack
+ * removed and added back is no change.
  */
 function attachmentChanges(
   initial: string[],
@@ -267,6 +261,25 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     [entitledBuiltinSlugs, customsResult.data]
   );
 
+  // #1052: the picker reports only values it has an option for, so a pack
+  // with none (a custom pack while the list loads, or for good when the list
+  // is refused, as it is for anyone who can't read tool packs) would vanish
+  // from the form on the next change and be sent as removed. Such packs are
+  // put back on every change and left out of what is sent: the editor
+  // changes only packs they can see (#674's rule for attachments).
+  const shownPacks = useMemo(
+    () => new Set(allOptions.map((option) => String(option.value))),
+    [allOptions]
+  );
+  const unshownPacks = form.toolPacks.filter((pack) => !shownPacks.has(pack));
+  const unshownPacksNote =
+    // Not while the list may still arrive and give them their chips.
+    customsResult.isLoading || unshownPacks.length === 0
+      ? undefined
+      : unshownPacks.length === 1
+        ? "1 tool pack on this station can't be changed here."
+        : `${unshownPacks.length} tool packs on this station can't be changed here.`;
+
   const collisions = useMemo(
     () =>
       detectToolpackCollisions(
@@ -306,9 +319,13 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (descriptionChanged(form, original)) {
       body.description = form.description.trim();
     }
-    if (!sameMembers(form.toolPacks, original.toolPacks)) {
-      body.toolPacks = form.toolPacks;
-    }
+    const shown = (packs: string[]) =>
+      packs.filter((pack) => shownPacks.has(pack));
+    const packChanges = attachmentChanges(
+      shown(original.toolPacks),
+      shown(form.toolPacks)
+    );
+    if (packChanges) body.toolPackChanges = packChanges;
     const connectorChanges = attachmentChanges(
       original.connectorInstanceIds,
       form.connectorInstanceIds
@@ -393,12 +410,17 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
         <MultiSearchableSelect
           options={allOptions}
           value={form.toolPacks}
-          onChange={(values) => handleChange("toolPacks", values)}
+          onChange={(values) =>
+            handleChange("toolPacks", [...values, ...unshownPacks])
+          }
           label="Tool Packs"
           placeholder="Select tool packs..."
           required
           error={touched.toolPacks && !!errors.toolPacks}
-          helperText={touched.toolPacks ? errors.toolPacks : undefined}
+          helperText={
+            (touched.toolPacks ? errors.toolPacks : undefined) ??
+            unshownPacksNote
+          }
         />
         <ToolPackUpgradeNoteUI
           show={someBuiltinUnentitled(entitledBuiltinSlugs)}

@@ -329,7 +329,9 @@ describe("EditStationDialog — length limits (#801)", () => {
     fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ toolPacks: ["data_query"] })
+      expect(onSubmit).toHaveBeenCalledWith({
+        toolPackChanges: { remove: ["statistics"] },
+      })
     );
     expect(
       screen.queryByText("Name must be 120 characters or fewer")
@@ -719,5 +721,77 @@ describe("EditStationDialog — another editor's changes while open (#1043)", ()
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onClose).toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// #1052: the dialog sent its whole pack list, so a save put back a pack
+// another editor had removed (and was refused when that pack had left the
+// plan). It sends what this editor changed, like connectors and views.
+describe("EditStationDialog — tool packs saved by difference (#1052)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const removePack = (label: string) => {
+    const chip = screen.getByText(label).closest(".MuiChip-root")!;
+    fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
+  };
+  const addPack = (label: RegExp) => {
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: /Tool Packs/ }));
+    fireEvent.click(screen.getByRole("option", { name: label }));
+  };
+  const save = async () => {
+    const onSubmit = defaultProps.onSubmit;
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][0];
+  };
+
+  it("sends an added pack as add", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    addPack(/Web Search/);
+    expect(await save()).toEqual({ toolPackChanges: { add: ["web_search"] } });
+  });
+
+  it("sends a removed pack as remove", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    removePack("Statistics");
+    expect(await save()).toEqual({
+      toolPackChanges: { remove: ["statistics"] },
+    });
+  });
+
+  it("sends an add and a remove together, and never the whole list", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    removePack("Statistics");
+    addPack(/Web Search/);
+    const body = await save();
+    expect(body).toEqual({
+      toolPackChanges: { add: ["web_search"], remove: ["statistics"] },
+    });
+    expect(body).not.toHaveProperty("toolPacks");
+  });
+
+  it("sends nothing for a pack removed and added back", () => {
+    const onClose = jest.fn();
+    render(<EditStationDialog {...defaultProps} onClose={onClose} />);
+    removePack("Statistics");
+    addPack(/Statistics/);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("sends only this editor's pack change after another editor changed the packs", async () => {
+    const { rerender } = render(<EditStationDialog {...defaultProps} />);
+    // Another editor removes Statistics; the page refetches behind the dialog.
+    rerender(
+      <EditStationDialog
+        {...defaultProps}
+        station={{ ...sampleStation, enabledToolpacks: ["data_query"] }}
+      />
+    );
+    addPack(/Web Search/);
+    expect(await save()).toEqual({ toolPackChanges: { add: ["web_search"] } });
   });
 });
