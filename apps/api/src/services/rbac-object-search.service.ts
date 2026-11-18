@@ -133,8 +133,10 @@ export class RbacObjectSearchService {
 
     const conditions: SQL[] = [isNull(cfg.deletedCol)];
     if (cfg.orgCol) conditions.push(eq(cfg.orgCol, caller.organizationId));
-    if (query.trim())
-      conditions.push(ilikeContains(cfg.labelCol, query.trim()));
+    const term = query.trim();
+    if (term) {
+      conditions.push(ilikeContains(cfg.labelCol, term));
+    }
     if (visibility) conditions.push(visibility);
 
     const rows = await db

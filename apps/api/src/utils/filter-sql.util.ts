@@ -271,9 +271,9 @@ function buildTypedStringCondition(
     case "neq":
       return sql`(${colRef} IS NULL OR ${colRef} <> ${val})`;
     case "contains":
-      return sql`${text} ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\'`;
+      return ilikeContains(text, val);
     case "not_contains":
-      return sql`(${colRef} IS NULL OR ${text} NOT ILIKE ${"%" + escapeLike(val) + "%"} ESCAPE '\\')`;
+      return sql`(${colRef} IS NULL OR NOT ${ilikeContains(text, val)})`;
     case "starts_with":
       return sql`${text} ILIKE ${escapeLike(val) + "%"} ESCAPE '\\'`;
     case "ends_with":

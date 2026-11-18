@@ -69,6 +69,25 @@ describe("listOrgs", () => {
     const page = await store.listOrgs({ limit: 1, offset: 1 });
     expect(page.map((o) => o.id)).toEqual(["o-3"]);
   });
+
+  it("matches the search text literally, so % and _ aren't wildcards (#1039)", async () => {
+    await t.db
+      .insert(organizations)
+      .values([
+        org("acme_co", { id: "o-1" }) as never,
+        org("acmeXco", { id: "o-2" }) as never,
+        org("50% Labs", { id: "o-3" }) as never,
+        org("a\\b", { id: "o-4" }) as never,
+      ]);
+    const ids = async (search: string) =>
+      (await store.listOrgs({ search })).map((o) => o.id).sort();
+
+    expect(await ids("_")).toEqual(["o-1"]);
+    expect(await ids("%")).toEqual(["o-3"]);
+    expect(await ids("acme_co")).toEqual(["o-1"]);
+    expect(await ids("\\")).toEqual(["o-4"]);
+    expect(await ids("ACME")).toEqual(["o-1", "o-2"]);
+  });
 });
 
 describe("getOrg", () => {

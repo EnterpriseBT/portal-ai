@@ -975,7 +975,7 @@ export class PortalSqlServiceImpl {
     // typed filters instead. No `::text` cast, so the index matches the bare
     // column. With no text column a search matches nothing rather than being
     // silently ignored. The LIKE metacharacters (\ % _) are escaped so the
-    // term matches literally (ILIKE's default escape char is backslash), then
+    // term matches literally (with an explicit `ESCAPE '\'`, as `ilikeContains`), then
     // wrapped in %…%; quoteLiteral handles the SQL-quote escaping —
     // injection-safe.
     const search = opts.search?.trim();
@@ -986,7 +986,7 @@ export class PortalSqlServiceImpl {
       const escaped = escapeLike(search);
       const term = quoteLiteral(`%${escaped}%`);
       const clauses = textColumns.map(
-        (c) => `w.${quoteIdent(c.columnName)} ILIKE ${term}`
+        (c) => `w.${quoteIdent(c.columnName)} ILIKE ${term} ESCAPE '\\'`
       );
       whereParts.push(
         clauses.length > 0 ? `(${clauses.join(" OR ")})` : "FALSE"
