@@ -8,9 +8,7 @@ Since #1045 the assistant and `platform_help` know a third state. Sometimes the 
 
 This is the change that lets the web classify a station the same way the API does, and words the notice for the plan when the plan is the reason.
 
-**Constraint (from review): the app has no "data pack" category, and this change must not introduce one.** Whether a pack's tools read a station's records is an internal property the API already uses to decide what to tell the agent. It is never a user-facing kind of pack:
-- The notice names the specific packs the plan excludes, not a class of pack.
-- Code moved to core keeps per-pack naming (`PACK_USES_STATION_DATA`, `usesStationData`), with no "data pack" type, label or help term.
+**Copy (from review):** packs are only ever built-in or custom, so the notice names the excluded packs rather than describing a kind of pack.
 
 ## The current shape
 

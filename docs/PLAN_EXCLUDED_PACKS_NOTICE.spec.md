@@ -4,7 +4,7 @@ This spec pins the contract for #1055: the web classifies a station the way the 
 
 ## Key decisions (flag for review)
 
-1. **No "data pack" category.** The app has none, and this change adds none. Whether a pack's tools read station records stays an internal per-pack property (`PACK_USES_STATION_DATA`). The notice names packs ("GIS isn't included…"), never a class of pack. No new identifier, type, label, glossary or FAQ term says "data pack".
+1. **The notice names packs.** Packs are only ever built-in or custom, so the copy names the excluded packs ("GIS isn't included…") rather than describing a kind of pack.
 2. **The classification moves to `@portalai/core/registries`** unchanged, with no re-export from `apps/api`.
 3. **The web computes the state** from the station's `enabledToolpacks` and the plan entitlements it already loads. There's no API response change.
 4. **One notice, one wording source.** `describeStationAttachmentGaps` gains an optional second argument. `none` keeps today's text (#848).
@@ -126,7 +126,7 @@ None. No schema or seed change.
   - all entitled → `usable`;
   - only GIS + Curated Views with GIS excluded → `plan-excluded` / `["GIS"]`;
   - Web Search only → `none`;
-  - an excluded custom pack with no built-in data pack → `plan-excluded` / `["Your organization's tool packs"]`;
+  - an excluded custom pack and no other pack that reads data → `plan-excluded` / `["Your organization's tool packs"]`;
   - an entitled custom pack → `usable`;
   - the name order follows the registry.
   - ≈ 6 cases.
@@ -151,7 +151,6 @@ None. No schema or seed change.
 - A station with no such packs at all (Administrate) reads exactly as today.
 - While the plan is loading, the notice reads as today and never flashes the plan sentence.
 - The assistant and `platform_help` answers are unchanged.
-- No user-facing text names a "data pack" category.
 
 ## Risks & rollback
 
