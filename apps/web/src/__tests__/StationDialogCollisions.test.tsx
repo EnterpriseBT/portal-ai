@@ -321,8 +321,10 @@ describe("EditStationDialog — packs the picker can't show (#1052)", () => {
     listLoading();
     const p = props(["data_query", "statistics", "org:otp-a"]);
     const { rerender } = render(<EditStationDialog {...p} />);
-    // Nothing is said while the list may still arrive.
+    // While the list may still arrive, the picker says it is loading rather
+    // than counting packs it may yet show.
     expect(countLine()).not.toBeInTheDocument();
+    expect(screen.getByText("Loading custom tool packs…")).toBeInTheDocument();
     removePack("Statistics");
 
     // The list arrives: the custom pack gets its chip, still attached.
@@ -330,6 +332,9 @@ describe("EditStationDialog — packs the picker can't show (#1052)", () => {
     rerender(<EditStationDialog {...p} />);
     expect(screen.getByText("customer_intel")).toBeInTheDocument();
     expect(countLine()).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Loading custom tool packs…")
+    ).not.toBeInTheDocument();
 
     expect(await save(p.onSubmit)).toEqual({
       toolPackChanges: { remove: ["statistics"] },

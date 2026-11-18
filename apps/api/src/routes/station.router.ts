@@ -71,6 +71,18 @@ async function auditAttachmentChange(
 }
 
 /**
+ * One tool pack ref, as create's `toolPacks` and update's `toolPackChanges`
+ * carry it: `org:<id>` for a custom pack, else a built-in slug. Null for a
+ * value that is neither. Shared so create and update read refs alike.
+ */
+function toolpackRef(
+  ref: string
+): { custom: string } | { builtin: string } | null {
+  if (ref.startsWith("org:")) return { custom: ref.slice("org:".length) };
+  return isBuiltinToolpackSlug(ref) ? { builtin: ref } : null;
+}
+
+/**
  * Split a `toolPacks: string[]` wire value into built-in slugs and
  * custom-pack ids. Custom values are prefixed `org:<uuid>`.
  *
@@ -87,13 +99,10 @@ async function parseToolpackRefs(
   const builtinSlugs: string[] = [];
   const customIds: string[] = [];
   for (const ref of toolPacks) {
-    if (ref.startsWith("org:")) {
-      customIds.push(ref.slice("org:".length));
-    } else if (isBuiltinToolpackSlug(ref)) {
-      builtinSlugs.push(ref);
-    } else {
-      return { ok: false, value: ref };
-    }
+    const parsed = toolpackRef(ref);
+    if (parsed === null) return { ok: false, value: ref };
+    if ("custom" in parsed) customIds.push(parsed.custom);
+    else builtinSlugs.push(parsed.builtin);
   }
   if (customIds.length > 0) {
     const found =
@@ -196,13 +205,10 @@ async function planToolPackChanges(
     organizationToolpackIds: [],
   };
   for (const ref of changes.add ?? []) {
-    if (ref.startsWith("org:")) {
-      add.organizationToolpackIds.push(ref.slice("org:".length));
-    } else if (isBuiltinToolpackSlug(ref)) {
-      add.builtinSlugs.push(ref);
-    } else {
-      return { ok: false, value: ref };
-    }
+    const parsed = toolpackRef(ref);
+    if (parsed === null) return { ok: false, value: ref };
+    if ("custom" in parsed) add.organizationToolpackIds.push(parsed.custom);
+    else add.builtinSlugs.push(parsed.builtin);
   }
   const remove: Required<ReplacePacksPayload> = {
     builtinSlugs: [],
@@ -839,11 +845,22 @@ stationRouter.patch(
       // #674: the row, toolpacks and attachment diffs commit together. Each
       // attachment kind is written only when its field is in the body.
       const { station, change } = await DbService.transaction(async (tx) => {
-        // #1052: this update must stay the transaction's first statement. It
-        // holds the station's row until commit, so two updates of one station
-        // run one after the other, and everything below reads the packs as
-        // the earlier one left them. That is what keeps two editors, each
+        // #1052: lock the station's row first. Two updates of one station
+        // then run one after the other, and everything below reads the packs
+        // as the earlier one left them, which is what keeps two editors, each
         // removing a different pack, from emptying the station between them.
+        // A station deleted since the access check above is a 404 here.
+        const locked = await DbService.repository.stations.findByIdForUpdate(
+          id,
+          tx
+        );
+        if (!locked) {
+          throw new ApiError(
+            404,
+            ApiCode.STATION_NOT_FOUND,
+            "Station not found"
+          );
+        }
         const updated = await DbService.repository.stations.update(
           id,
           updates as never,
@@ -854,14 +871,9 @@ stationRouter.patch(
           // #284: only a pack that isn't attached yet is held to the plan.
           // Re-adding an attached one is a no-op, and removing one always
           // works, so a downgrade never makes a station un-editable.
-          const live = new Set(
-            (
-              await DbService.repository.stationToolpacks.findByStationId(
-                id,
-                tx
-              )
-            ).map((r) => r.builtinSlug)
-          );
+          const liveRows =
+            await DbService.repository.stationToolpacks.findByStationId(id, tx);
+          const live = new Set(liveRows.map((r) => r.builtinSlug));
           const denied = packPlan.unentitled.filter((slug) => !live.has(slug));
           if (denied.length > 0) {
             throw toolpacksNotEntitled(organizationId, packPlan.tier, denied);
@@ -871,7 +883,8 @@ stationRouter.patch(
               id,
               { add: packPlan.add, remove: packPlan.remove },
               { userId },
-              tx
+              tx,
+              liveRows
             );
           // Checked on the result, not on the request: the body can't know
           // what another editor removed since its dialog opened.
@@ -920,6 +933,13 @@ stationRouter.patch(
         } as unknown as StationUpdateResponsePayload["station"],
       });
     } catch (error) {
+      // #1052: a refusal thrown inside the transaction (no pack left, a pack
+      // the plan excludes) lands here too. It is the caller's to fix, not a
+      // failure of ours, so it isn't logged as one.
+      if (error instanceof ApiError && (error.status ?? 500) < 500) {
+        logger.warn({ code: error.code }, "Station update refused");
+        return next(error);
+      }
       logger.error({ error }, "Failed to update station");
       return next(
         error instanceof ApiError

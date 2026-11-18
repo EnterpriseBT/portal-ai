@@ -170,16 +170,19 @@ export class StationToolpacksRepository extends Repository<
    * list read when a dialog opened puts back what another editor removed.
    *
    * Adding an attached pack and removing an unattached one are no-ops.
-   * `client` must be the caller's transaction: the result is only true of
-   * the rows as that transaction sees them.
+   * `client` must be the caller's transaction. `live` is the station's live
+   * rows when the caller has just read them on that transaction.
+   * `remaining` is counted after the writes, not worked out from `live`, so
+   * it is what the transaction will commit.
    */
   async applyChanges(
     stationId: string,
     changes: { add: ReplacePacksPayload; remove: ReplacePacksPayload },
     actor: { userId: string },
-    client: DbClient
+    client: DbClient,
+    live?: StationToolpackSelect[]
   ): Promise<PackChangeResult> {
-    const live = await this.findByStationId(stationId, client);
+    live ??= await this.findByStationId(stationId, client);
     const liveSlugs = new Set(live.map((r) => r.builtinSlug));
     const liveOrgIds = new Set(live.map((r) => r.organizationToolpackId));
 
@@ -238,6 +241,15 @@ export class StationToolpacksRepository extends Repository<
       if (inserted.length > 0) added.push(`org:${orgId}`);
     }
 
+    const [{ remaining }] = await (client as typeof db)
+      .select({ remaining: sql<number>`count(*)::int` })
+      .from(stationToolpacks)
+      .where(
+        and(
+          eq(stationToolpacks.stationId, stationId),
+          isNull(stationToolpacks.deleted)
+        )
+      );
     return {
       added,
       removed: toRemove.map((r) =>
@@ -245,7 +257,7 @@ export class StationToolpacksRepository extends Repository<
           ? r.builtinSlug
           : `org:${r.organizationToolpackId}`
       ),
-      remaining: live.length - toRemove.length + added.length,
+      remaining,
     };
   }
 

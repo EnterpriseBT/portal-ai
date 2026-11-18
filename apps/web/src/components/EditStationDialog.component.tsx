@@ -272,13 +272,17 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     [allOptions]
   );
   const unshownPacks = form.toolPacks.filter((pack) => !shownPacks.has(pack));
+  // Said in both states, so a station that looks empty in the picker never
+  // looks empty without a reason. While loading, the list may still give
+  // these packs their chips.
   const unshownPacksNote =
-    // Not while the list may still arrive and give them their chips.
-    customsResult.isLoading || unshownPacks.length === 0
+    unshownPacks.length === 0
       ? undefined
-      : unshownPacks.length === 1
-        ? "1 tool pack on this station can't be changed here."
-        : `${unshownPacks.length} tool packs on this station can't be changed here.`;
+      : customsResult.isLoading
+        ? "Loading custom tool packs…"
+        : unshownPacks.length === 1
+          ? "1 tool pack on this station can't be changed here."
+          : `${unshownPacks.length} tool packs on this station can't be changed here.`;
 
   const collisions = useMemo(
     () =>
