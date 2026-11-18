@@ -33,8 +33,13 @@ const EditForm: React.FC<{
   isPending?: boolean;
   serverError?: ServerError | null;
 }> = ({ group, onSubmit, onClose, isPending = false, serverError }) => {
-  const [name, setName] = useState(group.name);
-  const [description, setDescription] = useState(group.description ?? "");
+  // #1053: the group as the dialog opened on it, and the only place the form
+  // reads `group`. The page refetches behind an open dialog; comparing with
+  // the live row would make another editor's rename look like this editor's
+  // edit of a field they never touched.
+  const [original] = useState(group);
+  const [name, setName] = useState(original.name);
+  const [description, setDescription] = useState(original.description ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const nameRef = useDialogAutoFocus(true);
@@ -42,8 +47,8 @@ const EditForm: React.FC<{
   const saveDisabled =
     isPending ||
     name.trim() === "" ||
-    (name.trim() === group.name &&
-      description.trim() === (group.description ?? ""));
+    (name.trim() === original.name &&
+      description.trim() === (original.description ?? ""));
 
   // #801: only an edited value is checked. An unchanged one isn't sent, so a
   // name saved before the length limit doesn't block a description change.
@@ -52,11 +57,11 @@ const EditForm: React.FC<{
     description?: string;
   }): FormErrors => {
     const changed = {
-      ...(data.name !== undefined && data.name !== group.name
+      ...(data.name !== undefined && data.name !== original.name
         ? { name: data.name }
         : {}),
       ...(data.description !== undefined &&
-      data.description !== (group.description ?? "")
+      data.description !== (original.description ?? "")
         ? { description: data.description }
         : {}),
     };
@@ -82,8 +87,8 @@ const EditForm: React.FC<{
     }
 
     const body: EntityGroupUpdateRequestBody = {};
-    if (trimmedName !== group.name) body.name = trimmedName;
-    if (trimmedDesc !== (group.description ?? "")) {
+    if (trimmedName !== original.name) body.name = trimmedName;
+    if (trimmedDesc !== (original.description ?? "")) {
       body.description = trimmedDesc || undefined;
     }
 
@@ -191,8 +196,10 @@ export const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
   if (!open) return null;
 
   return (
+    // No `key` on the values (#1053): it remounted the form when another
+    // editor's rename arrived, replacing what this editor had typed. The
+    // form unmounts when the dialog closes, so each opening starts fresh.
     <EditForm
-      key={`${group.name}-${group.description}`}
       group={group}
       onSubmit={onSubmit}
       onClose={onClose}

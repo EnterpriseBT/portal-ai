@@ -24,7 +24,7 @@ Swept for the same shape (six dialogs share the `EditForm` + `key` pattern):
 
 ## Decision — which dialogs change, and how
 
-1. **Column definition: capture the record the dialog opened on.** `const [original] = useState(cd)` in `EditForm`, and every read of `cd` in the form goes through it (seeds, `validate`, `buildBody`, the allowed type transitions, the read-only key). Same as Edit Station.
+1. **Column definition: capture the record the dialog opened on.** `const [original] = useState(cd)` in `EditForm`, and every read of `cd` in the form goes through it (seeds, `validate`, `buildBody`, the allowed type transitions, the read-only key). Same as Edit Station, with one addition: this dialog stays open when a save returns warnings (`views/ColumnDefinitionDetail.view.tsx:155-160`), so after this editor's own successful save the captured record takes on what was sent. Otherwise changing a field back to its opening value would read as no change and not be sent. A failed save leaves it alone.
 2. **Entity group: the same, and drop the value key.** The wrapper already returns `null` when closed, so each opening gets a fresh form without it. With the key gone and the comparison against `original`, a refetch no longer resets the form, and a save sends only what this editor changed from what they opened on. This makes it behave like Edit Station rather than fixing a revert.
 3. **Tag: no change.** Its only parent already hands it a snapshot.
 
@@ -39,7 +39,7 @@ Considered and not done: keeping the group's reset-on-change and warning the edi
 - Edit: `components/EditEntityGroupDialog.component.tsx` — capture `original`; compare against it; remove the `key`.
 
 **Tests** (render the dialog, re-render with the refetched record, edit one field, save; the harness `EditStationDialog.test.tsx` uses for #1043)
-- Edit: `__tests__/EditColumnDefinitionDialog.test.tsx` — a description-only save after another editor changed the label sends only the description; the same for a changed type and validation pattern; an untouched form after a refetch closes without sending.
+- Edit: `__tests__/EditColumnDefinitionDialog.test.tsx` — a description-only save after another editor changed the label sends only the description; the same for a changed type and validation pattern; an untouched form after a refetch closes without sending; after a save that returned warnings, a field changed back is sent; after a failed save, the same change is sent again.
 - Edit: `__tests__/EditEntityGroupDialog.test.tsx` — a description-only save after another editor's rename sends only the description; text typed before the refetch is still in the field after it.
 - `npm run test:unit` in `apps/web` limited to those two files plus `TagFormModal` and `EditStationDialog`; `npm run lint`, `npm run type-check`, `npm run format:check`.
 

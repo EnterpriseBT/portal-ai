@@ -152,3 +152,57 @@ describe("EditEntityGroupDialog — a name saved before the limit (#801)", () =>
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });
+
+// #1053: the form compared its fields with the live group and was keyed on
+// the group's values. When the page refetched another editor's rename behind
+// the open dialog, the form remounted on the new values and what this editor
+// had typed was gone.
+describe("EditEntityGroupDialog — another editor's changes while open (#1053)", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => jest.clearAllMocks());
+
+  const opened = { name: "Customers", description: "Accounts we bill" };
+  const descriptionField = () =>
+    screen.getByRole("textbox", { name: /description/i });
+
+  /** Open on `opened`; `refetch(after)` is the page refetching behind it. */
+  const open = () => {
+    const onSubmit = jest.fn();
+    const props = { ...defaultProps, onSubmit };
+    const { rerender } = render(
+      <EditEntityGroupDialog {...props} group={opened} />
+    );
+    const refetch = (after: typeof opened) =>
+      rerender(<EditEntityGroupDialog {...props} group={after} />);
+    return { onSubmit, refetch };
+  };
+
+  it("keeps what this editor typed when another editor's rename arrives", async () => {
+    const { refetch } = open();
+    await user.clear(descriptionField());
+    await user.type(descriptionField(), "Mine");
+    refetch({ ...opened, name: "Clients" });
+    expect(descriptionField()).toHaveValue("Mine");
+  });
+
+  it("doesn't put back a name another editor changed", async () => {
+    const { onSubmit, refetch } = open();
+    await user.clear(descriptionField());
+    await user.type(descriptionField(), "Mine");
+    refetch({ ...opened, name: "Clients" });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({ description: "Mine" });
+  });
+
+  it("doesn't put back a description another editor changed", async () => {
+    const { onSubmit, refetch } = open();
+    refetch({ ...opened, description: "Theirs" });
+    await user.clear(nameField());
+    await user.type(nameField(), "Mine");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Mine" });
+  });
+});
