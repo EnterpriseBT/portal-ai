@@ -243,6 +243,56 @@ describe("StationDetailView — custom pack names (#1063)", () => {
   });
 });
 
+describe("StationDetailView — custom packs and the plan (#1063)", () => {
+  it("marks an excluded custom pack and names it in the notice", () => {
+    mockUsageData = {
+      tier: {
+        tier: "standard",
+        entitlements: {
+          builtinToolpacks: ["data_query", "view_management"],
+          customToolpacks: false,
+        },
+      },
+      usage: { periodId: "2026-11", byClass: {} },
+    };
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          enabledToolpacks: ["view_management", "org:tp-1"],
+          toolpacks: [
+            {
+              ref: "view_management",
+              kind: "builtin",
+              name: "Curated Views",
+            },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+          instances: [instance("ci-1", "CRM", true)],
+          views: [],
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        },
+      })
+    );
+    try {
+      render(<StationDetailView stationId="st-1" />);
+      expect(
+        screen.getByLabelText("Acme CRM — Not included in your plan")
+      ).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Acme CRM isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+    } finally {
+      mockUsageData = undefined;
+    }
+  });
+});
+
 describe("StationDetailView — a failed edit doesn't follow the dialog (#789)", () => {
   beforeEach(() => {
     mockStationsGet.mockReset();

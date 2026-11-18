@@ -301,6 +301,35 @@ describe("PortalHeaderMeta", () => {
       ).toBeInTheDocument();
     });
 
+    // #1063: an excluded custom pack is named by its own name.
+    it("names an excluded custom pack in the notice", () => {
+      render(
+        <PortalHeaderMetaUI
+          {...uiProps}
+          station={
+            {
+              ...stationFixture.station,
+              enabledToolpacks: ["view_management", "org:tp-1"],
+              toolpacks: [
+                {
+                  ref: "view_management",
+                  kind: "builtin",
+                  name: "Curated Views",
+                },
+                { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+              ],
+              views: [],
+            } as never
+          }
+          isEntitled={(pack) => !pack.startsWith("org:")}
+          customPacksEntitled={false}
+        />
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Acme CRM isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+    });
+
     it("renders the station rows when the station is present", () => {
       render(
         <PortalHeaderMetaUI

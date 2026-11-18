@@ -317,6 +317,55 @@ describe("EditStationDialog — packs the picker can't show (#1052)", () => {
     ).toBeInTheDocument();
   });
 
+  // #1063: the station read names the packs, so the line can too.
+  it("names the packs it can't change when the station names them", () => {
+    listRefused();
+    const named = (refs: string[]) => ({
+      ...props(refs),
+      station: {
+        ...stationWith(refs),
+        toolpacks: [
+          { ref: "data_query", kind: "builtin" as const, name: "Data Query" },
+          { ref: "org:otp-a", kind: "custom" as const, name: "Acme CRM" },
+          { ref: "org:otp-b", kind: "custom" as const, name: "Beta Tools" },
+        ].filter((pack) => refs.includes(pack.ref)),
+      },
+    });
+    const { unmount } = render(
+      <EditStationDialog {...named(["data_query", "org:otp-a"])} />
+    );
+    expect(
+      screen.getByText("Acme CRM can't be changed here.")
+    ).toBeInTheDocument();
+    unmount();
+
+    render(
+      <EditStationDialog {...named(["data_query", "org:otp-a", "org:otp-b"])} />
+    );
+    expect(
+      screen.getByText("Acme CRM and Beta Tools can't be changed here.")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the count when a pack it can't change has no name", () => {
+    listRefused();
+    const p = props(["data_query", "org:otp-a", "org:otp-b"]);
+    render(
+      <EditStationDialog
+        {...p}
+        station={{
+          ...p.station,
+          toolpacks: [
+            { ref: "org:otp-a", kind: "custom" as const, name: "Acme CRM" },
+          ],
+        }}
+      />
+    );
+    expect(
+      screen.getByText("2 tool packs on this station can't be changed here.")
+    ).toBeInTheDocument();
+  });
+
   it("a built-in edit made while the list is loading doesn't detach a custom pack", async () => {
     listLoading();
     const p = props(["data_query", "statistics", "org:otp-a"]);
@@ -379,5 +428,125 @@ describe("EditStationDialog — packs the picker can't show (#1052)", () => {
     render(<EditStationDialog {...props(["data_query", "org:otp-a"])} />);
     expect(countLine()).toBeInTheDocument();
     await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+});
+
+// #1063: a plan without custom packs drops them from every session, so the
+// pickers treat them as they treat an unentitled built-in (#284): listed,
+// unselectable with the reason, and removable where already attached.
+describe("station dialogs — custom packs and the plan (#1063)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockToolpacksList.mockReturnValue({
+      data: { toolpacks: COLLIDING_CUSTOMS, total: COLLIDING_CUSTOMS.length },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+    });
+  });
+
+  const openPicker = () =>
+    fireEvent.mouseDown(screen.getByPlaceholderText("Select tool packs..."));
+  const upgradeNote = () =>
+    screen.queryByText(/Some tool packs aren't included in your plan/);
+
+  const station = (enabledToolpacks: string[]) => ({
+    id: "station-1",
+    organizationId: "org-1",
+    name: "Sales Station",
+    description: null,
+    enabledToolpacks,
+    created: 1700000000000,
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    instances: [],
+  });
+  const editProps = (enabledToolpacks: string[]) => ({
+    open: true,
+    onClose: jest.fn(),
+    station: station(enabledToolpacks),
+    onSubmit: jest.fn(),
+    isPending: false,
+    serverError: null,
+  });
+
+  it("Edit offers an excluded custom pack as disabled, with the reason", async () => {
+    render(
+      <EditStationDialog
+        {...editProps(["data_query"])}
+        customPacksEntitled={false}
+      />
+    );
+    openPicker();
+    await waitFor(() =>
+      expect(screen.getByText("sales_intel")).toBeInTheDocument()
+    );
+    expect(screen.getByText("sales_intel").closest("li")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+  });
+
+  it("Edit keeps an attached excluded custom pack removable", async () => {
+    const p = editProps(["data_query", "org:otp-a"]);
+    render(<EditStationDialog {...p} customPacksEntitled={false} />);
+    const chip = screen.getByText("customer_intel").closest(".MuiChip-root")!;
+    fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(p.onSubmit).toHaveBeenCalledTimes(1));
+    expect(p.onSubmit.mock.calls[0][0]).toEqual({
+      toolPackChanges: { remove: ["org:otp-a"] },
+    });
+  });
+
+  it("Edit shows the upgrade note for excluded custom packs alone", () => {
+    const { unmount } = render(
+      <EditStationDialog
+        {...editProps(["data_query"])}
+        customPacksEntitled={false}
+      />
+    );
+    expect(upgradeNote()).toBeInTheDocument();
+    unmount();
+
+    render(<EditStationDialog {...editProps(["data_query"])} />);
+    expect(upgradeNote()).not.toBeInTheDocument();
+  });
+
+  it("Edit has no axe violations with the upgrade note showing", async () => {
+    render(
+      <EditStationDialog
+        {...editProps(["data_query", "org:otp-a"])}
+        customPacksEntitled={false}
+      />
+    );
+    expect(upgradeNote()).toBeInTheDocument();
+    await expectNoAxeViolations(await screen.findByRole("dialog"));
+  });
+
+  it("Create offers an excluded custom pack as disabled, with the upgrade note", async () => {
+    render(
+      <CreateStationDialog
+        open
+        onClose={jest.fn()}
+        onSubmit={jest.fn()}
+        isPending={false}
+        serverError={null}
+        customPacksEntitled={false}
+      />
+    );
+    expect(upgradeNote()).toBeInTheDocument();
+    openPicker();
+    await waitFor(() =>
+      expect(screen.getByText("sales_intel")).toBeInTheDocument()
+    );
+    expect(screen.getByText("sales_intel").closest("li")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 });

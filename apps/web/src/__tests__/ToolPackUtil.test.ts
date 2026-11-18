@@ -2,6 +2,8 @@ import {
   ToolPackUtil,
   ALL_BUILTIN_SLUGS,
   isBuiltinPackEntitled,
+  isPackEntitled,
+  listPackNames,
   stationDataSetupFor,
   stationToolpackLabels,
   unentitledBuiltins,
@@ -43,6 +45,32 @@ describe("stationToolpackLabels (#1063)", () => {
 
   it("is empty for a station without named packs", () => {
     expect(stationToolpackLabels(undefined).size).toBe(0);
+  });
+});
+
+describe("listPackNames (#1063)", () => {
+  it("joins names the way a sentence does", () => {
+    expect(listPackNames(["Acme CRM"])).toBe("Acme CRM");
+    expect(listPackNames(["Acme CRM", "Beta"])).toBe("Acme CRM and Beta");
+    expect(listPackNames(["A", "B", "C"])).toBe("A, B and C");
+  });
+});
+
+describe("isPackEntitled (#1063)", () => {
+  const entitled = new Set(["data_query"]);
+
+  it("holds a built-in to the entitled set", () => {
+    expect(isPackEntitled("data_query", entitled, false)).toBe(true);
+    expect(isPackEntitled("statistics", entitled, true)).toBe(false);
+  });
+
+  it("holds a custom pack to the plan's custom packs", () => {
+    expect(isPackEntitled("org:tp-1", entitled, true)).toBe(true);
+    expect(isPackEntitled("org:tp-1", entitled, false)).toBe(false);
+  });
+
+  it("reads an unknown ref as entitled", () => {
+    expect(isPackEntitled("retired_pack", entitled, false)).toBe(true);
   });
 });
 
@@ -126,13 +154,28 @@ describe("stationDataSetupFor", () => {
     ).toEqual({ dataSetup: "none", excludedPackNames: [] });
   });
 
-  it("names the organization's packs when the plan excludes custom packs", () => {
+  // #1063: by their own names, from the station read.
+  it("names the excluded custom packs, after the built-ins, in the station's order", () => {
     expect(
-      stationDataSetupFor(["org:abc", "view_management"], () => true, false)
+      stationDataSetupFor(
+        ["org:b", "view_management", "org:a", "gis"],
+        without("gis"),
+        false,
+        new Map([
+          ["a", "Acme CRM"],
+          ["b", "Beta Tools"],
+        ])
+      )
     ).toEqual({
       dataSetup: "plan-excluded",
-      excludedPackNames: ["Your organization's tool packs"],
+      excludedPackNames: ["GIS", "Beta Tools", "Acme CRM"],
     });
+  });
+
+  it("leaves out an excluded custom pack it has no name for", () => {
+    expect(
+      stationDataSetupFor(["org:abc", "view_management"], () => true, false)
+    ).toEqual({ dataSetup: "plan-excluded", excludedPackNames: [] });
   });
 
   // Only `org:` refs are custom packs. A retired or unknown built-in slug is

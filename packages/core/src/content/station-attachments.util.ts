@@ -41,13 +41,6 @@ export const STATION_ATTACHMENT_MISSING_ACTION =
 export const STATION_ATTACHMENT_NO_ACCESS_ACTION =
   "They're attached, but they haven't been shared with your account. Ask someone who can share them to give you access.";
 
-/**
- * #1055: names the organization's own packs in the plan sentence. The web
- * passes it among `excludedPackNames` when the plan excludes custom packs.
- */
-export const STATION_PLAN_EXCLUDED_CUSTOM_PACKS =
-  "Your organization's tool packs";
-
 export interface StationAttachmentGapsOptions {
   /**
    * How the station stands with entity data. It repeats `StationDataSetup`
@@ -62,30 +55,14 @@ export interface StationAttachmentGapsOptions {
 
 /**
  * "A", "A and B", … up to four names; beyond that the first three and
- * "and N more" (N is at least 2). The organization's packs are always named:
- * in a cut list they take the third place.
+ * "and N more" (N is at least 2).
  */
 function listPacks(names: readonly string[]): string {
-  let shown = [...names];
-  let rest = 0;
   if (names.length > 4) {
-    const custom = names.includes(STATION_PLAN_EXCLUDED_CUSTOM_PACKS);
-    const others = names.filter(
-      (n) => n !== STATION_PLAN_EXCLUDED_CUSTOM_PACKS
-    );
-    shown = custom
-      ? [...others.slice(0, 2), STATION_PLAN_EXCLUDED_CUSTOM_PACKS]
-      : others.slice(0, 3);
-    rest = names.length - shown.length;
+    return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
   }
-  shown = shown.map((name, i) =>
-    i > 0 && name === STATION_PLAN_EXCLUDED_CUSTOM_PACKS
-      ? name.charAt(0).toLowerCase() + name.slice(1)
-      : name
-  );
-  if (rest > 0) return `${shown.join(", ")} and ${rest} more`;
-  if (shown.length === 1) return shown[0];
-  return `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /**
@@ -95,10 +72,7 @@ function listPacks(names: readonly string[]): string {
 function planExcludedSentence(names: readonly string[]): string {
   const subject =
     names.length > 0 ? listPacks(names) : "Some tool packs on this station";
-  // "Your organization's tool packs" is plural on its own.
-  const singular =
-    names.length === 1 && names[0] !== STATION_PLAN_EXCLUDED_CUSTOM_PACKS;
-  const verb = singular ? "isn't" : "aren't";
+  const verb = names.length === 1 ? "isn't" : "aren't";
   return `${subject} ${verb} included in your plan, so attaching a view won't make data available on this station.`;
 }
 

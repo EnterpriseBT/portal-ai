@@ -6,7 +6,6 @@ import {
   stationDataSetup,
   type StationDataSetup,
 } from "@portalai/core/registries";
-import { STATION_PLAN_EXCLUDED_CUSTOM_PACKS } from "@portalai/core/content";
 import type { AttachedToolpack } from "@portalai/core/contracts";
 
 /**
@@ -55,6 +54,12 @@ export function stationToolpackLabels(
   return labels;
 }
 
+/** #1063: "A", "A and B", "A, B and C": packs named in a sentence. */
+export function listPackNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 // ── Built-in entitlements (#284) ─────────────────────────────────────
 //
 // #214 shipped `TierPolicy.entitlements` with two axes: `customToolpacks`
@@ -94,6 +99,24 @@ export function isBuiltinPackEntitled(
 }
 
 /**
+ * #1063: is this pack on the organization's plan? One rule for both kinds,
+ * so a custom pack gets the treatment an unentitled built-in gets (#284):
+ *
+ * - a built-in slug: in `entitledSlugs`;
+ * - a custom ref (`org:<uuid>`): the plan's `customToolpacks` (#214), since
+ *   a plan without them drops every custom pack from a session;
+ * - anything else (a retired slug): entitled, as there is no plan rule for it.
+ */
+export function isPackEntitled(
+  pack: string,
+  entitledSlugs: ReadonlySet<string>,
+  customPacksEntitled: boolean
+): boolean {
+  if (pack.startsWith("org:")) return customPacksEntitled;
+  return isBuiltinPackEntitled(pack, entitledSlugs);
+}
+
+/**
  * The subset of `packs` that are built-in slugs outside `entitledSlugs`,
  * in input order. Non-built-in refs are never returned.
  */
@@ -110,12 +133,15 @@ export function unentitledBuiltins(
  * Built-in packs split by the plan; any other ref is a custom pack, usable
  * or excluded by the plan's `customToolpacks`. In `plan-excluded`,
  * `excludedPackNames` names the excluded packs whose tools would read the
- * station's records, in the station's own order (as its chips show them).
+ * station's records, in the station's own order (as its chips show them):
+ * the built-ins, then the custom packs by the names in `labels` (#1063, from
+ * the station read). A custom pack with no name isn't named.
  */
 export function stationDataSetupFor(
   enabledToolpacks: readonly string[],
   isEntitled: (pack: string) => boolean,
-  customPacksEntitled: boolean
+  customPacksEntitled: boolean,
+  labels: CustomToolpackLabelMap = new Map()
 ): { dataSetup: StationDataSetup; excludedPackNames: string[] } {
   const builtins = enabledToolpacks.filter(isBuiltinToolpackSlug);
   // Only `org:` refs are custom packs; a retired or unknown slug is neither,
@@ -134,7 +160,11 @@ export function stationDataSetupFor(
     .filter((slug) => PACK_USES_STATION_DATA[slug])
     .map((slug) => ToolPackUtil.getLabel(slug));
   if (hasCustom && !customPacksEntitled) {
-    excludedPackNames.push(STATION_PLAN_EXCLUDED_CUSTOM_PACKS);
+    for (const ref of enabledToolpacks) {
+      if (!ref.startsWith("org:")) continue;
+      const name = labels.get(ref.slice("org:".length));
+      if (name !== undefined) excludedPackNames.push(name);
+    }
   }
   return { dataSetup, excludedPackNames };
 }

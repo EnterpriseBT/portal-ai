@@ -2,7 +2,11 @@ import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
 import { descriptionField, nameField } from "@portalai/core/contracts";
-import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
+import type {
+  AttachedToolpack,
+  UpdateStationBody,
+  Toolpack,
+} from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import {
@@ -33,6 +37,7 @@ import {
   ALL_BUILTIN_SLUGS,
   someBuiltinUnentitled,
   isBuiltinPackEntitled,
+  listPackNames,
   UNENTITLED_PACK_REASON,
 } from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
@@ -178,6 +183,8 @@ export interface EditStationDialogProps {
     /** #674: from include=curatedView. */
     views?: StationViewAttachment[];
     enabledToolpacks?: string[];
+    /** #1063: the packs' names, from the station read. */
+    toolpacks?: AttachedToolpack[];
   };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
@@ -190,6 +197,13 @@ export interface EditStationDialogProps {
    * Defaults to every built-in (fail open); the server 403 is the gate.
    */
   entitledBuiltinSlugs?: ReadonlySet<string>;
+  /**
+   * #1063: the plan includes custom (organization) tool packs. Without them
+   * custom packs are offered the way an unentitled built-in is: listed,
+   * unselectable with the reason named, and removable where attached.
+   * Defaults to `true` (fail open); the server 403 is the gate.
+   */
+  customPacksEntitled?: boolean;
 }
 
 export const EditStationDialog: React.FC<EditStationDialogProps> = ({
@@ -200,6 +214,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   isPending,
   serverError,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
+  customPacksEntitled = true,
 }) => {
   // The dialog is mounted only while open, so this is the station as the
   // dialog opened on it, and the only place the dialog reads `station`.
@@ -251,6 +266,10 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       value: `org:${p.id}`,
       label: p.name,
       icon: <CustomIcon fontSize="small" />,
+      // #1063: the plan's custom packs, as `withEntitlements` does built-ins.
+      ...(customPacksEntitled
+        ? {}
+        : { disabled: true, disabledReason: UNENTITLED_PACK_REASON }),
     }));
   const allOptions = useMemo(
     () => [
@@ -258,7 +277,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       ...customOptions,
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entitledBuiltinSlugs, customsResult.data]
+    [entitledBuiltinSlugs, customsResult.data, customPacksEntitled]
   );
 
   // #1052: the picker reports only values it has an option for, so a pack
@@ -275,14 +294,20 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   // Said in both states, so a station that looks empty in the picker never
   // looks empty without a reason. While loading, the list may still give
   // these packs their chips.
+  // #1063: named from the station read when every such pack has a name.
+  const unshownNames = unshownPacks.map(
+    (pack) => station.toolpacks?.find((p) => p.ref === pack)?.name
+  );
   const unshownPacksNote =
     unshownPacks.length === 0
       ? undefined
       : customsResult.isLoading
         ? "Loading custom tool packs…"
-        : unshownPacks.length === 1
-          ? "1 tool pack on this station can't be changed here."
-          : `${unshownPacks.length} tool packs on this station can't be changed here.`;
+        : unshownNames.every((name) => name !== undefined)
+          ? `${listPackNames(unshownNames as string[])} can't be changed here.`
+          : unshownPacks.length === 1
+            ? "1 tool pack on this station can't be changed here."
+            : `${unshownPacks.length} tool packs on this station can't be changed here.`;
 
   const collisions = useMemo(
     () =>
@@ -427,7 +452,14 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           }
         />
         <ToolPackUpgradeNoteUI
-          show={someBuiltinUnentitled(entitledBuiltinSlugs)}
+          show={
+            someBuiltinUnentitled(entitledBuiltinSlugs) ||
+            // #1063: a custom pack is offered or attached, and the plan
+            // excludes custom packs.
+            (!customPacksEntitled &&
+              (customOptions.length > 0 ||
+                form.toolPacks.some((pack) => pack.startsWith("org:"))))
+          }
         />
         {collisions.length > 0 && (
           <Alert severity="warning" data-testid="toolpack-collision-warning">

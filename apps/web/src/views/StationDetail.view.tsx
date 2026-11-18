@@ -44,7 +44,10 @@ import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
-import { stationDataSetupFor } from "../utils/tool-packs.util";
+import {
+  stationDataSetupFor,
+  stationToolpackLabels,
+} from "../utils/tool-packs.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -309,7 +312,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         {...stationDataSetupFor(
                           station.enabledToolpacks ?? [],
                           isEntitled,
-                          customPacksEntitled
+                          customPacksEntitled,
+                          stationToolpackLabels(station.toolpacks)
                         )}
                       />
                     </PageHeader>
@@ -384,6 +388,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                   {editOpen && (
                     <EditStationDialog
                       entitledBuiltinSlugs={entitledBuiltinSlugs}
+                      customPacksEntitled={customPacksEntitled}
                       key={stationId}
                       open={editOpen}
                       onClose={() => {

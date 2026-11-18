@@ -24,7 +24,7 @@ import { ToolPackChip } from "./ToolPackChip.component";
 import {
   ALL_BUILTIN_SLUGS,
   ToolPackUtil,
-  isBuiltinPackEntitled,
+  isPackEntitled,
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
@@ -61,6 +61,12 @@ export interface DefaultStationCardUIProps {
    * built-in (fail open).
    */
   entitledBuiltinSlugs?: ReadonlySet<string>;
+  /**
+   * #1063: the plan includes custom (organization) tool packs. Without them
+   * a custom pack's chip renders inert, like an unentitled built-in.
+   * Defaults to `true` (fail open).
+   */
+  customPacksEntitled?: boolean;
 }
 
 export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
@@ -68,6 +74,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   onLaunchPortal,
   onChangeDefault,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
+  customPacksEntitled = true,
 }) => {
   if (!station) {
     return (
@@ -142,9 +149,10 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
                         pack,
                         stationToolpackLabels(station.toolpacks)
                       )}
-                      entitled={isBuiltinPackEntitled(
+                      entitled={isPackEntitled(
                         pack,
-                        entitledBuiltinSlugs
+                        entitledBuiltinSlugs,
+                        customPacksEntitled
                       )}
                     />
                   ))}
@@ -171,7 +179,8 @@ export const DefaultStationCardConnected: React.FC<
   DefaultStationCardConnectedProps
 > = ({ onLaunchPortal, onChangeDefault }) => {
   // #284: entitlements for the attached-pack chips below.
-  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
+  const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
+    useBuiltinEntitlements();
   return (
     <OrgData>
       {(orgResult) => (
@@ -213,6 +222,7 @@ export const DefaultStationCardConnected: React.FC<
                             onLaunchPortal={onLaunchPortal}
                             onChangeDefault={onChangeDefault}
                             entitledBuiltinSlugs={entitledBuiltinSlugs}
+                            customPacksEntitled={customPacksEntitled}
                           />
                         );
                       }}

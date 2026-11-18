@@ -82,6 +82,28 @@ describe("DefaultStationCardUI", () => {
     expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
   });
 
+  it("marks a custom pack not included on a plan without custom packs (#1063)", () => {
+    render(
+      <DefaultStationCardUI
+        {...defaultProps}
+        customPacksEntitled={false}
+        station={makeStation({
+          enabledToolpacks: ["data_query", "org:tp-1"],
+          toolpacks: [
+            { ref: "data_query", kind: "builtin", name: "Data Query" },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+        })}
+      />
+    );
+    const inert = document.querySelectorAll('[data-entitled="false"]');
+    expect(inert).toHaveLength(1);
+    expect(inert[0]).toHaveAttribute(
+      "aria-label",
+      "Acme CRM — Not included in your plan"
+    );
+  });
+
   it("should render 'Open Portal' button", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
     expect(

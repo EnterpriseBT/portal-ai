@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { sdk } from "../api/sdk";
-import { ALL_BUILTIN_SLUGS, isBuiltinPackEntitled } from "./tool-packs.util";
+import { ALL_BUILTIN_SLUGS, isPackEntitled } from "./tool-packs.util";
 
 export interface BuiltinEntitlements {
   /**
@@ -9,7 +9,11 @@ export interface BuiltinEntitlements {
    * to {@link ALL_BUILTIN_SLUGS} whenever the tier policy isn't available.
    */
   entitledSlugs: ReadonlySet<string>;
-  /** {@link isBuiltinPackEntitled} curried over `entitledSlugs`. */
+  /**
+   * {@link isPackEntitled} curried over `entitledSlugs` and
+   * `customPacksEntitled`: a built-in by the slug set, a custom ref by the
+   * plan's custom packs (#1063).
+   */
   isEntitled: (pack: string) => boolean;
   /**
    * True until the usage query resolves. Informational only — the fallback
@@ -52,7 +56,8 @@ export function useBuiltinEntitlements(): BuiltinEntitlements {
       : ALL_BUILTIN_SLUGS;
     return {
       entitledSlugs,
-      isEntitled: (pack: string) => isBuiltinPackEntitled(pack, entitledSlugs),
+      isEntitled: (pack: string) =>
+        isPackEntitled(pack, entitledSlugs, customPacksEntitled),
       isLoading: usageResult.isLoading,
       customPacksEntitled,
     };
