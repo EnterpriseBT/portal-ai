@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import type { AttachedToolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 
 const { render, screen, fireEvent, expectNoAxeViolations } =
@@ -6,7 +7,10 @@ const { render, screen, fireEvent, expectNoAxeViolations } =
 const { DefaultStationCardUI } =
   await import("../components/DefaultStationCard.component");
 
-type StationFixture = Station & { enabledToolpacks?: string[] };
+type StationFixture = Station & {
+  enabledToolpacks?: string[];
+  toolpacks?: AttachedToolpack[];
+};
 const makeStation = (
   overrides: Partial<StationFixture> = {}
 ): StationFixture => ({
@@ -58,6 +62,24 @@ describe("DefaultStationCardUI", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
     expect(screen.getByText("Data Query")).toBeInTheDocument();
     expect(screen.getByText("Statistics")).toBeInTheDocument();
+  });
+
+  // #1063: the station read names its custom packs.
+  it("names a custom pack from the station's toolpacks", () => {
+    render(
+      <DefaultStationCardUI
+        {...defaultProps}
+        station={makeStation({
+          enabledToolpacks: ["data_query", "org:tp-1"],
+          toolpacks: [
+            { ref: "data_query", kind: "builtin", name: "Data Query" },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+    expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
   });
 
   it("should render 'Open Portal' button", () => {

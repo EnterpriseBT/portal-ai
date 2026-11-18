@@ -213,6 +213,36 @@ describe("StationDetailView — attachments (#674)", () => {
   });
 });
 
+// #1063: a member can't list the org's packs (the list mock answers none),
+// so the station read's names are what the chips show.
+describe("StationDetailView — custom pack names (#1063)", () => {
+  it("names a custom pack from the station read", () => {
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          enabledToolpacks: ["data_query", "org:tp-1"],
+          toolpacks: [
+            { ref: "data_query", kind: "builtin", name: "Data Query" },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+          instances: [],
+          views: [],
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        },
+      })
+    );
+    render(<StationDetailView stationId="st-1" />);
+    expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+    expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
+  });
+});
+
 describe("StationDetailView — a failed edit doesn't follow the dialog (#789)", () => {
   beforeEach(() => {
     mockStationsGet.mockReset();

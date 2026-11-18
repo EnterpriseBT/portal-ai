@@ -29,7 +29,9 @@ import { SyncTotal } from "./SyncTotal.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import {
   ALL_BUILTIN_SLUGS,
+  ToolPackUtil,
   isBuiltinPackEntitled,
+  stationToolpackLabels,
 } from "../utils/tool-packs.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
@@ -153,6 +155,10 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
                   <ToolPackChip
                     key={pack}
                     pack={pack}
+                    label={ToolPackUtil.getLabel(
+                      pack,
+                      stationToolpackLabels(station.toolpacks)
+                    )}
                     entitled={isBuiltinPackEntitled(pack, entitledBuiltinSlugs)}
                   />
                 ))}

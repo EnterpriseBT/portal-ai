@@ -3,6 +3,7 @@ import {
   ALL_BUILTIN_SLUGS,
   isBuiltinPackEntitled,
   stationDataSetupFor,
+  stationToolpackLabels,
   unentitledBuiltins,
 } from "../utils/tool-packs.util";
 
@@ -28,6 +29,22 @@ describe("ToolPackUtil.getLabel", () => {
 // Governs the BUILT-IN axis only. The custom axis is #214's
 // `customToolpacks` boolean and is deliberately not this predicate's
 // business — an `org:<uuid>` ref always reads as entitled here.
+
+describe("stationToolpackLabels (#1063)", () => {
+  it("maps each custom pack's id to its name, for getLabel", () => {
+    const labels = stationToolpackLabels([
+      { ref: "data_query", kind: "builtin", name: "Data Query" },
+      { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+    ]);
+    expect([...labels]).toEqual([["tp-1", "Acme CRM"]]);
+    expect(ToolPackUtil.getLabel("org:tp-1", labels)).toBe("Acme CRM");
+    expect(ToolPackUtil.getLabel("org:tp-2", labels)).toBe("org:tp-2");
+  });
+
+  it("is empty for a station without named packs", () => {
+    expect(stationToolpackLabels(undefined).size).toBe(0);
+  });
+});
 
 describe("isBuiltinPackEntitled", () => {
   const entitled = new Set(["data_query", "web_search"]);

@@ -253,6 +253,13 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                     <ToolPackChipWithMetadata
                                       key={pack}
                                       pack={pack}
+                                      // #1063: the station read names
+                                      // its packs.
+                                      name={
+                                        station.toolpacks?.find(
+                                          (p) => p.ref === pack
+                                        )?.name
+                                      }
                                       entitled={isEntitled(pack)}
                                     />
                                   )

@@ -7,6 +7,7 @@ import {
   type StationDataSetup,
 } from "@portalai/core/registries";
 import { STATION_PLAN_EXCLUDED_CUSTOM_PACKS } from "@portalai/core/content";
+import type { AttachedToolpack } from "@portalai/core/contracts";
 
 /**
  * Optional lookup map for custom toolpack labels. The toolpacks list
@@ -34,6 +35,24 @@ export class ToolPackUtil {
     }
     return pack;
   }
+}
+
+/**
+ * #1063: a station's own pack names (its `toolpacks`), as the id → name map
+ * `ToolPackUtil.getLabel` takes. A station read names its packs for anyone
+ * who can read the station, so a member gets a custom pack's name without
+ * the organization's pack list, which they can't read.
+ */
+export function stationToolpackLabels(
+  toolpacks: readonly AttachedToolpack[] | undefined
+): CustomToolpackLabelMap {
+  const labels = new Map<string, string>();
+  for (const pack of toolpacks ?? []) {
+    if (pack.kind === "custom" && pack.ref.startsWith("org:")) {
+      labels.set(pack.ref.slice("org:".length), pack.name);
+    }
+  }
+  return labels;
 }
 
 // ── Built-in entitlements (#284) ─────────────────────────────────────

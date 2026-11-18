@@ -74,6 +74,24 @@ describe("StationCardUI", () => {
     );
   });
 
+  // #1063: the station read names its custom packs.
+  it("names a custom pack from the station's toolpacks", () => {
+    render(
+      <StationCardUI
+        {...defaultCardProps}
+        station={makeStation({
+          enabledToolpacks: ["data_query", "org:tp-1"],
+          toolpacks: [
+            { ref: "data_query", kind: "builtin", name: "Data Query" },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+    expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
+  });
+
   it("should show Default badge when isDefault is true", () => {
     render(<StationCardUI {...defaultCardProps} isDefault={true} />);
     expect(screen.getByTestId("default-badge")).toBeInTheDocument();

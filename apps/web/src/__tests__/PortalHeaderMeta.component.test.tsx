@@ -374,6 +374,25 @@ describe("PortalHeaderMeta", () => {
       expect(screen.getByText(/statistics/i)).toBeInTheDocument();
     });
 
+    // #1063: the station read names a custom pack the caller can't list.
+    it("names a custom pack from the station read", () => {
+      mockStationsGet.mockReturnValue(
+        mockStationResult({
+          station: {
+            ...stationFixture.station,
+            enabledToolpacks: ["data_query", "org:tp-1"],
+            toolpacks: [
+              { ref: "data_query", kind: "builtin", name: "Data Query" },
+              { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+            ],
+          },
+        })
+      );
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+      expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
+    });
+
     it("does not render the mobile toggle on desktop", () => {
       mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
       render(<PortalHeaderMeta stationId="station-1" />);

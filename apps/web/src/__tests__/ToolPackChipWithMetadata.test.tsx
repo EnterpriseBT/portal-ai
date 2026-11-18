@@ -114,6 +114,40 @@ describe("ToolPackChipWithMetadata", () => {
     expect(screen.queryByLabelText("close")).not.toBeInTheDocument();
   });
 
+  // #1063: a member can't list the org's packs, so the station names them.
+  it("reads the station's name for a custom pack when the list is refused", () => {
+    mockListResult.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isSuccess: false,
+      error: { status: 403 },
+    });
+
+    render(<ToolPackChipWithMetadata pack="org:otp-1" name="Acme CRM" />);
+
+    expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+    expect(screen.queryByText("org:otp-1")).not.toBeInTheDocument();
+    // Not clickable: there's no pack record to show.
+    fireEvent.click(screen.getByText("Acme CRM"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("prefers the list's name when both are known", () => {
+    mockListResult.mockReturnValue({
+      data: { toolpacks: [customPack], total: 1 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      error: null,
+    });
+
+    render(<ToolPackChipWithMetadata pack="org:otp-1" name="Old name" />);
+
+    expect(screen.getByText("Customer Intel")).toBeInTheDocument();
+    expect(screen.queryByText("Old name")).not.toBeInTheDocument();
+  });
+
   it("has no axe violations, as a chip and with its details dialog open", async () => {
     mockListResult.mockReturnValue({
       data: { toolpacks: [customPack], total: 1 },

@@ -2,6 +2,7 @@ import React from "react";
 
 import type { Station } from "@portalai/core/models";
 import type {
+  AttachedToolpack,
   OrganizationGetResponse,
   StationGetResponsePayload,
 } from "@portalai/core/contracts";
@@ -22,7 +23,9 @@ import { OrgData } from "./StationList.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import {
   ALL_BUILTIN_SLUGS,
+  ToolPackUtil,
   isBuiltinPackEntitled,
+  stationToolpackLabels,
 } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
@@ -43,7 +46,13 @@ const StationData: React.FC<StationDataProps> = ({ id, children }) => {
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface DefaultStationCardUIProps {
-  station: (Station & { enabledToolpacks?: string[] }) | null;
+  station:
+    | (Station & {
+        enabledToolpacks?: string[];
+        /** #1063: the packs' names, from the station read. */
+        toolpacks?: AttachedToolpack[];
+      })
+    | null;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
   /**
@@ -129,6 +138,10 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
                     <ToolPackChip
                       key={pack}
                       pack={pack}
+                      label={ToolPackUtil.getLabel(
+                        pack,
+                        stationToolpackLabels(station.toolpacks)
+                      )}
                       entitled={isBuiltinPackEntitled(
                         pack,
                         entitledBuiltinSlugs
