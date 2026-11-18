@@ -3,7 +3,6 @@ import {
   eq,
   and,
   or,
-  ilike,
   inArray,
   isNull,
   type SQL,
@@ -48,6 +47,7 @@ import { wideTableReconcilerService } from "../services/wide-table-reconciler.se
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-entity" });
@@ -186,8 +186,8 @@ connectorEntityRouter.get(
       if (search) {
         filters.push(
           or(
-            ilike(connectorEntities.key, `%${search}%`),
-            ilike(connectorEntities.label, `%${search}%`)
+            ilikeContains(connectorEntities.key, search),
+            ilikeContains(connectorEntities.label, search)
           )!
         );
       }

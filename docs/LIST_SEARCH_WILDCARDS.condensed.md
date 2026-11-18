@@ -30,10 +30,10 @@ Options:
 - The record filters (`:274-280`) are typed filter operators, not searches, and stay as they are.
 
 The guard `apps/api/src/__tests__/like-search.guard.test.ts` scans non-test `apps/api/src/**/*.ts` and fails on:
-- any `ilike(` / `like(` call whose pattern argument is a template literal containing `%${`;
-- any `ILIKE` or `LIKE` in a `sql` template that isn't followed by `ESCAPE` on the same expression, outside `filter-sql.util.ts`. `portal-sql.service.ts` is allowlisted with its reason.
+- any call to drizzle's `like` / `ilike` / `notLike` / `notIlike`, which take a raw pattern;
+- a `sql` template that interpolates a value right after `LIKE` / `ILIKE` with no `ESCAPE` after it.
 
-Its allowlist starts empty apart from that one entry.
+Constant patterns written into the SQL (catalog lookups such as `relname LIKE 'pg\_temp\_%'`) carry no user text and aren't flagged. `portal-sql.service.ts` builds plain strings, not `sql` templates, so it needs no allowlist entry. The guard has no allowlist.
 
 The CLAUDE.md project-board section also gains the new `Backlog` status option (`931720e6`). It's a one-line docs change that rides on this PR.
 

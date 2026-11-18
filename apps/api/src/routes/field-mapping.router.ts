@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, type SQL, type Column } from "drizzle-orm";
 
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
@@ -40,6 +40,7 @@ import { wideTableReconcilerService } from "../services/wide-table-reconciler.se
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "field-mapping" });
@@ -200,8 +201,8 @@ fieldMappingRouter.get(
         // The key too (#986): the web picker labels a mapping "<column> (<key>)".
         filters.push(
           or(
-            ilike(fieldMappings.sourceField, `%${search}%`),
-            ilike(fieldMappings.normalizedKey, `%${search}%`)
+            ilikeContains(fieldMappings.sourceField, search),
+            ilikeContains(fieldMappings.normalizedKey, search)
           )!
         );
       }

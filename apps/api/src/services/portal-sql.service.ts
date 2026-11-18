@@ -50,6 +50,7 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   parseFilterPayload,
   renderFilterGroupToSql,
+  escapeLike,
 } from "../utils/filter-sql.util.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import {
@@ -982,7 +983,7 @@ export class PortalSqlServiceImpl {
       const textColumns = readable.filter(
         (c) => pgTypeForColumnDefinitionType(c.type) === "text"
       );
-      const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const escaped = escapeLike(search);
       const term = quoteLiteral(`%${escaped}%`);
       const clauses = textColumns.map(
         (c) => `w.${quoteIdent(c.columnName)} ILIKE ${term}`

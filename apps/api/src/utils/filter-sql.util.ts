@@ -18,7 +18,7 @@
  * All user-provided values are bound as parameters — never interpolated.
  */
 
-import { sql, type SQL } from "drizzle-orm";
+import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 import {
@@ -391,6 +391,16 @@ function buildTypedEnumCondition(
  */
 export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * A list search's "contains" match: case-insensitive, with `term` matched
+ * literally (#1039). Every list `search` goes through this rather than
+ * `ilike(col, `%${term}%`)`, which made `%` and `_` wildcards, so a search
+ * for `%` returned every row. `like-search.guard.test.ts` enforces it.
+ */
+export function ilikeContains(column: SQLWrapper, term: string): SQL {
+  return sql`${column} ILIKE ${"%" + escapeLike(term) + "%"} ESCAPE '\\'`;
 }
 
 function buildTypedArrayCondition(

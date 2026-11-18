@@ -1,9 +1,12 @@
 import { describe, it, expect } from "@jest/globals";
+import { sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import type { FilterGroup } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
 import {
+  ilikeContains,
   parseFilterPayload,
   renderFilterGroupToSql,
 } from "../../utils/filter-sql.util.js";
@@ -179,5 +182,26 @@ describe("parseFilterPayload", () => {
       columns
     );
     expect(out).not.toHaveProperty("message");
+  });
+});
+
+describe("ilikeContains", () => {
+  const render = (term: string) =>
+    new PgDialect().sqlToQuery(ilikeContains(sql.raw(`"t"."name"`), term));
+
+  it("matches case-insensitively with an explicit escape character (#1039)", () => {
+    const { sql: text, params } = render("q1");
+    expect(text).toBe(`"t"."name" ILIKE $1 ESCAPE '\\'`);
+    expect(params).toEqual(["%q1%"]);
+  });
+
+  it.each([
+    ["%", "%\\%%"],
+    ["_", "%\\_%"],
+    ["50%", "%50\\%%"],
+    ["Q1_2025", "%Q1\\_2025%"],
+    ["a\\b", "%a\\\\b%"],
+  ])("binds %p literally as %p", (term, bound) => {
+    expect(render(term).params).toEqual([bound]);
   });
 });

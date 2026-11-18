@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, type SQL, type Column } from "drizzle-orm";
 
 import { EntityTagModelFactory } from "@portalai/core/models";
 import {
@@ -23,6 +23,7 @@ import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "entity-tag" });
@@ -113,8 +114,8 @@ entityTagRouter.get(
       if (search) {
         filters.push(
           or(
-            ilike(entityTags.name, `%${search}%`),
-            ilike(entityTags.description, `%${search}%`)
+            ilikeContains(entityTags.name, search),
+            ilikeContains(entityTags.description, search)
           )!
         );
       }

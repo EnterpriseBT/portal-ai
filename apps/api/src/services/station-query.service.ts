@@ -4,7 +4,7 @@
  * `station_list` tool so the two can't drift.
  */
 
-import { and, eq, ilike, type SQL } from "drizzle-orm";
+import { and, eq, type SQL } from "drizzle-orm";
 
 import type {
   ObjectCapabilities,
@@ -18,6 +18,7 @@ import { ObjectCapabilitiesService } from "./object-capabilities.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import { stations } from "../db/schema/index.js";
 import type { StationSelect } from "../db/schema/zod.js";
+import { ilikeContains } from "../utils/filter-sql.util.js";
 
 export interface StationListOptions {
   search?: string;
@@ -51,7 +52,7 @@ export class StationQueryService {
     const { limit, offset, sortBy, sortOrder, search } = opts;
     const filters: SQL[] = [eq(stations.organizationId, ctx.organizationId)];
     if (search) {
-      filters.push(ilike(stations.name, `%${search}%`));
+      filters.push(ilikeContains(stations.name, search));
     }
     // #621: object-level visibility — AND the caller's read predicate (own +
     // system + shared) into the list. `undefined` = see-all (owner/admin).

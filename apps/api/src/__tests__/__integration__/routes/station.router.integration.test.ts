@@ -246,6 +246,38 @@ describe("Station Router", () => {
       expect(res.body.payload.stations).toHaveLength(0);
       void orgA;
     });
+
+    it("matches search text literally, so % and _ aren't wildcards (#1039)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values([
+          createStation(organizationId, { name: "Q1_2025" }) as never,
+          createStation(organizationId, { name: "Q1X2025" }) as never,
+          createStation(organizationId, { name: "50% off" }) as never,
+          createStation(organizationId, { name: "500 Club" }) as never,
+        ]);
+      const names = async (search: string) => {
+        const res = await request(app)
+          .get("/api/stations")
+          .query({ search })
+          .expect(200);
+        return (res.body.payload.stations as Array<{ name: string }>)
+          .map((st) => st.name)
+          .sort();
+      };
+
+      expect(await names("_")).toEqual(["Q1_2025"]);
+      expect(await names("%")).toEqual(["50% off"]);
+      expect(await names("Q1_2025")).toEqual(["Q1_2025"]);
+      expect(await names("50%")).toEqual(["50% off"]);
+      expect(await names("\\")).toEqual([]);
+      // Still a case-insensitive "contains".
+      expect(await names("q1")).toEqual(["Q1X2025", "Q1_2025"]);
+    });
   });
 
   // ── GET /api/stations/:id ─────────────────────────────────────────

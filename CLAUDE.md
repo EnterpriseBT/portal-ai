@@ -752,7 +752,7 @@ Portals AI is an enterprise, multi-tenant, billing-facing product — a discover
 - Project board: the **Portal AI** Projects v2 board (project #1) auto-adds new issues to `Todo` and auto-moves them to `Done` when the linked PR merges. Move the card to `In Progress` manually when work starts on it — the snippet below sets that. The token needs `project` scope (`gh auth refresh -s read:project,project`). IDs:
   - Project id: `PVT_kwDODs25Bc4BUMsm`
   - Status field id: `PVTSSF_lADODs25Bc4BUMsmzhBWfpk`
-  - Status options: `Todo` = `f75ad846`, `In Progress` = `47fc9ee4`, `Done` = `98236657`
+  - Status options: `Backlog` = `931720e6`, `Todo` = `f75ad846`, `In Progress` = `47fc9ee4`, `Done` = `98236657`. `Backlog` holds work that's kept but not planned; nothing moves items into it automatically
   - One-liner to move issue `<N>` to In Progress:
     ```bash
     ITEM_ID=$(gh project item-list 1 --owner EnterpriseBT --format json --limit 100 \
