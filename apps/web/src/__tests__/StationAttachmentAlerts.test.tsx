@@ -46,4 +46,62 @@ describe("StationAttachmentAlertsUI (#674)", () => {
     );
     await expectNoAxeViolations(container);
   });
+
+  // #1055: when the plan excludes the station's packs, the plan is the
+  // reason, so the notice names the packs and links to plans.
+  describe("plan-excluded", () => {
+    const planExcluded = (
+      <StationAttachmentAlertsUI
+        viewCount={0}
+        connectorCount={1}
+        dataSetup="plan-excluded"
+        excludedPackNames={["GIS"]}
+      />
+    );
+
+    it("names the pack and links to plans instead of suggesting a view", () => {
+      render(planExcluded);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(
+        "GIS isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+      expect(alert).not.toHaveTextContent(/Attach a view/);
+      expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute(
+        "href",
+        "/settings?tab=billing"
+      );
+    });
+
+    it("keeps today's notice and no link in the other states", () => {
+      render(
+        <StationAttachmentAlertsUI
+          viewCount={0}
+          connectorCount={1}
+          dataSetup="none"
+          excludedPackNames={["GIS"]}
+        />
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "No views are attached to this station. Attach a view to query entity data here."
+      );
+      expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("shows even when views and connectors are attached", () => {
+      render(
+        <StationAttachmentAlertsUI
+          viewCount={2}
+          connectorCount={2}
+          dataSetup="plan-excluded"
+          excludedPackNames={["GIS"]}
+        />
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(/GIS isn't included/);
+    });
+
+    it("has no axe violations", async () => {
+      const { container } = render(planExcluded);
+      await expectNoAxeViolations(container);
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import {
   isBuiltinToolpackSlug,
   type BuiltinToolpackSlug,
-} from "@portalai/core/registries";
+} from "./builtin-toolpacks.js";
 
 /**
  * #848: whether a built-in pack works on the station's attached data.

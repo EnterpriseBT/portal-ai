@@ -12,16 +12,16 @@ import {
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
+import {
+  stationDataSetup,
+  type StationDataSetup,
+} from "@portalai/core/registries";
 
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { Tool } from "../types/tools.js";
-import {
-  stationDataSetup,
-  type StationDataSetup,
-} from "../utils/station-data-packs.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "platform-help-tool" });

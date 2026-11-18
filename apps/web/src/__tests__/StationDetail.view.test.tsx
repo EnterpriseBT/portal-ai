@@ -30,6 +30,8 @@ const failedUpdate = () => ({
 });
 
 const mockStationsGet = jest.fn();
+// #1055: the plan the page reads; `undefined` fails open (everything entitled).
+let mockUsageData: unknown = undefined;
 // #1041: the delete's refresh list, read off the call.
 const mockDeleteMutate = jest.fn();
 
@@ -47,7 +49,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
     },
     organizations: {
       current: () => result({ organization: { defaultStationId: null } }),
-      usage: () => result(undefined),
+      usage: () => result(mockUsageData),
     },
     toolpacks: { list: () => result({ toolpacks: [] }) },
     // The edit dialog's connector picker (#789's reset test opens it).
@@ -167,6 +169,47 @@ describe("StationDetailView — attachments (#674)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "No views are attached to this station. Attach a view to query entity data here."
     );
+  });
+
+  // #1055: the repro. The station's only pack that reads data is GIS, and
+  // the plan excludes it, so the plan is the reason, not a missing view.
+  it("names the plan-excluded pack instead of suggesting a view", () => {
+    mockUsageData = {
+      tier: {
+        tier: "standard",
+        entitlements: {
+          builtinToolpacks: ["data_query", "view_management"],
+          customToolpacks: false,
+        },
+      },
+      usage: { periodId: "2026-11", byClass: {} },
+    };
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          enabledToolpacks: ["gis", "view_management"],
+          instances: [instance("ci-1", "CRM", true)],
+          views: [],
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        },
+      })
+    );
+    try {
+      render(<StationDetailView stationId="st-1" />);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(
+        "GIS isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+      expect(alert).not.toHaveTextContent(/Attach a view/);
+    } finally {
+      mockUsageData = undefined;
+    }
   });
 });
 

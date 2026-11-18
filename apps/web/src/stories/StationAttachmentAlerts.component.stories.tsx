@@ -28,3 +28,13 @@ export const NoConnectors: Story = {
 export const FullyAttached: Story = {
   args: { viewCount: 1, connectorCount: 1 },
 };
+
+/** #1055: the plan excludes the station's packs, so it names them and links to plans. */
+export const PlanExcluded: Story = {
+  args: {
+    viewCount: 0,
+    connectorCount: 1,
+    dataSetup: "plan-excluded",
+    excludedPackNames: ["GIS"],
+  },
+};

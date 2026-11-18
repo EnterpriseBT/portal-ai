@@ -2,6 +2,7 @@ import {
   ToolPackUtil,
   ALL_BUILTIN_SLUGS,
   isBuiltinPackEntitled,
+  stationDataSetupFor,
   unentitledBuiltins,
 } from "../utils/tool-packs.util";
 
@@ -79,5 +80,74 @@ describe("unentitledBuiltins", () => {
       unentitledBuiltins(["data_query", "visualize"], ALL_BUILTIN_SLUGS)
     ).toEqual([]);
     expect(unentitledBuiltins([], ALL_BUILTIN_SLUGS)).toEqual([]);
+  });
+});
+
+// #1055: the station notice's state, computed from what the page already
+// holds, the same way the API classifies a station for the assistant.
+describe("stationDataSetupFor", () => {
+  const without =
+    (...excluded: string[]) =>
+    (pack: string) =>
+      !excluded.includes(pack);
+
+  it("is usable when a pack that reads data is on the plan", () => {
+    expect(
+      stationDataSetupFor(["data_query", "gis"], without("gis"), true)
+    ).toEqual({ dataSetup: "usable", excludedPackNames: [] });
+  });
+
+  it("is plan-excluded and names the pack when the plan excludes it", () => {
+    expect(
+      stationDataSetupFor(["view_management", "gis"], without("gis"), true)
+    ).toEqual({ dataSetup: "plan-excluded", excludedPackNames: ["GIS"] });
+  });
+
+  it("is none when no pack on the station reads data", () => {
+    expect(
+      stationDataSetupFor(["web_search"], without("web_search"), true)
+    ).toEqual({ dataSetup: "none", excludedPackNames: [] });
+  });
+
+  it("names the organization's packs when the plan excludes custom packs", () => {
+    expect(
+      stationDataSetupFor(["org:abc", "view_management"], () => true, false)
+    ).toEqual({
+      dataSetup: "plan-excluded",
+      excludedPackNames: ["Your organization's tool packs"],
+    });
+  });
+
+  // Only `org:` refs are custom packs. A retired or unknown built-in slug is
+  // neither, as the API reads it.
+  it("doesn't count an unknown ref as a custom pack", () => {
+    expect(
+      stationDataSetupFor(
+        ["retired_pack", "view_management"],
+        () => true,
+        false
+      )
+    ).toEqual({ dataSetup: "none", excludedPackNames: [] });
+    expect(
+      stationDataSetupFor(["retired_pack", "view_management"], () => true, true)
+    ).toEqual({ dataSetup: "none", excludedPackNames: [] });
+  });
+
+  it("counts a custom pack the plan includes as usable", () => {
+    expect(stationDataSetupFor(["org:abc"], () => true, true)).toEqual({
+      dataSetup: "usable",
+      excludedPackNames: [],
+    });
+  });
+
+  // The order of the station's own chips, so the notice reads like the list
+  // beside it.
+  it("names excluded packs in the station's order", () => {
+    const { excludedPackNames } = stationDataSetupFor(
+      ["gis", "web_search", "statistics", "data_query"],
+      () => false,
+      true
+    );
+    expect(excludedPackNames).toEqual(["GIS", "Statistics", "Data Query"]);
   });
 });

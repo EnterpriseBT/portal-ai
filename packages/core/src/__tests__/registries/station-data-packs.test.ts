@@ -1,12 +1,14 @@
 import { describe, it, expect } from "@jest/globals";
 
-import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
+import { BuiltinToolpackSlugSchema } from "../../registries/builtin-toolpacks.js";
 
 import {
   PACK_USES_STATION_DATA,
   stationDataSetup,
   usesStationData,
-} from "../../utils/station-data-packs.util.js";
+  type StationDataSetup,
+} from "../../registries/station-data-packs.js";
+import type { StationAttachmentGapsOptions } from "../../content/station-attachments.util.js";
 
 // #848: whether a station's packs work on its attached data. platform_help
 // and the system prompt both read it, so a station set up for access work
@@ -96,5 +98,22 @@ describe("stationDataSetup (#1045)", () => {
     expect(
       setup({ effective: ["view_management"], unentitled: ["web_search"] })
     ).toBe("none");
+  });
+});
+
+// #1055: the content module can't import this type, so it repeats the three
+// states. This holds the two in step: a new state fails to compile here.
+describe("StationAttachmentGapsOptions['dataSetup'] (#1055)", () => {
+  it("is exactly StationDataSetup", () => {
+    type Repeated = NonNullable<StationAttachmentGapsOptions["dataSetup"]>;
+    const forward: Repeated = "usable" as StationDataSetup;
+    const back: StationDataSetup = "usable" as Repeated;
+    type Equal<A, B> = [A] extends [B]
+      ? [B] extends [A]
+        ? true
+        : false
+      : false;
+    const same: Equal<Repeated, StationDataSetup> = true;
+    expect([forward, back, same]).toEqual(["usable", "usable", true]);
   });
 });

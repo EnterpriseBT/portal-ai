@@ -44,6 +44,7 @@ import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
+import { stationDataSetupFor } from "../utils/tool-packs.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -88,8 +89,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const defaultStationId =
     orgResult.data?.organization.defaultStationId ?? null;
   // #284: one read drives both the attached-pack chips and the edit picker.
-  const { entitledSlugs: entitledBuiltinSlugs, isEntitled } =
-    useBuiltinEntitlements();
+  const {
+    entitledSlugs: entitledBuiltinSlugs,
+    isEntitled,
+    customPacksEntitled,
+  } = useBuiltinEntitlements();
   const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
@@ -295,6 +299,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       <StationAttachmentAlertsUI
                         viewCount={attachments.views.length}
                         connectorCount={attachments.connectors.length}
+                        {...stationDataSetupFor(
+                          station.enabledToolpacks ?? [],
+                          isEntitled,
+                          customPacksEntitled
+                        )}
                       />
                     </PageHeader>
 
