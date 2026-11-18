@@ -1,14 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import {
-  eq,
-  and,
-  or,
-  ilike,
-  inArray,
-  sql,
-  type SQL,
-  type Column,
-} from "drizzle-orm";
+import { eq, and, or, inArray, sql, type SQL, type Column } from "drizzle-orm";
 
 import { EntityGroupModelFactory } from "@portalai/core/models";
 import {
@@ -39,6 +30,7 @@ import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { entityGroupMemberRouter } from "./entity-group-member.router.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "entity-group" });
@@ -146,8 +138,8 @@ entityGroupRouter.get(
       if (search) {
         filters.push(
           or(
-            ilike(entityGroups.name, `%${search}%`),
-            ilike(entityGroups.description, `%${search}%`)
+            ilikeContains(entityGroups.name, search),
+            ilikeContains(entityGroups.description, search)
           )!
         );
       }

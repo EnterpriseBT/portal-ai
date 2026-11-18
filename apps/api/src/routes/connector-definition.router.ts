@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, type SQL, type Column } from "drizzle-orm";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -15,6 +15,7 @@ import {
 } from "@portalai/core/contracts";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-definition" });
@@ -144,7 +145,7 @@ connectorDefinitionRouter.get(
         filters.push(eq(connectorDefinitions.isActive, isActive));
       }
       if (search) {
-        filters.push(ilike(connectorDefinitions.display, `%${search}%`));
+        filters.push(ilikeContains(connectorDefinitions.display, search));
       }
 
       // #630: the catalog is a global registry gated by object read — a member

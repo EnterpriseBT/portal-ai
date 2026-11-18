@@ -347,6 +347,38 @@ describe("Connector Instance Router", () => {
       );
     });
 
+    it("matches search text literally, so % and _ aren't wildcards (#1039)", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, { name: "sales_2025" }),
+          createConnectorInstance(def.id, orgId, { name: "salesX2025" }),
+          createConnectorInstance(def.id, orgId, { name: "100% Sync" }),
+        ] as never);
+      const names = async (search: string) => {
+        const res = await request(app)
+          .get("/api/connector-instances")
+          .query({ search })
+          .set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(200);
+        return (
+          res.body.payload.connectorInstances as Array<{ name: string }>
+        ).map((i) => i.name);
+      };
+
+      expect(await names("%")).toEqual(["100% Sync"]);
+      expect(await names("s_les")).toEqual([]);
+      expect(await names("sales_2025")).toEqual(["sales_2025"]);
+    });
+
     it("should filter by capability=write (only writable instances)", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

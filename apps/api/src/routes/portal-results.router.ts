@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL } from "drizzle-orm";
+import { eq, and, type SQL } from "drizzle-orm";
 
 import {
   PinResultBodySchema,
@@ -31,6 +31,7 @@ import { setDbCancelPolicy } from "../utils/request-context.util.js";
 import { DateFactory } from "@portalai/core/utils";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal-results" });
@@ -477,7 +478,7 @@ portalResultsRouter.get(
         filters.push(eq(portalResults.portalId, portalId));
       }
       if (search) {
-        filters.push(ilike(portalResults.name, `%${search}%`));
+        filters.push(ilikeContains(portalResults.name, search));
       }
       // #621: object-level visibility — own + system + shared pins; undefined =
       // see-all (owner/admin).

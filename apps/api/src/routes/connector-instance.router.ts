@@ -1,13 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import {
-  eq,
-  and,
-  ilike,
-  inArray,
-  sql,
-  type SQL,
-  type Column,
-} from "drizzle-orm";
+import { eq, and, inArray, sql, type SQL, type Column } from "drizzle-orm";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -64,6 +56,7 @@ import { truncateForPrompt } from "../adapters/rest-api/jsonata-suggest.prompt.j
 import { getJsonataSuggester } from "../adapters/rest-api/jsonata-suggest.haiku.js";
 import { JsonataSuggestError } from "../adapters/rest-api/jsonata-suggest.types.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "connector-instance" });
@@ -215,7 +208,7 @@ connectorInstanceRouter.get(
         }
       }
       if (search) {
-        filters.push(ilike(connectorInstances.name, `%${search}%`));
+        filters.push(ilikeContains(connectorInstances.name, search));
       }
       if (capability) {
         const caps = capability

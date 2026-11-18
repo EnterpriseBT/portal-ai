@@ -1,13 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import {
-  eq,
-  and,
-  or,
-  ilike,
-  inArray,
-  type SQL,
-  type Column,
-} from "drizzle-orm";
+import { eq, and, or, inArray, type SQL, type Column } from "drizzle-orm";
 
 import { ColumnDefinitionModelFactory } from "@portalai/core/models";
 import {
@@ -39,6 +31,7 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 
 /** #316: bounded sample of offending sourceIds surfaced on a failed conversion. */
@@ -153,8 +146,8 @@ columnDefinitionRouter.get(
       if (search) {
         filters.push(
           or(
-            ilike(columnDefinitions.label, `%${search}%`),
-            ilike(columnDefinitions.key, `%${search}%`)
+            ilikeContains(columnDefinitions.label, search),
+            ilikeContains(columnDefinitions.key, search)
           )!
         );
       }

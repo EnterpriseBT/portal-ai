@@ -2,7 +2,6 @@ import {
   eq,
   and,
   or,
-  ilike,
   inArray,
   isNotNull,
   type SQL,
@@ -50,6 +49,7 @@ import { CuratedViewDependencyService } from "./curated-view-dependency.service.
 import { CuratedViewFilterSqlService } from "./curated-view-filter-sql.service.js";
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
+import { ilikeContains } from "../utils/filter-sql.util.js";
 
 const logger = createLogger({ module: "curated-view-service" });
 
@@ -371,8 +371,8 @@ export class CuratedViewService {
     if (search) {
       filters.push(
         or(
-          ilike(connectorEntities.key, `%${search}%`),
-          ilike(connectorEntities.label, `%${search}%`)
+          ilikeContains(connectorEntities.key, search),
+          ilikeContains(connectorEntities.label, search)
         )!
       );
     }
@@ -465,7 +465,7 @@ export class CuratedViewService {
       filters.push(inArray(curatedViews.id, attachedIds));
     }
     if (search) {
-      filters.push(ilike(curatedViews.label, `%${search}%`));
+      filters.push(ilikeContains(curatedViews.label, search));
     }
     // Row-level read scoping: only the views the caller may read.
     const visibility = set.visibilityPredicate("curated_view", {

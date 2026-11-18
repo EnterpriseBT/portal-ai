@@ -35,7 +35,7 @@ import {
   buildFilterSqlForEntity,
   buildSortExpression,
   isFilterError,
-  escapeLike,
+  ilikeContains,
 } from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -280,12 +280,13 @@ entityRecordRouter.get(
         // reached through typed filters instead. `\ % _` are escaped so the
         // term matches literally. With no text column a search matches
         // nothing rather than being silently ignored.
-        const term = `%${escapeLike(search)}%`;
         const clauses = stmt.columns
           .filter((c) => c.pgType === "text")
-          .map(
-            (c) =>
-              sql`${sql.raw(`"w"."${c.columnName.replace(/"/g, '""')}"`)} ILIKE ${term} ESCAPE '\\'`
+          .map((c) =>
+            ilikeContains(
+              sql.raw(`"w"."${c.columnName.replace(/"/g, '""')}"`),
+              search
+            )
           );
         conditions.push(
           clauses.length > 0

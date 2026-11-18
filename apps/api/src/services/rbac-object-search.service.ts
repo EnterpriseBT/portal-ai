@@ -16,7 +16,7 @@
  * had drifted both ways).
  */
 
-import { and, eq, ilike, isNull, type SQL } from "drizzle-orm";
+import { and, eq, isNull, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { db } from "../db/client.js";
@@ -33,6 +33,7 @@ import {
   PermissionService,
   type PermissionContext,
 } from "./permission.service.js";
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { RbacObject } from "@portalai/core/contracts";
 
 interface TypeConfig {
@@ -132,7 +133,10 @@ export class RbacObjectSearchService {
 
     const conditions: SQL[] = [isNull(cfg.deletedCol)];
     if (cfg.orgCol) conditions.push(eq(cfg.orgCol, caller.organizationId));
-    if (query.trim()) conditions.push(ilike(cfg.labelCol, `%${query.trim()}%`));
+    const term = query.trim();
+    if (term) {
+      conditions.push(ilikeContains(cfg.labelCol, term));
+    }
     if (visibility) conditions.push(visibility);
 
     const rows = await db

@@ -13,7 +13,15 @@
 
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, ilike, isNull } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  isNull,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -102,6 +110,18 @@ export interface AdminStore {
 }
 
 /** Store over an existing drizzle database (tests inject PGlite here). */
+/**
+ * A case-insensitive "contains" that matches `term` literally (#1039): `\`,
+ * `%` and `_` are escaped and the escape character is stated, so
+ * `--search _` finds names containing an underscore instead of every org.
+ * Mirrors apps/api's `ilikeContains` (utils/filter-sql.util.ts), which this
+ * package can't import; `like-search.guard.test.ts` there scans both.
+ */
+function ilikeContains(column: SQLWrapper, term: string): SQL {
+  const escaped = term.replace(/[\\%_]/g, (c) => `\\${c}`);
+  return sql`${column} ILIKE ${"%" + escaped + "%"} ESCAPE '\\'`;
+}
+
 export function createAdminStore(
   db: PostgresJsDatabase,
   onClose: () => Promise<void> = async () => {}
@@ -110,7 +130,7 @@ export function createAdminStore(
     async listOrgs(opts) {
       const conditions = [isNull(organizations.deleted)];
       if (opts.search) {
-        conditions.push(ilike(organizations.name, `%${opts.search}%`));
+        conditions.push(ilikeContains(organizations.name, opts.search));
       }
       const rows = await db
         .select()

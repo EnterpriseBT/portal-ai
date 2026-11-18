@@ -12,12 +12,13 @@ import {
   type JobCancelResponsePayload,
   type JobListRequestQuery,
 } from "@portalai/core/contracts";
-import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
+import { and, Column, eq, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { JobPayloadRedactionService } from "../services/job-payload-redaction.service.js";
 import { JobControlService } from "../services/job-control.service.js";
+import { ilikeContains } from "../utils/filter-sql.util.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
 import type { Request } from "../types/request.js";
@@ -153,8 +154,8 @@ jobsRouter.get(
       if (query.search) {
         filters.push(
           or(
-            ilike(sql`${jobs.type}::text`, `%${query.search}%`),
-            ilike(jobs.error, `%${query.search}%`)
+            ilikeContains(sql`${jobs.type}::text`, query.search),
+            ilikeContains(jobs.error, query.search)
           )!
         );
       }

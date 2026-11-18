@@ -8,8 +8,9 @@
  * retention purge's batch seam.
  */
 
-import { and, eq, ilike, lt, sql, asc, desc, inArray } from "drizzle-orm";
+import { and, eq, lt, sql, asc, desc, inArray } from "drizzle-orm";
 import { toolUsageLedger } from "../schema/index.js";
+import { ilikeContains } from "../../utils/filter-sql.util.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type {
@@ -83,7 +84,7 @@ export class ToolUsageLedgerRepository extends Repository<
       conditions.push(eq(toolUsageLedger.toolName, opts.toolName));
     }
     if (opts.search) {
-      conditions.push(ilike(toolUsageLedger.toolName, `%${opts.search}%`));
+      conditions.push(ilikeContains(toolUsageLedger.toolName, opts.search));
     }
     const where = and(...conditions);
 
