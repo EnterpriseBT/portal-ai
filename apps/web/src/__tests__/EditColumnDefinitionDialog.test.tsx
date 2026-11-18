@@ -576,44 +576,4 @@ describe("EditColumnDefinitionDialog — another editor's changes while open (#1
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onSubmit).not.toHaveBeenCalled();
   });
-
-  // The dialog stays open when a save returns warnings, so what was just
-  // saved becomes what the form is compared with.
-  describe("after its own save", () => {
-    const saveThen = (settled: {
-      warnings?: string[];
-      serverError?: { message: string; code: string } | null;
-    }) => {
-      const onSubmit = jest.fn();
-      const props = {
-        ...defaultProps,
-        onSubmit,
-        columnDefinition: opened,
-      };
-      const { rerender } = render(<EditColumnDefinitionDialog {...props} />);
-      setLabel("Renamed");
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      expect(onSubmit).toHaveBeenLastCalledWith({ label: "Renamed" });
-      rerender(<EditColumnDefinitionDialog {...props} isPending />);
-      rerender(<EditColumnDefinitionDialog {...props} {...settled} />);
-      return onSubmit;
-    };
-
-    it("sends a field changed back to the value the dialog opened on", async () => {
-      const onSubmit = saveThen({ warnings: ["3 records need review"] });
-      setLabel(opened.label);
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-      expect(onSubmit).toHaveBeenLastCalledWith({ label: opened.label });
-    });
-
-    it("sends the same change again when the save failed", async () => {
-      const onSubmit = saveThen({
-        serverError: { message: "Something went wrong", code: "TEST_ERROR" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-      expect(onSubmit).toHaveBeenLastCalledWith({ label: "Renamed" });
-    });
-  });
 });

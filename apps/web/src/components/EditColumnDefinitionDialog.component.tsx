@@ -89,25 +89,10 @@ const EditForm: React.FC<{
   // form reads `columnDefinition`. The page refetches behind an open dialog;
   // comparing with the live row made another editor's change to a field look
   // like this editor's edit of it, and a save put the old value back.
-  const [cd, setBaseline] = useState(columnDefinition);
-  // The dialog stays open when a save returns warnings. What this editor
-  // just saved is then what the form is compared with, or changing a field
-  // back to its opening value would read as no change and not be sent.
-  const [sent, setSent] = useState<ColumnDefinitionUpdateRequestBody | null>(
-    null
-  );
-  const [wasPending, setWasPending] = useState(isPending);
-  if (wasPending !== isPending) {
-    setWasPending(isPending);
-    if (!isPending && sent) {
-      if (!serverError) setBaseline({ ...cd, ...sent });
-      setSent(null);
-    }
-  }
-  const submit = (body: ColumnDefinitionUpdateRequestBody) => {
-    setSent(body);
-    onSubmit(body);
-  };
+  // The page keeps this dialog open if a save returns `warnings`. The update
+  // route returns none today; if it starts to, this record has to take on
+  // what was just saved, or a field changed back would read as unchanged.
+  const [cd] = useState(columnDefinition);
   const [label, setLabel] = useState(cd.label);
   const [type, setType] = useState<ColumnDataType>(cd.type);
   const [description, setDescription] = useState(cd.description ?? "");
@@ -224,12 +209,12 @@ const EditForm: React.FC<{
       return;
     }
 
-    submit(body);
+    onSubmit(body);
   };
 
   const handleConfirmRevalidation = () => {
     if (pendingBody) {
-      submit(pendingBody);
+      onSubmit(pendingBody);
       setShowRevalidationWarning(false);
       setPendingBody(null);
     }

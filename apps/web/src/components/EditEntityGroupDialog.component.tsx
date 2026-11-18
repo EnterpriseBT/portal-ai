@@ -20,7 +20,7 @@ import { blurUnlessDialogControl } from "../utils/dialog-blur.util";
 export interface EditEntityGroupDialogProps {
   open: boolean;
   onClose: () => void;
-  group: { name: string; description: string | null };
+  group: { id: string; name: string; description: string | null };
   onSubmit: (body: EntityGroupUpdateRequestBody) => void;
   isPending?: boolean;
   serverError?: ServerError | null;
@@ -88,8 +88,11 @@ const EditForm: React.FC<{
 
     const body: EntityGroupUpdateRequestBody = {};
     if (trimmedName !== original.name) body.name = trimmedName;
+    // An emptied description is sent as "": `undefined` drops out of the
+    // JSON, leaving a body the API refuses, or a rename that saves while
+    // the description stays.
     if (trimmedDesc !== (original.description ?? "")) {
-      body.description = trimmedDesc || undefined;
+      body.description = trimmedDesc;
     }
 
     if (Object.keys(body).length === 0) {
@@ -196,10 +199,13 @@ export const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
   if (!open) return null;
 
   return (
-    // No `key` on the values (#1053): it remounted the form when another
-    // editor's rename arrived, replacing what this editor had typed. The
-    // form unmounts when the dialog closes, so each opening starts fresh.
+    // Keyed on the group, not on its values (#1053). A key of name and
+    // description remounted the form when another editor's rename arrived,
+    // replacing what this editor had typed. The id still gives a fresh form
+    // if the page moves to another group with the dialog open (browser
+    // Back), so one group's edits can't be saved into another.
     <EditForm
+      key={group.id}
       group={group}
       onSubmit={onSubmit}
       onClose={onClose}
