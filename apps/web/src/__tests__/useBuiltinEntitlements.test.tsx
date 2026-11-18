@@ -39,19 +39,21 @@ const errored = () => ({
   isSuccess: false,
 });
 
-const usagePayload = (builtinToolpacks: string[]) => ({
+const usagePayload = (builtinToolpacks: string[], customToolpacks = false) => ({
   tier: {
     tier: "standard",
-    entitlements: { builtinToolpacks, customToolpacks: false },
+    entitlements: { builtinToolpacks, customToolpacks },
   },
   usage: { periodId: "2026-07", byClass: {} },
 });
 
 /** Probe that renders the hook's output so assertions read off the DOM. */
 const Probe = () => {
-  const { entitledSlugs, isEntitled, isLoading } = useBuiltinEntitlements();
+  const { entitledSlugs, isEntitled, isLoading, customPacksEntitled } =
+    useBuiltinEntitlements();
   return (
     <div>
+      <span data-testid="custom-packs">{String(customPacksEntitled)}</span>
       <span data-testid="slugs">{[...entitledSlugs].sort().join(",")}</span>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="entity-mgmt">
@@ -117,5 +119,22 @@ describe("useBuiltinEntitlements (#284)", () => {
       [...ALL_BUILTIN_SLUGS].sort().join(",")
     );
     expect(screen.getByTestId("entity-mgmt").textContent).toBe("true");
+  });
+
+  // #1055: the station notice needs the plan's custom axis too.
+  it("reports whether the plan includes custom packs", () => {
+    mockUsage.mockReturnValue(loaded(usagePayload(["data_query"], false)));
+    const { unmount } = render(<Probe />);
+    expect(screen.getByTestId("custom-packs").textContent).toBe("false");
+    unmount();
+    mockUsage.mockReturnValue(loaded(usagePayload(["data_query"], true)));
+    render(<Probe />);
+    expect(screen.getByTestId("custom-packs").textContent).toBe("true");
+  });
+
+  it("fails open on the custom axis while loading", () => {
+    mockUsage.mockReturnValue(loading());
+    render(<Probe />);
+    expect(screen.getByTestId("custom-packs").textContent).toBe("true");
   });
 });

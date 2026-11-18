@@ -16,6 +16,9 @@ export interface BuiltinEntitlements {
    * is already permissive, so callers do not need to gate on it.
    */
   isLoading: boolean;
+  /** #1055: the plan includes custom (organization) tool packs. `true`
+   *  while the plan is unknown, like the built-in set. */
+  customPacksEntitled: boolean;
 }
 
 /**
@@ -40,6 +43,8 @@ export function useBuiltinEntitlements(): BuiltinEntitlements {
   // the hook — the opposite of the fail-open contract above.
   const builtinToolpacks =
     usageResult.data?.tier?.entitlements?.builtinToolpacks;
+  const customPacksEntitled =
+    usageResult.data?.tier?.entitlements?.customToolpacks ?? true;
 
   return useMemo(() => {
     const entitledSlugs: ReadonlySet<string> = builtinToolpacks
@@ -49,6 +54,7 @@ export function useBuiltinEntitlements(): BuiltinEntitlements {
       entitledSlugs,
       isEntitled: (pack: string) => isBuiltinPackEntitled(pack, entitledSlugs),
       isLoading: usageResult.isLoading,
+      customPacksEntitled,
     };
-  }, [builtinToolpacks, usageResult.isLoading]);
+  }, [builtinToolpacks, customPacksEntitled, usageResult.isLoading]);
 }

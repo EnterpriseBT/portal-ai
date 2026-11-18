@@ -83,7 +83,7 @@ export function stationDataSetupFor(
   - `hasUsableCustomPack` is `hasCustom && customPacksEntitled`.
   - `hasExcludedCustomPack` is `hasCustom && !customPacksEntitled`.
 - **The state** comes from core's `stationDataSetup`.
-- **`excludedPackNames`** is the unentitled built-ins with `PACK_USES_STATION_DATA` true, in registry order, by `BUILTIN_TOOLPACK_BY_SLUG[slug].name`. If `hasExcludedCustomPack`, `STATION_PLAN_EXCLUDED_CUSTOM_PACKS` is appended. It is empty unless the state is `plan-excluded`.
+- **`excludedPackNames`** is the unentitled built-ins with `PACK_USES_STATION_DATA` true, in the station's `enabledToolpacks` order (as its chips show them), by `BUILTIN_TOOLPACK_BY_SLUG[slug].name`. If `hasExcludedCustomPack`, `STATION_PLAN_EXCLUDED_CUSTOM_PACKS` is appended. It is empty unless the state is `plan-excluded`.
 
 ### Web: `useBuiltinEntitlements` (`apps/web/src/utils/use-builtin-entitlements.util.ts:35`)
 
@@ -128,7 +128,7 @@ None. No schema or seed change.
   - Web Search only → `none`;
   - an excluded custom pack and no other pack that reads data → `plan-excluded` / `["Your organization's tool packs"]`;
   - an entitled custom pack → `usable`;
-  - the name order follows the registry.
+  - the name order follows the station's own order.
   - ≈ 6 cases.
 - `__tests__/StationAttachmentAlerts.test.tsx`:
   - the plan sentence and the "View plans" link to `/settings?tab=billing` in `plan-excluded`;

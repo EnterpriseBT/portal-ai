@@ -22,6 +22,7 @@ import { StationAttachmentListUI } from "./StationAttachmentList.component";
 import { ToolPackChipWithMetadata } from "./ToolPackChipWithMetadata.component";
 import { sdk } from "../api/sdk";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
+import { stationDataSetupFor } from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useLayout } from "../utils/layout.util";
 import { formatUsageValue } from "../utils/usage-format.util";
@@ -42,6 +43,8 @@ export interface PortalHeaderMetaUIProps {
   stationLoadFailed?: boolean;
   usage?: OrganizationUsageGetResponse["usage"]["byClass"];
   isEntitled: (pack: string) => boolean;
+  /** #1055: the plan includes custom tool packs. Defaults to `true`. */
+  customPacksEntitled?: boolean;
   isMobile: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -58,6 +61,7 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
   stationLoadFailed = false,
   usage,
   isEntitled,
+  customPacksEntitled = true,
   isMobile,
   expanded,
   onToggleExpanded,
@@ -202,6 +206,7 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
       <StationAttachmentAlertsUI
         viewCount={attachments.views.length}
         connectorCount={attachments.connectors.length}
+        {...stationDataSetupFor(toolPacks, isEntitled, customPacksEntitled)}
       />
       {sessionDetails}
     </Stack>
@@ -225,7 +230,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   // Same query the Settings page reads, so React Query dedupes it.
   const { data: usageData } = sdk.organizations.usage();
   // #284: same cached query, entitlement axis.
-  const { isEntitled } = useBuiltinEntitlements();
+  const { isEntitled, customPacksEntitled } = useBuiltinEntitlements();
   const { isMobile } = useLayout();
   const [expanded, setExpanded] = useState(false);
 
@@ -236,6 +241,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
       stationLoadFailed={loadFailed}
       usage={usageData?.usage.byClass}
       isEntitled={isEntitled}
+      customPacksEntitled={customPacksEntitled}
       isMobile={isMobile}
       expanded={expanded}
       onToggleExpanded={() => setExpanded((e) => !e)}

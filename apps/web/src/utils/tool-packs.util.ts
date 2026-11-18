@@ -1,8 +1,12 @@
 import {
   BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
+  PACK_USES_STATION_DATA,
   isBuiltinToolpackSlug,
+  stationDataSetup,
+  type StationDataSetup,
 } from "@portalai/core/registries";
+import { STATION_PLAN_EXCLUDED_CUSTOM_PACKS } from "@portalai/core/content";
 
 /**
  * Optional lookup map for custom toolpack labels. The toolpacks list
@@ -79,6 +83,39 @@ export function unentitledBuiltins(
   entitledSlugs: ReadonlySet<string>
 ): string[] {
   return packs.filter((p) => isBuiltinToolpackSlug(p) && !entitledSlugs.has(p));
+}
+
+/**
+ * #1055: how a station stands with entity data, for its attachment notice,
+ * classified the way the API does for the assistant (`stationDataSetup`).
+ * Built-in packs split by the plan; any other ref is a custom pack, usable
+ * or excluded by the plan's `customToolpacks`. In `plan-excluded`,
+ * `excludedPackNames` names the excluded packs whose tools would read the
+ * station's records, in the station's own order (as its chips show them).
+ */
+export function stationDataSetupFor(
+  enabledToolpacks: readonly string[],
+  isEntitled: (pack: string) => boolean,
+  customPacksEntitled: boolean
+): { dataSetup: StationDataSetup; excludedPackNames: string[] } {
+  const builtins = enabledToolpacks.filter(isBuiltinToolpackSlug);
+  const hasCustom = builtins.length < enabledToolpacks.length;
+  const unentitled = builtins.filter((slug) => !isEntitled(slug));
+  const dataSetup = stationDataSetup({
+    effective: builtins.filter((slug) => isEntitled(slug)),
+    unentitled,
+    hasUsableCustomPack: hasCustom && customPacksEntitled,
+    hasExcludedCustomPack: hasCustom && !customPacksEntitled,
+  });
+  if (dataSetup !== "plan-excluded")
+    return { dataSetup, excludedPackNames: [] };
+  const excludedPackNames = unentitled
+    .filter((slug) => PACK_USES_STATION_DATA[slug])
+    .map((slug) => BUILTIN_TOOLPACK_BY_SLUG[slug].name);
+  if (hasCustom && !customPacksEntitled) {
+    excludedPackNames.push(STATION_PLAN_EXCLUDED_CUSTOM_PACKS);
+  }
+  return { dataSetup, excludedPackNames };
 }
 
 // ── Entitlement copy ────────────────────────────────────────────────

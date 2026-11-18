@@ -2,12 +2,22 @@ import React from "react";
 
 import Alert from "@mui/material/Alert";
 import { describeStationAttachmentGaps } from "@portalai/core/content";
+import type { StationDataSetup } from "@portalai/core/registries";
+
+import { UpgradeLink } from "./UpgradeLink.component";
 
 export interface StationAttachmentAlertsUIProps {
   /** How many curated views are attached to the station. */
   viewCount: number;
   /** How many connector instances are attached to the station. */
   connectorCount: number;
+  /**
+   * #1055: how the station stands with entity data (`stationDataSetupFor`).
+   * Defaults to `usable`, the counts-only notice.
+   */
+  dataSetup?: StationDataSetup;
+  /** The plan-excluded packs to name when `dataSetup` is `plan-excluded`. */
+  excludedPackNames?: readonly string[];
 }
 
 /**
@@ -24,16 +34,32 @@ export interface StationAttachmentAlertsUIProps {
  */
 export const StationAttachmentAlertsUI: React.FC<
   StationAttachmentAlertsUIProps
-> = ({ viewCount, connectorCount }) => {
+> = ({
+  viewCount,
+  connectorCount,
+  dataSetup = "usable",
+  excludedPackNames,
+}) => {
   // Readable counts don't affect `missing`, so pass the attached counts.
-  const { missing } = describeStationAttachmentGaps({
-    views: { attached: viewCount, readable: viewCount },
-    connectors: { attached: connectorCount, readable: connectorCount },
-  });
+  const { missing } = describeStationAttachmentGaps(
+    {
+      views: { attached: viewCount, readable: viewCount },
+      connectors: { attached: connectorCount, readable: connectorCount },
+    },
+    { dataSetup, excludedPackNames }
+  );
   if (!missing) return null;
+  // #1055: when the plan is the reason, the next step is the plans page,
+  // not attaching anything.
   return (
     <Alert severity="info" variant="outlined">
       {missing}
+      {dataSetup === "plan-excluded" && (
+        <>
+          {" "}
+          <UpgradeLink />
+        </>
+      )}
     </Alert>
   );
 };

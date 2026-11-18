@@ -277,6 +277,30 @@ describe("PortalHeaderMeta", () => {
       expect(screen.queryByText("Connectors")).not.toBeInTheDocument();
     });
 
+    // #1055: the station's only pack that reads data is excluded by the plan.
+    it("names the plan-excluded pack in the notice", () => {
+      render(
+        <PortalHeaderMetaUI
+          {...uiProps}
+          station={
+            {
+              ...stationFixture.station,
+              enabledToolpacks: ["gis", "view_management"],
+              views: [],
+            } as never
+          }
+          isEntitled={(pack) => pack !== "gis"}
+          customPacksEntitled
+        />
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "GIS isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+      expect(
+        screen.getByRole("link", { name: "View plans" })
+      ).toBeInTheDocument();
+    });
+
     it("renders the station rows when the station is present", () => {
       render(
         <PortalHeaderMetaUI

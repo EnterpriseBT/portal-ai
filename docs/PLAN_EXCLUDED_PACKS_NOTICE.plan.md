@@ -122,7 +122,7 @@ The station page and the portal header compute the state and show the plan sente
      - Web Search only → `none`;
      - an excluded custom pack only → `plan-excluded` / `["Your organization's tool packs"]`;
      - an entitled custom pack → `usable`;
-     - names follow registry order.
+     - names follow the station's order.
    - **Hook** (2): `customPacksEntitled` follows the payload, and is `true` when the payload is absent.
    - **Alert** (4):
      - `plan-excluded` shows the sentence and a "View plans" link to `/settings?tab=billing`;
