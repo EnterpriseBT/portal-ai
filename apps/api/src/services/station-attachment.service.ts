@@ -39,10 +39,22 @@ export interface StationAttachmentDiff {
   removed: string[];
 }
 
-/** The `station.attachments.change` audit metadata (ids only). */
+/**
+ * The `station.attachments.change` audit metadata (ids only). #1052:
+ * `toolPacks` are built-in slugs and `org:<id>` refs. A pack decides which
+ * tools the station's sessions can call, and nothing recorded a change of one.
+ */
 export interface StationAttachmentChange {
-  added: { curatedViewIds: string[]; connectorInstanceIds: string[] };
-  removed: { curatedViewIds: string[]; connectorInstanceIds: string[] };
+  added: {
+    curatedViewIds: string[];
+    connectorInstanceIds: string[];
+    toolPacks: string[];
+  };
+  removed: {
+    curatedViewIds: string[];
+    connectorInstanceIds: string[];
+    toolPacks: string[];
+  };
 }
 
 /**
@@ -316,14 +328,18 @@ export class StationAttachmentService {
           remove: changes.connectorInstances.remove ?? [],
         })
       : none;
+    // #1052: the update route applies pack changes itself (they have their
+    // own plan and read rules) and fills these in.
     return {
       added: {
         curatedViewIds: views.added,
         connectorInstanceIds: instances.added,
+        toolPacks: [],
       },
       removed: {
         curatedViewIds: views.removed,
         connectorInstanceIds: instances.removed,
+        toolPacks: [],
       },
     };
   }
@@ -526,8 +542,16 @@ export class StationAttachmentService {
       targetType: "station",
       targetId: stationId,
       metadata: {
-        added: { curatedViewIds: change.added, connectorInstanceIds: [] },
-        removed: { curatedViewIds: change.removed, connectorInstanceIds: [] },
+        added: {
+          curatedViewIds: change.added,
+          connectorInstanceIds: [],
+          toolPacks: [],
+        },
+        removed: {
+          curatedViewIds: change.removed,
+          connectorInstanceIds: [],
+          toolPacks: [],
+        },
         ...(sourcePortalId ? { sourcePortalId } : {}),
       },
     });
@@ -537,7 +561,9 @@ export class StationAttachmentService {
   static hasChanges(change: StationAttachmentChange): boolean {
     return [change.added, change.removed].some(
       (side) =>
-        side.curatedViewIds.length > 0 || side.connectorInstanceIds.length > 0
+        side.curatedViewIds.length > 0 ||
+        side.connectorInstanceIds.length > 0 ||
+        side.toolPacks.length > 0
     );
   }
 

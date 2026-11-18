@@ -802,6 +802,323 @@ describe("Station Router", () => {
     });
   });
 
+  // #1052: an update changes packs by difference, against the live rows and
+  // inside its transaction. A whole list read when a dialog opened put back
+  // what another editor had removed, and was refused outright when that pack
+  // had left the plan.
+  describe("PATCH tool pack changes (#1052)", () => {
+    const TIER = "test-station-pack-changes-tier";
+    // In the plan: data_query, statistics, web_search. Everything else isn't.
+    const UNENTITLED = "entity_management";
+
+    async function seedOrg() {
+      const seeded = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(tiers)
+        .values({
+          id: `tier-${Date.now()}-pack-changes`,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+          slug: TIER,
+          displayName: "Pack changes (test)",
+          periodKind: "monthly",
+          periodAnchorDay: 1,
+          overage: "hard-deny",
+          meteredUnitsPerPeriod: 1000,
+          meteredRatePerMin: 20,
+          expensiveUnitsPerPeriod: 100,
+          expensiveRatePerMin: 5,
+          builtinToolpacks: ["data_query", "statistics", "web_search"],
+          customToolpacks: true,
+        } as never)
+        .onConflictDoNothing();
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ tier: TIER })
+        .where(eq(organizations.id, seeded.organizationId));
+      return seeded;
+    }
+
+    afterEach(async () => {
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ tier: "standard" });
+      await (db as ReturnType<typeof drizzle>)
+        .delete(tiers)
+        .where(eq(tiers.slug, TIER));
+    });
+
+    /** A station carrying exactly `slugs`. */
+    async function stationWith(organizationId: string, slugs: string[]) {
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      for (const slug of slugs) {
+        await (db as ReturnType<typeof drizzle>)
+          .insert(stationToolpacks)
+          .values({
+            id: generateId(),
+            stationId: station.id,
+            builtinSlug: slug,
+            organizationToolpackId: null,
+            created: Date.now(),
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never);
+      }
+      return station;
+    }
+
+    async function livePacks(stationId: string): Promise<string[]> {
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stationToolpacks)
+        .where(eq(stationToolpacks.stationId, stationId));
+      return rows
+        .filter((r) => r.deleted === null)
+        .map((r) => r.builtinSlug ?? `org:${r.organizationToolpackId}`)
+        .sort();
+    }
+
+    async function packAudits(stationId: string) {
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.targetId, stationId));
+      return rows.filter((r) => r.action === "station.attachments.change");
+    }
+
+    const patch = (stationId: string, body: object) =>
+      request(app).patch(`/api/stations/${stationId}`).send(body);
+
+    it("adds and removes by difference, leaving the other packs", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "statistics",
+      ]);
+
+      const res = await patch(station.id, {
+        toolPackChanges: { add: ["web_search"], remove: ["statistics"] },
+      }).expect(200);
+
+      expect([...res.body.payload.station.enabledToolpacks].sort()).toEqual([
+        "data_query",
+        "web_search",
+      ]);
+      expect(await livePacks(station.id)).toEqual(["data_query", "web_search"]);
+    });
+
+    it("an editor's change doesn't put back a pack another editor removed", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "statistics",
+      ]);
+
+      // B removes Statistics. A, whose dialog opened before that, adds Web
+      // Search and never touched Statistics.
+      await patch(station.id, {
+        toolPackChanges: { remove: ["statistics"] },
+      }).expect(200);
+      await patch(station.id, {
+        toolPackChanges: { add: ["web_search"] },
+      }).expect(200);
+
+      expect(await livePacks(station.id)).toEqual(["data_query", "web_search"]);
+    });
+
+    it("treats adding an attached pack and removing an unattached one as no-ops", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, ["data_query"]);
+
+      await patch(station.id, {
+        toolPackChanges: { add: ["data_query"], remove: ["statistics"] },
+      }).expect(200);
+
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+      expect(await packAudits(station.id)).toHaveLength(0);
+    });
+
+    // ── The plan (#284) ─────────────────────────────────────────────
+
+    it("403s adding a pack the plan excludes and writes nothing, the rename included", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, ["data_query"]);
+
+      const res = await patch(station.id, {
+        name: "Renamed",
+        toolPackChanges: { add: [UNENTITLED] },
+      }).expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toContain(UNENTITLED);
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.id, station.id));
+      expect(row.name).toBe(station.name);
+    });
+
+    it("removes an attached pack the plan excludes; adding one that is attached is a no-op", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        UNENTITLED,
+      ]);
+
+      await patch(station.id, {
+        toolPackChanges: { add: [UNENTITLED] },
+      }).expect(200);
+      expect(await livePacks(station.id)).toEqual(
+        ["data_query", UNENTITLED].sort()
+      );
+
+      await patch(station.id, {
+        toolPackChanges: { remove: [UNENTITLED] },
+      }).expect(200);
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+    });
+
+    it("isn't refused because another editor removed a pack the plan excludes", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        UNENTITLED,
+      ]);
+
+      // B removes the excluded pack. A's stale dialog still shows it, but A
+      // only added Statistics, so only that is sent.
+      await patch(station.id, {
+        toolPackChanges: { remove: [UNENTITLED] },
+      }).expect(200);
+      await patch(station.id, {
+        toolPackChanges: { add: ["statistics"] },
+      }).expect(200);
+
+      expect(await livePacks(station.id)).toEqual(["data_query", "statistics"]);
+    });
+
+    // ── At least one pack ───────────────────────────────────────────
+
+    it("400s a change that leaves no pack and writes nothing, the rename included", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, ["data_query"]);
+
+      const res = await patch(station.id, {
+        name: "Renamed",
+        toolPackChanges: { remove: ["data_query"] },
+      }).expect(400);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_REQUIRED);
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.id, station.id));
+      expect(row.name).toBe(station.name);
+    });
+
+    it("lets the last pack be swapped for another in one change", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, ["data_query"]);
+
+      await patch(station.id, {
+        toolPackChanges: { add: ["statistics"], remove: ["data_query"] },
+      }).expect(200);
+
+      expect(await livePacks(station.id)).toEqual(["statistics"]);
+    });
+
+    it("still renames a station that has no packs", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, []);
+
+      const res = await patch(station.id, { name: "Renamed" }).expect(200);
+      expect(res.body.payload.station.name).toBe("Renamed");
+    });
+
+    it("two editors removing different packs at once can't empty the station", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "statistics",
+      ]);
+
+      const results = await Promise.all([
+        patch(station.id, { toolPackChanges: { remove: ["data_query"] } }),
+        patch(station.id, { toolPackChanges: { remove: ["statistics"] } }),
+      ]);
+
+      expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
+      const refused = results.find((r) => r.status === 400)!;
+      expect(refused.body.code).toBe(ApiCode.STATION_TOOLPACK_REQUIRED);
+      expect(await livePacks(station.id)).toHaveLength(1);
+    });
+
+    // ── Refs ────────────────────────────────────────────────────────
+
+    it("400s an unknown pack in add", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, ["data_query"]);
+
+      const res = await patch(station.id, {
+        toolPackChanges: { add: ["not_a_pack"] },
+      }).expect(400);
+
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_TOOLPACK);
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+    });
+
+    it("detaches a pack whose slug is no longer a built-in", async () => {
+      const { organizationId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "retired_pack",
+      ]);
+
+      await patch(station.id, {
+        toolPackChanges: { remove: ["retired_pack"] },
+      }).expect(200);
+
+      expect(await livePacks(station.id)).toEqual(["data_query"]);
+    });
+
+    // ── Audit ───────────────────────────────────────────────────────
+
+    it("records a pack change on the station's attachment audit event", async () => {
+      const { organizationId, userId } = await seedOrg();
+      const station = await stationWith(organizationId, [
+        "data_query",
+        "statistics",
+      ]);
+
+      await patch(station.id, {
+        toolPackChanges: { add: ["web_search"], remove: ["statistics"] },
+      }).expect(200);
+
+      const audits = await packAudits(station.id);
+      expect(audits).toHaveLength(1);
+      expect(audits[0].userId).toBe(userId);
+      expect(audits[0].metadata).toMatchObject({
+        added: { toolPacks: ["web_search"] },
+        removed: { toolPacks: ["statistics"] },
+      });
+    });
+  });
+
   describe("DELETE /api/stations/:id", () => {
     // #935: the audit write runs after the response; poll for `expected`
     // rows (or let a no-op settle) before reading.

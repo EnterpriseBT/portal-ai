@@ -23,6 +23,8 @@ import { ObjectAccessService } from "../services/object-access.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { StationQueryService } from "../services/station-query.service.js";
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
+import type { PermissionSet } from "../services/permission-set.js";
+import type { ReplacePacksPayload } from "../db/repositories/station-toolpacks.repository.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
 import { OrganizationUpdateService } from "../services/organization-update.service.js";
@@ -136,6 +138,15 @@ async function denyUnentitledBuiltins(
   );
   if (unentitled.length === 0) return null;
 
+  return toolpacksNotEntitled(organizationId, tier, unentitled);
+}
+
+/** The #284 refusal, logged. One place so create and update word it alike. */
+function toolpacksNotEntitled(
+  organizationId: string,
+  tier: string,
+  unentitled: string[]
+): ApiError {
   logger.warn(
     { organizationId, tier, denied: unentitled },
     "Station write denied unentitled built-in toolpacks"
@@ -145,6 +156,101 @@ async function denyUnentitledBuiltins(
     ApiCode.STATION_TOOLPACK_NOT_ENTITLED,
     `Tool pack${unentitled.length === 1 ? "" : "s"} not included in your plan: ${unentitled.join(", ")}`
   );
+}
+
+/** #1052: a `toolPackChanges` body, checked and ready to apply. */
+interface ToolPackChangePlan {
+  add: Required<ReplacePacksPayload>;
+  remove: Required<ReplacePacksPayload>;
+  /** Built-ins in `add` the plan excludes. Refused only where the pack isn't
+   *  already attached, which is known inside the transaction. */
+  unentitled: string[];
+  tier: string;
+}
+
+/**
+ * #1052: everything about a pack change that doesn't depend on the station's
+ * rows, done before the transaction so it never waits for a second connection
+ * while holding one (#698).
+ *
+ * - `add` refs must be a built-in slug or an `org:<id>` the caller can read.
+ *   An unreadable custom pack is answered exactly like a missing one or
+ *   another organization's (`{ ok: false }` → 400 "Unknown toolpack"), so the
+ *   answer doesn't say the pack exists. Station write used to be enough to
+ *   attach any custom pack in the org by id (#832: a referenced object needs
+ *   read).
+ * - `remove` refs are split by shape only, so a pack whose slug has since
+ *   been retired can still be detached. A custom pack the caller can't read
+ *   is dropped from the list: it isn't theirs to remove (#674's rule for
+ *   attachments), and a member can't read any.
+ */
+async function planToolPackChanges(
+  changes: { add?: string[]; remove?: string[] },
+  organizationId: string,
+  set: PermissionSet
+): Promise<
+  { ok: true; plan: ToolPackChangePlan } | { ok: false; value: string }
+> {
+  const add: Required<ReplacePacksPayload> = {
+    builtinSlugs: [],
+    organizationToolpackIds: [],
+  };
+  for (const ref of changes.add ?? []) {
+    if (ref.startsWith("org:")) {
+      add.organizationToolpackIds.push(ref.slice("org:".length));
+    } else if (isBuiltinToolpackSlug(ref)) {
+      add.builtinSlugs.push(ref);
+    } else {
+      return { ok: false, value: ref };
+    }
+  }
+  const remove: Required<ReplacePacksPayload> = {
+    builtinSlugs: [],
+    organizationToolpackIds: [],
+  };
+  for (const ref of changes.remove ?? []) {
+    if (ref.startsWith("org:")) {
+      remove.organizationToolpackIds.push(ref.slice("org:".length));
+    } else {
+      remove.builtinSlugs.push(ref);
+    }
+  }
+
+  const customIds = [
+    ...new Set([
+      ...add.organizationToolpackIds,
+      ...remove.organizationToolpackIds,
+    ]),
+  ];
+  const packs =
+    customIds.length === 0
+      ? []
+      : await DbService.repository.organizationToolpacks.findManyByIds(
+          customIds,
+          { organizationId }
+        );
+  const readable = new Set(
+    packs
+      .filter((pack) =>
+        set.can("resource.read", {
+          type: "toolpack",
+          id: pack.id,
+          createdBy: pack.createdBy,
+        })
+      )
+      .map((pack) => pack.id)
+  );
+  const refused = add.organizationToolpackIds.find((id) => !readable.has(id));
+  if (refused !== undefined) return { ok: false, value: `org:${refused}` };
+  remove.organizationToolpackIds = remove.organizationToolpackIds.filter((id) =>
+    readable.has(id)
+  );
+
+  const { unentitled, tier } = await EntitlementService.splitBuiltinPacks(
+    organizationId,
+    add.builtinSlugs
+  );
+  return { ok: true, plan: { add, remove, unentitled, tier } };
 }
 
 // ── GET /api/stations ─────────────────────────────────────────────────────
@@ -628,7 +734,11 @@ stationRouter.post(
  *         description: >
  *           Invalid payload (STATION_INVALID_PAYLOAD): the body fails its schema,
  *           including an unknown key; the first issue is in the message and all
- *           of them in details.issues.
+ *           of them in details.issues. A tool pack in `toolPackChanges.add`
+ *           that is unknown, in another organization, or not readable by the
+ *           caller (STATION_INVALID_TOOLPACK, one answer for all three). A
+ *           `toolPackChanges` that would leave the station with no tool pack
+ *           (STATION_TOOLPACK_REQUIRED).
  *         content:
  *           application/json:
  *             schema:
@@ -695,7 +805,27 @@ stationRouter.patch(
         connectorInstanceChanges,
         curatedViewChanges,
         toolPacks,
+        toolPackChanges,
       } = parsed.data;
+
+      let packPlan: ToolPackChangePlan | null = null;
+      if (toolPackChanges !== undefined) {
+        const planned = await planToolPackChanges(
+          toolPackChanges,
+          organizationId,
+          set
+        );
+        if (!planned.ok) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.STATION_INVALID_TOOLPACK,
+              `Unknown toolpack: "${planned.value}"`
+            )
+          );
+        }
+        packPlan = planned.plan;
+      }
 
       let parsedRefs: { builtinSlugs: string[]; customIds: string[] } | null =
         null;
@@ -744,6 +874,11 @@ stationRouter.patch(
       // #674: the row, toolpacks and attachment diffs commit together. Each
       // attachment kind is written only when its field is in the body.
       const { station, change } = await DbService.transaction(async (tx) => {
+        // #1052: this update must stay the transaction's first statement. It
+        // holds the station's row until commit, so two updates of one station
+        // run one after the other, and everything below reads the packs as
+        // the earlier one left them. That is what keeps two editors, each
+        // removing a different pack, from emptying the station between them.
         const updated = await DbService.repository.stations.update(
           id,
           updates as never,
@@ -760,6 +895,41 @@ stationRouter.patch(
             tx
           );
         }
+        let packs = { added: [] as string[], removed: [] as string[] };
+        if (packPlan !== null) {
+          // #284: only a pack that isn't attached yet is held to the plan.
+          // Re-adding an attached one is a no-op, and removing one always
+          // works, so a downgrade never makes a station un-editable.
+          const live = new Set(
+            (
+              await DbService.repository.stationToolpacks.findByStationId(
+                id,
+                tx
+              )
+            ).map((r) => r.builtinSlug)
+          );
+          const denied = packPlan.unentitled.filter((slug) => !live.has(slug));
+          if (denied.length > 0) {
+            throw toolpacksNotEntitled(organizationId, packPlan.tier, denied);
+          }
+          const result =
+            await DbService.repository.stationToolpacks.applyChanges(
+              id,
+              { add: packPlan.add, remove: packPlan.remove },
+              { userId },
+              tx
+            );
+          // Checked on the result, not on the request: the body can't know
+          // what another editor removed since its dialog opened.
+          if (result.remaining === 0) {
+            throw new ApiError(
+              400,
+              ApiCode.STATION_TOOLPACK_REQUIRED,
+              "A station needs at least one tool pack."
+            );
+          }
+          packs = result;
+        }
         const applied = await StationAttachmentService.applyAll(
           tx,
           set,
@@ -769,7 +939,13 @@ stationRouter.patch(
             connectorInstances: connectorInstanceChanges,
           }
         );
-        return { station: updated, change: applied };
+        return {
+          station: updated,
+          change: {
+            added: { ...applied.added, toolPacks: packs.added },
+            removed: { ...applied.removed, toolPacks: packs.removed },
+          },
+        };
       });
       await auditAttachmentChange(req, id, change);
 
