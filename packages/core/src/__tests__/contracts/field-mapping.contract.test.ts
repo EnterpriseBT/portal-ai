@@ -328,15 +328,26 @@ describe("FieldMappingUpdateRequestBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should reject missing required fields", () => {
-    const result = FieldMappingUpdateRequestBodySchema.safeParse({});
-    expect(result.success).toBe(false);
+  // #1061: every field is optional, so an editor sends only what it changed
+  // and can't put back another editor's change to a field it didn't touch.
+  it("accepts a body carrying only the changed field (#1061)", () => {
+    expect(
+      FieldMappingUpdateRequestBodySchema.safeParse({ format: "lowercase" })
+        .success
+    ).toBe(true);
+    expect(
+      FieldMappingUpdateRequestBodySchema.safeParse({ sourceField: "email" })
+        .success
+    ).toBe(true);
+    expect(
+      FieldMappingUpdateRequestBodySchema.safeParse({
+        columnDefinitionId: "cd-2",
+      }).success
+    ).toBe(true);
   });
 
-  it("should reject missing columnDefinitionId", () => {
-    const result = FieldMappingUpdateRequestBodySchema.safeParse({
-      sourceField: "email",
-    });
+  it("rejects an empty body, which changes nothing", () => {
+    const result = FieldMappingUpdateRequestBodySchema.safeParse({});
     expect(result.success).toBe(false);
   });
 

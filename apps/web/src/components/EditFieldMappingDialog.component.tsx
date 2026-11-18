@@ -76,13 +76,26 @@ function validateForm(
   return result.success ? {} : result.errors;
 }
 
+/** The fields whose change revalidates the entity's records: the server's
+ *  `VALIDATION_RULE_FIELDS` (apps/api services/field-mappings/reconcile.ts),
+ *  so the dialog warns exactly when the save will start a revalidation. */
 const REVALIDATION_FIELDS = [
+  "columnDefinitionId",
   "normalizedKey",
   "required",
   "defaultValue",
   "format",
   "enumValues",
+  "refEntityKey",
+  "refNormalizedKey",
 ] as const;
+
+/** An enum list as the form reads it: trimmed, empty entries dropped. Applied
+ *  to the stored list too, so an untouched list never reads as changed. */
+function parseEnum(values: string | readonly string[] | null | undefined) {
+  const list = typeof values === "string" ? values.split(",") : (values ?? []);
+  return list.map((v) => v.trim()).filter(Boolean);
+}
 
 // ── Component ───────────────────────────────────────────────────────
 
@@ -157,6 +170,10 @@ const EditForm: React.FC<{
   ) => {
     const next = { ...form, [field]: value };
     setForm(next);
+    // A revalidation warning confirms the body it was raised for. An edit
+    // after it retires it, so Confirm & Save can't send a stale body.
+    setShowRevalidationWarning(false);
+    setPendingBody(null);
     if (touched[field]) {
       setErrors(validateForm(next, fm.normalizedKey ?? ""));
     }
@@ -167,26 +184,18 @@ const EditForm: React.FC<{
     setErrors(validateForm(form, fm.normalizedKey ?? ""));
   };
 
-  /** The enum list as the form parses it: trimmed, empty entries dropped. */
-  const parseEnum = (text: string): string[] =>
-    text
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
-
   // #1061: only what this editor changed from the mapping the dialog opened on
   // (`fm`, the row the page stored when Edit was clicked) is sent, as in Edit
   // Column Definition. Resending the whole form put back another editor's
-  // change to a field this one never touched. `sourceField` and
-  // `columnDefinitionId` are required by the contract and always sent.
+  // change to a field this one never touched. Text is compared as the form
+  // shows it against the stored value, so removing stray whitespace counts.
   const buildBody = (): FieldMappingUpdateRequestBody => {
-    const body: FieldMappingUpdateRequestBody = {
-      sourceField: form.sourceField.trim(),
-      columnDefinitionId: fm.columnDefinitionId,
-    };
+    const body: FieldMappingUpdateRequestBody = {};
+    const sourceField = form.sourceField.trim();
     const defaultValue = form.defaultValue.trim() || null;
     const format = form.format.trim() || null;
 
+    if (sourceField !== fm.sourceField) body.sourceField = sourceField;
     // #801: an unchanged key isn't resent (see editFieldMappingFormSchema).
     if (form.normalizedKey !== (fm.normalizedKey ?? "")) {
       body.normalizedKey = form.normalizedKey;
@@ -194,18 +203,19 @@ const EditForm: React.FC<{
     if (form.required !== (fm.required ?? false)) {
       body.required = form.required;
     }
-    if (defaultValue !== (fm.defaultValue?.trim() || null)) {
+    if (defaultValue !== (fm.defaultValue ?? null)) {
       body.defaultValue = defaultValue;
     }
-    if (format !== (fm.format?.trim() || null)) {
-      body.format = format;
-    }
+    if (format !== (fm.format ?? null)) body.format = format;
     if (columnDefinitionType === "enum") {
       const next = parseEnum(form.enumValues);
-      const prev = fm.enumValues ?? [];
-      if (JSON.stringify(next) !== JSON.stringify(prev)) {
+      if (JSON.stringify(next) !== JSON.stringify(parseEnum(fm.enumValues))) {
         body.enumValues = next.length > 0 ? next : null;
       }
+    } else if (fm.enumValues?.length) {
+      // The column is no longer an enum: its stale list is cleared, as a save
+      // always did before (the field isn't shown, so nothing else can).
+      body.enumValues = null;
     }
     if (form.isPrimaryKey !== fm.isPrimaryKey) {
       body.isPrimaryKey = form.isPrimaryKey;
@@ -233,6 +243,12 @@ const EditForm: React.FC<{
     }
 
     const body = buildBody();
+
+    // Nothing changed: there's nothing to save, so the dialog just closes.
+    if (Object.keys(body).length === 0) {
+      onClose();
+      return;
+    }
 
     if (needsRevalidation(body)) {
       setPendingBody(body);
