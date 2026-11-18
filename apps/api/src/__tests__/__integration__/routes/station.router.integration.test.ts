@@ -1186,6 +1186,54 @@ describe("Station Router", () => {
       expect(found[0].deleted).not.toBeNull();
     });
 
+    // #1064: the station's tool pack rows go with it, like its view and
+    // connector attachments (#674). They used to stay live.
+    it("soft-deletes the station's tool pack rows and no other station's", async () => {
+      const { organizationId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const doomed = createStation(organizationId);
+      const kept = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values([doomed, kept] as never);
+      for (const [stationId, slug] of [
+        [doomed.id, "data_query"],
+        [doomed.id, "statistics"],
+        [kept.id, "data_query"],
+      ]) {
+        await (db as ReturnType<typeof drizzle>)
+          .insert(stationToolpacks)
+          .values({
+            id: generateId(),
+            stationId,
+            builtinSlug: slug,
+            organizationToolpackId: null,
+            created: Date.now(),
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never);
+      }
+
+      await request(app).delete(`/api/stations/${doomed.id}`).expect(200);
+
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stationToolpacks);
+      const doomedRows = rows.filter((r) => r.stationId === doomed.id);
+      expect(doomedRows).toHaveLength(2);
+      for (const row of doomedRows) {
+        expect(row.deleted).not.toBeNull();
+        expect(row.deletedBy).toBe(userId);
+      }
+      const keptRows = rows.filter((r) => r.stationId === kept.id);
+      expect(keptRows.map((r) => r.deleted)).toEqual([null]);
+    });
+
     // #907: a default-station PATCH locks the org row, sees the station live
     // and writes it as the default. A delete that ran its clear while that
     // write was uncommitted matched nothing, so the default dangled on a

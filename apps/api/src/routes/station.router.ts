@@ -1089,13 +1089,18 @@ stationRouter.delete(
         );
 
         // #674: the station's attachments go with it (soft delete, like the
-        // station row).
+        // station row). #1064: its tool pack rows too; they used to outlive it.
         await DbService.repository.stationViews.softDeleteByStation(
           id,
           userId,
           tx
         );
         await DbService.repository.stationInstances.softDeleteByStation(
+          id,
+          userId,
+          tx
+        );
+        await DbService.repository.stationToolpacks.softDeleteByStation(
           id,
           userId,
           tx

@@ -271,6 +271,21 @@ export class StationToolpacksRepository extends Repository<
     };
   }
 
+  /** #1064: soft-delete every live pack row of a station (the station delete
+   *  cascade, beside its view and connector attachments). */
+  async softDeleteByStation(
+    stationId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const rows = await this.updateWhere(
+      eq(stationToolpacks.stationId, stationId),
+      { deleted: Date.now(), deletedBy },
+      client
+    );
+    return rows.length;
+  }
+
   /**
    * Find live rows for any of the given station IDs (used by include payloads).
    */
