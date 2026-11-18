@@ -6,12 +6,16 @@
  * On timeout the last value is returned rather than thrown, so the caller's
  * own `expect` fails with its real message ("Expected length: 1").
  *
- * This waits for something to appear. It can't show that nothing does: a test
- * asserting "no new row" still needs a settle wait.
+ * `done` is required: an empty row list is truthy, so a default of "truthy"
+ * would return on the first read. Use `atLeast(n)` for rows.
+ *
+ * This waits for something to appear. It can't show that nothing does, or that
+ * nothing more follows: a test about a row that must not be written (a no-op,
+ * a dedupe, a refused repeat) still needs a settle wait before it counts.
  */
 export async function eventually<T>(
   read: () => PromiseLike<T> | T,
-  done: (value: T) => boolean = Boolean,
+  done: (value: T) => boolean,
   timeoutMs = 5_000
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;

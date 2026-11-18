@@ -20,7 +20,7 @@ Paths are under `apps/api/src/`; test paths under `__tests__/__integration__/`.
 
 ## Decision — how the tests wait
 
-1. **Poll for the row, from one shared helper.** Move `eventually` to `__tests__/__integration__/utils/eventually.util.ts` with an optional `done` predicate (default: truthy) and return the last value on timeout, so a missing row still fails on the test's own `expect` with its real message.
+1. **Poll for the row, from one shared helper.** Move `eventually` to `__tests__/__integration__/utils/eventually.util.ts` with a required `done` predicate (an empty row list is truthy, so a "truthy" default would return on the first read) and return the last value on timeout, so a missing row still fails on the test's own `expect` with its real message.
 2. Await the audit write in the services. Rejected: 37 call sites deliberately don't hold the response for the audit store, and the ticket excludes it.
 3. A drain hook on `AuditService` (track in-flight writes, `await AuditService.settled()`). Deterministic, and it would make the "no new row" checks sound too, but it adds production state that only tests would read. Not for a flaky-test fix.
 
@@ -28,9 +28,11 @@ Paths are under `apps/api/src/`; test paths under `__tests__/__integration__/`.
 
 - the two reads with no wait (role, policy): the bug;
 - the sleep-then-expect-a-row sites listed above: the sleep becomes the poll. Same assertion, no fixed delay, and no 50–80 ms bet on a loaded runner;
-- `organization.router.rename` imports the shared helper in place of its local copy.
+- `organization.router.rename` and `station.router` use the shared helper in place of their local poll loops.
 
-Left alone: the three "no new row" sleeps (a poll can't prove absence, so a settle wait is the honest tool), `station.router`'s helper (it filters on metadata and has its own no-op branch), and the `afterEach` sleeps that let stragglers land before teardown.
+A poll shows a row arrived. It doesn't show that nothing else follows, so `toHaveLength(1)` after it no longer bounds the count from above the way a sleep loosely did. Where the test is about a row that must not be written, the settle wait stays: the three "no new row" sleeps in `ensure-provisioned`, the refused re-accept in `seat.service`, and `station.router`'s no-op branch.
+
+Teardown: `seat.service` had no wait before `teardownOrg`, and the sleeps removed here were the only thing letting a later audit row land first. Its `afterEach` gets the 150 ms wait the sibling suites have. The other `afterEach` waits are unchanged.
 
 ## Plan — one slice
 
@@ -38,19 +40,19 @@ Left alone: the three "no new row" sleeps (a poll can't prove absence, so a sett
 - New: `apps/api/src/__tests__/__integration__/utils/eventually.util.ts` — `eventually<T>(read, done = Boolean, timeoutMs = 5_000)` and `atLeast(n)`, a `done` for row reads.
 - Edit: `routes/role.router.integration.test.ts`, `routes/policy.router.integration.test.ts` — wrap the audit select: `await eventually(readAudits, atLeast(1))`.
 - Edit: `routes/organization.router.member-role…`, `services/seat.service…`, `tools/rbac-tools…`, `services/audit-emission…`, `services/ensure-provisioned…` — replace each sleep-then-read with the poll.
-- Edit: `routes/organization.router.rename.integration.test.ts` — drop the local `eventually`, import the shared one.
+- Edit: `routes/organization.router.rename.integration.test.ts`, `routes/station.router.integration.test.ts` — drop the local poll, use the shared one.
 
 No new test file, so `durations.json` and the shard plan are unchanged. Test names are untouched; diff them before committing.
 
 **Tests**
-- `npm run test:integration` in `apps/api`, limited to the eight touched files.
+- `npm run test:integration` in `apps/api`, limited to the nine touched files.
 - `npm run lint`, `npm run type-check`, `npm run format:check`.
 
 ## Smoke (against a local Postgres + Redis; no UI)
 
-1. Add a temporary 100 ms delay at the top of `AuditService.record` (under the suites' 150 ms teardown wait, so no row lands after its org is torn down) and run `main`'s versions of the touched suites: the role and policy audit tests fail with `Expected length: 1, Received length: 0`, the CI failure, and so does every sleep-then-read test.
-2. This branch's versions with the same delay: all eight suites pass. Remove the delay.
-3. On this branch without it: the eight suites pass three runs in a row.
+1. Add a temporary 100 ms delay at the top of `AuditService.record` and run `main`'s versions of the touched suites: the role and policy audit tests fail with `Expected length: 1, Received length: 0`, the CI failure, and so does every sleep-then-read test.
+2. This branch's versions with the same delay: all nine suites pass. Remove the delay.
+3. On this branch without it: the suites pass three runs in a row.
 4. CI: `Integration Tests` green on the PR.
 
 ## Out of scope

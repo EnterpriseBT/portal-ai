@@ -95,6 +95,10 @@ describe("SeatService Integration Tests", () => {
   });
 
   afterEach(async () => {
+    // Invite, revoke, accept and remove write their audit rows unawaited. Let
+    // them land before teardown, or a late insert trips the audit_log →
+    // organizations foreign key mid-delete.
+    await new Promise((r) => setTimeout(r, 150));
     await teardownOrg(asDrizzle());
     // Test tiers are not covered by teardownOrg; remove ours (orgs already gone).
     await asDrizzle()
@@ -467,6 +471,9 @@ describe("SeatService Integration Tests", () => {
       )
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
 
+    // Exactly one: the refused repeat must not audit, so let a wrong second
+    // row land before counting.
+    await new Promise((r) => setTimeout(r, 60));
     expect(
       await eventually(() => auditRows("member.invite.accept"), atLeast(1))
     ).toHaveLength(1);
