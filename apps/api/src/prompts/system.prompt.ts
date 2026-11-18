@@ -3,6 +3,8 @@ import {
   BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
   isBuiltinToolpackSlug,
+  stationDataSetup,
+  usesStationData,
   type BuiltinToolpackSlug,
 } from "@portalai/core/registries";
 import {
@@ -17,10 +19,6 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 import type { CustomPackSummary } from "../services/entitlement.service.js";
-import {
-  stationDataSetup,
-  usesStationData,
-} from "../utils/station-data-packs.util.js";
 
 /**
  * Connector instance attached to this station — surfaced in the

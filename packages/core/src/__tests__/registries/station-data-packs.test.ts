@@ -1,12 +1,12 @@
 import { describe, it, expect } from "@jest/globals";
 
-import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
+import { BuiltinToolpackSlugSchema } from "../../registries/builtin-toolpacks.js";
 
 import {
   PACK_USES_STATION_DATA,
   stationDataSetup,
   usesStationData,
-} from "../../utils/station-data-packs.util.js";
+} from "../../registries/station-data-packs.js";
 
 // #848: whether a station's packs work on its attached data. platform_help
 // and the system prompt both read it, so a station set up for access work

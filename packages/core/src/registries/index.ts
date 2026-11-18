@@ -12,3 +12,6 @@ export * from "./tier-catalog.js";
  *  the in-flight tool activity indicator, with a name-derived fallback for
  *  custom/webhook tools. */
 export * from "./tool-phase-labels.js";
+// #1055: how a station stands with entity data, shared by the API (prompt,
+// platform_help) and the web (the station attachment notice).
+export * from "./station-data-packs.js";
