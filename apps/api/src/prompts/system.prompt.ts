@@ -848,10 +848,18 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       // The same result code carries refusals that are not about a missing
       // permission, and answering those with "ask for the permission" would
       // be wrong. Nor is this a ban on talking about members and roles.
+      // #1056: that holds for the follow-up question too. The carve-out
+      // covered only the relay, so "how do I get access?" after the
+      // role-assignment rule got the sentence above, for a permission that
+      // doesn't exist. The rule isn't restated here: the message names the
+      // role, which #711 allows for that one rule.
       "This is about that one inference and nothing else. A refusal that " +
-      "gives a different reason is relayed with its reason: a plan limit " +
+      "gives a different reason is relayed with its reason, and that reason " +
+      "is still the answer if the user asks how to get access: a plan limit " +
       "(point at Settings → Subscription & Billing; no grant fixes it), a " +
-      "rule about who may assign particular roles, or a reason from an " +
+      "rule about who may assign particular roles (it isn't a permission, " +
+      "so there is nothing to ask for: someone who holds the role the " +
+      "message names has to make the change), or a reason from an " +
       "organization-provided tool. And a question about who the members are " +
       "or which roles they hold is answered from the tools as usual.",
     "",

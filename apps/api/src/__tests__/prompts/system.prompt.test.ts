@@ -441,6 +441,29 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
       );
     });
 
+    // #1056: asked "how do I get access?" after the role-assignment rule
+    // refused, the assistant said to ask for a permission that doesn't exist.
+    // The carve-out covered the relay and said nothing about the follow-up.
+    it("gives a refusal with another reason that reason as the follow-up answer", () => {
+      const rule = ruleOf(
+        buildSystemPrompt(makeContext({ effectiveToolPacks: [] }))
+      );
+      const general = rule.indexOf(
+        "they can ask for that permission to be granted"
+      );
+      const exception = rule.indexOf(
+        "that reason is still the answer if the user asks how to get access"
+      );
+      expect(general).toBeGreaterThan(-1);
+      // The exception follows the general answer it overrides.
+      expect(exception).toBeGreaterThan(general);
+      expect(rule).toContain(
+        "a rule about who may assign particular roles (it isn't a " +
+          "permission, so there is nothing to ask for: someone who holds the " +
+          "role the message names has to make the change)"
+      );
+    });
+
     it("agrees with the Access & Roles notes on a plan limit", () => {
       const prompt = buildSystemPrompt(
         makeContext({ effectiveToolPacks: ["rbac_management"] })
