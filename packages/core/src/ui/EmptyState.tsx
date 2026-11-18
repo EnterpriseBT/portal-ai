@@ -1,8 +1,10 @@
 import React from "react";
 import Box from "@mui/material/Box";
-import MuiLink from "@mui/material/Link";
+import MuiButton from "@mui/material/Button";
 import MuiTypography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
+
+import { Icon, IconName } from "./Icon";
 
 export interface EmptyStateProps {
   /** Large icon displayed above the title. Accepts any React node. */
@@ -13,8 +15,8 @@ export interface EmptyStateProps {
   description?: string;
   /**
    * #1059: the Help entry that explains this list, rendered after the
-   * description as "Help: <label>". Every top-level list passes one, so an
-   * empty page says what it's for and where to read more.
+   * description as a help-icon button named by `label`. Every top-level
+   * list passes one, so an empty page says what it's for and where to read more.
    */
   helpLink?: { href: string; label: string };
   /** The app's router link for `helpLink` (core can't import the router). */
@@ -85,14 +87,19 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
               {description}
             </MuiTypography>
           )}
+          {/* #1059: a compact outlined button led by a help icon, named by
+              the question alone (the icon is decorative). It navigates, so it
+              renders as a link through the app's router component. */}
           {helpLink && (
-            <MuiLink
+            <MuiButton
               component={linkComponent ?? "a"}
               href={helpLink.href}
-              variant="body2"
+              variant="outlined"
+              size="small"
+              startIcon={<Icon name={IconName.HelpOutline} />}
             >
-              Help: {helpLink.label}
-            </MuiLink>
+              {helpLink.label}
+            </MuiButton>
           )}
           {action && <Box sx={{ mt: 1 }}>{action}</Box>}
         </Stack>

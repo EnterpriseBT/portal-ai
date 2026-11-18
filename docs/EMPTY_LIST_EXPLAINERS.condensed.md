@@ -22,7 +22,7 @@
 - **Core.** `EmptyState` gains `helpLink?: { href: string; label: string }` and `linkComponent?: React.ElementType` (the `DetailCard` precedent, since core can't import the router). It renders, in this order:
   - the title;
   - the `description` sentence;
-  - the link, as `Help: <label>`;
+  - the link, as a small outlined button led by a help (question mark) icon and named by the FAQ question alone;
   - any `action`, kept for the out-of-scope detail pages.
 - **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink }`, with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `EmptyState`, so no page writes its own copy.
 - **Web: links with a fragment.** `RouterLink` splits a `#fragment` off `href` and passes it as TanStack's `hash`. Without that, the link can't reach the anchor.
@@ -53,7 +53,7 @@
 **Tests** (test first)
 - Core, `__tests__/ui/EmptyState.test.tsx`:
   - the elements render in order: title, sentence, link;
-  - the link's text is `Help: <label>` and it uses `linkComponent`;
+  - the link is named by the question, leads with a decorative help icon, and uses `linkComponent`;
   - axe passes.
 - Web, `__tests__/empty-list-help.util.test.ts`:
   - every list's FAQ question exists in `FAQ_ENTRIES`, so a renamed or removed entry fails;
@@ -69,7 +69,7 @@
 
 ## Smoke (manual, against your dev stack)
 
-1. Sign in to an org with no data in a list. For each page, confirm the empty list shows its title, then the one sentence, then a `Help: …` link:
+1. Sign in to an org with no data in a list. For each page, confirm the empty list shows its title, then the one sentence, then a help-icon button naming the FAQ question:
    - Stations, Connectors (both tabs), Entities, Views, Entity Groups, Tags, Column Definitions, Pinned Results and Jobs.
 2. Follow each link. Help opens on the FAQ tab with that entry expanded and scrolled into view.
 3. Type a search that matches nothing on a non-empty list. "No results" shows, not the explainer.

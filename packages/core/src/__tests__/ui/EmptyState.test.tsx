@@ -143,9 +143,7 @@ describe("EmptyState Component", () => {
           linkComponent={Anchor}
         />
       );
-      const link = screen.getByRole("link", {
-        name: "Help: How do tags work?",
-      });
+      const link = screen.getByRole("link", { name: "How do tags work?" });
       expect(link).toHaveAttribute("href", "/help#faq-entry-how-do-tags-work");
       expect(link).toHaveAttribute("data-router-link");
       const text = container.textContent ?? "";
@@ -153,7 +151,7 @@ describe("EmptyState Component", () => {
         text.indexOf("Tags are labels")
       );
       expect(text.indexOf("Tags are labels")).toBeLessThan(
-        text.indexOf("Help: How do tags work?")
+        text.indexOf("How do tags work?")
       );
     });
 
@@ -165,8 +163,24 @@ describe("EmptyState Component", () => {
         />
       );
       expect(
-        screen.getByRole("link", { name: "Help: How do tags work?" })
+        screen.getByRole("link", { name: "How do tags work?" })
       ).toHaveAttribute("href", "/help");
+    });
+
+    // The link is a compact outlined button led by a help icon; the icon is
+    // decorative, so the link is named by its question alone.
+    it("leads the link with a decorative help icon", () => {
+      render(
+        <EmptyState
+          title="No tags found"
+          helpLink={{ href: "/help", label: "How do tags work?" }}
+        />
+      );
+      const link = screen.getByRole("link", { name: "How do tags work?" });
+      const icon = link.querySelector("svg");
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(link).toHaveClass("MuiButton-outlined");
     });
 
     it("renders no link without helpLink", () => {
