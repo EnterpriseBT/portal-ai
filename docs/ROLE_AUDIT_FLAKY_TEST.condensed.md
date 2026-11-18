@@ -35,8 +35,8 @@ Left alone: the three "no new row" sleeps (a poll can't prove absence, so a sett
 ## Plan — one slice
 
 **Files**
-- New: `apps/api/src/__tests__/__integration__/utils/eventually.util.ts` — `eventually<T>(read, done = Boolean, timeoutMs = 5_000)`.
-- Edit: `routes/role.router.integration.test.ts`, `routes/policy.router.integration.test.ts` — wrap the audit select: `await eventually(readAudits, (rows) => rows.length >= 1)`.
+- New: `apps/api/src/__tests__/__integration__/utils/eventually.util.ts` — `eventually<T>(read, done = Boolean, timeoutMs = 5_000)` and `atLeast(n)`, a `done` for row reads.
+- Edit: `routes/role.router.integration.test.ts`, `routes/policy.router.integration.test.ts` — wrap the audit select: `await eventually(readAudits, atLeast(1))`.
 - Edit: `routes/organization.router.member-role…`, `services/seat.service…`, `tools/rbac-tools…`, `services/audit-emission…`, `services/ensure-provisioned…` — replace each sleep-then-read with the poll.
 - Edit: `routes/organization.router.rename.integration.test.ts` — drop the local `eventually`, import the shared one.
 
@@ -48,8 +48,8 @@ No new test file, so `durations.json` and the shard plan are unchanged. Test nam
 
 ## Smoke (against a local Postgres + Redis; no UI)
 
-1. On `main`, add a temporary 300 ms delay at the top of `AuditService.record` and run the role and policy suites: both audit tests fail with `Expected length: 1, Received length: 0`, the CI failure.
-2. On this branch with the same delay: all eight touched suites pass. Remove the delay.
+1. Add a temporary 100 ms delay at the top of `AuditService.record` (under the suites' 150 ms teardown wait, so no row lands after its org is torn down) and run `main`'s versions of the touched suites: the role and policy audit tests fail with `Expected length: 1, Received length: 0`, the CI failure, and so does every sleep-then-read test.
+2. This branch's versions with the same delay: all eight suites pass. Remove the delay.
 3. On this branch without it: the eight suites pass three runs in a row.
 4. CI: `Integration Tests` green on the PR.
 

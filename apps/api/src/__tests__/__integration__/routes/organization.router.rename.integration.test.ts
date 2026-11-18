@@ -26,6 +26,7 @@ import {
   teardownOrg,
   type TenancyFixture,
 } from "../utils/application.util.js";
+import { eventually } from "../utils/eventually.util.js";
 
 /**
  * #907: renaming an organization through `PATCH /api/organization/:id`. Each
@@ -58,17 +59,6 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 
 const ORIGINAL = "Acme";
-
-/** Poll until `read` returns a truthy value: the audit and Stripe calls run
- *  after the response, so they may land a moment later. */
-async function eventually<T>(read: () => Promise<T> | T): Promise<T> {
-  const deadline = Date.now() + 5_000;
-  for (;;) {
-    const value = await read();
-    if (value || Date.now() > deadline) return value;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
 
 describe("PATCH /api/organization/:id — rename (#907)", () => {
   let connection: ReturnType<typeof postgres>;

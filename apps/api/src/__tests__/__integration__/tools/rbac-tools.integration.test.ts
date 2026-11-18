@@ -31,6 +31,7 @@ import {
   teardownOrg,
   seedRbacForOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 type Executable = { execute: (i: unknown, o: unknown) => Promise<unknown> };
 
@@ -170,18 +171,21 @@ describe("rbac_management tools — integration (#629)", () => {
     expect(result.success).toBe(true);
     expect(result.policy?.name).toBe(validInput.name);
 
-    // The audit write is fire-and-forget (`void AuditService.record`); give it a
-    // beat to flush, then assert the agent-stamped row.
-    await new Promise((r) => setTimeout(r, 80));
-    const rows = await asDrizzle()
-      .select()
-      .from(schema.auditLog)
-      .where(
-        and(
-          eq(schema.auditLog.organizationId, orgId),
-          eq(schema.auditLog.action, "policy.create" as never)
-        )
-      );
+    // The audit write is fire-and-forget (`void AuditService.record`); wait
+    // for it to land, then assert the agent-stamped row.
+    const rows = await eventually(
+      () =>
+        asDrizzle()
+          .select()
+          .from(schema.auditLog)
+          .where(
+            and(
+              eq(schema.auditLog.organizationId, orgId),
+              eq(schema.auditLog.action, "policy.create" as never)
+            )
+          ),
+      atLeast(1)
+    );
     expect(rows.length).toBe(1);
     expect(rows[0].userId).toBe(ownerId);
     expect(rows[0].userAgent).toBe("portal-agent");

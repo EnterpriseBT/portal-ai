@@ -36,6 +36,7 @@ import {
   teardownOrg,
   seedRbacForOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const AUDIT = { sourceIp: "203.0.113.4", userAgent: "jest" };
 
@@ -141,8 +142,9 @@ describe("SeatService Integration Tests", () => {
     const token = res.inviteUrl!.split("token=")[1];
     expect(row.tokenHash).not.toBe(token);
 
-    await new Promise((r) => setTimeout(r, 60));
-    expect(await auditRows("member.invite")).toHaveLength(1);
+    expect(
+      await eventually(() => auditRows("member.invite"), atLeast(1))
+    ).toHaveLength(1);
   });
 
   // ── seat cap ────────────────────────────────────────────────────────
@@ -201,8 +203,9 @@ describe("SeatService Integration Tests", () => {
     await expect(
       SeatService.invite(owner, { email: "b@x.com", role: "member" }, AUDIT)
     ).resolves.toBeDefined();
-    await new Promise((r) => setTimeout(r, 60));
-    expect(await auditRows("member.invite.revoke")).toHaveLength(1);
+    expect(
+      await eventually(() => auditRows("member.invite.revoke"), atLeast(1))
+    ).toHaveLength(1);
   });
 
   // ── resend ──────────────────────────────────────────────────────────
@@ -225,8 +228,9 @@ describe("SeatService Integration Tests", () => {
       .where(eq(schema.invitations.id, inv.id));
     // Stored hash now matches the NEW token, not the old one.
     expect(row.tokenHash).not.toBe(oldToken);
-    await new Promise((r) => setTimeout(r, 60));
-    expect(await auditRows("member.invite.resend")).toHaveLength(1);
+    expect(
+      await eventually(() => auditRows("member.invite.resend"), atLeast(1))
+    ).toHaveLength(1);
   });
 
   // ── no real web origin in production (#889) ─────────────────────────
@@ -463,8 +467,9 @@ describe("SeatService Integration Tests", () => {
       )
     ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
 
-    await new Promise((r) => setTimeout(r, 60));
-    expect(await auditRows("member.invite.accept")).toHaveLength(1);
+    expect(
+      await eventually(() => auditRows("member.invite.accept"), atLeast(1))
+    ).toHaveLength(1);
   });
 
   // #950: a brand-new invitee on an OIDC install is created from the profile
@@ -556,8 +561,9 @@ describe("SeatService Integration Tests", () => {
         memberId
       );
     expect(live).toBeUndefined(); // soft-deleted → excluded from live reads
-    await new Promise((r) => setTimeout(r, 60));
-    expect(await auditRows("member.remove")).toHaveLength(1);
+    expect(
+      await eventually(() => auditRows("member.remove"), atLeast(1))
+    ).toHaveLength(1);
   });
 
   it("removeMember revokes the member's object grants (#621)", async () => {
