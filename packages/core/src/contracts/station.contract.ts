@@ -27,9 +27,29 @@ export type StationListRequestQuery = z.infer<
   typeof StationListRequestQuerySchema
 >;
 
+/**
+ * #1063: a pack attached to a station, named for anyone who can read the
+ * station. Reading a station conveys what is attached to it, so a member sees
+ * a custom pack's name though they can't list the organization's packs. Only
+ * the ref, kind and name: never a pack's endpoint, headers or secrets.
+ */
+export const AttachedToolpackSchema = z.object({
+  /** A built-in slug or `org:<uuid>`, as in `enabledToolpacks`. */
+  ref: z.string(),
+  kind: z.enum(["builtin", "custom"]),
+  name: z.string(),
+});
+
+export type AttachedToolpack = z.infer<typeof AttachedToolpackSchema>;
+
 /** Station with its enabled toolpack slugs (from the include=toolpacks join). */
 export const StationWithToolpacksSchema = StationSchema.extend({
   enabledToolpacks: z.array(z.string()).optional(),
+  /**
+   * #1063: the attached packs with their names, in `enabledToolpacks` order.
+   * A custom ref whose pack no longer exists has no item.
+   */
+  toolpacks: z.array(AttachedToolpackSchema).optional(),
 });
 
 export type StationWithToolpacks = z.infer<typeof StationWithToolpacksSchema>;

@@ -943,5 +943,95 @@ describe("station attachments (#674)", () => {
         ["data_query", `org:${packId}`].sort()
       );
     });
+
+    // #1063: reading a station names the packs attached to it, so a member
+    // who can't list the organization's packs still sees a custom pack's
+    // name. Only the ref, kind and name.
+    describe("pack names on station reads (#1063)", () => {
+      it("a member who can read the station gets its custom pack's name", async () => {
+        const packId = await insertCustomPack();
+        const stationId = await stationWithPacks([
+          "data_query",
+          `org:${packId}`,
+        ]);
+        await grant(memberId, "read", "station", stationId);
+        const [pack] =
+          await DbService.repository.organizationToolpacks.findNamesByIds(
+            [packId],
+            { organizationId: orgId }
+          );
+
+        currentSub = MEMBER_SUB;
+        const res = await request(app)
+          .get(`/api/stations/${stationId}`)
+          .expect(200);
+
+        expect(res.body.payload.station.toolpacks).toEqual([
+          { ref: "data_query", kind: "builtin", name: "Data Query" },
+          { ref: `org:${packId}`, kind: "custom", name: pack.name },
+        ]);
+      });
+
+      it("the station list names each station's packs", async () => {
+        const packId = await insertCustomPack();
+        const stationId = await stationWithPacks([`org:${packId}`]);
+        await grant(memberId, "read", "station", stationId);
+
+        currentSub = MEMBER_SUB;
+        const res = await request(app).get("/api/stations").expect(200);
+
+        const row = res.body.payload.stations.find(
+          (s: { id: string }) => s.id === stationId
+        );
+        expect(row.toolpacks).toEqual([
+          {
+            ref: `org:${packId}`,
+            kind: "custom",
+            name: `pack_${packId.slice(0, 8)}`,
+          },
+        ]);
+      });
+
+      it("doesn't name another organization's pack", async () => {
+        const other = await seedUserAndOrg(db, "auth0|ci-station-attach-other");
+        const foreignPackId = await insertCustomPack(other.organizationId);
+        const stationId = await stationWithPacks([
+          "data_query",
+          `org:${foreignPackId}`,
+        ]);
+
+        const res = await request(app)
+          .get(`/api/stations/${stationId}`)
+          .expect(200);
+
+        expect(res.body.payload.station.enabledToolpacks).toContain(
+          `org:${foreignPackId}`
+        );
+        expect(res.body.payload.station.toolpacks).toEqual([
+          { ref: "data_query", kind: "builtin", name: "Data Query" },
+        ]);
+      });
+
+      it("create and update responses name the packs", async () => {
+        const packId = await insertCustomPack();
+        const name = `pack_${packId.slice(0, 8)}`;
+
+        const created = await request(app)
+          .post("/api/stations")
+          .send({ name: "Named", toolPacks: ["data_query", `org:${packId}`] })
+          .expect(201);
+        expect(created.body.payload.station.toolpacks).toEqual([
+          { ref: "data_query", kind: "builtin", name: "Data Query" },
+          { ref: `org:${packId}`, kind: "custom", name },
+        ]);
+
+        const updated = await patch(created.body.payload.station.id, {
+          toolPackChanges: { remove: ["data_query"] },
+        }).expect(200);
+        expect(updated.body.payload.station.toolpacks).toEqual([
+          { ref: `org:${packId}`, kind: "custom", name },
+        ]);
+      });
+    });
   });
 });

@@ -301,6 +301,22 @@ describe("swagger spec — Station response schema", () => {
     expect(station.properties).not.toHaveProperty("toolPacks");
   });
 
+  it("declares the named packs, not required (#1063)", () => {
+    expect(station.properties).toHaveProperty("toolpacks");
+    expect(station.required ?? []).not.toContain("toolpacks");
+  });
+
+  it("registers the AttachedToolpack component (#1063)", () => {
+    const attached = (spec.components?.schemas ?? {})["AttachedToolpack"] as {
+      properties?: Record<string, unknown>;
+    };
+    expect(Object.keys(attached.properties ?? {}).sort()).toEqual([
+      "kind",
+      "name",
+      "ref",
+    ]);
+  });
+
   it("does not require the pack list", () => {
     // `StationWithToolpacksSchema` in @portalai/core/contracts has it optional
     // — it is only populated by the toolpacks join.

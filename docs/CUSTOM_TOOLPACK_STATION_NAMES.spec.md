@@ -19,7 +19,7 @@ This spec pins three things:
 ## Scope
 
 ### In scope
-- Core: `StationToolpackSchema` and `toolpacks` on `StationWithToolpacksSchema`.
+- Core: `AttachedToolpackSchema` and `toolpacks` on `StationWithToolpacksSchema`.
 - API:
   - names on all four station responses;
   - the plan check for custom adds on POST and PATCH;
@@ -45,17 +45,17 @@ This spec pins three things:
 
 ```ts
 /** #1063: a pack attached to a station, named for anyone who can read it. */
-export const StationToolpackSchema = z.object({
+export const AttachedToolpackSchema = z.object({
   ref: z.string(),                       // built-in slug or `org:<uuid>`
   kind: z.enum(["builtin", "custom"]),
   name: z.string(),
 });
-export type StationToolpack = z.infer<typeof StationToolpackSchema>;
+export type AttachedToolpack = z.infer<typeof AttachedToolpackSchema>;
 
 export const StationWithToolpacksSchema = StationSchema.extend({
   enabledToolpacks: z.array(z.string()).optional(),
   /** #1063: the attached packs with their names, in `enabledToolpacks` order. */
-  toolpacks: z.array(StationToolpackSchema).optional(),
+  toolpacks: z.array(AttachedToolpackSchema).optional(),
 });
 ```
 
@@ -76,13 +76,13 @@ export class StationToolpackNamesService {
     organizationId: string,
     refsByStation: ReadonlyMap<string, readonly string[]>,
     client?: DbClient
-  ): Promise<Map<string, StationToolpack[]>>;
+  ): Promise<Map<string, AttachedToolpack[]>>;
   /** One station's refs. */
   static async forRefs(
     organizationId: string,
     refs: readonly string[],
     client?: DbClient
-  ): Promise<StationToolpack[]>;
+  ): Promise<AttachedToolpack[]>;
 }
 ```
 
@@ -92,9 +92,9 @@ export class StationToolpackNamesService {
 
 ### API — station routes and listing
 
-- `StationQueryService.listForCaller` (`apps/api/src/services/station-query.service.ts:44`): after building `toolpacksByStationId`, it calls `forStations` and sets `toolpacks` on each row. `StationListRow` gains `toolpacks: StationToolpack[]`.
+- `StationQueryService.listForCaller` (`apps/api/src/services/station-query.service.ts:44`): after building `toolpacksByStationId`, it calls `forStations` and sets `toolpacks` on each row. `StationListRow` gains `toolpacks: AttachedToolpack[]`.
 - GET `/api/stations/:id` (`station.router.ts:426`), POST (`:595`) and PATCH (`:782`) each set `toolpacks: await StationToolpackNamesService.forRefs(organizationId, enabledToolpacks)` beside `enabledToolpacks`.
-- `@openapi`: the hand-written `Station` schema (`apps/api/src/config/swagger.config.ts:1992`) gains `toolpacks` (an array of `$ref: '#/components/schemas/StationToolpack'`, not required). Register `StationToolpack: z.toJSONSchema(StationToolpackSchema)` in `stationSchemas` (`:607`). `StationGetResponsePayload` picks it up from Zod.
+- `@openapi`: the hand-written `Station` schema (`apps/api/src/config/swagger.config.ts:1992`) gains `toolpacks` (an array of `$ref: '#/components/schemas/AttachedToolpack'`, not required). Register `AttachedToolpack: z.toJSONSchema(AttachedToolpackSchema)` in `stationSchemas` (`:607`). `StationGetResponsePayload` picks it up from Zod.
 
 ### API — plan check for custom packs
 
@@ -144,7 +144,7 @@ export function isPackEntitled(
 
 /** id → name, for ToolPackUtil.getLabel's customLabels. */
 export function stationToolpackLabels(
-  toolpacks: readonly StationToolpack[] | undefined
+  toolpacks: readonly AttachedToolpack[] | undefined
 ): CustomToolpackLabelMap;
 ```
 
@@ -170,7 +170,7 @@ export function stationToolpackLabels(
 
 ### Web — Create and Edit Station
 
-- `EditStationDialogProps` and `CreateStationDialogProps` gain `customPacksEntitled?: boolean`, defaulting to `true` (fail open, like `entitledBuiltinSlugs`). `station` gains `toolpacks?: StationToolpack[]`. The containers that render them pass the prop from `useBuiltinEntitlements`.
+- `EditStationDialogProps` and `CreateStationDialogProps` gain `customPacksEntitled?: boolean`, defaulting to `true` (fail open, like `entitledBuiltinSlugs`). `station` gains `toolpacks?: AttachedToolpack[]`. The containers that render them pass the prop from `useBuiltinEntitlements`.
 - Custom options are `disabled` with `UNENTITLED_PACK_REASON` when `!customPacksEntitled`. An attached pack stays selected and removable, the same as an unentitled built-in (#284).
 - `ToolPackUpgradeNoteUI show` is `someBuiltinUnentitled(entitledBuiltinSlugs) || (!customPacksEntitled && (customOptions.length > 0 || form.toolPacks.some(isCustomRef)))`.
 - Edit Station's count line names the packs it can't change, taking labels from `station.toolpacks` through `new Intl.ListFormat("en", { type: "conjunction" })`:
@@ -217,7 +217,7 @@ Run tests through the npm scripts only: `npm run test:unit` / `npm run test:inte
 
   (9)
 - `apps/api/src/__tests__/tools/curated-views/curated-view-tools.test.ts`: `station_list` returns `toolpacks: [{ ref, name }]`. (1)
-- `apps/api/src/__tests__/config/swagger.config.test.ts`: `Station` declares `toolpacks`, not required, and `StationToolpack` is registered. (2)
+- `apps/api/src/__tests__/config/swagger.config.test.ts`: `Station` declares `toolpacks`, not required, and `AttachedToolpack` is registered. (2)
 - Pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`) are updated if the description mirror moves.
 
 ### Web

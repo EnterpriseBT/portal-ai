@@ -6,6 +6,7 @@ import {
   UpdateStationBodySchema,
   StationUpdateResponsePayloadSchema,
   StationGetResponsePayloadSchema,
+  AttachedToolpackSchema,
 } from "../../contracts/station.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -387,6 +388,37 @@ describe("station payloads carry capabilities (#688)", () => {
         limit: 20,
         offset: 0,
         stations: [validStation],
+      }).success
+    ).toBe(false);
+  });
+});
+
+// ── Named tool packs (#1063) ─────────────────────────────────────────
+
+describe("AttachedToolpackSchema on station payloads (#1063)", () => {
+  it("accepts the attached packs with their names", () => {
+    const result = StationCreateResponsePayloadSchema.safeParse({
+      station: {
+        ...validStation,
+        enabledToolpacks: ["data_query", "org:pack-1"],
+        toolpacks: [
+          { ref: "data_query", kind: "builtin", name: "Data Query" },
+          { ref: "org:pack-1", kind: "custom", name: "Acme CRM" },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.station.toolpacks?.[1]?.name).toBe("Acme CRM");
+    }
+  });
+
+  it("refuses an item of an unknown kind", () => {
+    expect(
+      AttachedToolpackSchema.safeParse({
+        ref: "org:pack-1",
+        kind: "webhook",
+        name: "Acme CRM",
       }).success
     ).toBe(false);
   });

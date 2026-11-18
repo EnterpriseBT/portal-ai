@@ -22,6 +22,7 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { StationQueryService } from "../services/station-query.service.js";
+import { StationToolpackNamesService } from "../services/station-toolpack-names.service.js";
 import type { StationAttachmentChange } from "../services/station-attachment.service.js";
 import type { PermissionSet } from "../services/permission-set.js";
 import type { ReplacePacksPayload } from "../db/repositories/station-toolpacks.repository.js";
@@ -481,6 +482,11 @@ stationRouter.get(
           ? r.builtinSlug
           : `org:${r.organizationToolpackId}`
       );
+      // #1063: reading the station names its packs.
+      const toolpacks = await StationToolpackNamesService.forRefs(
+        organizationId,
+        enabledToolpacks
+      );
 
       return HttpService.success<StationGetResponsePayload>(res, {
         station: {
@@ -488,6 +494,7 @@ stationRouter.get(
           instances,
           ...(views ? { views } : {}),
           enabledToolpacks,
+          toolpacks,
           // #688: replaces the #621 canShare/canWrite/canDelete flags.
           capabilities: ObjectCapabilitiesService.for(set, "station", station),
         } as unknown as StationGetResponsePayload["station"],
@@ -668,6 +675,10 @@ stationRouter.post(
         ...refs.builtinSlugs,
         ...refs.customIds.map((id) => `org:${id}`),
       ];
+      const toolpacks = await StationToolpackNamesService.forRefs(
+        organizationId,
+        enabledToolpacks
+      );
 
       return HttpService.success<StationCreateResponsePayload>(
         res,
@@ -675,6 +686,7 @@ stationRouter.post(
           station: {
             ...station,
             enabledToolpacks,
+            toolpacks,
           } as unknown as StationCreateResponsePayload["station"],
         },
         201
@@ -930,11 +942,16 @@ stationRouter.patch(
           ? r.builtinSlug
           : `org:${r.organizationToolpackId}`
       );
+      const toolpacks = await StationToolpackNamesService.forRefs(
+        organizationId,
+        enabledToolpacks
+      );
 
       return HttpService.success<StationUpdateResponsePayload>(res, {
         station: {
           ...station,
           enabledToolpacks,
+          toolpacks,
         } as unknown as StationUpdateResponsePayload["station"],
       });
     } catch (error) {

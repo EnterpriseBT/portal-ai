@@ -33,15 +33,15 @@ Sequencing rationale:
 
 ## Slice 1 — `toolpacks` on every station response
 
-Core gains `StationToolpackSchema` and the field. The new names service fills it on list, get, create and update, and swagger documents it.
+Core gains `AttachedToolpackSchema` and the field. The new names service fills it on list, get, create and update, and swagger documents it.
 
 **Files**
 
-- Edit: `packages/core/src/contracts/station.contract.ts`. Adds `StationToolpackSchema`, `StationToolpack`, and `toolpacks` on `StationWithToolpacksSchema`.
+- Edit: `packages/core/src/contracts/station.contract.ts`. Adds `AttachedToolpackSchema`, `AttachedToolpack`, and `toolpacks` on `StationWithToolpacksSchema`.
 - New: `apps/api/src/services/station-toolpack-names.service.ts`. Holds `forStations` and `forRefs`.
 - Edit: `apps/api/src/services/station-query.service.ts`. `listForCaller` sets `toolpacks`, and `StationListRow` gains it.
 - Edit: `apps/api/src/routes/station.router.ts`. GET by id, POST and PATCH set `toolpacks`.
-- Edit: `apps/api/src/config/swagger.config.ts`. `Station.properties.toolpacks`, plus `StationToolpack` registered in `stationSchemas`.
+- Edit: `apps/api/src/config/swagger.config.ts`. `Station.properties.toolpacks`, plus `AttachedToolpack` registered in `stationSchemas`.
 
 **Steps**
 

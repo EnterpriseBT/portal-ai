@@ -7,6 +7,7 @@
 import { and, eq, type SQL } from "drizzle-orm";
 
 import type {
+  AttachedToolpack,
   ObjectCapabilities,
   ShareableObjectCapabilities,
 } from "@portalai/core/contracts";
@@ -16,6 +17,7 @@ import { PermissionService } from "./permission.service.js";
 import type { PermissionContext } from "./permission.service.js";
 import { ObjectCapabilitiesService } from "./object-capabilities.service.js";
 import type { PermissionSet } from "./permission-set.js";
+import { StationToolpackNamesService } from "./station-toolpack-names.service.js";
 import { stations } from "../db/schema/index.js";
 import type { StationSelect } from "../db/schema/zod.js";
 import { ilikeContains } from "../utils/filter-sql.util.js";
@@ -31,6 +33,8 @@ export interface StationListOptions {
 export type StationListRow = StationSelect & {
   /** Built-in slugs, and custom packs as `org:<organizationToolpackId>`. */
   enabledToolpacks: string[];
+  /** #1063: the same packs with their names, in the same order. */
+  toolpacks: AttachedToolpack[];
   capabilities: ObjectCapabilities | ShareableObjectCapabilities;
 };
 
@@ -94,6 +98,11 @@ export class StationQueryService {
       arr.push(ref);
       toolpacksByStationId.set(row.stationId, arr);
     }
+    // #1063: one name lookup for the page.
+    const namedByStationId = await StationToolpackNamesService.forStations(
+      ctx.organizationId,
+      toolpacksByStationId
+    );
 
     return {
       set,
@@ -104,6 +113,7 @@ export class StationQueryService {
         data.map((s) => ({
           ...s,
           enabledToolpacks: toolpacksByStationId.get(s.id) ?? [],
+          toolpacks: namedByStationId.get(s.id) ?? [],
         }))
       ),
       total,
