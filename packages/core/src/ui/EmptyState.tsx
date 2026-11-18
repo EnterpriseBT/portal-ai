@@ -4,7 +4,7 @@ import MuiButton from "@mui/material/Button";
 import MuiTypography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 
-import { Icon, IconName } from "./Icon";
+import { Icon, IconName } from "./Icon.js";
 
 export interface EmptyStateProps {
   /** Large icon displayed above the title. Accepts any React node. */
