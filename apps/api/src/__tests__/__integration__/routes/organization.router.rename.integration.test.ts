@@ -26,6 +26,7 @@ import {
   teardownOrg,
   type TenancyFixture,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 /**
  * #907: renaming an organization through `PATCH /api/organization/:id`. Each
@@ -58,17 +59,6 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 
 const ORIGINAL = "Acme";
-
-/** Poll until `read` returns a truthy value: the audit and Stripe calls run
- *  after the response, so they may land a moment later. */
-async function eventually<T>(read: () => Promise<T> | T): Promise<T> {
-  const deadline = Date.now() + 5_000;
-  for (;;) {
-    const value = await read();
-    if (value || Date.now() > deadline) return value;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
 
 describe("PATCH /api/organization/:id — rename (#907)", () => {
   let connection: ReturnType<typeof postgres>;
@@ -281,12 +271,9 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
   it("a rename records one org.update entry with from, to and the actor", async () => {
     currentSub = ADMIN_SUB;
     expect((await patch({ name: "Acme Corp" })).status).toBe(200);
-    const rows = await eventually(async () => {
-      const r = await auditRows();
-      return r.length ? r : null;
-    });
+    const rows = await eventually(auditRows, atLeast(1));
     expect(rows).toHaveLength(1);
-    expect(rows![0]).toMatchObject({
+    expect(rows[0]).toMatchObject({
       userId: adminId,
       targetType: "organization",
       targetId: fx.orgId,
@@ -346,12 +333,9 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
 
       expect((await patch({ defaultStationId: stationId })).status).toBe(200);
 
-      const rows = await eventually(async () => {
-        const r = await stationRows();
-        return r.length ? r : null;
-      });
+      const rows = await eventually(stationRows, atLeast(1));
       expect(rows).toHaveLength(1);
-      expect(rows![0]).toMatchObject({
+      expect(rows[0]).toMatchObject({
         userId: adminId,
         targetType: "organization",
         targetId: fx.orgId,
@@ -370,12 +354,9 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
         200
       );
 
-      const rows = await eventually(async () => {
-        const r = await stationRows();
-        return r.length ? r : null;
-      });
+      const rows = await eventually(stationRows, atLeast(1));
       expect(rows).toHaveLength(1);
-      expect(rows![0].metadata).toEqual({
+      expect(rows[0].metadata).toEqual({
         field: "defaultStationId",
         from: stationId,
         to: otherStationId,
@@ -387,11 +368,8 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     it("clearing it records from the station to null", async () => {
       expect((await patch({ defaultStationId: null })).status).toBe(200);
 
-      const rows = await eventually(async () => {
-        const r = await stationRows();
-        return r.length ? r : null;
-      });
-      expect(rows![0].metadata).toEqual({
+      const rows = await eventually(stationRows, atLeast(1));
+      expect(rows[0].metadata).toEqual({
         field: "defaultStationId",
         from: stationId,
         to: null,
@@ -429,13 +407,10 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
           .status
       ).toBe(200);
 
-      const rows = await eventually(async () => {
-        const r = await auditRows();
-        return r.length >= 2 ? r : null;
-      });
+      const rows = await eventually(auditRows, atLeast(2));
       expect(rows).toHaveLength(2);
       expect(
-        rows!.map((r) => (r.metadata as { field: string }).field).sort()
+        rows.map((r) => (r.metadata as { field: string }).field).sort()
       ).toEqual(["defaultStationId", "name"]);
     });
   });
@@ -456,7 +431,7 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
         .spyOn(StripeService, "updateCustomerName")
         .mockResolvedValue(undefined);
       expect((await patch({ name: "Acme Corp" })).status).toBe(200);
-      await eventually(() => update.mock.calls.length > 0);
+      await eventually(() => update.mock.calls.length > 0, Boolean);
       const { stripeCustomerId } = await orgRow();
       expect(update).toHaveBeenCalledTimes(1);
       expect(update).toHaveBeenCalledWith(stripeCustomerId, "Acme Corp");
@@ -468,7 +443,7 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
         .mockRejectedValue(new Error("stripe down"));
       const res = await patch({ name: "Acme Corp" });
       expect(res.status).toBe(200);
-      await eventually(() => update.mock.calls.length > 0);
+      await eventually(() => update.mock.calls.length > 0, Boolean);
       expect((await orgRow()).name).toBe("Acme Corp");
     });
   });
@@ -483,14 +458,9 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     expect(a.status).toBe(200);
     expect(b.status).toBe(200);
 
-    const rows = await eventually(async () => {
-      const r = await auditRows();
-      return r.length === 2 ? r : null;
-    });
+    const rows = await eventually(auditRows, atLeast(2));
     expect(rows).toHaveLength(2);
-    const changes = rows!.map(
-      (r) => r.metadata as { from: string; to: string }
-    );
+    const changes = rows.map((r) => r.metadata as { from: string; to: string });
     // The writes serialized: one replaced the original, the other replaced
     // the first one's result, and the row holds the second one's name.
     const first = changes.find((c) => c.from === ORIGINAL)!;

@@ -19,6 +19,7 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const AUTH0_ID = "auth0|station-router-test";
 
@@ -821,13 +822,9 @@ describe("Station Router", () => {
                   "defaultStationId"
             )
           );
-      const deadline = Date.now() + (expected ? 5_000 : 300);
-      for (;;) {
-        const rows = await read();
-        if ((expected && rows.length >= expected) || Date.now() > deadline)
-          return rows;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      if (expected) return eventually(read, atLeast(expected));
+      await new Promise((r) => setTimeout(r, 300));
+      return read();
     };
 
     it("soft-deletes a station", async () => {

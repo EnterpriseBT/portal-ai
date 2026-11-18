@@ -28,6 +28,7 @@ import {
   provisionTestOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const AUTH0_ID = "auth0|audit-emit-user";
 
@@ -110,18 +111,20 @@ describe("Audit emission (#575 slice 4)", () => {
 
     expect(res.status).toBe(200);
 
-    // Give the fire-and-forget emission a tick to land.
-    await new Promise((r) => setTimeout(r, 50));
-
-    const rows = await (db as ReturnType<typeof drizzle>)
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.organizationId, org.id),
-          eq(auditLog.action, "org.delete")
-        )
-      );
+    // The emission is fire-and-forget: wait for it to land.
+    const rows = await eventually(
+      () =>
+        (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.organizationId, org.id),
+              eq(auditLog.action, "org.delete")
+            )
+          ),
+      atLeast(1)
+    );
 
     expect(rows).toHaveLength(1);
     expect(rows[0].targetType).toBe("organization");

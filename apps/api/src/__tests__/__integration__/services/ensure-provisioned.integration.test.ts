@@ -34,6 +34,7 @@ import {
   seedRbacForOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const { users, organizations, organizationUsers, invitations, auditLog } =
   schema;
@@ -195,9 +196,6 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
       profileResolver()
     );
 
-    // Fire-and-forget audit — give it a tick to land.
-    await new Promise((r) => setTimeout(r, 75));
-
     const auditRows = async (action: "org.create" | "auth.login") =>
       (db as ReturnType<typeof drizzle>)
         .select()
@@ -209,8 +207,12 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
           )
         );
 
-    const orgCreate = await auditRows("org.create");
-    const login = await auditRows("auth.login");
+    // Fire-and-forget audit: wait for each row to land.
+    const orgCreate = await eventually(
+      () => auditRows("org.create"),
+      atLeast(1)
+    );
+    const login = await eventually(() => auditRows("auth.login"), atLeast(1));
     expect(orgCreate).toHaveLength(1);
     expect(orgCreate[0].targetId).toBe(first.organization.id);
     expect(login).toHaveLength(1);
@@ -589,8 +591,6 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
       auth0Sub,
       profileResolver()
     );
-    await new Promise((r) => setTimeout(r, 75));
-
     const loginRows = () =>
       (db as ReturnType<typeof drizzle>)
         .select()
@@ -602,8 +602,8 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
           )
         );
 
-    // Provision emitted one auth.login{firstLogin}.
-    expect(await loginRows()).toHaveLength(1);
+    // Provision emitted one auth.login{firstLogin} (after the call returns).
+    expect(await eventually(loginRows, atLeast(1))).toHaveLength(1);
 
     const profile = jest.fn(async () => ({
       email: "refreshed@example.com",
@@ -621,8 +621,7 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
       profile,
       { sourceIp: null, userAgent: null }
     );
-    await new Promise((r) => setTimeout(r, 75));
-    expect(await loginRows()).toHaveLength(2);
+    expect(await eventually(loginRows, atLeast(2))).toHaveLength(2);
     const refreshed = (await usersFor(auth0Sub))[0];
     expect(refreshed.lastLoginSession).toBe("at:1000");
     expect(refreshed.name).toBe("Refreshed");
@@ -649,8 +648,6 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
       auth0Sub,
       profileResolver()
     );
-    await new Promise((r) => setTimeout(r, 75));
-
     const loginRows = () =>
       (db as ReturnType<typeof drizzle>)
         .select()
@@ -661,7 +658,8 @@ describe("ApplicationService.ensureProvisioned Integration Tests", () => {
             eq(auditLog.action, "auth.login")
           )
         );
-    expect(await loginRows()).toHaveLength(1); // provision firstLogin
+    // provision firstLogin
+    expect(await eventually(loginRows, atLeast(1))).toHaveLength(1);
 
     const profile = jest.fn(async () => ({
       email: "c@example.com",
