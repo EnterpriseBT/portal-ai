@@ -900,5 +900,48 @@ describe("station attachments (#674)", () => {
         removed: { toolPacks: [] },
       });
     });
+
+    // A pack added while it was being deleted leaves a live row for a deleted
+    // pack. A deleted pack hides nothing, so anyone who can edit the station
+    // can detach that row; skipping it as unreadable left it stuck.
+    it("detaches a deleted custom pack's leftover row, for a member too", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await DbService.repository.organizationToolpacks.softDelete(
+        packId,
+        ownerId
+      );
+      await grant(memberId, "write", "station", stationId);
+
+      currentSub = MEMBER_SUB;
+      await patch(stationId, {
+        toolPackChanges: { remove: [`org:${packId}`] },
+      }).expect(200);
+
+      expect(await livePacks(stationId)).toEqual(["data_query"]);
+      const audits = await attachmentAudits(stationId);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.metadata).toMatchObject({
+        removed: { toolPacks: [`org:${packId}`] },
+      });
+    });
+
+    it("doesn't count a deleted custom pack's leftover row as a pack", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await DbService.repository.organizationToolpacks.softDelete(
+        packId,
+        ownerId
+      );
+
+      const res = await patch(stationId, {
+        toolPackChanges: { remove: ["data_query"] },
+      }).expect(400);
+
+      expect(res.body.code).toBe("STATION_TOOLPACK_REQUIRED");
+      expect(await livePacks(stationId)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
+    });
   });
 });

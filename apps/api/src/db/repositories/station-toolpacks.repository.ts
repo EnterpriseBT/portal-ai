@@ -10,11 +10,11 @@
  * but unused until phase 2.
  */
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 import { StationToolpackModelFactory } from "@portalai/core/models";
 
-import { stationToolpacks } from "../schema/index.js";
+import { organizationToolpacks, stationToolpacks } from "../schema/index.js";
 import type {
   StationToolpackSelect,
   StationToolpackInsert,
@@ -241,13 +241,23 @@ export class StationToolpacksRepository extends Repository<
       if (inserted.length > 0) added.push(`org:${orgId}`);
     }
 
+    // A row for a deleted custom pack gives the station no tools, so it
+    // doesn't count: one can be left by an add that raced the pack's delete.
     const [{ remaining }] = await (client as typeof db)
       .select({ remaining: sql<number>`count(*)::int` })
       .from(stationToolpacks)
+      .leftJoin(
+        organizationToolpacks,
+        eq(organizationToolpacks.id, stationToolpacks.organizationToolpackId)
+      )
       .where(
         and(
           eq(stationToolpacks.stationId, stationId),
-          isNull(stationToolpacks.deleted)
+          isNull(stationToolpacks.deleted),
+          or(
+            isNotNull(stationToolpacks.builtinSlug),
+            isNull(organizationToolpacks.deleted)
+          )
         )
       );
     return {

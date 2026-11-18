@@ -513,6 +513,38 @@ describe("StationToolpacksRepository Integration Tests", () => {
       });
     });
 
+    // A live row for a deleted custom pack gives the station no tools, so it
+    // doesn't keep the station above zero.
+    it("doesn't count a row whose custom pack is deleted as remaining", async () => {
+      await seed(["data_query"]);
+      const packId = await customPack();
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: [], organizationToolpackIds: [packId] },
+          remove: none,
+        },
+        actor,
+        db
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .update(schema.organizationToolpacks)
+        .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" })
+        .where(eq(schema.organizationToolpacks.id, packId));
+
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: none,
+          remove: { builtinSlugs: ["data_query"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+
+      expect(result.remaining).toBe(0);
+    });
+
     it("leaves packs it wasn't told about alone", async () => {
       await seed(["data_query", "statistics"]);
       const packId = await customPack();

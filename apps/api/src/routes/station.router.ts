@@ -248,8 +248,13 @@ async function planToolPackChanges(
   );
   const refused = add.organizationToolpackIds.find((id) => !readable.has(id));
   if (refused !== undefined) return { ok: false, value: `org:${refused}` };
-  remove.organizationToolpackIds = remove.organizationToolpackIds.filter((id) =>
-    readable.has(id)
+  // A removal is skipped only for a live pack the caller can't read. One
+  // that is missing or deleted hides nothing, and a row for it can be left
+  // by an add that raced the pack's delete; skipping it left that row stuck.
+  // A removal only ever matches this station's own rows.
+  const live = new Set(packs.map((pack) => pack.id));
+  remove.organizationToolpackIds = remove.organizationToolpackIds.filter(
+    (id) => readable.has(id) || !live.has(id)
   );
 
   const { unentitled, tier } = await EntitlementService.splitBuiltinPacks(
