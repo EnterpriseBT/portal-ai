@@ -1,5 +1,6 @@
 import { FAQ_ENTRIES, contentEntrySlug } from "@portalai/core/content";
 
+import { RouterLink } from "../components/RouterLink.component";
 import {
   EMPTY_LIST_HELP,
   emptyListHelp,
@@ -55,5 +56,10 @@ describe("emptyListHelp", () => {
       href: `/help#faq-entry-${contentEntrySlug(EMPTY_LIST_HELP.tags.faq)}`,
       label: EMPTY_LIST_HELP.tags.faq,
     });
+  });
+
+  // Without the router's link, core falls back to <a> and Help reloads the app.
+  it("supplies the router link component", () => {
+    expect(emptyListHelp("tags").linkComponent).toBe(RouterLink);
   });
 });

@@ -34,7 +34,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityGroupsViewUI } = await import("../views/EntityGroups.view");
-const { expectEmptyListHelp } = await import("./empty-list-help.assert");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ describe("EntityGroupsView", () => {
     expect(screen.getByText("Product Catalog")).toBeInTheDocument();
   });
 
-  it("renders empty state when no groups", () => {
+  it("renders empty state when no groups", async () => {
     mockEntityGroupList.mockReturnValue(emptyGroups);
 
     render(
@@ -153,6 +154,8 @@ describe("EntityGroupsView", () => {
     );
     expect(screen.getByText("No entity groups found")).toBeInTheDocument();
     expectEmptyListHelp("entityGroups");
+    // #1059: a search that matches nothing keeps "No results".
+    await expectFilteredEmptyKeepsNoResults("entityGroups");
   });
 
   it("renders search bar in pagination toolbar", () => {

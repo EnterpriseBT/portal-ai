@@ -14,7 +14,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TagsViewUI } = await import("../views/Tags.view");
-const { expectEmptyListHelp } = await import("./empty-list-help.assert");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 const listResult = (
   entityTags: Array<{
@@ -126,6 +127,12 @@ describe("TagsViewUI", () => {
     expect(screen.getByText("No tags found")).toBeInTheDocument();
     expectEmptyListHelp("tags");
     expect(screen.queryByRole("button", { name: "Create Tag" })).toBeNull();
+  });
+
+  it("keeps No results for a search that matches nothing (#1059)", async () => {
+    mockTagList.mockReturnValue(listResult([]));
+    render(<TagsViewUI {...props} />);
+    await expectFilteredEmptyKeepsNoResults("tags");
   });
 
   // #1059: the header's Create is the only one; the empty state explains the

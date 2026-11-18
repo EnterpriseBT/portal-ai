@@ -193,7 +193,6 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                           icon={<Icon name={IconName.Hub} />}
                           title="No entity groups found"
                           {...emptyListHelp("entityGroups")}
-                          linkComponent={RouterLink}
                         />
                       );
                     }

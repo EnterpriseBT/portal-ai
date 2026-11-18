@@ -37,7 +37,6 @@ import {
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
-import { RouterLink } from "../components/RouterLink.component";
 import { emptyListHelp } from "../utils/empty-list-help.util";
 import {
   PaginationToolbar,
@@ -221,7 +220,6 @@ export const ConnectorView = () => {
                             icon={<Icon name={IconName.MemoryChip} />}
                             title="No connectors found"
                             {...emptyListHelp("connectors")}
-                            linkComponent={RouterLink}
                           />
                         )
                       ) : (
@@ -278,7 +276,6 @@ export const ConnectorView = () => {
                             icon={<Icon name={IconName.MemoryChip} />}
                             title="No connector definitions found"
                             {...emptyListHelp("connectorDefinitions")}
-                            linkComponent={RouterLink}
                           />
                         )
                       ) : (

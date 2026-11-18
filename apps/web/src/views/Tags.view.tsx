@@ -26,7 +26,6 @@ import { TagFormModal } from "../components/TagFormModal.component";
 import { DeleteTagDialog } from "../components/DeleteTagDialog.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
-import { RouterLink } from "../components/RouterLink.component";
 import { emptyListHelp } from "../utils/empty-list-help.util";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -129,7 +128,6 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                           icon={<Icon name={IconName.Label} />}
                           title="No tags found"
                           {...emptyListHelp("tags")}
-                          linkComponent={RouterLink}
                         />
                       );
                     }

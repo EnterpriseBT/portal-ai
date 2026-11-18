@@ -204,7 +204,6 @@ export const StationListUI: React.FC<StationListUIProps> = ({
         icon={<Icon name={IconName.SatelliteAlt} />}
         title="No stations found"
         {...emptyListHelp("stations")}
-        linkComponent={RouterLink}
       />
     );
   }

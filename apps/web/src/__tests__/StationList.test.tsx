@@ -223,6 +223,14 @@ describe("StationListUI", () => {
     expectEmptyListHelp("stations");
   });
 
+  it("keeps No results for a filter that matches nothing (#1059)", () => {
+    render(
+      <StationListUI {...defaultListProps} stations={[]} hasActiveFilters />
+    );
+    expect(screen.getByText(/No results found/)).toBeInTheDocument();
+    expect(screen.queryByText("No stations found")).toBeNull();
+  });
+
   it("should mark the correct station as default", () => {
     render(
       <StationListUI {...defaultListProps} defaultStationId="station-1" />

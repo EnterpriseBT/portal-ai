@@ -28,7 +28,6 @@ import {
 import { CreateColumnDefinitionDialog } from "../components/CreateColumnDefinitionDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
-import { RouterLink } from "../components/RouterLink.component";
 import { emptyListHelp } from "../utils/empty-list-help.util";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
@@ -142,7 +141,6 @@ export const ColumnDefinitionListViewUI: React.FC<
                           icon={<Icon name={IconName.ViewColumn} />}
                           title="No column definitions found"
                           {...emptyListHelp("columnDefinitions")}
-                          linkComponent={RouterLink}
                         />
                       );
                     }

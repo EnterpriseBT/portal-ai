@@ -24,8 +24,8 @@
   - the `description` sentence;
   - the link, as a small outlined button led by a help (question mark) icon and named by the FAQ question alone;
   - any `action`, kept for the out-of-scope detail pages.
-- **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink }`, with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `EmptyState`, so no page writes its own copy.
-- **Web: links with a fragment.** `RouterLink` splits a `#fragment` off `href` and passes it as TanStack's `hash`. Without that, the link can't reach the anchor.
+- **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink, linkComponent }` (built once at load, with `RouterLink`, so no page can forget it and reload the app), with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `EmptyState`, so no page writes its own copy.
+- **Web: links with a query or fragment.** `RouterLink` splits `href` into path, `?query` (TanStack's `search`) and `#fragment` (its `hash`); a bare `#fragment` stays on the current route. Without that, the Help link can't reach the anchor.
 - **No permission-based copy, no Create in the empty state.**
   - Views, Entity Groups and Tags drop `action={createButton}`, leaving the header's gated Create as the only one.
   - The Views sentence stops depending on the create gate.
@@ -59,7 +59,7 @@
   - every list's FAQ question exists in `FAQ_ENTRIES`, so a renamed or removed entry fails;
   - each sentence is one sentence of at most 110 characters;
   - the copy names no role or permission.
-- Web, `__tests__/RouterLink.test.tsx`: an `href` with `#…` reaches the router as `hash`.
+- Web, `__tests__/RouterLink.hash.test.tsx`: `#…` reaches the router as `hash`, `?…` as `search`, and a bare `#…` stays on the current route.
 - Web, the view tests for each page:
   - the empty list shows its sentence and Help link;
   - a search with no matches still shows `EmptyResults`;

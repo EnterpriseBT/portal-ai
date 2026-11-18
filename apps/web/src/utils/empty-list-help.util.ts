@@ -1,5 +1,6 @@
 import { contentEntrySlug } from "@portalai/core/content";
 
+import { RouterLink } from "../components/RouterLink.component";
 import { helpAnchorHash, HelpTab } from "./routes.util";
 
 /** The top-level lists whose empty state explains itself (#1059). */
@@ -82,15 +83,35 @@ export const EMPTY_LIST_HELP: Record<EmptyList, EmptyListCopy> = {
   },
 };
 
-/** The `description` and `helpLink` an empty list passes to `EmptyState`. */
-export function emptyListHelp(list: EmptyList): {
+export interface EmptyListHelpProps {
   description: string;
   helpLink: { href: string; label: string };
-} {
-  const { description, faq } = EMPTY_LIST_HELP[list];
-  const hash = helpAnchorHash({
-    surface: HelpTab.Faq,
-    slug: contentEntrySlug(faq),
-  });
-  return { description, helpLink: { href: `/help#${hash}`, label: faq } };
+  /** Client-side navigation for the Help link; without it, core's fallback
+   *  `<a>` would reload the whole app. */
+  linkComponent: typeof RouterLink;
+}
+
+/** Built once from the static map: the props each list spreads into
+ *  `EmptyState`, so no page supplies the link or its component itself. */
+const EMPTY_LIST_HELP_PROPS = Object.fromEntries(
+  (Object.keys(EMPTY_LIST_HELP) as EmptyList[]).map((list) => {
+    const { description, faq } = EMPTY_LIST_HELP[list];
+    const hash = helpAnchorHash({
+      surface: HelpTab.Faq,
+      slug: contentEntrySlug(faq),
+    });
+    return [
+      list,
+      {
+        description,
+        helpLink: { href: `/help#${hash}`, label: faq },
+        linkComponent: RouterLink,
+      },
+    ];
+  })
+) as Record<EmptyList, EmptyListHelpProps>;
+
+/** The props an empty list spreads into `EmptyState`. */
+export function emptyListHelp(list: EmptyList): EmptyListHelpProps {
+  return EMPTY_LIST_HELP_PROPS[list];
 }

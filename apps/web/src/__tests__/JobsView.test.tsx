@@ -31,7 +31,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 const { render, screen } = await import("./test-utils");
 const { JobsView } = await import("../views/Jobs.view");
-const { expectEmptyListHelp } = await import("./empty-list-help.assert");
+const { expectEmptyListHelp, expectFilteredEmptyKeepsNoResults } =
+  await import("./empty-list-help.assert");
 
 const makeJob = (overrides: Partial<Job> = {}): Job => ({
   id: "job-1",
@@ -87,7 +88,7 @@ describe("JobsView", () => {
     expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
   });
 
-  it("should display empty results when no jobs exist", () => {
+  it("should display empty results when no jobs exist", async () => {
     currentListQuery = {
       data: { jobs: [], total: 0, limit: 20, offset: 0 },
       isLoading: false,
@@ -98,6 +99,8 @@ describe("JobsView", () => {
     render(<JobsView />);
     expect(screen.getByText("No jobs found")).toBeInTheDocument();
     expectEmptyListHelp("jobs");
+    // #1059: a search that matches nothing keeps "No results".
+    await expectFilteredEmptyKeepsNoResults("jobs");
   });
 
   it("should display job rows when jobs exist", () => {

@@ -16,16 +16,24 @@ export interface RouterLinkProps extends Omit<
  */
 export const RouterLink = React.forwardRef<HTMLAnchorElement, RouterLinkProps>(
   ({ href, ...rest }, ref) => {
-    // #1059: TanStack's `to` is a path; a fragment (a Help entry's
-    // `#faq-entry-…`) goes as `hash`, or the link stops short of the entry.
-    const at = href.indexOf("#");
-    return at === -1 ? (
-      <Link ref={ref} to={href} {...rest} />
-    ) : (
+    // #1059: TanStack's `to` is a path. A query goes as `search` and a
+    // fragment (a Help entry's `#faq-entry-…`) as `hash`; left in `to`, they
+    // name a route that doesn't exist or stop short of the entry.
+    if (!/[?#]/.test(href)) return <Link ref={ref} to={href} {...rest} />;
+    const hashAt = href.indexOf("#");
+    const beforeHash = hashAt === -1 ? href : href.slice(0, hashAt);
+    const hash = hashAt === -1 ? "" : href.slice(hashAt + 1);
+    const queryAt = beforeHash.indexOf("?");
+    const path = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
+    const query = queryAt === -1 ? "" : beforeHash.slice(queryAt + 1);
+    const search = Object.fromEntries(new URLSearchParams(query));
+    const to = path || ".";
+    return (
       <Link
         ref={ref}
-        to={href.slice(0, at)}
-        hash={href.slice(at + 1)}
+        to={to}
+        {...(query ? { search } : {})}
+        {...(hash ? { hash } : {})}
         {...rest}
       />
     );

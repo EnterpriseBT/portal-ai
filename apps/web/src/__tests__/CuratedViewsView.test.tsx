@@ -136,6 +136,14 @@ describe("CuratedViewsUI", () => {
     expectEmptyListHelp("views");
   });
 
+  it("keeps No results for a filter that matches nothing (#1059)", () => {
+    render(
+      <CuratedViewsUI {...baseProps()} views={[]} hasActiveFilters={true} />
+    );
+    expect(screen.getByText(/No results found/)).toBeInTheDocument();
+    expect(screen.queryByText("No views available")).toBeNull();
+  });
+
   it("#688: Create is disabled with the grant hint for a caller who reads views but can't create them", async () => {
     const props = baseProps({
       kind: "disable",

@@ -94,7 +94,6 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
         icon={<Icon name={IconName.Layers} />}
         title="No views available"
         {...emptyListHelp("views")}
-        linkComponent={RouterLink}
       />
     );
   } else {

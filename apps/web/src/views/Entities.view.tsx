@@ -222,7 +222,6 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                           icon={<Icon name={IconName.DataObject} />}
                           title="No entities found"
                           {...emptyListHelp("entities")}
-                          linkComponent={RouterLink}
                         />
                       );
                     }

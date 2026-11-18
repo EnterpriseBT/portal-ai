@@ -127,7 +127,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What is a view?",
     answer:
-      "A view is a named, filtered window onto one entity's records: a chosen set of its columns and an optional row filter. You attach views to a station, and a portal session queries the station's views to answer your questions, so a view decides exactly which data the assistant can see. Create views on the Views page, then attach them to a station.",
+      "A view is a named, filtered window onto one entity's records: a chosen set of its columns and an optional row filter. You attach views to a station, and a portal session queries the station's views to answer your questions, so a view decides exactly which data the assistant can see. Views are created on the Views page and attached to a station, and a view can be shared, so the views you see include any shared with you.",
     category: FAQCategory.Data,
     relatedGlossaryTerms: ["Curated View", "Station"],
   },

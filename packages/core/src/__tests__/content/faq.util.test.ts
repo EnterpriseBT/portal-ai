@@ -457,3 +457,19 @@ describe("FAQ_ENTRIES match the shipped product (#615)", () => {
     expect(missing).toEqual([]);
   });
 });
+
+// #1059: the empty Views and Jobs lists link to these entries.
+describe("entries the empty lists link to", () => {
+  it.each([
+    ["What is a view?", FAQCategory.Data],
+    ["What are jobs?", FAQCategory.Jobs],
+  ])("has %s under its category", (question, category) => {
+    const entry = FAQ_ENTRIES.find((e) => e.question === question);
+    expect(entry?.category).toBe(category);
+  });
+
+  it("says a view can be shared, for a reader who can't create one", () => {
+    const entry = FAQ_ENTRIES.find((e) => e.question === "What is a view?");
+    expect(entry?.answer).toMatch(/shared/);
+  });
+});
