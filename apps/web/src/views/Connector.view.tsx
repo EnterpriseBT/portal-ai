@@ -210,10 +210,7 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorInstances: response }}>
                     {({ connectorInstances }) =>
                       connectorInstances.total === 0 ? (
-                        instancePagination.search ||
-                        Object.values(instancePagination.filters).some(
-                          (v) => v.length > 0
-                        ) ? (
+                        instancePagination.isFiltered ? (
                           <EmptyResults />
                         ) : (
                           <EmptyState
@@ -266,10 +263,7 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorDefinitions: response }}>
                     {({ connectorDefinitions }) =>
                       connectorDefinitions.total === 0 ? (
-                        catalogPagination.search ||
-                        Object.values(catalogPagination.filters).some(
-                          (v) => v.length > 0
-                        ) ? (
+                        catalogPagination.isFiltered ? (
                           <EmptyResults />
                         ) : (
                           <EmptyState

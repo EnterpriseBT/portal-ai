@@ -198,6 +198,13 @@ export interface UsePaginationReturn {
   setLimit: (limit: number) => void;
   setTotal: (total: number) => void;
   queryParams: Record<string, string | number | boolean | undefined>;
+  /**
+   * #1059: whether the caller has narrowed the list — search text, a filter
+   * moved off its configured default, or an advanced filter. An empty list
+   * shows "no results" when this holds and its explainer otherwise; a filter
+   * still at its default (the Catalog's `isActive`) doesn't count.
+   */
+  isFiltered: boolean;
   toolbarProps: PaginationToolbarProps;
   /** Cursor driving the current request in keyset mode; null on page one. */
   cursor: string | null;
@@ -549,6 +556,22 @@ export function usePagination(
     lastPageSize,
   ]);
 
+  const isFiltered = React.useMemo(() => {
+    if (search.trim() !== "") return true;
+    if (!isFilterExpressionEmpty(advancedFilters)) return true;
+    const fields = new Set([
+      ...Object.keys(filters),
+      ...filterConfigs.map((c) => c.field),
+    ]);
+    for (const field of fields) {
+      const current = [...(filters[field] ?? [])].sort();
+      const config = filterConfigs.find((c) => c.field === field);
+      const initial = [...(config?.defaultValue ?? [])].sort();
+      if (JSON.stringify(current) !== JSON.stringify(initial)) return true;
+    }
+    return false;
+  }, [search, advancedFilters, filters, filterConfigs]);
+
   const activeFilterCount = Object.values(filters).reduce(
     (count, values) => count + values.length,
     0
@@ -636,6 +659,7 @@ export function usePagination(
     setLimit,
     setTotal,
     queryParams,
+    isFiltered,
     toolbarProps,
     cursor,
     setNextCursor,

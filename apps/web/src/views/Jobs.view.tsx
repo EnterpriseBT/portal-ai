@@ -78,10 +78,7 @@ export const JobsView = () => {
               <DataResult results={{ jobs: response }}>
                 {({ jobs }) =>
                   jobs.total === 0 ? (
-                    pagination.search ||
-                    Object.values(pagination.filters).some(
-                      (v) => v.length > 0
-                    ) ? (
+                    pagination.isFiltered ? (
                       <EmptyResults />
                     ) : (
                       <EmptyState

@@ -26,6 +26,7 @@
   - any `action`, kept for the out-of-scope detail pages.
 - **Web: one map.** `utils/empty-list-help.util.ts` holds `EMPTY_LIST_HELP`, keyed by list: `stations`, `connectors`, `connectorDefinitions`, `entities`, `views`, `entityGroups`, `tags`, `columnDefinitions`, `pinnedResults` and `jobs`. Each entry has a `description` and an FAQ `question`. `emptyListHelp(list)` returns `{ description, helpLink, linkComponent }` (built once at load, with `RouterLink`, so no page can forget it and reload the app), with the href `/help#faq-entry-<contentEntrySlug(question)>` and the question as the label. Every page spreads it into its `EmptyState`, so no page writes its own copy.
 - **Web: links with a query or fragment.** `RouterLink` splits `href` into path, `?query` (TanStack's `search`) and `#fragment` (its `hash`); a bare `#fragment` stays on the current route. Without that, the Help link can't reach the anchor.
+- **"Filtered" means the caller filtered (smoke-walk finding).** `usePagination` returns `isFiltered`: true for search text, an advanced filter, or a filter that differs from its configured default. Every list's empty branch reads it instead of "any filter has a value". The Catalog's `isActive` filter defaults to `["true"]`, so before this an empty catalog always showed "No results" and never its explainer.
 - **No permission-based copy, no Create in the empty state.**
   - Views, Entity Groups and Tags drop `action={createButton}`, leaving the header's gated Create as the only one.
   - The Views sentence stops depending on the create gate.

@@ -208,10 +208,7 @@ export const CuratedViews: React.FC = () => {
     }
   }, [listResult.data?.total, pagination]);
 
-  const hasActiveFilters = Boolean(
-    pagination.search ||
-    Object.values(pagination.filters).some((v) => v.length > 0)
-  );
+  const hasActiveFilters = pagination.isFiltered;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CuratedViewRow | null>(null);

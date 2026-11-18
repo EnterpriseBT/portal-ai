@@ -129,11 +129,7 @@ export const ColumnDefinitionListViewUI: React.FC<
                     list: ColumnDefinitionListResponsePayload;
                   }) => {
                     if (list.columnDefinitions.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (

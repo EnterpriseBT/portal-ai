@@ -102,11 +102,7 @@ export const PinnedResultsListView: React.FC = () => {
                   const payload = pinned as unknown as PortalResultsListPayload;
                   const results = payload.portalResults;
                   if (payload.total === 0) {
-                    const hasActiveFilters =
-                      pagination.search ||
-                      Object.values(pagination.filters).some(
-                        (v) => v.length > 0
-                      );
+                    const hasActiveFilters = pagination.isFiltered;
                     return hasActiveFilters ? (
                       <EmptyResults />
                     ) : (

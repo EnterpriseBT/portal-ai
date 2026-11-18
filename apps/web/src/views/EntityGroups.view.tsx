@@ -181,11 +181,7 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityGroupListResponsePayload;
                     if (list.entityGroups.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (

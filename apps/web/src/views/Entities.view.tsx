@@ -210,11 +210,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                     const list =
                       data.list as unknown as ConnectorEntityListWithInstanceResponsePayload;
                     if (list.connectorEntities.length === 0) {
-                      const hasActiveFilters =
-                        pagination.search ||
-                        Object.values(pagination.filters).some(
-                          (v) => v.length > 0
-                        );
+                      const hasActiveFilters = pagination.isFiltered;
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
