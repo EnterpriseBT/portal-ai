@@ -783,8 +783,17 @@ describe("station_list (#1036)", () => {
     organizationId: "org-1",
     createdBy: "u-1",
     enabledToolpacks: ["data_query", "org:tp-1"],
+    toolpacks: [
+      { ref: "data_query", kind: "builtin", name: "Data Query" },
+      { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+    ],
     capabilities: { read: true, write, delete: write, share: write },
   });
+  // #1063: each pack by ref and name.
+  const PACKS = [
+    { ref: "data_query", name: "Data Query" },
+    { ref: "org:tp-1", name: "Acme CRM" },
+  ];
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -833,7 +842,7 @@ describe("station_list (#1036)", () => {
           description: "Playground description",
           isSessionStation: true,
           capabilities: { read: true, write: true, delete: true, share: true },
-          toolpacks: ["data_query", "org:tp-1"],
+          toolpacks: PACKS,
           views: [
             { id: "v1", key: "ne_accounts", label: "NE" },
             { unreadable: true },
@@ -850,7 +859,7 @@ describe("station_list (#1036)", () => {
             delete: false,
             share: false,
           },
-          toolpacks: ["data_query", "org:tp-1"],
+          toolpacks: PACKS,
           views: [],
         },
       ],
