@@ -64,7 +64,7 @@ export function describeStationAttachmentGaps(
 - **`plan-excluded`:** `missing` is the plan sentence, whatever the counts. `noAccess` is unchanged.
 - **The plan sentence** is `` `${list} ${verb} included in your plan, so attaching a view won't make data available on this station.` ``.
   - `verb` is `isn't` for one name and `aren't` for more.
-  - `list` joins the names: `A`; `A and B`; `A, B and C`; then `A, B, C and N more`, so at most three are named.
+  - `list` joins up to four names (`A`; `A and B`; `A, B and C`; `A, B, C and D`). Beyond four it names three and adds `and N more` (N ≥ 2). In a cut list, the organization's packs always take the third place, so they are never folded into the count (code review).
   - If `excludedPackNames` is empty or missing, the list is `Some tool packs on this station`, with `aren't`.
 - A new exported constant `STATION_PLAN_EXCLUDED_CUSTOM_PACKS = "Your organization's tool packs"`. Callers pass it as a name, and it reads lowercase `your organization's tool packs` when it isn't first.
 

@@ -161,6 +161,10 @@ describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
       "Data Query, Statistics and GIS aren't",
     ],
     [
+      ["Data Query", "Statistics", "Regression", "GIS"],
+      "Data Query, Statistics, Regression and GIS aren't",
+    ],
+    [
       ["Data Query", "Statistics", "Regression", "Financial", "GIS"],
       "Data Query, Statistics, Regression and 2 more aren't",
     ],
@@ -182,6 +186,21 @@ describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
     );
     expect(missingFor(["GIS", STATION_PLAN_EXCLUDED_CUSTOM_PACKS])).toMatch(
       /^GIS and your organization's tool packs aren't included/
+    );
+  });
+
+  // A cut list keeps the organization's packs named, not folded into the count.
+  it("keeps the organization's packs named when the list is cut", () => {
+    expect(
+      missingFor([
+        "Data Query",
+        "Statistics",
+        "Regression",
+        "GIS",
+        STATION_PLAN_EXCLUDED_CUSTOM_PACKS,
+      ])
+    ).toMatch(
+      /^Data Query, Statistics, your organization's tool packs and 2 more aren't included/
     );
   });
 

@@ -99,7 +99,9 @@ export function stationDataSetupFor(
   customPacksEntitled: boolean
 ): { dataSetup: StationDataSetup; excludedPackNames: string[] } {
   const builtins = enabledToolpacks.filter(isBuiltinToolpackSlug);
-  const hasCustom = builtins.length < enabledToolpacks.length;
+  // Only `org:` refs are custom packs; a retired or unknown slug is neither,
+  // as the API reads the station.
+  const hasCustom = enabledToolpacks.some((ref) => ref.startsWith("org:"));
   const unentitled = builtins.filter((slug) => !isEntitled(slug));
   const dataSetup = stationDataSetup({
     effective: builtins.filter((slug) => isEntitled(slug)),
@@ -111,7 +113,7 @@ export function stationDataSetupFor(
     return { dataSetup, excludedPackNames: [] };
   const excludedPackNames = unentitled
     .filter((slug) => PACK_USES_STATION_DATA[slug])
-    .map((slug) => BUILTIN_TOOLPACK_BY_SLUG[slug].name);
+    .map((slug) => ToolPackUtil.getLabel(slug));
   if (hasCustom && !customPacksEntitled) {
     excludedPackNames.push(STATION_PLAN_EXCLUDED_CUSTOM_PACKS);
   }

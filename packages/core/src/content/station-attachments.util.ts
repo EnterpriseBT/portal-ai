@@ -60,16 +60,29 @@ export interface StationAttachmentGapsOptions {
   excludedPackNames?: readonly string[];
 }
 
-/** "A", "A and B", "A, B and C", "A, B, C and 2 more". */
+/**
+ * "A", "A and B", … up to four names; beyond that the first three and
+ * "and N more" (N is at least 2). The organization's packs are always named:
+ * in a cut list they take the third place.
+ */
 function listPacks(names: readonly string[]): string {
-  const shown = names
-    .slice(0, 3)
-    .map((name, i) =>
-      i > 0 && name === STATION_PLAN_EXCLUDED_CUSTOM_PACKS
-        ? name.charAt(0).toLowerCase() + name.slice(1)
-        : name
+  let shown = [...names];
+  let rest = 0;
+  if (names.length > 4) {
+    const custom = names.includes(STATION_PLAN_EXCLUDED_CUSTOM_PACKS);
+    const others = names.filter(
+      (n) => n !== STATION_PLAN_EXCLUDED_CUSTOM_PACKS
     );
-  const rest = names.length - shown.length;
+    shown = custom
+      ? [...others.slice(0, 2), STATION_PLAN_EXCLUDED_CUSTOM_PACKS]
+      : others.slice(0, 3);
+    rest = names.length - shown.length;
+  }
+  shown = shown.map((name, i) =>
+    i > 0 && name === STATION_PLAN_EXCLUDED_CUSTOM_PACKS
+      ? name.charAt(0).toLowerCase() + name.slice(1)
+      : name
+  );
   if (rest > 0) return `${shown.join(", ")} and ${rest} more`;
   if (shown.length === 1) return shown[0];
   return `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;

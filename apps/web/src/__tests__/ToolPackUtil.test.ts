@@ -118,6 +118,21 @@ describe("stationDataSetupFor", () => {
     });
   });
 
+  // Only `org:` refs are custom packs. A retired or unknown built-in slug is
+  // neither, as the API reads it.
+  it("doesn't count an unknown ref as a custom pack", () => {
+    expect(
+      stationDataSetupFor(
+        ["retired_pack", "view_management"],
+        () => true,
+        false
+      )
+    ).toEqual({ dataSetup: "none", excludedPackNames: [] });
+    expect(
+      stationDataSetupFor(["retired_pack", "view_management"], () => true, true)
+    ).toEqual({ dataSetup: "none", excludedPackNames: [] });
+  });
+
   it("counts a custom pack the plan includes as usable", () => {
     expect(stationDataSetupFor(["org:abc"], () => true, true)).toEqual({
       dataSetup: "usable",
