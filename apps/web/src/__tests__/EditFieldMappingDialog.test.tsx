@@ -141,22 +141,148 @@ describe("EditFieldMappingDialog", () => {
 
   // ── Submit payload ─────────────────────────────────────────────────
 
-  it("should include new fields in submit payload", async () => {
+  // #1061: a save sends only what this editor changed from the mapping the
+  // dialog opened on, so it can't put back another editor's change to a
+  // field it never touched. sourceField and columnDefinitionId are required
+  // by the contract and always sent.
+  it("sends only the two required fields when nothing changed", async () => {
     const onSubmit = jest.fn();
     render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          required: true,
-          defaultValue: null,
-          format: null,
-          enumValues: null,
-        })
-      );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "user_email",
+      columnDefinitionId: "cd-1",
     });
-    // #801: an unchanged key isn't resent (see the length-limit cases).
-    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("normalizedKey");
+    expect(screen.queryByText(/trigger re-validation/)).not.toBeInTheDocument();
+  });
+
+  it("sends only the changed field, leaving the others out (#1061)", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{
+          ...defaultFieldMapping,
+          required: false,
+          defaultValue: "n/a",
+          refNormalizedKey: "id",
+          refEntityKey: "contacts",
+        }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "lowercase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "user_email",
+      columnDefinitionId: "cd-1",
+      format: "lowercase",
+    });
+  });
+
+  it("sends required when it's toggled, and asks to revalidate", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByLabelText("Required"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "user_email",
+      columnDefinitionId: "cd-1",
+      required: false,
+    });
+  });
+
+  it("sends isPrimaryKey only when it's toggled", async () => {
+    const onSubmit = jest.fn();
+    render(<EditFieldMappingDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByLabelText("Primary Key"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "user_email",
+      columnDefinitionId: "cd-1",
+      isPrimaryKey: true,
+    });
+  });
+
+  it("treats a whitespace-only change to format as unchanged", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{ ...defaultFieldMapping, format: "lowercase" }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "  lowercase " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("format");
+    expect(screen.queryByText(/trigger re-validation/)).not.toBeInTheDocument();
+  });
+
+  it("sends enumValues only when an enum column's list changed", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        columnDefinitionType="enum"
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["a", "b"] }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Enum Values/), {
+      target: { value: "a,  b" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("enumValues");
+  });
+
+  it("sends the parsed enum list when it was edited", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        columnDefinitionType="enum"
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["a", "b"] }}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Enum Values/), {
+      target: { value: "a, b, c" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirm/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      sourceField: "user_email",
+      columnDefinitionId: "cd-1",
+      enumValues: ["a", "b", "c"],
+    });
+  });
+
+  it("never sends enumValues for a non-enum column", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <EditFieldMappingDialog
+        {...defaultProps}
+        onSubmit={onSubmit}
+        fieldMapping={{ ...defaultFieldMapping, enumValues: ["stale"] }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("enumValues");
   });
 
   it("should send trimmed defaultValue and format, or null when empty", async () => {

@@ -167,51 +167,61 @@ const EditForm: React.FC<{
     setErrors(validateForm(form, fm.normalizedKey ?? ""));
   };
 
-  const buildBody = (): FieldMappingUpdateRequestBody => {
-    const trimDefault = form.defaultValue.trim();
-    const trimFormat = form.format.trim();
-    const trimEnum = form.enumValues.trim();
+  /** The enum list as the form parses it: trimmed, empty entries dropped. */
+  const parseEnum = (text: string): string[] =>
+    text
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
 
-    return {
+  // #1061: only what this editor changed from the mapping the dialog opened on
+  // (`fm`, the row the page stored when Edit was clicked) is sent, as in Edit
+  // Column Definition. Resending the whole form put back another editor's
+  // change to a field this one never touched. `sourceField` and
+  // `columnDefinitionId` are required by the contract and always sent.
+  const buildBody = (): FieldMappingUpdateRequestBody => {
+    const body: FieldMappingUpdateRequestBody = {
       sourceField: form.sourceField.trim(),
       columnDefinitionId: fm.columnDefinitionId,
-      // #801: only a changed key is sent (see editFieldMappingFormSchema).
-      ...(form.normalizedKey !== (fm.normalizedKey ?? "")
-        ? { normalizedKey: form.normalizedKey }
-        : {}),
-      required: form.required,
-      defaultValue: trimDefault || null,
-      format: trimFormat || null,
-      enumValues:
-        columnDefinitionType === "enum" && trimEnum
-          ? trimEnum
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : null,
-      isPrimaryKey: form.isPrimaryKey,
-      refNormalizedKey: form.refNormalizedKey,
-      refEntityKey: form.refEntityKey,
     };
+    const defaultValue = form.defaultValue.trim() || null;
+    const format = form.format.trim() || null;
+
+    // #801: an unchanged key isn't resent (see editFieldMappingFormSchema).
+    if (form.normalizedKey !== (fm.normalizedKey ?? "")) {
+      body.normalizedKey = form.normalizedKey;
+    }
+    if (form.required !== (fm.required ?? false)) {
+      body.required = form.required;
+    }
+    if (defaultValue !== (fm.defaultValue?.trim() || null)) {
+      body.defaultValue = defaultValue;
+    }
+    if (format !== (fm.format?.trim() || null)) {
+      body.format = format;
+    }
+    if (columnDefinitionType === "enum") {
+      const next = parseEnum(form.enumValues);
+      const prev = fm.enumValues ?? [];
+      if (JSON.stringify(next) !== JSON.stringify(prev)) {
+        body.enumValues = next.length > 0 ? next : null;
+      }
+    }
+    if (form.isPrimaryKey !== fm.isPrimaryKey) {
+      body.isPrimaryKey = form.isPrimaryKey;
+    }
+    if (form.refNormalizedKey !== fm.refNormalizedKey) {
+      body.refNormalizedKey = form.refNormalizedKey;
+    }
+    if (form.refEntityKey !== fm.refEntityKey) {
+      body.refEntityKey = form.refEntityKey;
+    }
+    return body;
   };
 
-  const needsRevalidation = (body: FieldMappingUpdateRequestBody): boolean => {
-    const origEnumStr = fm.enumValues?.join(", ") ?? "";
-    const newEnumStr = form.enumValues.trim();
-    return REVALIDATION_FIELDS.some((field) => {
-      if (field === "normalizedKey")
-        return (
-          body.normalizedKey !== undefined &&
-          body.normalizedKey !== (fm.normalizedKey ?? "")
-        );
-      if (field === "required") return body.required !== (fm.required ?? false);
-      if (field === "defaultValue")
-        return body.defaultValue !== (fm.defaultValue ?? null);
-      if (field === "format") return body.format !== (fm.format ?? null);
-      if (field === "enumValues") return newEnumStr !== origEnumStr;
-      return false;
-    });
-  };
+  /** The body holds only changes, so any revalidating field in it changed. */
+  const needsRevalidation = (body: FieldMappingUpdateRequestBody): boolean =>
+    REVALIDATION_FIELDS.some((field) => body[field] !== undefined);
 
   const handleSubmit = () => {
     setTouched({ sourceField: true, normalizedKey: true });
