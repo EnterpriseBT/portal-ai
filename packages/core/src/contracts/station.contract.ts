@@ -150,6 +150,9 @@ export type StationCreateResponsePayload = z.infer<
  * attaches (each id must be readable by the caller); `remove` detaches,
  * skipping any attachment the caller can't read. An id that isn't attached
  * (for `remove`) or is already attached (for `add`) is a no-op.
+ *
+ * #1052: the same shape and rules carry a station's tool pack changes, where
+ * an "id" is a built-in slug or an `org:<id>` ref.
  */
 export const StationAttachmentChangesSchema = z
   .object({
@@ -176,7 +179,14 @@ export const UpdateStationBodySchema = z
     description: descriptionField().optional(),
     connectorInstanceChanges: StationAttachmentChangesSchema.optional(),
     curatedViewChanges: StationAttachmentChangesSchema.optional(),
-    toolPacks: z.array(z.string()).min(1).optional(),
+    /**
+     * #1052: tool packs change by difference too. Values are built-in slugs
+     * and `org:<id>` refs. An update has no whole-list `toolPacks` (create
+     * keeps its own): a list read when a dialog opened goes stale, and a
+     * save of it put back what another editor had removed. Sent here, it is
+     * an unknown key.
+     */
+    toolPackChanges: StationAttachmentChangesSchema.optional(),
   })
   // #706: an unknown key (e.g. create's `curatedViewIds`) is a 400, not a
   // silent no-op that reports success while attaching nothing.

@@ -26,6 +26,7 @@ describe("StationToolpacksRepository Integration Tests", () => {
   let db!: DbClient;
   let repo: StationToolpacksRepository;
   let stationId: string;
+  let organizationId: string;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -65,6 +66,7 @@ describe("StationToolpacksRepository Integration Tests", () => {
       .insert(schema.stations)
       .values(station as never);
     stationId = station.id;
+    organizationId = org.id;
   });
 
   afterEach(async () => {
@@ -326,5 +328,274 @@ describe("StationToolpacksRepository Integration Tests", () => {
     const deadRows = allRows.filter((r) => r.deleted !== null);
     expect(liveRows.map((r) => r.builtinSlug)).toEqual(["financial"]);
     expect(deadRows.map((r) => r.builtinSlug)).toEqual(["data_query"]);
+  });
+
+  // ── applyChanges (#1052) ─────────────────────────────────────────
+  // Packs change by difference against the live rows, so a save can't put
+  // back what another editor removed or drop what it never named.
+  describe("applyChanges (#1052)", () => {
+    const actor = { userId: "SYSTEM_TEST" };
+    const none = { builtinSlugs: [], organizationToolpackIds: [] };
+
+    async function customPack(): Promise<string> {
+      const now = Date.now();
+      const id = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizationToolpacks)
+        .values({
+          id,
+          organizationId,
+          name: `Custom ${id.slice(0, 8)}`,
+          endpoints: [],
+          signingSecret: "secret",
+          tools: [],
+          schemaFetchedAt: now,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      return id;
+    }
+
+    const liveRefs = async () =>
+      (await repo.findByStationId(stationId, db))
+        .map((r) => r.builtinSlug ?? `org:${r.organizationToolpackId}`)
+        .sort();
+
+    const seed = (builtinSlugs: string[]) =>
+      repo.replaceForStation(stationId, { builtinSlugs }, actor, db);
+
+    it("adds a built-in and a custom pack and reports both", async () => {
+      await seed(["data_query"]);
+      const packId = await customPack();
+
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: {
+            builtinSlugs: ["statistics"],
+            organizationToolpackIds: [packId],
+          },
+          remove: none,
+        },
+        actor,
+        db
+      );
+
+      expect([...result.added].sort()).toEqual(
+        [`org:${packId}`, "statistics"].sort()
+      );
+      expect(result.removed).toEqual([]);
+      expect(result.remaining).toBe(3);
+      expect(await liveRefs()).toEqual(
+        ["data_query", `org:${packId}`, "statistics"].sort()
+      );
+    });
+
+    it("treats adding an attached pack and removing an unattached one as no-ops", async () => {
+      await seed(["data_query"]);
+      const packId = await customPack();
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: [], organizationToolpackIds: [packId] },
+          remove: none,
+        },
+        actor,
+        db
+      );
+      const before = await repo.findByStationId(stationId, db);
+
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: {
+            builtinSlugs: ["data_query"],
+            organizationToolpackIds: [packId],
+          },
+          remove: { builtinSlugs: ["financial"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+
+      expect(result).toEqual({ added: [], removed: [], remaining: 2 });
+      const after = await repo.findByStationId(stationId, db);
+      expect(after.map((r) => r.id).sort()).toEqual(
+        before.map((r) => r.id).sort()
+      );
+    });
+
+    it("removes by soft delete, and a re-add is a new row", async () => {
+      await seed(["data_query", "statistics"]);
+      const [original] = (await repo.findByStationId(stationId, db)).filter(
+        (r) => r.builtinSlug === "statistics"
+      );
+
+      const removed = await repo.applyChanges(
+        stationId,
+        {
+          add: none,
+          remove: { builtinSlugs: ["statistics"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+      expect(removed).toEqual({
+        added: [],
+        removed: ["statistics"],
+        remaining: 1,
+      });
+      const tombstones = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.stationToolpacks)
+        .where(
+          and(
+            eq(schema.stationToolpacks.id, original.id),
+            isNotNull(schema.stationToolpacks.deleted)
+          )
+        );
+      expect(tombstones).toHaveLength(1);
+      expect(tombstones[0].deletedBy).toBe("SYSTEM_TEST");
+
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: ["statistics"], organizationToolpackIds: [] },
+          remove: none,
+        },
+        actor,
+        db
+      );
+      const [readded] = (await repo.findByStationId(stationId, db)).filter(
+        (r) => r.builtinSlug === "statistics"
+      );
+      expect(readded.id).not.toBe(original.id);
+    });
+
+    it("adds and removes in one call", async () => {
+      await seed(["data_query", "statistics"]);
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: ["web_search"], organizationToolpackIds: [] },
+          remove: { builtinSlugs: ["statistics"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+      expect(result).toEqual({
+        added: ["web_search"],
+        removed: ["statistics"],
+        remaining: 2,
+      });
+      expect(await liveRefs()).toEqual(["data_query", "web_search"]);
+    });
+
+    it("reports nothing remaining when the last pack is removed", async () => {
+      await seed(["data_query"]);
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: none,
+          remove: { builtinSlugs: ["data_query"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+      expect(result).toEqual({
+        added: [],
+        removed: ["data_query"],
+        remaining: 0,
+      });
+    });
+
+    // A live row for a deleted custom pack gives the station no tools, so it
+    // doesn't keep the station above zero.
+    it("doesn't count a row whose custom pack is deleted as remaining", async () => {
+      await seed(["data_query"]);
+      const packId = await customPack();
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: [], organizationToolpackIds: [packId] },
+          remove: none,
+        },
+        actor,
+        db
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .update(schema.organizationToolpacks)
+        .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" })
+        .where(eq(schema.organizationToolpacks.id, packId));
+
+      const result = await repo.applyChanges(
+        stationId,
+        {
+          add: none,
+          remove: { builtinSlugs: ["data_query"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+
+      expect(result.remaining).toBe(0);
+    });
+
+    it("leaves packs it wasn't told about alone", async () => {
+      await seed(["data_query", "statistics"]);
+      const packId = await customPack();
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: [], organizationToolpackIds: [packId] },
+          remove: none,
+        },
+        actor,
+        db
+      );
+
+      await repo.applyChanges(
+        stationId,
+        {
+          add: { builtinSlugs: ["web_search"], organizationToolpackIds: [] },
+          remove: { builtinSlugs: ["statistics"], organizationToolpackIds: [] },
+        },
+        actor,
+        db
+      );
+
+      expect(await liveRefs()).toEqual(
+        ["data_query", `org:${packId}`, "web_search"].sort()
+      );
+    });
+
+    it("rolls back with its transaction", async () => {
+      await seed(["data_query"]);
+      await expect(
+        (db as ReturnType<typeof drizzle>).transaction(async (tx) => {
+          await repo.applyChanges(
+            stationId,
+            {
+              add: {
+                builtinSlugs: ["statistics"],
+                organizationToolpackIds: [],
+              },
+              remove: {
+                builtinSlugs: ["data_query"],
+                organizationToolpackIds: [],
+              },
+            },
+            actor,
+            tx as unknown as DbClient
+          );
+          throw new Error("refused later in the same transaction");
+        })
+      ).rejects.toThrow("refused later");
+      expect(await liveRefs()).toEqual(["data_query"]);
+    });
   });
 });

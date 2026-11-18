@@ -395,8 +395,17 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
         targetId: "st-1",
         userAgent: "portal-agent",
         metadata: {
-          added: { curatedViewIds: ["v1"], connectorInstanceIds: [] },
-          removed: { curatedViewIds: [], connectorInstanceIds: [] },
+          // #1052: the event carries pack arrays, empty for a view change.
+          added: {
+            curatedViewIds: ["v1"],
+            connectorInstanceIds: [],
+            toolPacks: [],
+          },
+          removed: {
+            curatedViewIds: [],
+            connectorInstanceIds: [],
+            toolPacks: [],
+          },
         },
       })
     );
@@ -507,8 +516,16 @@ describe("StationAttachmentService.attachViews / detachViews (#1036)", () => {
     expect(mockAuditRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
-          added: { curatedViewIds: [], connectorInstanceIds: [] },
-          removed: { curatedViewIds: ["v1", "v3"], connectorInstanceIds: [] },
+          added: {
+            curatedViewIds: [],
+            connectorInstanceIds: [],
+            toolPacks: [],
+          },
+          removed: {
+            curatedViewIds: ["v1", "v3"],
+            connectorInstanceIds: [],
+            toolPacks: [],
+          },
         },
       })
     );

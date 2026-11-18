@@ -52,11 +52,13 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 const { StationAttachmentService } =
   await import("../../../services/station-attachment.service.js");
+const { DbService } = await import("../../../services/db.service.js");
 
 const {
   stations,
   stationViews,
   stationInstances,
+  stationToolpacks,
   curatedViews,
   connectorDefinitions,
   connectorInstances,
@@ -282,9 +284,12 @@ describe("station attachments (#674)", () => {
     };
     expect([...meta.added.curatedViewIds].sort()).toEqual([v1, v2].sort());
     expect(meta.added.connectorInstanceIds).toEqual([ci1]);
+    // #1052: the event carries pack arrays too, empty here (a create's packs
+    // aren't a change).
     expect(meta.removed).toEqual({
       curatedViewIds: [],
       connectorInstanceIds: [],
+      toolPacks: [],
     });
   });
 
@@ -720,6 +725,223 @@ describe("station attachments (#674)", () => {
     ).toEqual({
       views: { attached: 2, readable: 2 },
       connectors: { attached: 1, readable: 1 },
+    });
+  });
+
+  // #1052: tool packs follow the attachment rules. A member can't list or
+  // read custom packs, so before this any pack edit they saved detached every
+  // custom pack on the station; and station write alone let a caller attach
+  // any custom pack in the org by id.
+  describe("tool pack changes (#1052)", () => {
+    /** A custom pack, owner-created, so only `*` or a grant reads it. */
+    async function insertCustomPack(organizationId = orgId): Promise<string> {
+      const id = generateId();
+      await DbService.repository.organizationToolpacks.create({
+        ...base(),
+        createdBy: ownerId,
+        id,
+        organizationId,
+        name: `pack_${id.slice(0, 8)}`,
+        description: null,
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [],
+        metadata: null,
+        schemaFetchedAt: Date.now(),
+        metadataFetchedAt: null,
+        signingSecret: "whsec_packchanges0123456789abcdef",
+      } as never);
+      return id;
+    }
+
+    /** A station carrying `refs` (built-in slugs or `org:<id>`). */
+    async function stationWithPacks(refs: string[]): Promise<string> {
+      const stationId = await insertStation();
+      for (const ref of refs) {
+        const custom = ref.startsWith("org:");
+        await db.insert(stationToolpacks).values({
+          ...base(),
+          id: generateId(),
+          stationId,
+          builtinSlug: custom ? null : ref,
+          organizationToolpackId: custom ? ref.slice(4) : null,
+        } as never);
+      }
+      return stationId;
+    }
+
+    async function livePacks(stationId: string): Promise<string[]> {
+      const rows = await db
+        .select()
+        .from(stationToolpacks)
+        .where(
+          and(
+            eq(stationToolpacks.stationId, stationId),
+            isNull(stationToolpacks.deleted)
+          )
+        );
+      return rows
+        .map((r) => r.builtinSlug ?? `org:${r.organizationToolpackId}`)
+        .sort();
+    }
+
+    const patch = (stationId: string, body: object) =>
+      request(app).patch(`/api/stations/${stationId}`).send(body);
+
+    it("an owner adds and removes a custom pack", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query"]);
+
+      await patch(stationId, {
+        toolPackChanges: { add: [`org:${packId}`] },
+      }).expect(200);
+      expect(await livePacks(stationId)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
+
+      await patch(stationId, {
+        toolPackChanges: { remove: [`org:${packId}`] },
+      }).expect(200);
+      expect(await livePacks(stationId)).toEqual(["data_query"]);
+    });
+
+    it("a member changing a built-in pack leaves the custom pack attached", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await grant(memberId, "write", "station", stationId);
+
+      currentSub = MEMBER_SUB;
+      await patch(stationId, {
+        toolPackChanges: { remove: ["data_query"] },
+      }).expect(200);
+
+      expect(await livePacks(stationId)).toEqual([`org:${packId}`]);
+    });
+
+    it("a member's removal of a custom pack they can't read is skipped", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await grant(memberId, "write", "station", stationId);
+
+      currentSub = MEMBER_SUB;
+      await patch(stationId, {
+        name: "Renamed by member",
+        toolPackChanges: { remove: [`org:${packId}`] },
+      }).expect(200);
+
+      expect(await livePacks(stationId)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
+      // Nothing changed among the packs, so nothing is audited.
+      expect(await attachmentAudits(stationId)).toHaveLength(0);
+    });
+
+    it("a member granted read on a custom pack can add and remove it", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query"]);
+      await grant(memberId, "write", "station", stationId);
+      await grant(memberId, "read", "toolpack", packId);
+
+      currentSub = MEMBER_SUB;
+      await patch(stationId, {
+        toolPackChanges: { add: [`org:${packId}`] },
+      }).expect(200);
+      expect(await livePacks(stationId)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
+
+      await patch(stationId, {
+        toolPackChanges: { remove: [`org:${packId}`] },
+      }).expect(200);
+      expect(await livePacks(stationId)).toEqual(["data_query"]);
+    });
+
+    it("an unreadable, a missing and another organization's custom pack get one answer", async () => {
+      const unreadable = await insertCustomPack();
+      const other = await seedUserAndOrg(db, "auth0|ci-station-pack-other");
+      const foreign = await insertCustomPack(other.organizationId);
+      const stationId = await stationWithPacks(["data_query"]);
+      await grant(memberId, "write", "station", stationId);
+
+      currentSub = MEMBER_SUB;
+      const answers = [];
+      for (const id of [unreadable, generateId(), foreign]) {
+        const res = await patch(stationId, {
+          toolPackChanges: { add: [`org:${id}`] },
+        }).expect(400);
+        answers.push({
+          code: res.body.code,
+          // The same words, the id aside.
+          message: String(res.body.message).replace(id, "<id>"),
+        });
+      }
+
+      expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1);
+      expect(answers[0]!.code).toBe(ApiCode.STATION_INVALID_TOOLPACK);
+      expect(await livePacks(stationId)).toEqual(["data_query"]);
+    });
+
+    it("records a custom pack change with who made it", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query"]);
+
+      await patch(stationId, {
+        toolPackChanges: { add: [`org:${packId}`] },
+      }).expect(200);
+
+      const audits = await attachmentAudits(stationId);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.userId).toBe(ownerId);
+      expect(audits[0]!.metadata).toMatchObject({
+        added: { toolPacks: [`org:${packId}`] },
+        removed: { toolPacks: [] },
+      });
+    });
+
+    // A pack added while it was being deleted leaves a live row for a deleted
+    // pack. A deleted pack hides nothing, so anyone who can edit the station
+    // can detach that row; skipping it as unreadable left it stuck.
+    it("detaches a deleted custom pack's leftover row, for a member too", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await DbService.repository.organizationToolpacks.softDelete(
+        packId,
+        ownerId
+      );
+      await grant(memberId, "write", "station", stationId);
+
+      currentSub = MEMBER_SUB;
+      await patch(stationId, {
+        toolPackChanges: { remove: [`org:${packId}`] },
+      }).expect(200);
+
+      expect(await livePacks(stationId)).toEqual(["data_query"]);
+      const audits = await attachmentAudits(stationId);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.metadata).toMatchObject({
+        removed: { toolPacks: [`org:${packId}`] },
+      });
+    });
+
+    it("doesn't count a deleted custom pack's leftover row as a pack", async () => {
+      const packId = await insertCustomPack();
+      const stationId = await stationWithPacks(["data_query", `org:${packId}`]);
+      await DbService.repository.organizationToolpacks.softDelete(
+        packId,
+        ownerId
+      );
+
+      const res = await patch(stationId, {
+        toolPackChanges: { remove: ["data_query"] },
+      }).expect(400);
+
+      expect(res.body.code).toBe("STATION_TOOLPACK_REQUIRED");
+      expect(await livePacks(stationId)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
     });
   });
 });
