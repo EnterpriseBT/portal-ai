@@ -28,6 +28,8 @@ The branch's code review found four real defects in this contract; the fixes cha
 3. **`is_demo` is not mirrored in admin-cli's `tables.ts`.** Every org read selects the mirrored columns, so mirroring it broke `org list/get` against an env not yet migrated (prod lags `main`). Only `isDemoOrg` reads it.
 4. **The name and `--rows` rules live once in core** (`DemoOrganizationCreateInputSchema`, `DEMO_MAX_ROWS`, `organizationNameField`), used by the CLI and the script. The script now also refuses a line break in the name.
 
+5. **The seed attaches one unrestricted curated view per entity to the demo station** (`seedStationViews`; `DemoSeedResult.views`, and `views` in `db:demo:create`'s JSON). Found by the smoke walk: since #674 a station queries data only through attached views, so a demo without them couldn't answer its presenter script.
+
 Also corrected: the create script's stderr id line isn't seen on a killed run, because `runApiScript` buffers stderr. The runbook finds a leftover org with `org list --search` instead.
 
 ## Scope

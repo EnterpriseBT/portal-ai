@@ -103,6 +103,7 @@ export async function runDemoCreate(
         rows: result.rows,
         entities: result.entities.length,
         toolpacks: result.toolpacks,
+        views: result.views,
         durationMs: result.durationMs,
       })
     );

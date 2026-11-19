@@ -347,7 +347,7 @@ export function buildProgram(): Command {
     demo
       .command("delete")
       .description(
-        "soft-delete an org made by demo create (refuses any other org)"
+        "delete an org made by demo create and all its data (refuses any other org)"
       )
       .argument("<id>")
   ).action(async (id: string, o: GlobalOpts) =>

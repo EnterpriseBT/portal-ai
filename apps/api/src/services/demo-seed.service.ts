@@ -21,8 +21,10 @@ import { join } from "node:path";
 import {
   ConnectorEntityModelFactory,
   ConnectorInstanceModelFactory,
+  CuratedViewModelFactory,
   FieldMappingModelFactory,
   OrganizationToolpackModelFactory,
+  StationViewModelFactory,
   type ToolpackToolDefinition,
 } from "@portalai/core/models";
 import {
@@ -138,6 +140,7 @@ const INSTANCE_SPECS: Record<
 
 export interface EntitySeedResult {
   key: string;
+  connectorEntityId: string;
   created: number;
   updated: number;
   unchanged: number;
@@ -156,6 +159,8 @@ export interface DemoSeedResult {
   instances: InstanceSeedResult[];
   entities: EntitySeedResult[];
   toolpacks: { builtins: string[]; custom: string | null };
+  /** Curated views attached to the demo station, one per entity (#1035). */
+  views: number;
   googleSheets: { present: boolean };
   durationMs: number;
 }
@@ -228,6 +233,14 @@ export class DemoSeedService {
       );
     }
 
+    // Since #674 a station reaches entity data only through attached curated
+    // views, so without these the demo's portal has nothing to query.
+    const views = await DemoSeedService.seedStationViews(
+      orgId,
+      stationId,
+      entities
+    );
+
     const toolpacks = await DemoSeedService.seedToolpacks(orgId, stationId);
 
     return {
@@ -237,9 +250,66 @@ export class DemoSeedService {
       instances,
       entities,
       toolpacks,
+      views,
       googleSheets: { present: false },
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  /**
+   * One unrestricted curated view per seeded entity (keyed like the entity:
+   * every column, every row), attached to the demo station (#1035). Since
+   * #674 attached views are a station's only data surface, so the presenter
+   * script's queries need them. An unrestricted view depends on no field
+   * mapping or filter key, so it needs none of the view-dependency locking a
+   * projected or filtered view does. Idempotent: an existing view with the
+   * key is reused, and the attachment ignores a live duplicate.
+   */
+  private static async seedStationViews(
+    orgId: string,
+    stationId: string,
+    entities: EntitySeedResult[]
+  ): Promise<number> {
+    const viewIds: string[] = [];
+    for (const entity of entities) {
+      const existing = await DbService.repository.curatedViews.findByKey(
+        orgId,
+        entity.key
+      );
+      if (existing) {
+        viewIds.push(existing.id);
+        continue;
+      }
+      const label =
+        DEMO_ENTITY_SPECS.find((s) => s.key === entity.key)?.label ??
+        TRANSACTIONS_ENTITY.label;
+      const view = await DbService.repository.curatedViews.create(
+        new CuratedViewModelFactory()
+          .create(SEED_USER)
+          .update({
+            organizationId: orgId,
+            connectorEntityId: entity.connectorEntityId,
+            key: entity.key,
+            label,
+            description: `Every ${label.toLowerCase()} record in the demo dataset.`,
+            filter: null,
+            filterSql: null,
+            filterSqlKeys: [],
+            sourcePortalId: null,
+          })
+          .parse() as never
+      );
+      viewIds.push(view.id);
+    }
+    await DbService.repository.stationViews.insertManyIgnoreConflicts(
+      viewIds.map((curatedViewId) =>
+        new StationViewModelFactory()
+          .create(SEED_USER)
+          .update({ organizationId: orgId, stationId, curatedViewId })
+          .parse()
+      ) as never
+    );
+    return viewIds.length;
   }
 
   /**
@@ -539,7 +609,7 @@ export class DemoSeedService {
       userId: SEED_USER,
     });
     logger.info({ orgId, entity: def.key, ...result }, "entity seeded");
-    return { key: def.key, ...result };
+    return { key: def.key, connectorEntityId: entity.id, ...result };
   }
 
   /** The lazy row source for an entity, by fixture format. */

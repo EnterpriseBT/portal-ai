@@ -90,7 +90,8 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
   - the org, through the same path as `org create`, so its Administrate and Playground stations are exactly a normal new org's and Administrate stays the default;
   - the internal `is_demo` marker;
   - the tier;
-  - a **Demo** station holding the File Upload (CSV + XLSX), REST and Sandbox instances with all their entities and records, every built-in toolpack, the custom webhook toolpack, and the synthesized `transactions` table.
+  - a **Demo** station holding the File Upload (CSV + XLSX), REST and Sandbox instances with all their entities and records, every built-in toolpack, the custom webhook toolpack, and the synthesized `transactions` table;
+  - one unrestricted curated view per entity (keyed like the entity), attached to the Demo station. Since #674 a station queries data only through its attached views, so these are what the presenter script's prompts read.
 - **Checked before anything runs:**
   - `--name`: the app's org-name rule; trimmed, 1–120 characters, one line.
   - `--rows`: a whole number from 0 to 10,000,000, default **10,000**.
@@ -101,7 +102,7 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
 - **The owner's current org doesn't change.** The demo membership's `last_login` is 0, so the owner switches into it deliberately (`member switch`, or the app's org switcher).
 - **stderr reminder:** `--rows` raises the dataset size, and a finished demo is removed with `demo delete`.
 
-`--json`: `{ "organizationId", "stationId", "tier", "rows", "entities", "toolpacks": { "builtins", "custom" }, "durationMs" }`
+`--json`: `{ "organizationId", "stationId", "tier", "rows", "entities", "toolpacks": { "builtins", "custom" }, "views", "durationMs" }`
 
 ### `portalai demo delete <id> --env <env> --yes [--confirm-prod] [--json]`
 **Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:demo:delete`, attributed to you:

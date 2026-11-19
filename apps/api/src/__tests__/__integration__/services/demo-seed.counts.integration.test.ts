@@ -145,6 +145,51 @@ describe("DemoSeedService (integration): counts", () => {
     expect(txns2.unchanged).toBe(2000);
   }, 90000);
 
+  it("attaches one unrestricted view per demo entity to the demo station, so its data is queryable there (#1035 smoke)", async () => {
+    // Since #674 a station reaches entity data only through attached curated
+    // views; connector links alone leave a portal with nothing to query.
+    const { orgId, stationId } = await provisionOrgWithStation();
+
+    const result = await DemoSeedService.seed({ orgId, stationId, rows: 50 });
+
+    const expectedKeys = [...Object.keys(EXPECTED), "transactions"].sort();
+    expect(result.views).toBe(expectedKeys.length);
+    const views =
+      await DbService.repository.curatedViews.findByOrganizationId(orgId);
+    expect(views.map((v) => v.key).sort()).toEqual(expectedKeys);
+    for (const view of views) {
+      // Unrestricted: every column, every row.
+      expect(view.filter).toBeNull();
+      expect(view.filterSql).toBeNull();
+      const entity = result.entities.find((e) => e.key === view.key)!;
+      expect(view.connectorEntityId).toBe(entity.connectorEntityId);
+    }
+    const attached = (
+      await DbService.repository.stationViews.findByStationId(stationId)
+    ).map((sv) => sv.curatedViewId);
+    expect(attached.sort()).toEqual(views.map((v) => v.id).sort());
+
+    // The provisioned stations stay as a normal new org has them.
+    const others = (
+      await DbService.repository.stations.findByOrganizationId(orgId)
+    ).filter((s) => s.id !== stationId);
+    for (const station of others) {
+      expect(
+        await DbService.repository.stationViews.findByStationId(station.id)
+      ).toHaveLength(0);
+    }
+
+    // A re-seed converges: no duplicate views or attachments.
+    const again = await DemoSeedService.seed({ orgId, stationId, rows: 50 });
+    expect(again.views).toBe(expectedKeys.length);
+    expect(
+      await DbService.repository.curatedViews.findByOrganizationId(orgId)
+    ).toHaveLength(expectedKeys.length);
+    expect(
+      await DbService.repository.stationViews.findByStationId(stationId)
+    ).toHaveLength(expectedKeys.length);
+  }, 90000);
+
   it("throws when a required system column definition is missing", async () => {
     const { orgId, stationId } = await provisionOrgWithStation();
     const address = await DbService.repository.columnDefinitions.findByKey(

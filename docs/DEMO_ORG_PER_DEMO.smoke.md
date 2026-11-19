@@ -43,7 +43,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, and
 
 ## §1 — `demo create` happy path (plan slices 3 + 5)
 
-- [ ] `npx portalai demo create --name "Smoke Acme demo" --owner-email qa@portalsai.io --env local --json` exits **0**. stdout is one JSON object: `{ organizationId, stationId, tier: "enterprise", rows: 10000, entities: 11, toolpacks: { builtins: [10 slugs], custom: null | "<id>" }, durationMs }`. Record `organizationId` as **D1**. — backend
+- [ ] `npx portalai demo create --name "Smoke Acme demo" --owner-email qa@portalsai.io --env local --json` exits **0**. stdout is one JSON object: `{ organizationId, stationId, tier: "enterprise", rows: 10000, entities: 11, toolpacks: { builtins: [10 slugs], custom: null | "<id>" }, views: 11, durationMs }`. Record `organizationId` as **D1**. — backend
 - [ ] stderr shows `[env: local (development)]` and the reminder: `Seeded 10000 transactions; pass --rows <n> for a larger dataset. When the demo is over: portalai demo delete <D1> --env local --yes`. — backend
 - [ ] **DB check:**
   - `organizations` row D1 has `is_demo = true`, `tier = enterprise` and `owner_user_id` = qa's user id.
@@ -52,11 +52,11 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, and
   - **Administrate:** carries only `rbac_management` and no connectors.
   - **Playground:** carries `data_query`, `entity_management` and `view_management`, with Sandbox attached.
   - These are the same as a normal new org (compare with `npx portalai org create`'s org, or `PROVISIONED_STATIONS`). — backend
-- [ ] **Demo station:** `station_instances` links Sandbox, File Upload — CSV, File Upload — XLSX and Demo REST API (4). `station_toolpacks` holds every built-in pack, plus the custom one when configured. — backend
+- [ ] **Demo station:** `station_instances` links Sandbox, File Upload — CSV, File Upload — XLSX and Demo REST API (4). `station_toolpacks` holds every built-in pack, plus the custom one when configured. `station_views` attaches 11 unrestricted `curated_views` (keys = the entity keys); Administrate and Playground have none. — backend
 - [ ] **Transactions:** `select count(*) from "er__<transactions entity id>"` = **10000**. — backend
 - [ ] **Current org unchanged.** Reload the app as qa@portalsai.io. It still lands in the **owner's current org** from Preflight, not "Smoke Acme demo".
 - [ ] Open the org switcher. "Smoke Acme demo" is listed, and switching to it works.
-- [ ] In D1, open **Stations**. Administrate, Playground and Demo are listed. Open **Demo**: it shows the 4 connectors and the tool packs.
+- [ ] In D1, open **Stations**. Administrate, Playground and Demo are listed. Open **Demo**: it shows the 4 connectors, the tool packs and 11 views, and **no** "No views are attached to this station" warning.
 - [ ] In a portal on the Demo station, ask *"What was total revenue by month for the last 12 months?"*. You get a table (the `data_query` / `sql_query` result) over the 10,000 transactions.
 - [ ] **No marker in the UI.** Nothing in D1's pages says "demo" except its name and station name. (`isDemo` rides in the org API payload but is never rendered.)
 

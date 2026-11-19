@@ -93,6 +93,7 @@ describe("db:demo:create — runDemoCreate", () => {
         rows: 20,
         entities: expect.any(Number),
         toolpacks: expect.objectContaining({ custom: null }),
+        views: 11,
         durationMs: expect.any(Number),
       })
     );

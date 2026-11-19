@@ -14,7 +14,7 @@ All dates are anchored to **2026-08-31** with **30 months** of history, so the t
 
 1. **A fresh demo org.** Create one per client (below). Never re-use a previous demo's org: people change things during a demo, and nothing resets an org back to the baseline.
 2. **Login.** Sign in as the org's owner (the `--owner-email` you created it with) and switch to the demo org in the org switcher (or `portalai member switch <orgId> <email> --env <env> --yes`). `demo create` deliberately doesn't make it the owner's current org.
-3. **Station.** Use the station named **Demo**. It carries the demo connectors, all the built-in toolpacks and the custom webhook toolpack (#510). The org's Administrate and Playground stations are the ones every new org gets, and the demo doesn't use them.
+3. **Station.** Use the station named **Demo**. It carries the demo connectors, a curated view per entity (the station's queryable data, #674), all the built-in toolpacks and the custom webhook toolpack (#510). The org's Administrate and Playground stations are the ones every new org gets, and the demo doesn't use them.
 4. **Connectors.** Four populated instances: **Sandbox**, **File Upload** (CSV + XLSX), **Google Sheets**, **REST API**. (Microsoft 365 Excel is intentionally excluded — Google Sheets covers the identical file-based OAuth workflow.)
 
 ## Provisioning (operator, #511, #1035)
