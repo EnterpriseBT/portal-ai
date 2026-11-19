@@ -73,7 +73,7 @@ export const portalSqlHandleRouter = Router();
  *                 payload:
  *                   $ref: '#/components/schemas/QueryHandleSnapshotResponse'
  *       404:
- *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing). A pin's handle (#640) is readable by anyone who can read the pin.
+ *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing), or the caller can no longer read what its query reads, after a view grant is revoked or the view is detached from the station (#1038). A pin's handle (#640) is readable by anyone who can read the pin.
  *         content:
  *           application/json:
  *             schema:
@@ -128,6 +128,12 @@ portalSqlHandleRouter.get(
           ApiCode.READ_HANDLE_EXPIRED,
           HANDLE_EXPIRED_MESSAGE
         );
+      } else {
+        // #1038: and only while they can still read what its query reads.
+        await PortalSqlHandleService.authorizeCallerRead(meta, {
+          organizationId,
+          userId,
+        });
       }
 
       const result = await PortalSqlHandleService.getSnapshot(handleId, {

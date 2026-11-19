@@ -40,7 +40,7 @@ import {
   applyTransformFold,
   type TransformDescriptor,
 } from "./transform-fold.js";
-import { fenceSql } from "./portal-sql-validation.util.js";
+import { fenceSql, STALE_REFERENCE } from "./portal-sql-validation.util.js";
 import { capSamplePeek } from "./portal-sql-response.util.js";
 import { HANDLE_EXPIRED_MESSAGE } from "../constants/query-handle.constants.js";
 
@@ -580,6 +580,64 @@ export class PortalSqlHandleService {
       );
     }
     return JSON.parse(raw) as StoredHandleMeta;
+  }
+
+  /**
+   * #1038: a handle serves its rows only while the caller can still read what
+   * its query reads. Runs the query's `EXPLAIN` as the caller, so a revoked
+   * view grant, or a view detached from the station, refuses the read with
+   * the same 404 as an expired handle. Without this, a handle stayed readable
+   * for its whole TTL after access ended.
+   *
+   * A transform handle is checked through the query at the root of its
+   * source chain (a source that has expired is also a 404). A staged-rows
+   * handle has no query to check and keeps its owner check alone.
+   */
+  static async authorizeCallerRead(
+    meta: StoredHandleMeta,
+    caller: { organizationId: string; userId: string },
+    deps: { explainSqlQuery?: typeof PortalSqlService.explainSqlQuery } = {}
+  ): Promise<void> {
+    const sql = await this.rootSql(meta);
+    if (sql == null) return;
+    const explain =
+      deps.explainSqlQuery ??
+      PortalSqlService.explainSqlQuery.bind(PortalSqlService);
+    try {
+      await explain({
+        sql,
+        stationId: meta._stationId,
+        organizationId: caller.organizationId,
+        userId: caller.userId,
+      });
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
+        throw new ApiError(
+          404,
+          ApiCode.READ_HANDLE_EXPIRED,
+          HANDLE_EXPIRED_MESSAGE
+        );
+      }
+      throw err;
+    }
+  }
+
+  /** The query a handle's rows come from: its own, or its transform
+   *  source's, followed to the root. Null for a staged-rows handle. */
+  private static async rootSql(meta: StoredHandleMeta): Promise<string | null> {
+    let current = meta;
+    // A transform chain is one or two deep in practice; the bound only
+    // guards against a malformed meta naming itself.
+    for (let depth = 0; depth < 8; depth++) {
+      if (current.sql) return current.sql;
+      if (!current._transform) return null;
+      current = await this.getMeta(current._transform.sourceHandle);
+    }
+    return null;
   }
 
   /**

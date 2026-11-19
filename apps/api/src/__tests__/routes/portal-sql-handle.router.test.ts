@@ -6,10 +6,12 @@ import express, { Request, Response, NextFunction } from "express";
 
 const mockGetSnapshot = jest.fn<() => Promise<unknown>>();
 const mockGetMeta = jest.fn<() => Promise<unknown>>();
+const mockAuthorizeCallerRead = jest.fn<() => Promise<void>>();
 jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   PortalSqlHandleService: {
     getSnapshot: mockGetSnapshot,
     getMeta: mockGetMeta,
+    authorizeCallerRead: mockAuthorizeCallerRead,
   },
 }));
 
@@ -35,6 +37,7 @@ jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
 const { portalSqlHandleRouter } =
   await import("../../routes/portal-sql-handle.router.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
+const { ApiError } = await import("../../services/http.service.js");
 
 // ── App setup ────────────────────────────────────────────────────────
 
@@ -134,6 +137,26 @@ describe("GET /api/portal-sql/handle/:handleId — authorization (#685)", () => 
     const res = await request(app).get("/api/portal-sql/handle/qh-own");
     expect(res.status).toBe(200);
     expect(mockGetMeta).toHaveBeenCalledWith("qh-own");
+  });
+
+  // #1038: and only while the caller can still read what its query reads.
+  it("re-checks the caller's access to the handle's query before serving it", async () => {
+    mockGetSnapshot.mockResolvedValueOnce(ok);
+    await request(app).get("/api/portal-sql/handle/qh-own").expect(200);
+    expect(mockAuthorizeCallerRead).toHaveBeenCalledWith(
+      { _organizationId: "org-001", _userId: "user-001" },
+      { organizationId: "org-001", userId: "user-001" }
+    );
+  });
+
+  it("answers the re-check's refusal without reading the rows (#1038)", async () => {
+    mockAuthorizeCallerRead.mockRejectedValueOnce(
+      new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, "gone")
+    );
+    const res = await request(app).get("/api/portal-sql/handle/qh-own");
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.READ_HANDLE_EXPIRED);
+    expect(mockGetSnapshot).not.toHaveBeenCalled();
   });
 
   it("refuses another org's handle as expired, without reading its rows", async () => {
