@@ -255,7 +255,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What are tool packs?",
     answer:
-      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, and GIS (maps and geocoding). Your plan decides which ones are available. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station. Turn on only the packs a station's work needs.",
+      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, curated views, visualization, GIS (maps and geocoding), and Help (answers questions about how Portals works). Your plan decides which ones are available; every plan includes Help. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station. Turn on only the packs a station's work needs.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Tool Pack", "Station", "Portal"],
   },

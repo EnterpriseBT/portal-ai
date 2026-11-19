@@ -1,5 +1,8 @@
 import type { ToolCapability } from "../models/tool-capability.model.js";
-import { BUILTIN_TOOLPACKS } from "./builtin-toolpacks.js";
+import {
+  BUILTIN_TOOLPACKS,
+  type BuiltinToolpackSlug,
+} from "./builtin-toolpacks.js";
 
 /**
  * Capability projections (#121 child A, slice 3).
@@ -53,26 +56,16 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "value" },
     alwaysAvailable: true,
   },
-  // #367 — in-session platform help. A system tool rather than a pack on
-  // purpose: a pack slug would fall under the per-tier `builtinToolpacks`
-  // allowlists, making platform help entitlement-gateable. Help is never
-  // gated and never charged, so it lives here with the other two.
-  platform_help: {
-    // Not pure: it inspects the station (does it have records yet?) to
-    // explain concrete problems rather than answering only from static
-    // content. `superRefine` rejects `pure` alongside any reads.
-    pure: false,
-    reads: ["entity_records"],
-    writes: [],
-    consumption: { mode: "none" },
-    computeShape: "scan",
-    costHint: "free",
-    locks: [],
-    resultKind: "scalar",
-    production: { kind: "value" },
-    alwaysAvailable: true,
-  },
 };
+
+/**
+ * #1050: built-in packs every tier is entitled to, whatever its stored
+ * `builtin_toolpacks` allowlist says. `TierService` unions them into every
+ * policy, so a custom tier created before a pack existed never reads it as
+ * excluded. Free, never upsold: every tool in them must be `costHint: free`
+ * (a guard test holds that).
+ */
+export const ALWAYS_ENTITLED_PACKS: readonly BuiltinToolpackSlug[] = ["help"];
 
 // ── Aggregate ───────────────────────────────────────────────────────
 

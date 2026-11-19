@@ -6,25 +6,11 @@ import {
   HELP_TAB,
   buildHelpUrl,
   contentEntrySlug,
-  describeStationAttachmentGaps,
   filterFAQ,
-  STATION_ATTACHMENT_MISSING_ACTION,
-  STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
-import {
-  stationDataSetup,
-  type StationDataSetup,
-} from "@portalai/core/registries";
 
-import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
-import { EntitlementService } from "../services/entitlement.service.js";
-import { StationAttachmentService } from "../services/station-attachment.service.js";
 import { Tool } from "../types/tools.js";
-import { createLogger } from "../utils/logger.util.js";
-
-const logger = createLogger({ module: "platform-help-tool" });
 
 const InputSchema = z.object({
   question: z
@@ -40,42 +26,17 @@ const InputSchema = z.object({
 const MAX_FAQ = 3;
 const MAX_GLOSSARY = 3;
 
-interface StationFindings {
-  /** False when the station read failed — the answer degrades, never errors. */
-  available: boolean;
-  hasPacks: boolean;
-  /** #848, #1045: how the station stands with entity data. */
-  dataSetup: StationDataSetup;
-  /**
-   * #1045: the packs attached here that the plan excludes, as the answer
-   * lists them, or null when there are none. Built-in slugs first; custom
-   * packs under their own label, since one can share a built-in pack's slug.
-   */
-  excludedPacks: string | null;
-  entityCount: number;
-  recordCount: number;
-  /** #674: the station-level gap (null when both kinds are attached). */
-  attachmentsMissing: string | null;
-  /** #674: the caller-level gap (null when they can read something of each attached kind). */
-  attachmentsNoAccess: string | null;
-}
-
-type Situation =
-  | "no_packs"
-  | "attachments_missing"
-  | "attachments_inaccessible"
-  | "no_records"
-  | "unentitled_packs"
-  | "default";
-
 /**
  * In-session platform help (#367).
  *
- * A **system tool**, not a pack: a pack slug would fall under the per-tier
- * `builtinToolpacks` allowlists, and platform help must never be
- * entitlement-gated or charged. There is deliberately no
- * `builtin-toolpacks.ts` descriptor for it — system tools have no pack mirror,
- * and the registry guard asserts that absence rather than tolerating it.
+ * The `help` pack's tool (#1050), built only on a station that attaches the
+ * pack. It answers **general** questions about how Portals works and how to do
+ * things in it, from the shipped help content (FAQ and glossary), with links
+ * into Help. It never reads the station or the user's data: finding things in
+ * the organization is other tools' work, and why a station returns little is
+ * `station_context`'s `status`, which every session has. It's never gated or
+ * charged: every tier is entitled to the pack (`ALWAYS_ENTITLED_PACKS`) and
+ * its capability is `free`.
  *
  * The tool **composes the final prose itself** and the agent relays it. That
  * is the point: platform behavior is what a model states confidently and
@@ -86,168 +47,27 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
   slug = "platform_help";
   name = "Platform Help";
   description =
-    "Answer a question about **Portals AI itself** — what portals, stations, " +
-    "connectors, entities, tool packs, or pinned results are; how to get " +
-    "better answers out of a session; and why this station may be returning " +
-    "thin or empty results. Also reports this station's own setup: whether " +
-    "views and connectors are attached and whether the user can read them, " +
-    "whether records have been imported, and which tool packs are " +
-    "enabled or excluded by the plan. Use it whenever the user asks how the " +
-    "product works, what they can do here, or why something isn't working. " +
-    "**This is not a data-query tool** — it never reads the user's records to " +
-    "answer a question about their data; use the data tools for that.";
+    "Answer a general question about **Portals AI itself** — what portals, " +
+    "stations, connectors, entities, tool packs, or pinned results are, and " +
+    "how to do things in the product — from the help content, with links " +
+    "into Help. Use it whenever the user asks how the product works. " +
+    "**This is not a data-query tool**, and it knows nothing about the " +
+    "user's organization: it never reads their records, stations or setup. " +
+    "Use the data tools for their data, and `station_context` for why " +
+    "answers here come back empty.";
 
   get schema() {
     return InputSchema;
   }
 
-  /** #674: `userId` is the caller — the no-access situation is per user. */
-  build(stationId: string, organizationId: string, userId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
-      execute: async (input: z.infer<typeof InputSchema>) => {
-        const findings = await gatherFindings(
-          stationId,
-          organizationId,
-          userId
-        );
-        const situation = matchSituation(findings);
-        const selected = selectContent(input.question);
-        return composeAnswer(situation, findings, selected);
-      },
+      execute: async (input: z.infer<typeof InputSchema>) =>
+        composeAnswer(selectContent(input.question)),
     });
   }
-}
-
-/**
- * Read what this station can be said about. Fail-soft by contract: any failure
- * degrades the answer instead of erroring, because this is the surface a stuck
- * user reaches for.
- */
-async function gatherFindings(
-  stationId: string,
-  organizationId: string,
-  userId: string
-): Promise<StationFindings> {
-  try {
-    const repo = DbService.repository;
-
-    // The one derivation of a station's packs (#306), which the system
-    // prompt reads too: a second copy here classified a station with a custom
-    // pack differently from the prompt in the same session. The split only:
-    // this answer needs the names of custom packs the plan excludes, which
-    // the split carries, and none of their details.
-    const {
-      effective,
-      unentitled,
-      configuredCustomPackCount,
-      customPacksEntitled,
-      excludedCustomPacks,
-    } = await EntitlementService.resolveStationPackSplit(
-      stationId,
-      organizationId
-    );
-    const hasPacks =
-      effective.length + unentitled.length + configuredCustomPackCount > 0;
-    // The same derivation the prompt uses. An excluded custom pack counts by
-    // its resolved name, as it does there: an attachment whose pack row is
-    // gone names nothing and classifies nothing.
-    const dataSetup = stationDataSetup({
-      effective,
-      unentitled,
-      hasUsableCustomPack: customPacksEntitled && configuredCustomPackCount > 0,
-      hasExcludedCustomPack: excludedCustomPacks.length > 0,
-    });
-
-    // Org-scoped, exactly as `station_context` reads.
-    const stationData = await AnalyticsService.loadStation(
-      stationId,
-      organizationId
-    );
-    const entityIds = stationData.entities.map((e: { id: string }) => e.id);
-
-    // One bounded aggregate — never a row scan. A station's entities can be
-    // arbitrarily large, and all this answer needs is presence.
-    const recordCount =
-      entityIds.length > 0
-        ? await repo.entityRecords.countByConnectorEntityIds(entityIds)
-        : 0;
-
-    const gaps = describeStationAttachmentGaps(
-      await StationAttachmentService.countsForCaller(
-        stationId,
-        organizationId,
-        userId
-      )
-    );
-
-    return {
-      available: true,
-      hasPacks,
-      dataSetup,
-      excludedPacks: describeExcludedPacks(unentitled, excludedCustomPacks),
-      entityCount: entityIds.length,
-      recordCount,
-      attachmentsMissing: gaps.missing,
-      attachmentsNoAccess: gaps.noAccess,
-    };
-  } catch (error) {
-    logger.warn(
-      { stationId, organizationId, error },
-      "platform_help could not read station state; answering without it"
-    );
-    return {
-      available: false,
-      hasPacks: true,
-      dataSetup: "usable",
-      excludedPacks: null,
-      entityCount: 0,
-      recordCount: 0,
-      attachmentsMissing: null,
-      attachmentsNoAccess: null,
-    };
-  }
-}
-
-/** First hit wins — ordered from "nothing works" to "everything works". */
-function matchSituation(findings: StationFindings): Situation {
-  if (!findings.available) return "default";
-  if (!findings.hasPacks) return "no_packs";
-  // #1045: every data-capable pack here is excluded by the plan. That is
-  // the answer; attaching or sharing data would change nothing.
-  if (findings.dataSetup === "plan-excluded") return "unentitled_packs";
-  // #848: missing views or connectors only explain an empty answer on a
-  // station with a usable pack that works on attached data.
-  if (findings.dataSetup === "usable" && findings.attachmentsMissing) {
-    return "attachments_missing";
-  }
-  if (findings.attachmentsNoAccess) return "attachments_inaccessible";
-  // "Entities set up, nothing imported" needs entities to be true.
-  if (findings.entityCount > 0 && findings.recordCount === 0) {
-    return "no_records";
-  }
-  if (findings.excludedPacks) return "unentitled_packs";
-  return "default";
-}
-
-/**
- * The packs the plan excludes, as one list for the answer's brackets:
- * `gis, statistics; registered by your organization: acme, crm`. Custom packs
- * sit under one label. One can be registered under a built-in pack's slug,
- * and the two are different things to the reader.
- */
-function describeExcludedPacks(
-  builtinSlugs: readonly string[],
-  customNames: readonly string[]
-): string | null {
-  const parts = [
-    ...(builtinSlugs.length > 0 ? [builtinSlugs.join(", ")] : []),
-    ...(customNames.length > 0
-      ? [`registered by your organization: ${customNames.join(", ")}`]
-      : []),
-  ];
-  return parts.length > 0 ? parts.join("; ") : null;
 }
 
 interface SelectedContent {
@@ -281,71 +101,32 @@ function selectContent(question?: string): SelectedContent {
   };
 }
 
-const SITUATION_PROSE: Record<Situation, (f: StationFindings) => string> = {
-  // #848: a station is set up for one kind of work, so this names no one
-  // pack as the minimum. Data querying is an example, not a requirement.
-  no_packs: () =>
-    "This station has no tool packs attached, so a portal session on it can " +
-    "only talk in generalities. Tool packs are what give the assistant its " +
-    "abilities here — querying your data, statistics, charts, maps, and so " +
-    "on. Open the station and attach the packs for what you want to do here, " +
-    "such as the data-query pack for questions about your data, then ask " +
-    "again.",
-  // #674: the sentences come from describeStationAttachmentGaps, shared with
-  // the UI alerts and the system prompt, so all three say the same thing.
-  attachments_missing: (f) =>
-    `${f.attachmentsMissing} ${STATION_ATTACHMENT_MISSING_ACTION}`,
-  // #676: the follow-up says the items ARE attached, so a relay can't turn
-  // "no access" into "nothing attached".
-  attachments_inaccessible: (f) =>
-    `${f.attachmentsNoAccess} ${STATION_ATTACHMENT_NO_ACCESS_ACTION}`,
-  no_records: () =>
-    "This station has entities set up, but **no records have been imported " +
-    "into them yet** — that is why answers come back empty. The assistant " +
-    "answers from imported records rather than from general knowledge, so " +
-    "there is nothing for it to read. Run a sync on the connector instance " +
-    "and wait for the job to finish, then ask again.",
-  unentitled_packs: (f) =>
-    `Some tool packs on this station are not included in your current plan (${f.excludedPacks}). They stay attached and nothing was deleted — their tools are simply ` +
-    "absent from portal sessions until the plan includes them again. That is " +
-    "a plan limit, not a missing feature.",
-  default: () =>
-    "A portal is a chat session over the data in a station: ask a question in " +
-    "plain language and the assistant answers using the station's records and " +
-    "tool packs. You will get the most out of it by asking about one thing at " +
-    "a time, and by naming entities and columns the way they appear in your " +
-    "data. Results worth keeping can be pinned, and pinned charts and tables " +
-    "reload live data when you open them.",
-};
+/** What a bare call, or a question nothing in the content matches, gets. */
+const ORIENTATION =
+  "A portal is a chat session on a station: ask a question in plain " +
+  "language and the assistant answers with the station's tool packs, over " +
+  "the data attached to it. You get the most out of it by asking about one " +
+  "thing at a time, and by naming entities and columns the way they appear " +
+  "in your data. Results worth keeping can be pinned, and pinned charts and " +
+  "tables reload live data when you open them.";
 
-function composeAnswer(
-  situation: Situation,
-  findings: StationFindings,
-  selected: SelectedContent
-): { answer: string; links: { label: string; url: string }[] } {
-  const parts: string[] = [SITUATION_PROSE[situation](findings)];
-
-  // #1045: a plan limit is the last situation matched, so a station with
-  // missing data as well never heard about it. It follows whichever answer
-  // leads instead.
-  if (situation !== "unentitled_packs" && findings.excludedPacks) {
-    parts.push(SITUATION_PROSE.unentitled_packs(findings));
-  }
-
-  if (!findings.available) {
-    parts.push(
-      "(I couldn't read this station's current setup just now, so this answer " +
-        "is general rather than specific to it.)"
-    );
-  }
-
+/**
+ * The matched content, quoted, leads the answer; orientation only when
+ * nothing matched. #1050: no station situation, since this tool answers
+ * general questions and never reads the station.
+ */
+function composeAnswer(selected: SelectedContent): {
+  answer: string;
+  links: { label: string; url: string }[];
+} {
+  const parts: string[] = [];
   for (const entry of selected.faq) {
-    parts.push(`\n- **${entry.question}** ${entry.answer}`);
+    parts.push(`- **${entry.question}** ${entry.answer}`);
   }
   for (const entry of selected.glossary) {
-    parts.push(`\n- **${entry.term}** — ${entry.definition}`);
+    parts.push(`- **${entry.term}** — ${entry.definition}`);
   }
-
+  if (parts.length === 0) parts.push(ORIENTATION);
   return { answer: parts.join("\n"), links: buildLinks(selected) };
 }
 

@@ -253,6 +253,7 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
     "roles, policies and groups, member assignments, and sharing stations and pins",
   view_management:
     "creating and sharing curated views and attaching them to stations",
+  help: "answering questions about how Portals works, with links into Help",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -757,6 +758,33 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
+  // #1050: platform help is a pack a station attaches (#367's `## Help`
+  // section, moved here from the base prompt unchanged).
+  help: {
+    capability: "answer questions about how Portals works",
+    requestShapes: ["a product question"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: [
+      "answer questions about how Portals works",
+      "## Help",
+      "platform_help",
+    ],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Help");
+      lines.push("");
+      lines.push(
+        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, or how to do something in the product — go to the `platform_help` tool. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
+      );
+      lines.push("");
+      lines.push(
+        "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
 };
 
 /** The effective packs' sections, in registry order (deterministic output). */
@@ -892,12 +920,6 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "When writing a `date` or `datetime` value into an entity:",
     "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
     "- Otherwise: `date` columns → `YYYY-MM-DD`; `datetime` columns → ISO 8601 with the org's UTC offset (e.g. `2026-06-01T15:00:00-07:00`).",
-    "",
-    "## Help",
-    "",
-    "Questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to get better answers out of a session, what the user can do here, or why this station is returning thin or empty results — go to the `platform_help` tool. Questions about **the data in this station** go to the data tools; `platform_help` never reads records to answer them.",
-    "",
-    "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not.",
     "",
     "## Available Data",
     "",
@@ -1314,17 +1336,36 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   lines.push(
     "This station is set up for one kind of work: the tool packs and data " +
       "described above. When a request needs a tool pack or data that isn't " +
-      "on this station, say what is missing and suggest the user open a " +
-      "station set up for that work, or have someone who can edit this " +
-      "station add it. Don't present it as something the product can't do. " +
+      "on this station, say what is missing (the tool pack, or the " +
+      "views or connectors it needs) and that someone who can edit " +
+      "this station can add it. Don't present it as something the product " +
+      "can't do. " +
       // #676 and #284 already say what to do in these two cases; without
       // this the section's "have someone add it" would override them.
       "Two cases have their own guidance above, which takes precedence: " +
       "data that is attached but not shared with the user (they ask for " +
       "access; nothing needs attaching), and a tool pack the plan doesn't " +
-      "include (a plan limit; it can't be added to a station)."
+      "include (a plan limit; it can't be added to a station). " +
+      // #1050: the diagnostics platform_help used to give every session.
+      "If a query comes back empty, or something the user expects isn't " +
+      "here, read `station_context`'s `status` before answering and explain " +
+      "what it reports."
   );
   lines.push("");
+  // #1050: with `## Help` gone from this session, nothing else says product
+  // questions belong to the Help pack — and a model-authored answer about
+  // the product is what #367 exists to prevent.
+  if (otherPlanPacks.includes("help")) {
+    lines.push(
+      "Questions about how Portals itself works (what a portal, station, " +
+        "connector, entity or tool pack is, or how to do something in the " +
+        "product) are the Help pack's, and it isn't on this station: don't " +
+        "answer them from your own knowledge, and don't look up other " +
+        "stations for it. Tell the user to attach the Help tool pack to " +
+        "this station to learn more about the platform."
+    );
+    lines.push("");
+  }
   // The agent can only "say what is missing" if it knows what exists. Without
   // this list it told a user that attaching views can't be done from a
   // session, on a station that simply lacked the pack for it.
@@ -1349,10 +1390,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "When a request needs a tool you don't hold and one of these packs " +
         "provides it, don't attempt the work here or stretch another tool " +
         "to cover it: name the pack, say this station doesn't have it, and " +
-        "suggest opening a station that has " +
-        // No station may carry the pack yet; it is in the plan, so adding
-        // it here works.
-        "it, or having someone who can edit this station add the pack. " +
+        // #1050: not "open another station": the agent doesn't steer users
+        // between stations, and the pack is in the plan, so adding it here
+        // works.
+        "say that someone who can edit this station can add the pack. " +
         // #284: scoped to what no held tool can do, so it can't outweigh the
         // precedence rule above.
         "Don't offer work that none of your tools can do. " +

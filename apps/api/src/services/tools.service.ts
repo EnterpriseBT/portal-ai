@@ -605,15 +605,13 @@ export class ToolService {
         userId
       );
     }
-    //   - `platform_help` — in-session answers about the product itself, and
-    //     about why this station may be returning thin results (#367). A
-    //     system tool rather than a pack so no tier allowlist can remove it.
-    if (SYSTEM_TOOL_CAPABILITIES.platform_help?.alwaysAvailable) {
-      tools.platform_help = new PlatformHelpTool().build(
-        stationId,
-        organizationId,
-        userId
-      );
+
+    // -------------------------------------------------------------------
+    // Pack: help (#1050) — in-session answers about the product (#367).
+    // Attached explicitly; every tier is entitled to it and it's free.
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("help")) {
+      tools.platform_help = new PlatformHelpTool().build();
     }
 
     // -------------------------------------------------------------------

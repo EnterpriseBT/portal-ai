@@ -8,6 +8,10 @@ const mockFindStationById = jest.fn<() => Promise<unknown>>();
 const mockFindOrgById = jest.fn<() => Promise<unknown>>();
 const mockFindColumnDefs = jest.fn<() => Promise<unknown[]>>();
 const mockFindStationToolpacks = jest.fn<() => Promise<unknown[]>>();
+// #1050: the plan's display name, read off the org's tier row.
+const mockFindTierBySlug = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ slug: "standard", displayName: "Standard" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -16,8 +20,31 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       organizations: { findById: mockFindOrgById },
       columnDefinitions: { findByOrganizationId: mockFindColumnDefs },
       stationToolpacks: { findByStationId: mockFindStationToolpacks },
+      tiers: { findBySlug: mockFindTierBySlug },
     },
   },
+}));
+
+// #1050: the station's status, from the shared diagnostics.
+const mockForStation = jest.fn<() => Promise<unknown>>();
+const mockSituation = jest.fn<() => string>().mockReturnValue("no_records");
+jest.unstable_mockModule(
+  "../../services/station-diagnostics.service.js",
+  () => ({
+    StationDiagnosticsService: {
+      forStation: mockForStation,
+      situation: mockSituation,
+    },
+  })
+);
+
+// #1050: the plan comes from the resolved (cached) tier policy, the same
+// one that decides the session's entitlements.
+const mockResolveTier = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ tier: "standard" });
+jest.unstable_mockModule("../../services/tier.service.js", () => ({
+  TierService: { resolveTier: mockResolveTier },
 }));
 
 const mockLoadStation = jest.fn<() => Promise<unknown>>();
@@ -195,7 +222,28 @@ describe("StationContextTool", () => {
       id: STATION_ID,
       name: "Test Station",
     });
-    mockFindOrgById.mockResolvedValue({ id: ORG_ID, timezone: "UTC" });
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "standard",
+      timezone: "UTC",
+    });
+    mockFindTierBySlug.mockResolvedValue({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    mockForStation.mockResolvedValue({
+      available: true,
+      hasPacks: true,
+      dataSetup: "usable",
+      packsEffective: ["data_query"],
+      excludedPacks: "gis",
+      entityCount: 2,
+      hasRecords: false,
+      attachmentsMissing: null,
+      attachmentsNoAccess: "views",
+    });
+    mockSituation.mockReturnValue("no_records");
     mockLoadStation.mockResolvedValue(STATION_DATA);
     // #599: each entity is a granted passthrough view with all columns
     // readable — an admin (canPerformAny → true) sees the full catalog.
@@ -670,5 +718,105 @@ describe("StationContextTool", () => {
       station: { timezone: string };
     };
     expect(result.station.timezone).toBe("UTC");
+  });
+});
+
+describe("StationContextTool — organization and status (#1050)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFindStationById.mockResolvedValue({ id: STATION_ID, name: "Test" });
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "pro",
+      timezone: "UTC",
+    });
+    mockFindTierBySlug.mockResolvedValue({ slug: "pro", displayName: "Pro" });
+    mockResolveTier.mockResolvedValue({ tier: "pro" });
+    mockForStation.mockResolvedValue({
+      available: true,
+      hasPacks: true,
+      dataSetup: "usable",
+      packsEffective: ["data_query", "help"],
+      excludedPacks: "gis",
+      entityCount: 2,
+      hasRecords: false,
+      attachmentsMissing: "connectors",
+      attachmentsNoAccess: null,
+    });
+    mockSituation.mockReturnValue("attachments_missing");
+    mockLoadStation.mockResolvedValue({ entities: [], entityGroups: [] });
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: { canPerformAny: () => true, can: () => true },
+      views: [],
+    });
+    mockResolveStationPacks.mockResolvedValue({
+      effective: [],
+      unentitled: [],
+      customPacks: [],
+      excludedCustomPacks: [],
+      tier: "pro",
+    });
+    mockFindColumnDefs.mockResolvedValue([]);
+  });
+
+  it.each([undefined, ["entities"], ["toolPacks"], ["columnDefinitions"]])(
+    "always reports the organization and its plan (include=%j)",
+    async (include) => {
+      const out = await exec(include ? { include } : {});
+      expect(out.organization).toEqual({
+        name: "Acme",
+        plan: { slug: "pro", displayName: "Pro" },
+      });
+    }
+  );
+
+  it.each([undefined, ["entities"]])(
+    "always reports the station's status from the shared diagnostics (include=%j)",
+    async (include) => {
+      const out = await exec(include ? { include } : {});
+      expect(out.status).toEqual({
+        situation: "attachments_missing",
+        packsEffective: ["data_query", "help"],
+        attachments: { missing: "connectors", inaccessible: null },
+        hasRecords: false,
+        planExcludedPacks: "gis",
+      });
+      expect(mockForStation).toHaveBeenCalledWith(STATION_ID, ORG_ID, USER_ID);
+    }
+  );
+
+  it("doesn't list stations: the agent doesn't steer users between them", async () => {
+    await expect(exec({ include: ["stations"] })).rejects.toThrow();
+    const out = await exec({});
+    expect(out).not.toHaveProperty("stations");
+  });
+
+  it("reports the plan the entitlements resolve to, not the raw slug", async () => {
+    // An org on an unknown or blank slug falls back to the default tier for
+    // its entitlements; the plan named to the agent must be that one too.
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "",
+      timezone: "UTC",
+    });
+    mockResolveTier.mockResolvedValue({ tier: "standard" });
+    mockFindTierBySlug.mockResolvedValue({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    const out = await exec({});
+    expect(out.organization.plan).toEqual({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    expect(mockFindTierBySlug).toHaveBeenCalledWith("standard");
+  });
+
+  it("still answers when the plan's display name can't be read", async () => {
+    mockFindTierBySlug.mockRejectedValue(new Error("db blip"));
+    const out = await exec({});
+    expect(out.organization.plan).toEqual({ slug: "pro", displayName: "pro" });
   });
 });

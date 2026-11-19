@@ -67,22 +67,32 @@ describe("TierService.tierPolicyFromRow", () => {
   });
 
   // ── case 4 (#214) ───────────────────────────────────────────────────
-  it("maps the entitlement columns into policy.entitlements verbatim", () => {
+  it("maps the entitlement columns into policy.entitlements, adding the always-entitled packs (#1050)", () => {
     const p = TierService.tierPolicyFromRow(standardRow as never);
     expect(p.entitlements).toEqual({
-      builtinToolpacks: ["data_query", "web_search"],
+      builtinToolpacks: ["data_query", "web_search", "help"],
       customToolpacks: true,
     });
 
+    // A tier whose stored list is empty (or predates the pack) still gets
+    // Help: custom tiers freeze their list at create time.
     const restrictive = TierService.tierPolicyFromRow({
       ...standardRow,
       builtinToolpacks: [],
       customToolpacks: false,
     } as never);
     expect(restrictive.entitlements).toEqual({
-      builtinToolpacks: [],
+      builtinToolpacks: ["help"],
       customToolpacks: false,
     });
+  });
+
+  it("doesn't duplicate an always-entitled pack the row already lists (#1050)", () => {
+    const p = TierService.tierPolicyFromRow({
+      ...standardRow,
+      builtinToolpacks: ["help", "data_query"],
+    } as never);
+    expect(p.entitlements.builtinToolpacks).toEqual(["help", "data_query"]);
   });
 });
 
@@ -109,7 +119,7 @@ describe("TierService.resolveTier", () => {
 
     expect(mockFindBySlug).toHaveBeenCalledTimes(1);
     expect(first.entitlements).toEqual({
-      builtinToolpacks: ["data_query", "web_search"],
+      builtinToolpacks: ["data_query", "web_search", "help"],
       customToolpacks: true,
     });
     expect(second.entitlements).toEqual(first.entitlements);

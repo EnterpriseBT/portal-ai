@@ -28,8 +28,8 @@ function distinctSpecsByName(
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly ten packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(10);
+  it("registers exactly eleven packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(11);
   });
 
   // Case 2
@@ -45,6 +45,8 @@ describe("BUILTIN_TOOLPACKS", () => {
       "view_management",
       "visualize",
       "gis",
+      // #1050: platform help, attached explicitly.
+      "help",
     ];
     const actual = BUILTIN_TOOLPACKS.map((p) => p.slug).sort();
     expect(actual).toEqual([...expected].sort());

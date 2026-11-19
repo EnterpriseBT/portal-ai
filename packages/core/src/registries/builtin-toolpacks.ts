@@ -41,6 +41,9 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "view_management",
   "visualize",
   "gis",
+  // #1050: platform help, attached explicitly. Every tier is entitled to it
+  // (`ALWAYS_ENTITLED_PACKS`) and its tool is free.
+  "help",
 ]);
 
 export type BuiltinToolpackSlug = z.infer<typeof BuiltinToolpackSlugSchema>;
@@ -865,6 +868,35 @@ const WEB_SEARCH_PACK: BuiltinToolpackSpec = {
         {
           title: "Find recent news",
           input: { query: "latest 10-K filing for AAPL" },
+        },
+      ],
+    },
+  ],
+};
+
+// #1050: platform help as a pack a station attaches, rather than a system
+// tool every session carries. Free and in every tier (`ALWAYS_ENTITLED_PACKS`),
+// so attaching it is a choice about the station, never about the plan.
+const HELP_PACK: BuiltinToolpackSpec = {
+  slug: "help",
+  name: "Help",
+  description:
+    "Answers questions about how Portals works — portals, stations, connectors, entities, tool packs and pinned results — with links into Help.",
+  iconSlug: "HelpOutline",
+  tools: [
+    {
+      name: "platform_help",
+      description:
+        "Answer a general question about Portals AI itself: what portals, stations, connectors, entities, tool packs or pinned results are, and how to do things in the product, from the help content with links into Help. Not a data-query tool, and it knows nothing about the user's organization.",
+      parameterSchema: objectSchema({
+        question: stringField(
+          "The user's question about the product, verbatim. Omit for a general orientation answer."
+        ),
+      }),
+      examples: [
+        {
+          title: "Ask what a tool pack is",
+          input: { question: "What is a tool pack?" },
         },
       ],
     },
@@ -2005,6 +2037,21 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "rows", onLarge: "handle" },
     alwaysAvailable: false,
   },
+  // help (#1050; #367) — answers general questions from shipped content and
+  // never reads the station or org data, so pure. Free, so the cost gate
+  // never charges or denies it.
+  platform_help: {
+    pure: true,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "scan",
+    costHint: "free",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: false,
+  },
   // web_search — external read, no record input
   web_search: {
     pure: false,
@@ -2276,6 +2323,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     RBAC_MANAGEMENT_PACK,
     VIEW_MANAGEMENT_PACK,
     GIS_PACK,
+    HELP_PACK,
   ].map(attachCapabilities)
 );
 

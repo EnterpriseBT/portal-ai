@@ -7,6 +7,12 @@ import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
+import {
+  StationDiagnosticsService,
+  type StationSituation,
+} from "../services/station-diagnostics.service.js";
+import { TierService } from "../services/tier.service.js";
+import { createLogger } from "../utils/logger.util.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
@@ -20,13 +26,41 @@ import { Tool } from "../types/tools.js";
  * including the `c_<…>` wide-column names — capabilities, and
  * connector-entity ids), connector instances, and entity groups.
  *
- * Lives in the `station_context` toolpack — auto-attached to every
- * station regardless of the other packs enabled. The agent should
+ * A system tool, built for every session regardless of the station's packs.
+ * Since #1050 it also always reports the organization and the station's
+ * `status` (the diagnostics `platform_help` uses), so a session without the
+ * Help pack can still explain an empty answer. The agent should
  * call it whenever it needs a `connectorEntityId`,
  * `connectorInstanceId`, `columnDefinitionId`, `fieldMappingId`, or
  * wide-column name to pass to another tool — never invent friendly
  * names, never ask the user.
  */
+
+const logger = createLogger({ module: "station-context-tool" });
+
+/**
+ * #1050: the plan the org's entitlements resolve to — `TierService`'s
+ * (cached) policy, which maps an unknown or blank slug to the default tier —
+ * with its display name from the tier row. Fail-soft: a failed read names the
+ * slug rather than failing the call.
+ */
+async function resolvePlan(
+  org: { tier: string } | undefined
+): Promise<{ slug: string; displayName: string }> {
+  if (!org) return { slug: "(unknown)", displayName: "(unknown)" };
+  let slug = org.tier || "(unknown)";
+  try {
+    slug = (await TierService.resolveTier(org)).tier;
+    const row = await DbService.repository.tiers.findBySlug(slug);
+    return { slug, displayName: row?.displayName ?? slug };
+  } catch (error) {
+    logger.warn(
+      { error, tier: org.tier },
+      "station_context could not read the plan"
+    );
+    return { slug, displayName: slug };
+  }
+}
 
 const InputSchema = z.object({
   entityKeys: z
@@ -50,6 +84,7 @@ const InputSchema = z.object({
     .optional()
     .describe(
       "Which top-level sections to include. Omit to include all. " +
+        "`organization` and `status` are always returned. " +
         "Pass `['entities']` when you only need entity schema and want a smaller response. " +
         "Pass `['columnDefinitions']` to get the organization's column-definition catalog " +
         "(the `columnDefinitionId`s available to `field_mapping_create`)."
@@ -61,6 +96,20 @@ interface StationContextResponse {
     id: string;
     name: string;
     timezone: string;
+  };
+  /** #1050: the organization the session belongs to, and its plan. */
+  organization: { name: string; plan: { slug: string; displayName: string } };
+  /**
+   * #1050: why this station may be returning thin or empty answers, from the
+   * same diagnostics `platform_help` uses. Always present, so a session
+   * without the Help pack can still explain "no records are imported yet".
+   */
+  status: {
+    situation: StationSituation;
+    packsEffective: string[];
+    attachments: { missing: string | null; inaccessible: string | null };
+    hasRecords: boolean;
+    planExcludedPacks: string | null;
   };
   entities?: Array<{
     id: string;
@@ -171,7 +220,10 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "pick a `columnDefinitionId` from `columnDefinitions` and pass it to " +
     "`field_mapping_create`; if no definition fits, say so rather than " +
     "guessing. Pass `entityKeys: ['<key>']` when you only need one entity's " +
-    "schema.";
+    "schema. Always returns `organization` (its name and plan) and `status`: " +
+    "why this station may return thin or empty answers (no packs, views or " +
+    "connectors not attached or not readable by the user, no records yet, " +
+    "packs the plan excludes).";
 
   get schema() {
     return InputSchema;
@@ -194,10 +246,18 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           ]
         );
 
-        // Always include the station header.
-        const station = await DbService.repository.stations.findById(stationId);
-        const org =
-          await DbService.repository.organizations.findById(organizationId);
+        // The station, the org and the diagnostics don't depend on one
+        // another, so they're read together (#1050: this tool runs on most
+        // agent turns).
+        const [station, org, findings] = await Promise.all([
+          DbService.repository.stations.findById(stationId),
+          DbService.repository.organizations.findById(organizationId),
+          StationDiagnosticsService.forStation(
+            stationId,
+            organizationId,
+            userId
+          ),
+        ]);
         const rawTz = org?.timezone ?? "UTC";
         const timezone = isValidIanaTimezone(rawTz) ? rawTz : "UTC";
 
@@ -206,6 +266,20 @@ export class StationContextTool extends Tool<typeof InputSchema> {
             id: stationId,
             name: station?.name ?? "(unknown)",
             timezone,
+          },
+          organization: {
+            name: org?.name ?? "(unknown)",
+            plan: await resolvePlan(org),
+          },
+          status: {
+            situation: StationDiagnosticsService.situation(findings),
+            packsEffective: findings.packsEffective,
+            attachments: {
+              missing: findings.attachmentsMissing,
+              inaccessible: findings.attachmentsNoAccess,
+            },
+            hasRecords: findings.hasRecords,
+            planExcludedPacks: findings.excludedPacks,
           },
         };
 

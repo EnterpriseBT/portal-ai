@@ -7,6 +7,7 @@ import {
 } from "../../registries/tier-catalog";
 import { BuiltinToolpackSlugSchema } from "../../registries/builtin-toolpacks";
 import { TierSchema } from "../../models/tier.model";
+import { ALWAYS_ENTITLED_PACKS } from "../../registries/tool-capabilities";
 
 // ── case 1 — the catalog parses and snapshots today's standard row ────
 
@@ -55,6 +56,7 @@ describe("TIER_CATALOG (#218)", () => {
         "entity_management",
         "rbac_management",
         "view_management",
+        "help",
       ],
       customToolpacks: false,
       // #241: the free default has no card CTA.
@@ -85,6 +87,7 @@ describe("TIER_CATALOG (#218)", () => {
         "entity_management",
         "rbac_management",
         "view_management",
+        "help",
       ],
       customToolpacks: false,
       cta: "subscribe",
@@ -289,6 +292,20 @@ describe("margin-pass invariants (#495)", () => {
       TIER_CATALOG_BY_SLUG.get(slug)!.agentTurnsPerDay!;
     expect(by("standard")).toBeLessThan(by("plus"));
     expect(by("plus")).toBeLessThan(by("pro"));
+  });
+
+  it("every catalog tier lists every always-entitled pack (#1050)", () => {
+    // Runtime entitlement unions ALWAYS_ENTITLED_PACKS in regardless, but the
+    // catalog is what `tier apply` writes and the pricing page reads, so a
+    // tier that leaves Help out fails here rather than reading as excluded.
+    for (const tier of TIER_CATALOG) {
+      for (const slug of ALWAYS_ENTITLED_PACKS) {
+        expect({
+          tier: tier.slug,
+          has: tier.builtinToolpacks.includes(slug),
+        }).toEqual({ tier: tier.slug, has: true });
+      }
+    }
   });
 
   it("the entitlement ladder is monotonic — an upgrade never loses a pack", () => {

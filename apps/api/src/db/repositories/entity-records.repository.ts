@@ -97,6 +97,29 @@ export class EntityRecordsRepository extends Repository<
     );
   }
 
+  /**
+   * #1050: whether any live record exists under these entities. One index
+   * probe (`LIMIT 1`), not a count: callers that only need presence (station
+   * diagnostics, on most agent turns) must not scan millions of records.
+   */
+  async anyByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<boolean> {
+    if (connectorEntityIds.length === 0) return false;
+    const [row] = await (client as typeof db)
+      .select({ id: entityRecords.id })
+      .from(entityRecords)
+      .where(
+        and(
+          inArray(entityRecords.connectorEntityId, connectorEntityIds),
+          isNull(entityRecords.deleted)
+        )
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
   /** Count records for a given connector entity (soft-delete aware). */
   async countByConnectorEntityId(
     connectorEntityId: string,

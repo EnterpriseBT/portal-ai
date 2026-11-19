@@ -8,7 +8,8 @@ import {
  *
  * A station carrying none of these is complete with no views or connectors:
  * the provisioned Administrate station has only the access pack. On such a
- * station the absence of data isn't a gap, so `platform_help` doesn't give it
+ * station the absence of data isn't a gap, so the station diagnostics
+ * (`platform_help`, `station_context`'s `status`, #1050) don't give it
  * as the reason an answer came back empty and the system prompt doesn't tell
  * the agent that data is missing.
  *
@@ -26,6 +27,8 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
   rbac_management: false,
   view_management: false,
   web_search: false,
+  // #1050: answers about the product, not the station's data.
+  help: false,
 };
 
 /**
@@ -40,7 +43,8 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
 export type StationDataSetup = "usable" | "plan-excluded" | "none";
 
 /**
- * One derivation for the system prompt and `platform_help`, so the two can't
+ * One derivation for the system prompt and the station diagnostics
+ * (`platform_help`, `station_context`, #1050), so they can't
  * describe a station differently. `effective` and `unentitled` are built-in
  * slugs; a custom pack counts as working on data (see `usesStationData`),
  * usable when the plan includes custom packs and excluded when it doesn't.

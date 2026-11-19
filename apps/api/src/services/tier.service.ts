@@ -8,11 +8,13 @@
  * tier and never throws — it runs inside the gate prelude on the hot path.
  */
 
+import type { TierPolicy } from "@portalai/core/models";
+import { ALWAYS_ENTITLED_PACKS } from "@portalai/core/registries";
+
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
-import type { TierPolicy } from "@portalai/core/models";
 import type { TierSelect } from "../db/schema/zod.js";
 
 const logger = createLogger({ module: "tier-service" });
@@ -55,10 +57,14 @@ export class TierService {
       perToolCaps: row.perToolCaps ?? null,
       // CHECK-constrained at the DB to the valid set.
       overage: row.overage as TierPolicy["overage"],
-      // #214: toolpack availability — verbatim from the row; the tool
-      // builder intersects the allowlist with the registry at build time.
+      // #214: toolpack availability from the row; the tool builder
+      // intersects the allowlist with the registry at build time. #1050:
+      // plus the always-entitled packs, whatever the stored list says, since
+      // a custom tier freezes its list when it's created.
       entitlements: {
-        builtinToolpacks: row.builtinToolpacks,
+        builtinToolpacks: [
+          ...new Set([...row.builtinToolpacks, ...ALWAYS_ENTITLED_PACKS]),
+        ],
         customToolpacks: row.customToolpacks,
         customRbac: row.customRbac,
         advancedViewFilters: row.advancedViewFilters,
