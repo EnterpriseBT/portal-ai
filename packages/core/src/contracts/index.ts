@@ -88,6 +88,7 @@ export * from "./d3-widget.contract.js";
 export * from "./data-table-widget.contract.js";
 
 export * from "./map-spec.contract.js";
+export * from "./stored-result.contract.js";
 
 /** Pinned-result stored-content contracts — schemas & types (#312) */
 export * from "./pinned-result.contract.js";

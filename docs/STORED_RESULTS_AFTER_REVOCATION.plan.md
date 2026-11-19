@@ -110,7 +110,7 @@ A revoked or detached view makes the caller's own handle answer `404 READ_HANDLE
 ## Slice 4 — recipe-only and not-kept block contracts (core)
 
 **Files**
-- Edit: `packages/core/src/contracts/data-table-widget.contract.ts`, `d3-widget.contract.ts` and `map-spec.contract.ts`. Each adds a stored shape (the base content with `pipeline` required, no rows/samplePeek/handle) and shares `NotKeptContentSchema`. The unions become `[Handle, Inline, Stored, NotKept]`.
+- Edit: `packages/core/src/contracts/data-table-widget.contract.ts`, `d3-widget.contract.ts` and `map-spec.contract.ts`. Each adds a stored shape (the base content with `pipeline` required, no rows/samplePeek/handle) and `NotKeptContentSchema` lands in `contracts/stored-result.contract.ts`. The unions become `[Handle, Inline, Stored]`; not-kept is checked before the union, not as a branch (see the spec).
 - Edit: the contract tests.
 
 **Steps**

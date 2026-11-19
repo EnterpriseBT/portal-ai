@@ -250,6 +250,15 @@ export const GeoHandleContentSchema = GeoBaseContentSchema.extend(
 export type GeoHandleContent = z.infer<typeof GeoHandleContentSchema>;
 
 /**
+ * #1038: a persisted map — its spec and recipe, never its rows. The widget
+ * re-runs the pipeline as its reader (inline, or tiles for a large result).
+ */
+export const GeoStoredContentSchema = GeoBaseContentSchema.extend({
+  pipeline: VizPipelineSchema,
+});
+export type GeoStoredContent = z.infer<typeof GeoStoredContentSchema>;
+
+/**
  * Handle branch first: content carrying a `queryHandle` must resolve to the
  * handle branch (the inline schema would otherwise accept it as an extra key
  * when `rows` is also present — the producer never emits both).
@@ -257,5 +266,8 @@ export type GeoHandleContent = z.infer<typeof GeoHandleContentSchema>;
 export const GeoBlockContentSchema = z.union([
   GeoHandleContentSchema,
   GeoInlineContentSchema,
+  // #1038: the persisted form, after the in-turn ones. A not-kept result
+  // (`NotKeptContentSchema`) isn't a branch: a widget checks for it first.
+  GeoStoredContentSchema,
 ]);
 export type GeoBlockContent = z.infer<typeof GeoBlockContentSchema>;

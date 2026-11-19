@@ -75,6 +75,15 @@ export const D3HandleContentSchema = D3BaseContentSchema.extend(
 export type D3HandleContent = z.infer<typeof D3HandleContentSchema>;
 
 /**
+ * #1038: a persisted chart — its program and recipe, never its rows. The
+ * widget re-runs the pipeline as its reader to draw it.
+ */
+export const D3StoredContentSchema = D3BaseContentSchema.extend({
+  pipeline: VizPipelineSchema,
+});
+export type D3StoredContent = z.infer<typeof D3StoredContentSchema>;
+
+/**
  * Handle branch first: content carrying a `queryHandle` must resolve to
  * the handle branch (the inline schema would otherwise accept it as an
  * extra key when `rows` is also present — #269, the only producer,
@@ -83,5 +92,8 @@ export type D3HandleContent = z.infer<typeof D3HandleContentSchema>;
 export const D3BlockContentSchema = z.union([
   D3HandleContentSchema,
   D3InlineContentSchema,
+  // #1038: the persisted form, after the in-turn ones. A not-kept result
+  // (`NotKeptContentSchema`) isn't a branch: a widget checks for it first.
+  D3StoredContentSchema,
 ]);
 export type D3BlockContent = z.infer<typeof D3BlockContentSchema>;

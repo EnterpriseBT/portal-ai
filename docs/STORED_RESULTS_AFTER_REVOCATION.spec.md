@@ -91,8 +91,8 @@ If the source handle has no `sql` (a staged-rows source), there's no pipeline, a
 
 ### `packages/core/src/contracts/`
 - **Stored base shape.** `data-table-widget.contract.ts`, `d3-widget.contract.ts` and `map-spec.contract.ts` (`GeoBlockContentSchema`) each add a stored shape: the base content with `pipeline` required and none of `rows` / `samplePeek` / `queryHandle`. `columns` stays optional on tables.
-- **Not-kept shape.** A shared `NotKeptContentSchema = z.object({ type, notKept: z.literal(true), columns: z.array(z.string()), rowCount: z.number().int().nonnegative() })`.
-- **Union order.** The block unions become `[Handle, Inline, Stored, NotKept]`: in-turn SSE shapes first, persisted shapes after. Pins' schemas are untouched.
+- **Not-kept shape.** A shared `NotKeptContentSchema = z.object({ type, notKept: z.literal(true), columns: z.array(z.string()), rowCount: z.number().int().nonnegative() })` in `contracts/stored-result.contract.ts`. It is **not** a branch of the block unions (found in slice 4: as a branch it stripped `program`/`spec`/`title` from every widget's parsed type). A widget checks it first and renders the not-kept state instead of parsing the block.
+- **Union order.** The block unions become `[Handle, Inline, Stored]`: in-turn SSE shapes first, the persisted shape after. Pins' schemas are untouched.
 
 ### `apps/web`
 - **`utils/use-widget-refresh.util.ts`:**
