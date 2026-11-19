@@ -24,7 +24,7 @@ This spec pins the contract for turning `platform_help` into a built-in `help` p
   - `ctx` is required;
   - the station, org and diagnostics reads run in parallel.
 - **The seed's unlisted-slug warning and the public site-config** union `ALWAYS_ENTITLED_PACKS`, as `TierService` does. That removes a false warning on every deploy, and makes the pricing page list Help.
-- **The Station Scope routing sentence** falls back to "say so and suggest adding the Help pack" when no readable station has it.
+- **The Station Scope routing sentence** (decided after the smoke walk): without the Help pack, a product question is answered by telling the user to attach the Help tool pack to this station to learn more about the platform. The agent doesn't look up other stations for it.
 - **Deferred to #1044:** Help-only stations' `default` prose assumes data.
 
 ## Scope
@@ -223,7 +223,7 @@ Run per package: `npm run test:unit` (`--testPathPattern` for focused runs) and 
 
 ## Acceptance criteria
 
-- [ ] A portal on a station without the Help pack has no `platform_help` tool and no `## Help` section. A product question there gets an answer that names the Help pack (and a readable station that has it, if any), with no claim that the product can't do it.
+- [ ] A portal on a station without the Help pack has no `platform_help` tool and no `## Help` section. A product question there is answered by telling the user to attach the Help tool pack to this station to learn more about the platform. It doesn't answer from the agent's own knowledge and doesn't look up other stations.
 - [ ] A portal on a station with the Help pack answers product questions from help content with Help links, as today.
 - [ ] Without the Help pack, `station_context` still reports:
   - no packs;

@@ -1361,10 +1361,9 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "Questions about how Portals itself works (what a portal, station, " +
         "connector, entity or tool pack is, or how to do something in the " +
         "product) are the Help pack's, and it isn't on this station: don't " +
-        "answer them from your own knowledge. Say the Help pack answers " +
-        "them and name a station the user can read that has it; if none " +
-        "does, say so and suggest that someone who can edit a station add " +
-        "the Help pack to it."
+        "answer them from your own knowledge, and don't look up other " +
+        "stations for it. Tell the user to attach the Help tool pack to " +
+        "this station to learn more about the platform."
     );
     lines.push("");
   }

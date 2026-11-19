@@ -56,10 +56,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, and
 
 ## §4 — Help only with the pack (slice 4)
 
-- [ ] **Without Help.** On **Playground**, open a portal and ask *"What is a tool pack?"*. The answer:
-  - says the **Help** pack answers questions about how Portals works and isn't on this station;
-  - names a readable station that has it, or, since none does, says so and suggests someone who can edit a station add the Help pack;
-  - does **not** explain tool packs from its own knowledge.
+- [ ] **Without Help.** On **Playground**, open a portal and ask *"What is a tool pack?"*. The answer tells the user to **attach the Help tool pack to this station** to learn more about the platform. It doesn't explain tool packs from its own knowledge, and doesn't look up or list other stations.
 - [ ] **With Help.** Add Help to Playground (§2), open a **new** portal and ask *"What is a tool pack?"*. The answer explains tool packs from the help content and ends with a link into Help (e.g. `/help?tab=faq&category=analytics`). Click the link: the Help page opens on that FAQ category.
 - [ ] **Data questions still go to the data tools on a Help station.** With Help on Playground, ask *"How many contacts do I have?"*. It runs a data query; it doesn't answer with product help.
 - [ ] Remove Help from Playground again (Reset).
