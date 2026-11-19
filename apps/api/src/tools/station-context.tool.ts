@@ -7,12 +7,10 @@ import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
-import type { PermissionContext } from "../services/permission.service.js";
 import {
   StationDiagnosticsService,
   type StationSituation,
 } from "../services/station-diagnostics.service.js";
-import { StationQueryService } from "../services/station-query.service.js";
 import { TierService } from "../services/tier.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
@@ -37,9 +35,6 @@ import { Tool } from "../types/tools.js";
  * wide-column name to pass to another tool — never invent friendly
  * names, never ask the user.
  */
-
-/** #1050: the most stations `include: ["stations"]` lists. */
-const STATIONS_LIMIT = 25;
 
 const logger = createLogger({ module: "station-context-tool" });
 
@@ -84,14 +79,11 @@ const InputSchema = z.object({
         "capabilities",
         "columnDefinitions",
         "toolPacks",
-        "stations",
       ])
     )
     .optional()
     .describe(
-      "Which top-level sections to include. Omit to include all except " +
-        "`stations`, which is returned only when named: pass `['stations']` " +
-        "to list the stations the user can read (to suggest one by name). " +
+      "Which top-level sections to include. Omit to include all. " +
         "`organization` and `status` are always returned. " +
         "Pass `['entities']` when you only need entity schema and want a smaller response. " +
         "Pass `['columnDefinitions']` to get the organization's column-definition catalog " +
@@ -118,16 +110,6 @@ interface StationContextResponse {
     attachments: { missing: string | null; inaccessible: string | null };
     hasRecords: boolean;
     planExcludedPacks: string | null;
-  };
-  /** #1050: stations the user can read; only when `include` names it. */
-  stations?: {
-    items: Array<{
-      id: string;
-      name: string;
-      description: string | null;
-      packs: string[];
-    }>;
-    totalCount: number;
   };
   entities?: Array<{
     id: string;
@@ -241,20 +223,13 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "schema. Always returns `organization` (its name and plan) and `status`: " +
     "why this station may return thin or empty answers (no packs, views or " +
     "connectors not attached or not readable by the user, no records yet, " +
-    "packs the plan excludes). Pass `include: ['stations']` to list the " +
-    "stations the user can read, to name one when suggesting it.";
+    "packs the plan excludes).";
 
   get schema() {
     return InputSchema;
   }
 
-  /** `ctx` is the caller's permission context: `stations` reads through it. */
-  build(
-    stationId: string,
-    organizationId: string,
-    userId: string,
-    ctx: PermissionContext
-  ) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -307,37 +282,6 @@ export class StationContextTool extends Tool<typeof InputSchema> {
             planExcludedPacks: findings.excludedPacks,
           },
         };
-
-        // #1050: opt-in and capped, since it scales with the organization.
-        // Optional, so a failed read drops the section, not the whole call:
-        // the agent still needs the ids and columns below.
-        if (include?.includes("stations")) {
-          try {
-            const { stations, total } = await StationQueryService.listForCaller(
-              ctx,
-              {
-                limit: STATIONS_LIMIT,
-                offset: 0,
-                sortBy: "name",
-                sortOrder: "asc",
-              }
-            );
-            response.stations = {
-              items: stations.map((s) => ({
-                id: s.id,
-                name: s.name,
-                description: s.description ?? null,
-                packs: s.toolpacks.map((p) => p.name),
-              })),
-              totalCount: total,
-            };
-          } catch (error) {
-            logger.warn(
-              { stationId, organizationId, error },
-              "station_context could not list readable stations; omitting them"
-            );
-          }
-        }
 
         // #284: the station's configured packs, split against the plan. Read
         // here rather than threaded in, so the tool tells the truth no matter

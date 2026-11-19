@@ -47,12 +47,6 @@ jest.unstable_mockModule("../../services/tier.service.js", () => ({
   TierService: { resolveTier: mockResolveTier },
 }));
 
-// #1050: the caller's readable stations.
-const mockListForCaller = jest.fn<() => Promise<unknown>>();
-jest.unstable_mockModule("../../services/station-query.service.js", () => ({
-  StationQueryService: { listForCaller: mockListForCaller },
-}));
-
 const mockLoadStation = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../../services/analytics.service.js", () => ({
   AnalyticsService: { loadStation: mockLoadStation },
@@ -203,15 +197,8 @@ const STATION_DATA = {
   ],
 };
 
-const CTX = { userId: USER_ID, organizationId: ORG_ID, roles: ["member"] };
-
 function buildTool() {
-  return new StationContextTool().build(
-    STATION_ID,
-    ORG_ID,
-    USER_ID,
-    CTX as never
-  );
+  return new StationContextTool().build(STATION_ID, ORG_ID, USER_ID);
 }
 
 async function exec(input: Record<string, unknown> = {}) {
@@ -257,7 +244,6 @@ describe("StationContextTool", () => {
       attachmentsNoAccess: "views",
     });
     mockSituation.mockReturnValue("no_records");
-    mockListForCaller.mockResolvedValue({ stations: [], total: 0 });
     mockLoadStation.mockResolvedValue(STATION_DATA);
     // #599: each entity is a granted passthrough view with all columns
     // readable — an admin (canPerformAny → true) sees the full catalog.
@@ -735,7 +721,7 @@ describe("StationContextTool", () => {
   });
 });
 
-describe("StationContextTool — organization, status and stations (#1050)", () => {
+describe("StationContextTool — organization and status (#1050)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindStationById.mockResolvedValue({ id: STATION_ID, name: "Test" });
@@ -772,20 +758,6 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
       tier: "pro",
     });
     mockFindColumnDefs.mockResolvedValue([]);
-    mockListForCaller.mockResolvedValue({
-      stations: [
-        {
-          id: "st-a",
-          name: "Analytics",
-          description: "Sales data",
-          toolpacks: [
-            { ref: "data_query", name: "Data Query" },
-            { ref: "org:otp-1", name: "crm" },
-          ],
-        },
-      ],
-      total: 40,
-    });
   });
 
   it.each([undefined, ["entities"], ["toolPacks"], ["columnDefinitions"]])(
@@ -814,31 +786,10 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
     }
   );
 
-  it("leaves stations out unless they're named, even when include is omitted", async () => {
+  it("doesn't list stations: the agent doesn't steer users between them", async () => {
+    await expect(exec({ include: ["stations"] })).rejects.toThrow();
     const out = await exec({});
-    expect(out.stations).toBeUndefined();
-    expect(mockListForCaller).not.toHaveBeenCalled();
-  });
-
-  it("lists up to 25 readable stations by name, with their packs and the total", async () => {
-    const out = await exec({ include: ["stations"] });
-    expect(mockListForCaller).toHaveBeenCalledWith(CTX, {
-      limit: 25,
-      offset: 0,
-      sortBy: "name",
-      sortOrder: "asc",
-    });
-    expect(out.stations).toEqual({
-      items: [
-        {
-          id: "st-a",
-          name: "Analytics",
-          description: "Sales data",
-          packs: ["Data Query", "crm"],
-        },
-      ],
-      totalCount: 40,
-    });
+    expect(out).not.toHaveProperty("stations");
   });
 
   it("reports the plan the entitlements resolve to, not the raw slug", async () => {
@@ -867,12 +818,5 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
     mockFindTierBySlug.mockRejectedValue(new Error("db blip"));
     const out = await exec({});
     expect(out.organization.plan).toEqual({ slug: "pro", displayName: "pro" });
-  });
-
-  it("still answers, without stations, when the station list can't be read", async () => {
-    mockListForCaller.mockRejectedValue(new Error("db blip"));
-    const out = await exec({ include: ["stations", "toolPacks"] });
-    expect(out.stations).toBeUndefined();
-    expect(out.toolPacks).toBeDefined();
   });
 });

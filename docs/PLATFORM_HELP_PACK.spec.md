@@ -15,6 +15,12 @@ This spec pins the contract for turning `platform_help` into a built-in `help` p
 5. **`## Help` becomes `PACK_PROMPT_SECTIONS.help`**, so the #284 guard proves it renders iff the pack is effective. `PACK_ELSEWHERE.help` names it.
 6. **Nothing existing changes:** no migration attaches the pack, and the station pickers are unchanged beyond the icon.
 
+## Amendment — smoke walk (supersedes the `stations` items below)
+
+- **No readable-stations list.** `include: ["stations"]` and the response's `stations` are removed, along with `station_context`'s `ctx` parameter. The provisioned stations are only a starting point, so the agent doesn't steer users between stations.
+- **Station Scope wording.** When a request needs a tool pack or data this station lacks, Station Scope says what is missing (the pack, or the views or connectors it needs) and that someone who can edit this station can add it. The "packs elsewhere" list says the same. Neither says "open another station".
+- **Product questions.** Without the Help pack, a product question is answered by telling the user to attach the Help tool pack to this station.
+
 ## Amendment — code review
 
 - **`status.hasRecords`** comes from `entityRecords.anyByConnectorEntityIds` (a `LIMIT 1` existence probe), not a count, since `station_context` runs on most turns. `StationFindings.recordCount` became `hasRecords`.

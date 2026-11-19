@@ -1336,9 +1336,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   lines.push(
     "This station is set up for one kind of work: the tool packs and data " +
       "described above. When a request needs a tool pack or data that isn't " +
-      "on this station, say what is missing and suggest the user open a " +
-      "station set up for that work, or have someone who can edit this " +
-      "station add it. Don't present it as something the product can't do. " +
+      "on this station, say what is missing (the tool pack, or the " +
+      "views or connectors it needs) and that someone who can edit " +
+      "this station can add it. Don't present it as something the product " +
+      "can't do. " +
       // #676 and #284 already say what to do in these two cases; without
       // this the section's "have someone add it" would override them.
       "Two cases have their own guidance above, which takes precedence: " +
@@ -1348,9 +1349,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       // #1050: the diagnostics platform_help used to give every session.
       "If a query comes back empty, or something the user expects isn't " +
       "here, read `station_context`'s `status` before answering and explain " +
-      "what it reports. When you suggest opening another station, name one " +
-      "the user can read: call `station_context` with " +
-      '`include: ["stations"]`.'
+      "what it reports."
   );
   lines.push("");
   // #1050: with `## Help` gone from this session, nothing else says product
@@ -1391,10 +1390,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "When a request needs a tool you don't hold and one of these packs " +
         "provides it, don't attempt the work here or stretch another tool " +
         "to cover it: name the pack, say this station doesn't have it, and " +
-        "suggest opening a station that has " +
-        // No station may carry the pack yet; it is in the plan, so adding
-        // it here works.
-        "it, or having someone who can edit this station add the pack. " +
+        // #1050: not "open another station": the agent doesn't steer users
+        // between stations, and the pack is in the plan, so adding it here
+        // works.
+        "say that someone who can edit this station can add the pack. " +
         // #284: scoped to what no held tool can do, so it can't outweigh the
         // precedence rule above.
         "Don't offer work that none of your tools can do. " +

@@ -599,12 +599,10 @@ export class ToolService {
       tools.current_time = new CurrentTimeTool().build(organizationId);
     }
     if (SYSTEM_TOOL_CAPABILITIES.station_context?.alwaysAvailable) {
-      // #1050: the caller's context, for the readable-stations section.
       tools.station_context = new StationContextTool().build(
         stationId,
         organizationId,
-        userId,
-        permissionContext
+        userId
       );
     }
 

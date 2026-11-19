@@ -864,18 +864,17 @@ describe("buildSystemPrompt — response style", () => {
     const SCOPE =
       "This station is set up for one kind of work: the tool packs and data " +
       "described above. When a request needs a tool pack or data that isn't " +
-      "on this station, say what is missing and suggest the user open a " +
-      "station set up for that work, or have someone who can edit this " +
-      "station add it. Don't present it as something the product can't do. " +
+      "on this station, say what is missing (the tool pack, or the " +
+      "views or connectors it needs) and that someone who can edit " +
+      "this station can add it. Don't present it as something the product " +
+      "can't do. " +
       "Two cases have their own guidance above, which takes precedence: " +
       "data that is attached but not shared with the user (they ask for " +
       "access; nothing needs attaching), and a tool pack the plan doesn't " +
       "include (a plan limit; it can't be added to a station). " +
       "If a query comes back empty, or something the user expects isn't " +
       "here, read `station_context`'s `status` before answering and explain " +
-      "what it reports. When you suggest opening another station, name one " +
-      "the user can read: call `station_context` with " +
-      '`include: ["stations"]`.';
+      "what it reports.";
 
     const compositions: StationContext["effectiveToolPacks"][] = [
       [],
@@ -1034,17 +1033,18 @@ describe("buildSystemPrompt — response style", () => {
         );
       });
 
-      // No station may carry the pack yet, and these packs are in the plan,
-      // so adding one to this station works.
-      it("offers adding the pack to this station as well as another station", () => {
+      // #1050: the agent doesn't steer users between stations (the
+      // provisioned ones are only a starting point); these packs are in the
+      // plan, so adding one to this station works.
+      it("offers adding the pack to this station, not another station", () => {
         const section = scopeOf({
           effectiveToolPacks: ["rbac_management"],
           otherPlanToolPacks: ["data_query"],
         });
         expect(section).toContain(
-          "suggest opening a station that has it, or having someone who " +
-            "can edit this station add the pack"
+          "say that someone who can edit this station can add the pack"
         );
+        expect(section).not.toMatch(/open(ing)? a station|another station/);
       });
 
       it("renders no list when the plan has nothing else", () => {

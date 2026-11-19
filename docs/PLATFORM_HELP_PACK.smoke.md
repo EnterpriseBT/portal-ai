@@ -50,8 +50,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, and
 ## §3 — `station_context` always reports the organization, plan and status (slice 3)
 
 - [ ] In a portal on **Playground**, ask *"What organization and plan am I on?"*. The answer names **My Organization** and the **Standard** plan.
-- [ ] In the same portal, ask *"Which stations can I open here?"*. The answer names qa's readable stations, **Administrate** and **Playground**, and no station from another org.
-- [ ] Open **Administrate** (no data packs, no views) in a portal and ask *"Why can't I see any data here?"*. The answer says this station is for access work and has no data packs or views, and points at a station set up for data (Playground). It doesn't say the product can't do it.
+- [ ] Open **Administrate** (no data packs, no views) in a portal and ask *"Why can't I see any data here?"*. The answer says this station has no views or connectors (and no data pack), and that someone who can edit this station can add them. It doesn't offer to list or name other stations, and doesn't say the product can't do it.
 - [ ] **No records yet:** a station with an entity attached but no records imported, asked *"Show me my records"*, says nothing has been imported yet. — manual: needs an entity with zero records attached to a station. Create one with a connector whose import you cancel, or skip with a note.
 
 ## §4 — Help only with the pack (slice 4)
