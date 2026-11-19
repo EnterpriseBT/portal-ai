@@ -133,8 +133,10 @@ async function parseToolpackRefs(
         )
         .map((pack) => [pack.id, pack.name])
     );
+    // `!== undefined`, not truthiness: `org:` parses to the id "", which is
+    // missing too and used to reach the insert as a 500.
     const missing = customIds.find((id) => !nameById.has(id));
-    if (missing) return { ok: false, value: `org:${missing}` };
+    if (missing !== undefined) return { ok: false, value: `org:${missing}` };
     for (const id of customIds) customNames.push(nameById.get(id)!);
   }
   return { ok: true, builtinSlugs, customIds, customNames };
@@ -196,8 +198,12 @@ interface DeniedPack {
 function toolpacksNotEntitled(
   organizationId: string,
   tier: string,
-  denied: DeniedPack[]
+  requested: DeniedPack[]
 ): ApiError {
+  // A body can repeat a ref (`add: [x, x]`); name each pack once.
+  const denied = [
+    ...new Map(requested.map((pack) => [pack.ref, pack])).values(),
+  ];
   // Refs, not names: a custom pack's name is user-written and needn't be
   // unique, so the log keeps the id an operator can trace.
   logger.warn(

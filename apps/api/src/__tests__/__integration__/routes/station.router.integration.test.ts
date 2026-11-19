@@ -943,6 +943,43 @@ describe("Station Router", () => {
       expect(await liveRefs(station.id)).toEqual(["data_query"]);
     });
 
+    it("#1063: a refusal names a repeated ref once", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: [`org:${packId}`, `org:${packId}`] } })
+        .expect(403);
+
+      expect(res.body.message).toBe(
+        "Tool pack not included in your plan: Acme CRM"
+      );
+      expect(await liveRefs(station.id)).toEqual(["data_query"]);
+    });
+
+    it("400s POST with an empty custom ref, `org:`, and persists nothing", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Empty ref", toolPacks: ["org:"] })
+        .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_TOOLPACK);
+      expect(res.body.message).toBe('Unknown toolpack: "org:"');
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+      expect(rows.filter((r) => r.deleted === null)).toHaveLength(0);
+    });
+
     it("#1063: re-adding an attached custom pack the plan excludes is a no-op, and removing it works", async () => {
       const { organizationId } = await seedRestrictedOrg();
       const packId = await insertCustomPack(organizationId, "Acme CRM");
