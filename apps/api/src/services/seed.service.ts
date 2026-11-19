@@ -20,6 +20,7 @@ import {
   type PermissionCondition,
 } from "@portalai/core/models";
 import {
+  ALWAYS_ENTITLED_PACKS,
   BuiltinToolpackSlugSchema,
   TIER_CATALOG_BY_SLUG,
 } from "@portalai/core/registries";
@@ -424,7 +425,11 @@ export class SeedService {
    */
   static async findUnlistedRegistrySlugs(db: DbClient): Promise<string[]> {
     const rows = await DbService.repository.tiers.findMany(undefined, {}, db);
-    const listed = new Set(rows.flatMap((r) => r.builtinToolpacks));
+    // #1050: the always-entitled packs reach every org whatever the rows say.
+    const listed = new Set([
+      ...rows.flatMap((r) => r.builtinToolpacks),
+      ...ALWAYS_ENTITLED_PACKS,
+    ]);
     return BuiltinToolpackSlugSchema.options.filter((s) => !listed.has(s));
   }
 

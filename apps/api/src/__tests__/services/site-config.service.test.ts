@@ -99,7 +99,8 @@ it("assembles { tiers, generatedAt } from public rows", async () => {
     cta: "subscribe",
     displayOrder: 3,
     credits: { metered: null, expensive: 1_000_000 },
-    builtinToolpacks: ["data_query", "web_search"],
+    // #1050: the pricing page lists what every plan is entitled to.
+    builtinToolpacks: ["data_query", "web_search", "help"],
     customToolpacks: true,
     customRbac: true,
     advancedViewFilters: true,

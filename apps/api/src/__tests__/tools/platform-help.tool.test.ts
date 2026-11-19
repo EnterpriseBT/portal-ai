@@ -9,9 +9,9 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
  * *answer*, not a bag of findings for someone else to phrase.
  */
 
-const mockCountByConnectorEntityIds = jest
-  .fn<() => Promise<number>>()
-  .mockResolvedValue(42);
+const mockAnyRecords = jest
+  .fn<() => Promise<boolean>>()
+  .mockResolvedValue(true);
 const mockLoadStation = jest.fn<() => Promise<unknown>>().mockResolvedValue({
   entities: [
     {
@@ -53,7 +53,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: {
-        countByConnectorEntityIds: mockCountByConnectorEntityIds,
+        anyByConnectorEntityIds: mockAnyRecords,
       },
     },
   },
@@ -117,7 +117,7 @@ const healthy = () => {
     ],
   });
   mockResolveStationPackSplit.mockResolvedValue(stationPacks());
-  mockCountByConnectorEntityIds.mockResolvedValue(42);
+  mockAnyRecords.mockResolvedValue(true);
   mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
 };
 
@@ -160,7 +160,7 @@ describe("PlatformHelpTool — orientation", () => {
 
 describe("PlatformHelpTool — station situations", () => {
   it("names the no-records condition when entities exist but nothing is imported", async () => {
-    mockCountByConnectorEntityIds.mockResolvedValue(0);
+    mockAnyRecords.mockResolvedValue(false);
 
     const { answer } = await exec("why are my answers empty");
 
@@ -208,7 +208,7 @@ describe("PlatformHelpTool — station situations", () => {
 
   it("#674: missing outranks no-access, and both outrank no-records", async () => {
     mockCountsForCaller.mockResolvedValue(counts([0, 0], [1, 0]));
-    mockCountByConnectorEntityIds.mockResolvedValue(0);
+    mockAnyRecords.mockResolvedValue(false);
     const { answer } = await exec();
     expect(answer).toMatch(/^No views are attached/);
   });
@@ -342,7 +342,7 @@ describe("PlatformHelpTool — station situations", () => {
     // it. It now follows whichever answer leads.
     it("adds the plan limit after another situation's answer", async () => {
       healthy();
-      mockCountByConnectorEntityIds.mockResolvedValue(0);
+      mockAnyRecords.mockResolvedValue(false);
       mockResolveStationPackSplit.mockResolvedValue(
         stationPacks({ unentitled: ["gis"] })
       );
@@ -488,8 +488,8 @@ describe("PlatformHelpTool — resilience and boundaries", () => {
   it("counts records with one aggregate instead of reading rows", async () => {
     await exec("why are my answers empty");
 
-    expect(mockCountByConnectorEntityIds).toHaveBeenCalledTimes(1);
-    expect(mockCountByConnectorEntityIds).toHaveBeenCalledWith(["ce-1"]);
+    expect(mockAnyRecords).toHaveBeenCalledTimes(1);
+    expect(mockAnyRecords).toHaveBeenCalledWith(["ce-1"]);
   });
 
   it("scopes the station read to the calling organization", async () => {

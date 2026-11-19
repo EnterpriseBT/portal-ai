@@ -13,6 +13,8 @@ import {
   type StationSituation,
 } from "../services/station-diagnostics.service.js";
 import { StationQueryService } from "../services/station-query.service.js";
+import { TierService } from "../services/tier.service.js";
+import { createLogger } from "../utils/logger.util.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
@@ -38,6 +40,32 @@ import { Tool } from "../types/tools.js";
 
 /** #1050: the most stations `include: ["stations"]` lists. */
 const STATIONS_LIMIT = 25;
+
+const logger = createLogger({ module: "station-context-tool" });
+
+/**
+ * #1050: the plan the org's entitlements resolve to — `TierService`'s
+ * (cached) policy, which maps an unknown or blank slug to the default tier —
+ * with its display name from the tier row. Fail-soft: a failed read names the
+ * slug rather than failing the call.
+ */
+async function resolvePlan(
+  org: { tier: string } | undefined
+): Promise<{ slug: string; displayName: string }> {
+  if (!org) return { slug: "(unknown)", displayName: "(unknown)" };
+  let slug = org.tier || "(unknown)";
+  try {
+    slug = (await TierService.resolveTier(org)).tier;
+    const row = await DbService.repository.tiers.findBySlug(slug);
+    return { slug, displayName: row?.displayName ?? slug };
+  } catch (error) {
+    logger.warn(
+      { error, tier: org.tier },
+      "station_context could not read the plan"
+    );
+    return { slug, displayName: slug };
+  }
+}
 
 const InputSchema = z.object({
   entityKeys: z
@@ -220,16 +248,12 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  /**
-   * `ctx` is the caller's permission context, which `stations` needs for the
-   * visibility predicate. Every session passes it; without it `stations` is
-   * left out rather than guessed.
-   */
+  /** `ctx` is the caller's permission context: `stations` reads through it. */
   build(
     stationId: string,
     organizationId: string,
     userId: string,
-    ctx?: PermissionContext
+    ctx: PermissionContext
   ) {
     return tool({
       description: this.description,
@@ -247,22 +271,20 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           ]
         );
 
-        // Always include the station header.
-        const station = await DbService.repository.stations.findById(stationId);
-        const org =
-          await DbService.repository.organizations.findById(organizationId);
+        // The station, the org and the diagnostics don't depend on one
+        // another, so they're read together (#1050: this tool runs on most
+        // agent turns).
+        const [station, org, findings] = await Promise.all([
+          DbService.repository.stations.findById(stationId),
+          DbService.repository.organizations.findById(organizationId),
+          StationDiagnosticsService.forStation(
+            stationId,
+            organizationId,
+            userId
+          ),
+        ]);
         const rawTz = org?.timezone ?? "UTC";
         const timezone = isValidIanaTimezone(rawTz) ? rawTz : "UTC";
-
-        // #1050: the plan's display name lives on the tier row.
-        const tierRow = org?.tier
-          ? await DbService.repository.tiers.findBySlug(org.tier)
-          : undefined;
-        const findings = await StationDiagnosticsService.forStation(
-          stationId,
-          organizationId,
-          userId
-        );
 
         const response: StationContextResponse = {
           station: {
@@ -272,10 +294,7 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           },
           organization: {
             name: org?.name ?? "(unknown)",
-            plan: {
-              slug: org?.tier ?? "(unknown)",
-              displayName: tierRow?.displayName ?? org?.tier ?? "(unknown)",
-            },
+            plan: await resolvePlan(org),
           },
           status: {
             situation: StationDiagnosticsService.situation(findings),
@@ -284,31 +303,40 @@ export class StationContextTool extends Tool<typeof InputSchema> {
               missing: findings.attachmentsMissing,
               inaccessible: findings.attachmentsNoAccess,
             },
-            hasRecords: findings.recordCount > 0,
+            hasRecords: findings.hasRecords,
             planExcludedPacks: findings.excludedPacks,
           },
         };
 
         // #1050: opt-in and capped, since it scales with the organization.
-        if (include?.includes("stations") && ctx) {
-          const { stations, total } = await StationQueryService.listForCaller(
-            ctx,
-            {
-              limit: STATIONS_LIMIT,
-              offset: 0,
-              sortBy: "name",
-              sortOrder: "asc",
-            }
-          );
-          response.stations = {
-            items: stations.map((s) => ({
-              id: s.id,
-              name: s.name,
-              description: s.description ?? null,
-              packs: s.toolpacks.map((p) => p.name),
-            })),
-            totalCount: total,
-          };
+        // Optional, so a failed read drops the section, not the whole call:
+        // the agent still needs the ids and columns below.
+        if (include?.includes("stations")) {
+          try {
+            const { stations, total } = await StationQueryService.listForCaller(
+              ctx,
+              {
+                limit: STATIONS_LIMIT,
+                offset: 0,
+                sortBy: "name",
+                sortOrder: "asc",
+              }
+            );
+            response.stations = {
+              items: stations.map((s) => ({
+                id: s.id,
+                name: s.name,
+                description: s.description ?? null,
+                packs: s.toolpacks.map((p) => p.name),
+              })),
+              totalCount: total,
+            };
+          } catch (error) {
+            logger.warn(
+              { stationId, organizationId, error },
+              "station_context could not list readable stations; omitting them"
+            );
+          }
         }
 
         // #284: the station's configured packs, split against the plan. Read

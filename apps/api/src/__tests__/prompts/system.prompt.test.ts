@@ -929,7 +929,9 @@ describe("buildSystemPrompt — response style", () => {
           "connector, entity or tool pack is, or how to do something in the " +
           "product) are the Help pack's, and it isn't on this station: don't " +
           "answer them from your own knowledge. Say the Help pack answers " +
-          "them and name a station the user can read that has it.";
+          "them and name a station the user can read that has it; if none " +
+          "does, say so and suggest that someone who can edit a station add " +
+          "the Help pack to it.";
         for (const effectiveToolPacks of [[], ["data_query"]] as const) {
           const section = scopeOf({
             effectiveToolPacks: [...effectiveToolPacks],

@@ -157,8 +157,10 @@ describe("Tier entitlements schema integration (#214 slice 1)", () => {
     const unlisted = await SeedService.findUnlistedRegistrySlugs(
       db as unknown as DbClient
     );
+    // #1050: the always-entitled packs are never "unlisted" — every tier
+    // carries them at runtime whatever its stored row says.
     expect(unlisted.sort()).toEqual(
-      ALL_SLUGS.filter((s) => s !== "web_search").sort()
+      ALL_SLUGS.filter((s) => s !== "web_search" && s !== "help").sort()
     );
 
     // seedTiers itself must not throw in that state (it warns).

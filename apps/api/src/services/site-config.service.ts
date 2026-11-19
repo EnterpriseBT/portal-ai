@@ -22,6 +22,7 @@
 
 import type { PublicSiteConfigResponse } from "@portalai/core/contracts";
 import { TierCtaSchema } from "@portalai/core/models";
+import { ALWAYS_ENTITLED_PACKS } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
@@ -87,7 +88,11 @@ export class SiteConfigService {
             metered: row.meteredUnitsPerPeriod,
             expensive: row.expensiveUnitsPerPeriod,
           },
-          builtinToolpacks: row.builtinToolpacks,
+          // #1050: as TierService resolves it, so the pricing page lists the
+          // always-entitled packs whatever the stored row says.
+          builtinToolpacks: [
+            ...new Set([...row.builtinToolpacks, ...ALWAYS_ENTITLED_PACKS]),
+          ],
           customToolpacks: row.customToolpacks,
           customRbac: row.customRbac,
           advancedViewFilters: row.advancedViewFilters,

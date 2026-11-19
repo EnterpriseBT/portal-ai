@@ -7,9 +7,9 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
  * new name for "the read failed", which the help tool renders as before.
  */
 
-const mockCountByConnectorEntityIds = jest
-  .fn<() => Promise<number>>()
-  .mockResolvedValue(42);
+const mockAnyRecords = jest
+  .fn<() => Promise<boolean>>()
+  .mockResolvedValue(true);
 const mockLoadStation = jest.fn<() => Promise<unknown>>();
 const mockResolveStationPackSplit = jest.fn<() => Promise<unknown>>();
 const mockCountsForCaller = jest.fn<() => Promise<unknown>>();
@@ -18,7 +18,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: {
-        countByConnectorEntityIds: mockCountByConnectorEntityIds,
+        anyByConnectorEntityIds: mockAnyRecords,
       },
     },
   },
@@ -66,7 +66,7 @@ const base: Findings = {
   dataSetup: "usable",
   excludedPacks: null,
   entityCount: 1,
-  recordCount: 5,
+  hasRecords: true,
   attachmentsMissing: null,
   attachmentsNoAccess: null,
 };
@@ -90,7 +90,7 @@ describe("StationDiagnosticsService.situation", () => {
       { attachmentsNoAccess: "views" },
       "attachments_inaccessible",
     ],
-    ["entities but no records", { recordCount: 0 }, "no_records"],
+    ["entities but no records", { hasRecords: false }, "no_records"],
     ["some pack excluded", { excludedPacks: "gis" }, "unentitled_packs"],
     ["everything works", {}, "default"],
   ])("%s → %s", (_label, over, expected) => {
@@ -105,7 +105,7 @@ describe("StationDiagnosticsService.situation", () => {
         ...base,
         hasPacks: false,
         attachmentsMissing: "views",
-        recordCount: 0,
+        hasRecords: false,
         excludedPacks: "gis",
       })
     ).toBe("no_packs");
@@ -127,7 +127,7 @@ describe("StationDiagnosticsService.forStation", () => {
     mockResolveStationPackSplit.mockResolvedValue(split());
     mockLoadStation.mockResolvedValue({ entities: [{ id: "ce-1" }] });
     mockCountsForCaller.mockResolvedValue(counts([1, 1], [1, 1]));
-    mockCountByConnectorEntityIds.mockResolvedValue(42);
+    mockAnyRecords.mockResolvedValue(true);
   });
 
   it("reads the station's packs, entities, records and attachments", async () => {
@@ -143,7 +143,7 @@ describe("StationDiagnosticsService.forStation", () => {
       dataSetup: "usable",
       excludedPacks: null,
       entityCount: 1,
-      recordCount: 42,
+      hasRecords: true,
       attachmentsMissing: null,
       attachmentsNoAccess: null,
     });
@@ -162,13 +162,13 @@ describe("StationDiagnosticsService.forStation", () => {
 
   it("doesn't count records when the station has no entities", async () => {
     mockLoadStation.mockResolvedValue({ entities: [] });
-    mockCountByConnectorEntityIds.mockClear();
+    mockAnyRecords.mockClear();
     const f = await StationDiagnosticsService.forStation(
       "st-1",
       "org-1",
       "u-1"
     );
-    expect(f.recordCount).toBe(0);
-    expect(mockCountByConnectorEntityIds).not.toHaveBeenCalled();
+    expect(f.hasRecords).toBe(false);
+    expect(mockAnyRecords).not.toHaveBeenCalled();
   });
 });

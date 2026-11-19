@@ -38,6 +38,15 @@ jest.unstable_mockModule(
   })
 );
 
+// #1050: the plan comes from the resolved (cached) tier policy, the same
+// one that decides the session's entitlements.
+const mockResolveTier = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ tier: "standard" });
+jest.unstable_mockModule("../../services/tier.service.js", () => ({
+  TierService: { resolveTier: mockResolveTier },
+}));
+
 // #1050: the caller's readable stations.
 const mockListForCaller = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../../services/station-query.service.js", () => ({
@@ -196,17 +205,17 @@ const STATION_DATA = {
 
 const CTX = { userId: USER_ID, organizationId: ORG_ID, roles: ["member"] };
 
-function buildTool(withCtx = true) {
+function buildTool() {
   return new StationContextTool().build(
     STATION_ID,
     ORG_ID,
     USER_ID,
-    withCtx ? (CTX as never) : undefined
+    CTX as never
   );
 }
 
-async function exec(input: Record<string, unknown> = {}, withCtx = true) {
-  const t = buildTool(withCtx);
+async function exec(input: Record<string, unknown> = {}) {
+  const t = buildTool();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return await (t as any).execute(input, {
     toolCallId: "t",
@@ -243,7 +252,7 @@ describe("StationContextTool", () => {
       packsEffective: ["data_query"],
       excludedPacks: "gis",
       entityCount: 2,
-      recordCount: 0,
+      hasRecords: false,
       attachmentsMissing: null,
       attachmentsNoAccess: "views",
     });
@@ -737,6 +746,7 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
       timezone: "UTC",
     });
     mockFindTierBySlug.mockResolvedValue({ slug: "pro", displayName: "Pro" });
+    mockResolveTier.mockResolvedValue({ tier: "pro" });
     mockForStation.mockResolvedValue({
       available: true,
       hasPacks: true,
@@ -744,7 +754,7 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
       packsEffective: ["data_query", "help"],
       excludedPacks: "gis",
       entityCount: 2,
-      recordCount: 0,
+      hasRecords: false,
       attachmentsMissing: "connectors",
       attachmentsNoAccess: null,
     });
@@ -831,9 +841,38 @@ describe("StationContextTool — organization, status and stations (#1050)", () 
     });
   });
 
-  it("omits stations when the session passed no permission context", async () => {
-    const out = await exec({ include: ["stations"] }, false);
+  it("reports the plan the entitlements resolve to, not the raw slug", async () => {
+    // An org on an unknown or blank slug falls back to the default tier for
+    // its entitlements; the plan named to the agent must be that one too.
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "",
+      timezone: "UTC",
+    });
+    mockResolveTier.mockResolvedValue({ tier: "standard" });
+    mockFindTierBySlug.mockResolvedValue({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    const out = await exec({});
+    expect(out.organization.plan).toEqual({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    expect(mockFindTierBySlug).toHaveBeenCalledWith("standard");
+  });
+
+  it("still answers when the plan's display name can't be read", async () => {
+    mockFindTierBySlug.mockRejectedValue(new Error("db blip"));
+    const out = await exec({});
+    expect(out.organization.plan).toEqual({ slug: "pro", displayName: "pro" });
+  });
+
+  it("still answers, without stations, when the station list can't be read", async () => {
+    mockListForCaller.mockRejectedValue(new Error("db blip"));
+    const out = await exec({ include: ["stations", "toolPacks"] });
     expect(out.stations).toBeUndefined();
-    expect(mockListForCaller).not.toHaveBeenCalled();
+    expect(out.toolPacks).toBeDefined();
   });
 });

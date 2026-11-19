@@ -8,12 +8,13 @@
  * tier and never throws — it runs inside the gate prelude on the hot path.
  */
 
+import type { TierPolicy } from "@portalai/core/models";
+import { ALWAYS_ENTITLED_PACKS } from "@portalai/core/registries";
+
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
-import type { TierPolicy } from "@portalai/core/models";
-import { ALWAYS_ENTITLED_PACKS } from "@portalai/core/registries";
 import type { TierSelect } from "../db/schema/zod.js";
 
 const logger = createLogger({ module: "tier-service" });

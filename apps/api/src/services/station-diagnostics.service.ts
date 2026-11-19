@@ -36,7 +36,8 @@ export interface StationFindings {
    */
   excludedPacks: string | null;
   entityCount: number;
-  recordCount: number;
+  /** #1050: whether any live record exists (presence, not a count). */
+  hasRecords: boolean;
   /** #674: the station-level gap (null when both kinds are attached). */
   attachmentsMissing: string | null;
   /** #674: the caller-level gap (null when they can read something of each attached kind). */
@@ -102,12 +103,13 @@ export class StationDiagnosticsService {
       );
       const entityIds = stationData.entities.map((e: { id: string }) => e.id);
 
-      // One bounded aggregate — never a row scan. A station's entities can be
-      // arbitrarily large, and all this answer needs is presence.
-      const recordCount =
+      // #1050: presence only — one index probe, never a count. This runs on
+      // most agent turns now (station_context), and a station's entities can
+      // hold millions of records.
+      const hasRecords =
         entityIds.length > 0
-          ? await repo.entityRecords.countByConnectorEntityIds(entityIds)
-          : 0;
+          ? await repo.entityRecords.anyByConnectorEntityIds(entityIds)
+          : false;
 
       const gaps = describeStationAttachmentGaps(
         await StationAttachmentService.countsForCaller(
@@ -124,7 +126,7 @@ export class StationDiagnosticsService {
         dataSetup,
         excludedPacks: describeExcludedPacks(unentitled, excludedCustomPacks),
         entityCount: entityIds.length,
-        recordCount,
+        hasRecords,
         attachmentsMissing: gaps.missing,
         attachmentsNoAccess: gaps.noAccess,
       };
@@ -140,7 +142,7 @@ export class StationDiagnosticsService {
         dataSetup: "usable",
         excludedPacks: null,
         entityCount: 0,
-        recordCount: 0,
+        hasRecords: false,
         attachmentsMissing: null,
         attachmentsNoAccess: null,
       };
@@ -161,7 +163,7 @@ export class StationDiagnosticsService {
     }
     if (findings.attachmentsNoAccess) return "attachments_inaccessible";
     // "Entities set up, nothing imported" needs entities to be true.
-    if (findings.entityCount > 0 && findings.recordCount === 0) {
+    if (findings.entityCount > 0 && !findings.hasRecords) {
       return "no_records";
     }
     if (findings.excludedPacks) return "unentitled_packs";

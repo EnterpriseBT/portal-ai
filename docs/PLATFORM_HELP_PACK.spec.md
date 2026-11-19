@@ -15,6 +15,18 @@ This spec pins the contract for turning `platform_help` into a built-in `help` p
 5. **`## Help` becomes `PACK_PROMPT_SECTIONS.help`**, so the #284 guard proves it renders iff the pack is effective. `PACK_ELSEWHERE.help` names it.
 6. **Nothing existing changes:** no migration attaches the pack, and the station pickers are unchanged beyond the icon.
 
+## Amendment — code review
+
+- **`status.hasRecords`** comes from `entityRecords.anyByConnectorEntityIds` (a `LIMIT 1` existence probe), not a count, since `station_context` runs on most turns. `StationFindings.recordCount` became `hasRecords`.
+- **`organization.plan`** is the plan the entitlements resolve to (`TierService.resolveTier`, cached), with the display name from the tier row. That's fail-soft: a failed read names the slug.
+- **Other `station_context` changes:**
+  - `stations` is fail-soft: a failed read drops the section, not the call;
+  - `ctx` is required;
+  - the station, org and diagnostics reads run in parallel.
+- **The seed's unlisted-slug warning and the public site-config** union `ALWAYS_ENTITLED_PACKS`, as `TierService` does. That removes a false warning on every deploy, and makes the pricing page list Help.
+- **The Station Scope routing sentence** falls back to "say so and suggest adding the Help pack" when no readable station has it.
+- **Deferred to #1044:** Help-only stations' `default` prose assumes data.
+
 ## Scope
 
 ### In scope
