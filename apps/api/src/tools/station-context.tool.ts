@@ -7,6 +7,12 @@ import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
+import type { PermissionContext } from "../services/permission.service.js";
+import {
+  StationDiagnosticsService,
+  type StationSituation,
+} from "../services/station-diagnostics.service.js";
+import { StationQueryService } from "../services/station-query.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
@@ -20,13 +26,18 @@ import { Tool } from "../types/tools.js";
  * including the `c_<…>` wide-column names — capabilities, and
  * connector-entity ids), connector instances, and entity groups.
  *
- * Lives in the `station_context` toolpack — auto-attached to every
- * station regardless of the other packs enabled. The agent should
+ * A system tool, built for every session regardless of the station's packs.
+ * Since #1050 it also always reports the organization and the station's
+ * `status` (the diagnostics `platform_help` uses), so a session without the
+ * Help pack can still explain an empty answer. The agent should
  * call it whenever it needs a `connectorEntityId`,
  * `connectorInstanceId`, `columnDefinitionId`, `fieldMappingId`, or
  * wide-column name to pass to another tool — never invent friendly
  * names, never ask the user.
  */
+
+/** #1050: the most stations `include: ["stations"]` lists. */
+const STATIONS_LIMIT = 25;
 
 const InputSchema = z.object({
   entityKeys: z
@@ -45,11 +56,15 @@ const InputSchema = z.object({
         "capabilities",
         "columnDefinitions",
         "toolPacks",
+        "stations",
       ])
     )
     .optional()
     .describe(
-      "Which top-level sections to include. Omit to include all. " +
+      "Which top-level sections to include. Omit to include all except " +
+        "`stations`, which is returned only when named: pass `['stations']` " +
+        "to list the stations the user can read (to suggest one by name). " +
+        "`organization` and `status` are always returned. " +
         "Pass `['entities']` when you only need entity schema and want a smaller response. " +
         "Pass `['columnDefinitions']` to get the organization's column-definition catalog " +
         "(the `columnDefinitionId`s available to `field_mapping_create`)."
@@ -61,6 +76,30 @@ interface StationContextResponse {
     id: string;
     name: string;
     timezone: string;
+  };
+  /** #1050: the organization the session belongs to, and its plan. */
+  organization: { name: string; plan: { slug: string; displayName: string } };
+  /**
+   * #1050: why this station may be returning thin or empty answers, from the
+   * same diagnostics `platform_help` uses. Always present, so a session
+   * without the Help pack can still explain "no records are imported yet".
+   */
+  status: {
+    situation: StationSituation;
+    packsEffective: string[];
+    attachments: { missing: string | null; inaccessible: string | null };
+    hasRecords: boolean;
+    planExcludedPacks: string | null;
+  };
+  /** #1050: stations the user can read; only when `include` names it. */
+  stations?: {
+    items: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      packs: string[];
+    }>;
+    totalCount: number;
   };
   entities?: Array<{
     id: string;
@@ -171,13 +210,27 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "pick a `columnDefinitionId` from `columnDefinitions` and pass it to " +
     "`field_mapping_create`; if no definition fits, say so rather than " +
     "guessing. Pass `entityKeys: ['<key>']` when you only need one entity's " +
-    "schema.";
+    "schema. Always returns `organization` (its name and plan) and `status`: " +
+    "why this station may return thin or empty answers (no packs, views or " +
+    "connectors not attached or not readable by the user, no records yet, " +
+    "packs the plan excludes). Pass `include: ['stations']` to list the " +
+    "stations the user can read, to name one when suggesting it.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationId: string, organizationId: string, userId: string) {
+  /**
+   * `ctx` is the caller's permission context, which `stations` needs for the
+   * visibility predicate. Every session passes it; without it `stations` is
+   * left out rather than guessed.
+   */
+  build(
+    stationId: string,
+    organizationId: string,
+    userId: string,
+    ctx?: PermissionContext
+  ) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -201,13 +254,62 @@ export class StationContextTool extends Tool<typeof InputSchema> {
         const rawTz = org?.timezone ?? "UTC";
         const timezone = isValidIanaTimezone(rawTz) ? rawTz : "UTC";
 
+        // #1050: the plan's display name lives on the tier row.
+        const tierRow = org?.tier
+          ? await DbService.repository.tiers.findBySlug(org.tier)
+          : undefined;
+        const findings = await StationDiagnosticsService.forStation(
+          stationId,
+          organizationId,
+          userId
+        );
+
         const response: StationContextResponse = {
           station: {
             id: stationId,
             name: station?.name ?? "(unknown)",
             timezone,
           },
+          organization: {
+            name: org?.name ?? "(unknown)",
+            plan: {
+              slug: org?.tier ?? "(unknown)",
+              displayName: tierRow?.displayName ?? org?.tier ?? "(unknown)",
+            },
+          },
+          status: {
+            situation: StationDiagnosticsService.situation(findings),
+            packsEffective: findings.packsEffective,
+            attachments: {
+              missing: findings.attachmentsMissing,
+              inaccessible: findings.attachmentsNoAccess,
+            },
+            hasRecords: findings.recordCount > 0,
+            planExcludedPacks: findings.excludedPacks,
+          },
         };
+
+        // #1050: opt-in and capped, since it scales with the organization.
+        if (include?.includes("stations") && ctx) {
+          const { stations, total } = await StationQueryService.listForCaller(
+            ctx,
+            {
+              limit: STATIONS_LIMIT,
+              offset: 0,
+              sortBy: "name",
+              sortOrder: "asc",
+            }
+          );
+          response.stations = {
+            items: stations.map((s) => ({
+              id: s.id,
+              name: s.name,
+              description: s.description ?? null,
+              packs: s.toolpacks.map((p) => p.name),
+            })),
+            totalCount: total,
+          };
+        }
 
         // #284: the station's configured packs, split against the plan. Read
         // here rather than threaded in, so the tool tells the truth no matter

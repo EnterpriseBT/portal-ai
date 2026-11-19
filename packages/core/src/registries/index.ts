@@ -13,5 +13,6 @@ export * from "./tier-catalog.js";
  *  custom/webhook tools. */
 export * from "./tool-phase-labels.js";
 // #1055: how a station stands with entity data, shared by the API (prompt,
-// platform_help) and the web (the station attachment notice).
+// the station diagnostics behind platform_help and station_context) and the
+// web (the station attachment notice).
 export * from "./station-data-packs.js";

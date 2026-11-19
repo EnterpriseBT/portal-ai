@@ -8,6 +8,10 @@ const mockFindStationById = jest.fn<() => Promise<unknown>>();
 const mockFindOrgById = jest.fn<() => Promise<unknown>>();
 const mockFindColumnDefs = jest.fn<() => Promise<unknown[]>>();
 const mockFindStationToolpacks = jest.fn<() => Promise<unknown[]>>();
+// #1050: the plan's display name, read off the org's tier row.
+const mockFindTierBySlug = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ slug: "standard", displayName: "Standard" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -16,8 +20,28 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       organizations: { findById: mockFindOrgById },
       columnDefinitions: { findByOrganizationId: mockFindColumnDefs },
       stationToolpacks: { findByStationId: mockFindStationToolpacks },
+      tiers: { findBySlug: mockFindTierBySlug },
     },
   },
+}));
+
+// #1050: the station's status, from the shared diagnostics.
+const mockForStation = jest.fn<() => Promise<unknown>>();
+const mockSituation = jest.fn<() => string>().mockReturnValue("no_records");
+jest.unstable_mockModule(
+  "../../services/station-diagnostics.service.js",
+  () => ({
+    StationDiagnosticsService: {
+      forStation: mockForStation,
+      situation: mockSituation,
+    },
+  })
+);
+
+// #1050: the caller's readable stations.
+const mockListForCaller = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../../services/station-query.service.js", () => ({
+  StationQueryService: { listForCaller: mockListForCaller },
 }));
 
 const mockLoadStation = jest.fn<() => Promise<unknown>>();
@@ -170,12 +194,19 @@ const STATION_DATA = {
   ],
 };
 
-function buildTool() {
-  return new StationContextTool().build(STATION_ID, ORG_ID, USER_ID);
+const CTX = { userId: USER_ID, organizationId: ORG_ID, roles: ["member"] };
+
+function buildTool(withCtx = true) {
+  return new StationContextTool().build(
+    STATION_ID,
+    ORG_ID,
+    USER_ID,
+    withCtx ? (CTX as never) : undefined
+  );
 }
 
-async function exec(input: Record<string, unknown> = {}) {
-  const t = buildTool();
+async function exec(input: Record<string, unknown> = {}, withCtx = true) {
+  const t = buildTool(withCtx);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return await (t as any).execute(input, {
     toolCallId: "t",
@@ -195,7 +226,29 @@ describe("StationContextTool", () => {
       id: STATION_ID,
       name: "Test Station",
     });
-    mockFindOrgById.mockResolvedValue({ id: ORG_ID, timezone: "UTC" });
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "standard",
+      timezone: "UTC",
+    });
+    mockFindTierBySlug.mockResolvedValue({
+      slug: "standard",
+      displayName: "Standard",
+    });
+    mockForStation.mockResolvedValue({
+      available: true,
+      hasPacks: true,
+      dataSetup: "usable",
+      packsEffective: ["data_query"],
+      excludedPacks: "gis",
+      entityCount: 2,
+      recordCount: 0,
+      attachmentsMissing: null,
+      attachmentsNoAccess: "views",
+    });
+    mockSituation.mockReturnValue("no_records");
+    mockListForCaller.mockResolvedValue({ stations: [], total: 0 });
     mockLoadStation.mockResolvedValue(STATION_DATA);
     // #599: each entity is a granted passthrough view with all columns
     // readable — an admin (canPerformAny → true) sees the full catalog.
@@ -670,5 +723,117 @@ describe("StationContextTool", () => {
       station: { timezone: string };
     };
     expect(result.station.timezone).toBe("UTC");
+  });
+});
+
+describe("StationContextTool — organization, status and stations (#1050)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFindStationById.mockResolvedValue({ id: STATION_ID, name: "Test" });
+    mockFindOrgById.mockResolvedValue({
+      id: ORG_ID,
+      name: "Acme",
+      tier: "pro",
+      timezone: "UTC",
+    });
+    mockFindTierBySlug.mockResolvedValue({ slug: "pro", displayName: "Pro" });
+    mockForStation.mockResolvedValue({
+      available: true,
+      hasPacks: true,
+      dataSetup: "usable",
+      packsEffective: ["data_query", "help"],
+      excludedPacks: "gis",
+      entityCount: 2,
+      recordCount: 0,
+      attachmentsMissing: "connectors",
+      attachmentsNoAccess: null,
+    });
+    mockSituation.mockReturnValue("attachments_missing");
+    mockLoadStation.mockResolvedValue({ entities: [], entityGroups: [] });
+    mockResolveGrantedViewColumns.mockResolvedValue({
+      set: { canPerformAny: () => true, can: () => true },
+      views: [],
+    });
+    mockResolveStationPacks.mockResolvedValue({
+      effective: [],
+      unentitled: [],
+      customPacks: [],
+      excludedCustomPacks: [],
+      tier: "pro",
+    });
+    mockFindColumnDefs.mockResolvedValue([]);
+    mockListForCaller.mockResolvedValue({
+      stations: [
+        {
+          id: "st-a",
+          name: "Analytics",
+          description: "Sales data",
+          toolpacks: [
+            { ref: "data_query", name: "Data Query" },
+            { ref: "org:otp-1", name: "crm" },
+          ],
+        },
+      ],
+      total: 40,
+    });
+  });
+
+  it.each([undefined, ["entities"], ["toolPacks"], ["columnDefinitions"]])(
+    "always reports the organization and its plan (include=%j)",
+    async (include) => {
+      const out = await exec(include ? { include } : {});
+      expect(out.organization).toEqual({
+        name: "Acme",
+        plan: { slug: "pro", displayName: "Pro" },
+      });
+    }
+  );
+
+  it.each([undefined, ["entities"]])(
+    "always reports the station's status from the shared diagnostics (include=%j)",
+    async (include) => {
+      const out = await exec(include ? { include } : {});
+      expect(out.status).toEqual({
+        situation: "attachments_missing",
+        packsEffective: ["data_query", "help"],
+        attachments: { missing: "connectors", inaccessible: null },
+        hasRecords: false,
+        planExcludedPacks: "gis",
+      });
+      expect(mockForStation).toHaveBeenCalledWith(STATION_ID, ORG_ID, USER_ID);
+    }
+  );
+
+  it("leaves stations out unless they're named, even when include is omitted", async () => {
+    const out = await exec({});
+    expect(out.stations).toBeUndefined();
+    expect(mockListForCaller).not.toHaveBeenCalled();
+  });
+
+  it("lists up to 25 readable stations by name, with their packs and the total", async () => {
+    const out = await exec({ include: ["stations"] });
+    expect(mockListForCaller).toHaveBeenCalledWith(CTX, {
+      limit: 25,
+      offset: 0,
+      sortBy: "name",
+      sortOrder: "asc",
+    });
+    expect(out.stations).toEqual({
+      items: [
+        {
+          id: "st-a",
+          name: "Analytics",
+          description: "Sales data",
+          packs: ["Data Query", "crm"],
+        },
+      ],
+      totalCount: 40,
+    });
+  });
+
+  it("omits stations when the session passed no permission context", async () => {
+    const out = await exec({ include: ["stations"] }, false);
+    expect(out.stations).toBeUndefined();
+    expect(mockListForCaller).not.toHaveBeenCalled();
   });
 });

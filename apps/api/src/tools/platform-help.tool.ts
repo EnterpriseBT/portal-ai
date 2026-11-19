@@ -6,25 +6,20 @@ import {
   HELP_TAB,
   buildHelpUrl,
   contentEntrySlug,
-  describeStationAttachmentGaps,
   filterFAQ,
   STATION_ATTACHMENT_MISSING_ACTION,
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
   filterGlossary,
 } from "@portalai/core/content";
+
 import {
-  stationDataSetup,
-  type StationDataSetup,
-} from "@portalai/core/registries";
-
-import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
-import { EntitlementService } from "../services/entitlement.service.js";
-import { StationAttachmentService } from "../services/station-attachment.service.js";
+  StationDiagnosticsService,
+  type StationFindings,
+  type StationSituation,
+} from "../services/station-diagnostics.service.js";
 import { Tool } from "../types/tools.js";
-import { createLogger } from "../utils/logger.util.js";
 
-const logger = createLogger({ module: "platform-help-tool" });
+type Situation = Exclude<StationSituation, "unknown">;
 
 const InputSchema = z.object({
   question: z
@@ -39,34 +34,6 @@ const InputSchema = z.object({
 /** How much shipped content one answer may carry. */
 const MAX_FAQ = 3;
 const MAX_GLOSSARY = 3;
-
-interface StationFindings {
-  /** False when the station read failed — the answer degrades, never errors. */
-  available: boolean;
-  hasPacks: boolean;
-  /** #848, #1045: how the station stands with entity data. */
-  dataSetup: StationDataSetup;
-  /**
-   * #1045: the packs attached here that the plan excludes, as the answer
-   * lists them, or null when there are none. Built-in slugs first; custom
-   * packs under their own label, since one can share a built-in pack's slug.
-   */
-  excludedPacks: string | null;
-  entityCount: number;
-  recordCount: number;
-  /** #674: the station-level gap (null when both kinds are attached). */
-  attachmentsMissing: string | null;
-  /** #674: the caller-level gap (null when they can read something of each attached kind). */
-  attachmentsNoAccess: string | null;
-}
-
-type Situation =
-  | "no_packs"
-  | "attachments_missing"
-  | "attachments_inaccessible"
-  | "no_records"
-  | "unentitled_packs"
-  | "default";
 
 /**
  * In-session platform help (#367).
@@ -107,147 +74,19 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input: z.infer<typeof InputSchema>) => {
-        const findings = await gatherFindings(
+        const findings = await StationDiagnosticsService.forStation(
           stationId,
           organizationId,
           userId
         );
-        const situation = matchSituation(findings);
+        // `unknown` (the station couldn't be read) answers as `default` did.
+        const read = StationDiagnosticsService.situation(findings);
+        const situation: Situation = read === "unknown" ? "default" : read;
         const selected = selectContent(input.question);
         return composeAnswer(situation, findings, selected);
       },
     });
   }
-}
-
-/**
- * Read what this station can be said about. Fail-soft by contract: any failure
- * degrades the answer instead of erroring, because this is the surface a stuck
- * user reaches for.
- */
-async function gatherFindings(
-  stationId: string,
-  organizationId: string,
-  userId: string
-): Promise<StationFindings> {
-  try {
-    const repo = DbService.repository;
-
-    // The one derivation of a station's packs (#306), which the system
-    // prompt reads too: a second copy here classified a station with a custom
-    // pack differently from the prompt in the same session. The split only:
-    // this answer needs the names of custom packs the plan excludes, which
-    // the split carries, and none of their details.
-    const {
-      effective,
-      unentitled,
-      configuredCustomPackCount,
-      customPacksEntitled,
-      excludedCustomPacks,
-    } = await EntitlementService.resolveStationPackSplit(
-      stationId,
-      organizationId
-    );
-    const hasPacks =
-      effective.length + unentitled.length + configuredCustomPackCount > 0;
-    // The same derivation the prompt uses. An excluded custom pack counts by
-    // its resolved name, as it does there: an attachment whose pack row is
-    // gone names nothing and classifies nothing.
-    const dataSetup = stationDataSetup({
-      effective,
-      unentitled,
-      hasUsableCustomPack: customPacksEntitled && configuredCustomPackCount > 0,
-      hasExcludedCustomPack: excludedCustomPacks.length > 0,
-    });
-
-    // Org-scoped, exactly as `station_context` reads.
-    const stationData = await AnalyticsService.loadStation(
-      stationId,
-      organizationId
-    );
-    const entityIds = stationData.entities.map((e: { id: string }) => e.id);
-
-    // One bounded aggregate — never a row scan. A station's entities can be
-    // arbitrarily large, and all this answer needs is presence.
-    const recordCount =
-      entityIds.length > 0
-        ? await repo.entityRecords.countByConnectorEntityIds(entityIds)
-        : 0;
-
-    const gaps = describeStationAttachmentGaps(
-      await StationAttachmentService.countsForCaller(
-        stationId,
-        organizationId,
-        userId
-      )
-    );
-
-    return {
-      available: true,
-      hasPacks,
-      dataSetup,
-      excludedPacks: describeExcludedPacks(unentitled, excludedCustomPacks),
-      entityCount: entityIds.length,
-      recordCount,
-      attachmentsMissing: gaps.missing,
-      attachmentsNoAccess: gaps.noAccess,
-    };
-  } catch (error) {
-    logger.warn(
-      { stationId, organizationId, error },
-      "platform_help could not read station state; answering without it"
-    );
-    return {
-      available: false,
-      hasPacks: true,
-      dataSetup: "usable",
-      excludedPacks: null,
-      entityCount: 0,
-      recordCount: 0,
-      attachmentsMissing: null,
-      attachmentsNoAccess: null,
-    };
-  }
-}
-
-/** First hit wins — ordered from "nothing works" to "everything works". */
-function matchSituation(findings: StationFindings): Situation {
-  if (!findings.available) return "default";
-  if (!findings.hasPacks) return "no_packs";
-  // #1045: every data-capable pack here is excluded by the plan. That is
-  // the answer; attaching or sharing data would change nothing.
-  if (findings.dataSetup === "plan-excluded") return "unentitled_packs";
-  // #848: missing views or connectors only explain an empty answer on a
-  // station with a usable pack that works on attached data.
-  if (findings.dataSetup === "usable" && findings.attachmentsMissing) {
-    return "attachments_missing";
-  }
-  if (findings.attachmentsNoAccess) return "attachments_inaccessible";
-  // "Entities set up, nothing imported" needs entities to be true.
-  if (findings.entityCount > 0 && findings.recordCount === 0) {
-    return "no_records";
-  }
-  if (findings.excludedPacks) return "unentitled_packs";
-  return "default";
-}
-
-/**
- * The packs the plan excludes, as one list for the answer's brackets:
- * `gis, statistics; registered by your organization: acme, crm`. Custom packs
- * sit under one label. One can be registered under a built-in pack's slug,
- * and the two are different things to the reader.
- */
-function describeExcludedPacks(
-  builtinSlugs: readonly string[],
-  customNames: readonly string[]
-): string | null {
-  const parts = [
-    ...(builtinSlugs.length > 0 ? [builtinSlugs.join(", ")] : []),
-    ...(customNames.length > 0
-      ? [`registered by your organization: ${customNames.join(", ")}`]
-      : []),
-  ];
-  return parts.length > 0 ? parts.join("; ") : null;
 }
 
 interface SelectedContent {

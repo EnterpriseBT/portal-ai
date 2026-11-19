@@ -204,6 +204,7 @@
   "src/__tests__/__integration__/tools/rbac-tools.integration.test.ts": 1.1,
   "src/__tests__/__integration__/tools/regression-pushdown.integration.test.ts": 0.7,
   "src/__tests__/__integration__/tools/resolve-identity-view-scoping.integration.test.ts": 3.2,
+  "src/__tests__/__integration__/tools/station-context.integration.test.ts": 4.0,
   "src/__tests__/__integration__/tools/station-write-scope.integration.test.ts": 2.1,
   "src/__tests__/__integration__/tools/sync-interaction.integration.test.ts": 1.5,
   "src/__tests__/__integration__/tools/var-cvar-pushdown.integration.test.ts": 0.6,
