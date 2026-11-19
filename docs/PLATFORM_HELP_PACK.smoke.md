@@ -2,7 +2,7 @@
 
 Manual smoke test for [#1050](https://github.com/EnterpriseBT/portal-ai/issues/1050):
 - platform help becomes the built-in **Help** pack, entitled on every tier and free;
-- `station_context` always reports the organization, the plan and the station's status, and can list readable stations.
+- `station_context` always reports the organization, the plan and the station's status.
 
 **Branch under test:** `feat/1050-platform-help-pack` (PR [#1090](https://github.com/EnterpriseBT/portal-ai/pull/1090)).
 
@@ -68,7 +68,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, and
 ## §6 — Error and edge cases
 
 - [ ] **A member can attach Help only where they can edit.** — manual (needs the e2e member fixture, `e2e:use member`): as the member, on a station they can't edit, the Edit action isn't offered; on one they created, they can tick Help and save.
-- [ ] **A product question on a station whose only pack is Help.** Create a station with only Help and ask *"How do I create a station?"*. The answer comes from help content with a link. Note: its `default` lead may still mention "the station's records"; that's deferred to #1044.
+- [ ] **A product question on a station whose only pack is Help.** Create a station with only Help and ask *"How do I create a station?"*. The answer comes from help content with a link. Nothing in the answer describes the station's setup: `platform_help` answers from help content only.
 
 ## Sign-off
 

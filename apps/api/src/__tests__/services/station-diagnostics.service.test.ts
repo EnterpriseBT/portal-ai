@@ -171,4 +171,53 @@ describe("StationDiagnosticsService.forStation", () => {
     expect(f.hasRecords).toBe(false);
     expect(mockAnyRecords).not.toHaveBeenCalled();
   });
+
+  // Moved from platform-help.tool.test.ts (#1050): how excluded packs are
+  // named now reaches the agent through station_context's status.
+  it("names a custom pack the plan excludes", async () => {
+    mockResolveStationPackSplit.mockResolvedValue(
+      split({
+        effective: ["rbac_management"],
+        configuredCustomPackCount: 1,
+        excludedCustomPacks: ["acme"],
+      })
+    );
+    const f = await StationDiagnosticsService.forStation(
+      "st-1",
+      "org-1",
+      "u-1"
+    );
+    expect(f.excludedPacks).toBe("registered by your organization: acme");
+  });
+
+  it("tells a custom pack apart from a built-in pack of the same name", async () => {
+    mockResolveStationPackSplit.mockResolvedValue(
+      split({
+        unentitled: ["gis"],
+        configuredCustomPackCount: 1,
+        excludedCustomPacks: ["gis"],
+      })
+    );
+    const f = await StationDiagnosticsService.forStation(
+      "st-1",
+      "org-1",
+      "u-1"
+    );
+    expect(f.excludedPacks).toBe("gis; registered by your organization: gis");
+  });
+
+  it("lists several custom packs under one label", async () => {
+    mockResolveStationPackSplit.mockResolvedValue(
+      split({
+        configuredCustomPackCount: 2,
+        excludedCustomPacks: ["acme", "crm"],
+      })
+    );
+    const f = await StationDiagnosticsService.forStation(
+      "st-1",
+      "org-1",
+      "u-1"
+    );
+    expect(f.excludedPacks).toBe("registered by your organization: acme, crm");
+  });
 });

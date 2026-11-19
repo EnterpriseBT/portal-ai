@@ -775,7 +775,7 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Help");
       lines.push("");
       lines.push(
-        "Questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to get better answers out of a session, what the user can do here, or why this station is returning thin or empty results — go to the `platform_help` tool. Questions about **the data in this station** go to the data tools; `platform_help` never reads records to answer them."
+        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, or how to do something in the product — go to the `platform_help` tool. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
       );
       lines.push("");
       lines.push(

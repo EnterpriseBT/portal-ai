@@ -887,7 +887,7 @@ const HELP_PACK: BuiltinToolpackSpec = {
     {
       name: "platform_help",
       description:
-        "Answer a question about Portals AI itself: what portals, stations, connectors, entities, tool packs or pinned results are, how to get better answers out of a session, and why this station may be returning thin or empty results. Not a data-query tool.",
+        "Answer a general question about Portals AI itself: what portals, stations, connectors, entities, tool packs or pinned results are, and how to do things in the product, from the help content with links into Help. Not a data-query tool, and it knows nothing about the user's organization.",
       parameterSchema: objectSchema({
         question: stringField(
           "The user's question about the product, verbatim. Omit for a general orientation answer."
@@ -2037,11 +2037,12 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "rows", onLarge: "handle" },
     alwaysAvailable: false,
   },
-  // help (#1050; #367) — reads this station's setup to explain concrete
-  // problems, so not pure. Free, so the cost gate never charges or denies it.
+  // help (#1050; #367) — answers general questions from shipped content and
+  // never reads the station or org data, so pure. Free, so the cost gate
+  // never charges or denies it.
   platform_help: {
-    pure: false,
-    reads: ["entity_records"],
+    pure: true,
+    reads: [],
     writes: [],
     consumption: { mode: "none" },
     computeShape: "scan",

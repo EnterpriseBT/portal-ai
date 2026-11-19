@@ -1496,10 +1496,6 @@ describe("buildAnalyticsTools()", () => {
       reason:
         "schema only, view-scoped (#599 entities, #648/#651 entity groups)",
     },
-    platform_help: {
-      scoping: "metadata",
-      reason: "org metadata only — never reads the user's records",
-    },
     transform_entity_records: {
       scoping: "entity-parts",
       reason:

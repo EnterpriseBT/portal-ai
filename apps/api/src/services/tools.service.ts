@@ -611,11 +611,7 @@ export class ToolService {
     // Attached explicitly; every tier is entitled to it and it's free.
     // -------------------------------------------------------------------
     if (enabledPacks.has("help")) {
-      tools.platform_help = new PlatformHelpTool().build(
-        stationId,
-        organizationId,
-        userId
-      );
+      tools.platform_help = new PlatformHelpTool().build();
     }
 
     // -------------------------------------------------------------------

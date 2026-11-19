@@ -15,6 +15,14 @@ This spec pins the contract for turning `platform_help` into a built-in `help` p
 5. **`## Help` becomes `PACK_PROMPT_SECTIONS.help`**, so the #284 guard proves it renders iff the pack is effective. `PACK_ELSEWHERE.help` names it.
 6. **Nothing existing changes:** no migration attaches the pack, and the station pickers are unchanged beyond the icon.
 
+## Amendment — adversarial walk (supersedes the `platform_help` items below)
+
+- **`platform_help` answers general questions only.** Its answers come from the shipped help content (FAQ and glossary) with links into Help. It never reads the station or the user's data. It no longer calls `StationDiagnosticsService`, has no situation prose, and is `pure` with `reads: []`. A bare call, or a question nothing matches, gets a general orientation paragraph.
+  - **Why:** finding things in the organization is other tools' work, and why a station returns little is `station_context`'s `status`, which every session has.
+  - **What it fixes:** the walk's finding that "What is a portal?" on a station with a setup gap came back as "no views attached".
+- **`build()`** takes no arguments. The `## Help` prompt text routes general product questions to it and "why is this empty" to `station_context`'s `status`.
+- **`StationDiagnosticsService`** now serves `station_context` only.
+
 ## Amendment — smoke walk (supersedes the `stations` items below)
 
 - **No readable-stations list.** `include: ["stations"]` and the response's `stations` are removed, along with `station_context`'s `ctx` parameter. The provisioned stations are only a starting point, so the agent doesn't steer users between stations.

@@ -218,9 +218,9 @@ describe("platform_help capability", () => {
     expect(ToolCapabilitySchema.safeParse(cap).success).toBe(true);
   });
 
-  it("reads station data, so it cannot be pure", () => {
-    expect(cap.pure).toBe(false);
-    expect(cap.reads).toContain("entity_records");
+  it("is pure: answers from shipped content, never the station (#1050)", () => {
+    expect(cap.pure).toBe(true);
+    expect(cap.reads).toEqual([]);
   });
 
   it("writes nothing and holds no locks", () => {
