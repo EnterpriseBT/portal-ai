@@ -837,8 +837,9 @@ describe("BillingService.listBillingTiers (#241)", () => {
           allocations: expect.objectContaining({
             metered: { unitsPerPeriod: 1000, ratePerMin: 20 },
           }),
+          // #1050: every tier's policy carries the always-entitled packs.
           entitlements: {
-            builtinToolpacks: ["data_query"],
+            builtinToolpacks: ["data_query", "help"],
             customToolpacks: true,
           },
           overage: "hard-deny",

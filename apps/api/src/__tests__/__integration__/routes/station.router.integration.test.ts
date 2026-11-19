@@ -742,6 +742,40 @@ describe("Station Router", () => {
       expect(packs.map((p) => p.builtinSlug)).toEqual(["data_query"]);
     });
 
+    // #1050: Help is entitled on every tier, including one whose stored
+    // allowlist (like this scratch tier's) predates the pack.
+    it("201s POST with the help pack on a tier whose stored list lacks it (#1050)", async () => {
+      await seedRestrictedOrg();
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Help Desk", toolPacks: ["help"] })
+        .expect(201);
+
+      const packs = await livePackRows(res.body.payload.station.id);
+      expect(packs.map((p) => p.builtinSlug)).toEqual(["help"]);
+    });
+
+    it("200s PATCH that adds the help pack on a tier whose stored list lacks it (#1050)", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: ["help"] } })
+        .expect(200);
+
+      const packs = await livePackRows(station.id);
+      expect(packs.map((p) => p.builtinSlug).sort()).toEqual([
+        "data_query",
+        "help",
+      ]);
+    });
+
     // ── PATCH ───────────────────────────────────────────────────────
 
     it("403s PATCH that adds an unentitled built-in, leaving rows unchanged", async () => {
