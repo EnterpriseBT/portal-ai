@@ -95,4 +95,19 @@ describe("runCli — the agent contract", () => {
     });
     expect(out).not.toContain("[env:");
   });
+  it.each([["seed"], ["reset"]])(
+    "demo %s no longer exists (#1035) → usage error, exit 2",
+    async (sub) => {
+      const code = await runCli([
+        "demo",
+        sub,
+        "--org",
+        "o-1",
+        "--env",
+        "app-dev",
+        "--yes",
+      ]);
+      expect(code).toBe(2);
+    }
+  );
 });

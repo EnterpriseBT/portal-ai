@@ -1,8 +1,10 @@
 /**
  * Integration tests for DemoSeedService (#509), against the postgres-test DB:
- * seeding: every entity at its count, the wide tables, idempotency, and the bounded `--rows` stream.
+ * seeding: every entity at its count on the passed station (#1035), the wide
+ * tables, idempotency, the bounded `--rows` stream, and the missing-column guard.
  *
- * One of three files split by concern from the original suite (#857), so the
+ * One of two files split by concern from the original suite (#857; the reset
+ * suite went with `demo reset` in #1035), so the
  * sharded CI run can place them independently. Each test still wipes the DB
  * and seeds a full demo org, so a single file stays the heaviest unit.
  */
@@ -12,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { DemoSeedService } from "../../../services/demo-seed.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { COUNTS } from "../../../demo/demo-data.js";
+import { SystemUtilities } from "../../../utils/system.util.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   EXPECTED,
@@ -32,12 +35,17 @@ describe("DemoSeedService (integration): counts", () => {
     await connection.end();
   });
 
-  const { provisionOrg, rawCount, entityIdByKey } = demoSeedHelpers(() => db);
+  const {
+    provisionOrgWithStation,
+    linkedInstanceIds,
+    rawCount,
+    entityIdByKey,
+  } = demoSeedHelpers(() => db);
 
   it("creates the File Upload + REST instances and seeds every entity at its count", async () => {
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
 
-    const result = await DemoSeedService.seed({ orgId, rows: 0 });
+    const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     // Instances created (Sandbox is not used until the transactions slice).
     expect(result.instances.map((i) => i.name).sort()).toEqual([
@@ -56,16 +64,19 @@ describe("DemoSeedService (integration): counts", () => {
     // A no-reference entity has zero validation errors.
     expect(result.entities.find((e) => e.key === "customers")!.invalid).toBe(0);
 
-    // Every created instance is linked to the org's station — without this the
-    // portal exposes only the auto-provisioned Sandbox and entity-specific
-    // prompts / the map find no data (regression guard for the station-link fix).
-    const [station] =
-      await DbService.repository.stations.findByOrganizationId(orgId);
-    const linkedIds = new Set(
-      (
-        await DbService.repository.stationInstances.findByStationId(station.id)
-      ).map((s) => s.connectorInstanceId)
-    );
+    // Every created instance is linked to the station the caller passed
+    // (#1035) — and none to the provisioned Administrate / Playground, which
+    // the seed must leave as a normal new org has them.
+    expect(result.stationId).toBe(stationId);
+    const linkedIds = await linkedInstanceIds(stationId);
+    const provisioned = (
+      await DbService.repository.stations.findByOrganizationId(orgId)
+    ).filter((s) => s.id !== stationId);
+    expect(provisioned.map((s) => s.name).sort()).toEqual([
+      "Administrate",
+      "Playground",
+    ]);
+    const seededInstanceIds = new Set<string>();
     const instanceRows =
       await DbService.repository.connectorInstances.findByOrganizationId(orgId);
     for (const name of [
@@ -76,12 +87,17 @@ describe("DemoSeedService (integration): counts", () => {
       const inst = instanceRows.find((i) => i.name === name);
       expect(inst).toBeDefined();
       expect(linkedIds.has(inst!.id)).toBe(true);
+      seededInstanceIds.add(inst!.id);
+    }
+    for (const station of provisioned) {
+      const theirs = await linkedInstanceIds(station.id);
+      for (const id of seededInstanceIds) expect(theirs.has(id)).toBe(false);
     }
   });
 
   it("lands XLSX (orders) and JSON (inventory) rows in the wide tables", async () => {
-    const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId, rows: 0 });
+    const { orgId, stationId } = await provisionOrgWithStation();
+    await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     const ordersId = await entityIdByKey(orgId, "orders");
     expect(
@@ -95,10 +111,10 @@ describe("DemoSeedService (integration): counts", () => {
   });
 
   it("is idempotent — a second seed leaves every entity unchanged", async () => {
-    const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId, rows: 0 });
+    const { orgId, stationId } = await provisionOrgWithStation();
+    await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
-    const second = await DemoSeedService.seed({ orgId, rows: 0 });
+    const second = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     expect(second.instances.every((i) => i.action === "existing")).toBe(true);
     for (const [key, count] of Object.entries(EXPECTED)) {
@@ -110,9 +126,9 @@ describe("DemoSeedService (integration): counts", () => {
   });
 
   it("streams a bounded transactions table (--rows) deterministically", async () => {
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
 
-    const first = await DemoSeedService.seed({ orgId, rows: 2000 });
+    const first = await DemoSeedService.seed({ orgId, stationId, rows: 2000 });
     expect(first.rows).toBe(2000);
     const txns = first.entities.find((e) => e.key === "transactions")!;
     expect(txns.created).toBe(2000);
@@ -123,9 +139,25 @@ describe("DemoSeedService (integration): counts", () => {
     ).toBe(2000);
 
     // Deterministic: a second seed with the same count changes nothing.
-    const second = await DemoSeedService.seed({ orgId, rows: 2000 });
+    const second = await DemoSeedService.seed({ orgId, stationId, rows: 2000 });
     const txns2 = second.entities.find((e) => e.key === "transactions")!;
     expect(txns2.created).toBe(0);
     expect(txns2.unchanged).toBe(2000);
   }, 90000);
+
+  it("throws when a required system column definition is missing", async () => {
+    const { orgId, stationId } = await provisionOrgWithStation();
+    const address = await DbService.repository.columnDefinitions.findByKey(
+      orgId,
+      "address"
+    );
+    await DbService.repository.columnDefinitions.softDelete(
+      address!.id,
+      SystemUtilities.id.system
+    );
+
+    await expect(
+      DemoSeedService.seed({ orgId, stationId, rows: 0 })
+    ).rejects.toThrow(/address/);
+  });
 });

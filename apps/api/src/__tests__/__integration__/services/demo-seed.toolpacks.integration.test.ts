@@ -2,7 +2,8 @@
  * Integration tests for DemoSeedService (#509), against the postgres-test DB:
  * toolpacks: built-ins enabled, the custom toolpack registered from DEMO_TOOLPACK_URL, and its idempotent re-registration.
  *
- * One of three files split by concern from the original suite (#857), so the
+ * One of two files split by concern from the original suite (#857; the reset
+ * suite went with `demo reset` in #1035), so the
  * sharded CI run can place them independently. Each test still wipes the DB
  * and seeds a full demo org, so a single file stays the heaviest unit.
  */
@@ -40,13 +41,13 @@ describe("DemoSeedService (integration): toolpacks", () => {
     await connection.end();
   });
 
-  const { provisionOrg, rawCount } = demoSeedHelpers(() => db);
+  const { provisionOrgWithStation, rawCount } = demoSeedHelpers(() => db);
 
   it("enables all built-in toolpacks; skips custom when no URL is set", async () => {
     delete process.env.DEMO_TOOLPACK_URL;
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
 
-    const result = await DemoSeedService.seed({ orgId, rows: 0 });
+    const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     expect(result.toolpacks.builtins.sort()).toEqual(
       BUILTIN_TOOLPACKS.map((p) => p.slug).sort()
@@ -61,7 +62,7 @@ describe("DemoSeedService (integration): toolpacks", () => {
   });
 
   it("registers the custom toolpack when DEMO_TOOLPACK_URL is set", async () => {
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
     process.env.DEMO_TOOLPACK_URL = "https://demo-toolpack.test";
     const schemaSpy = jest
       .spyOn(ToolpackRegistrationService, "fetchSchema")
@@ -77,7 +78,7 @@ describe("DemoSeedService (integration): toolpacks", () => {
       .mockResolvedValue(null as never);
 
     try {
-      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
       expect(result.toolpacks.custom).toBeTruthy();
       expect(schemaSpy).toHaveBeenCalledWith(
         "https://demo-toolpack.test/schema",
@@ -101,7 +102,7 @@ describe("DemoSeedService (integration): toolpacks", () => {
     // A plain INSERT would 23505 on the second pass, `custom` would come back
     // null, and replaceForStation would disassociate the live toolpack. This
     // asserts the second pass refreshes the same row and keeps it attached.
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
     process.env.DEMO_TOOLPACK_URL = "https://demo-toolpack.test";
     const schemaSpy = jest
       .spyOn(ToolpackRegistrationService, "fetchSchema")
@@ -117,8 +118,8 @@ describe("DemoSeedService (integration): toolpacks", () => {
       .mockResolvedValue(null as never);
 
     try {
-      const first = await DemoSeedService.seed({ orgId, rows: 0 });
-      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+      const first = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
+      const second = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
       expect(second.toolpacks.custom).toBeTruthy();
       // Same row refreshed in place — not a duplicate, not a new id.
@@ -129,10 +130,8 @@ describe("DemoSeedService (integration): toolpacks", () => {
         )
       ).toBe(1);
       // Still attached to the station after the second pass.
-      const [station] =
-        await DbService.repository.stations.findByOrganizationId(orgId);
       const attached =
-        await DbService.repository.stationToolpacks.findByStationId(station.id);
+        await DbService.repository.stationToolpacks.findByStationId(stationId);
       expect(
         attached.some(
           (a) => a.organizationToolpackId === second.toolpacks.custom
@@ -183,9 +182,9 @@ describe("DemoSeedService (integration): toolpacks", () => {
 
     it("registers with the first DEMO_TOOLPACK_SIGNING_SECRETS entry", async () => {
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = ` ${SECRET_A} , ${SECRET_B}`;
-      const orgId = await provisionOrg();
+      const { orgId, stationId } = await provisionOrgWithStation();
 
-      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
       expect(schemaSpy).toHaveBeenCalledWith(
         "https://demo-toolpack.test/schema",
@@ -197,18 +196,18 @@ describe("DemoSeedService (integration): toolpacks", () => {
 
     it("keeps it across a re-seed", async () => {
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = `${SECRET_A},${SECRET_B}`;
-      const orgId = await provisionOrg();
+      const { orgId, stationId } = await provisionOrgWithStation();
 
-      await DemoSeedService.seed({ orgId, rows: 0 });
-      const second = await DemoSeedService.seed({ orgId, rows: 0 });
+      await DemoSeedService.seed({ orgId, stationId, rows: 0 });
+      const second = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
       expect(await storedSecret(second.toolpacks.custom!)).toBe(SECRET_A);
     });
 
     it("mints a secret on first registration when the variable is unset", async () => {
       delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
-      const orgId = await provisionOrg();
-      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      const { orgId, stationId } = await provisionOrgWithStation();
+      const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
       expect(await storedSecret(result.toolpacks.custom!)).toMatch(
         /^whsec_[A-Za-z0-9_-]{43}$/
       );
@@ -216,15 +215,15 @@ describe("DemoSeedService (integration): toolpacks", () => {
 
     it("keeps the stored secret on a re-seed without (or with a malformed) variable", async () => {
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
-      const orgId = await provisionOrg();
-      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+      const { orgId, stationId } = await provisionOrgWithStation();
+      const first = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
       delete process.env.DEMO_TOOLPACK_SIGNING_SECRETS;
-      await DemoSeedService.seed({ orgId, rows: 0 });
+      await DemoSeedService.seed({ orgId, stationId, rows: 0 });
       expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
 
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = "not-a-secret";
-      await DemoSeedService.seed({ orgId, rows: 0 });
+      await DemoSeedService.seed({ orgId, stationId, rows: 0 });
       expect(await storedSecret(first.toolpacks.custom!)).toBe(SECRET_A);
       expect(schemaSpy).toHaveBeenLastCalledWith(
         "https://demo-toolpack.test/schema",
@@ -233,24 +232,16 @@ describe("DemoSeedService (integration): toolpacks", () => {
       );
     });
 
-    it("keeps the registered toolpack attached when a refresh is refused", async () => {
+    it("rejects when registration is refused — a demo never ships without its toolpack (#1035)", async () => {
       process.env.DEMO_TOOLPACK_SIGNING_SECRETS = SECRET_A;
-      const orgId = await provisionOrg();
-      const first = await DemoSeedService.seed({ orgId, rows: 0 });
+      const { orgId, stationId } = await provisionOrgWithStation();
 
       schemaSpy.mockRejectedValueOnce(new Error("signature rejected"));
-      const second = await DemoSeedService.seed({ orgId, rows: 0 });
-
-      expect(second.toolpacks.custom).toBe(first.toolpacks.custom);
-      const [station] =
-        await DbService.repository.stations.findByOrganizationId(orgId);
-      const attached =
-        await DbService.repository.stationToolpacks.findByStationId(station.id);
-      expect(
-        attached.some(
-          (a) => a.organizationToolpackId === first.toolpacks.custom
-        )
-      ).toBe(true);
+      await expect(
+        DemoSeedService.seed({ orgId, stationId, rows: 0 })
+      ).rejects.toThrow(
+        /demo toolpack registration failed: signature rejected/
+      );
     });
   });
 });

@@ -7,9 +7,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 
+import { StationModelFactory } from "@portalai/core/models";
+
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { DbService } from "../../../services/db.service.js";
+import { SystemUtilities } from "../../../utils/system.util.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { COUNTS } from "../../../demo/demo-data.js";
 import { generateId, teardownOrg } from "./application.util.js";
@@ -74,5 +78,36 @@ export function demoSeedHelpers(getDb: () => DbClient) {
     return rows[0].id;
   }
 
-  return { provisionOrg, rawCount, entityIdByKey };
+  /** A provisioned org plus a dedicated station to seed onto (#1035): the
+   *  seed takes the station id and never looks one up. */
+  async function provisionOrgWithStation(): Promise<{
+    orgId: string;
+    stationId: string;
+  }> {
+    const orgId = await provisionOrg();
+    const station = await DbService.repository.stations.create(
+      new StationModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({ organizationId: orgId, name: "Demo", description: "" })
+        .parse()
+    );
+    return { orgId, stationId: station.id };
+  }
+
+  /** Connector-instance ids linked to a station. */
+  async function linkedInstanceIds(stationId: string): Promise<Set<string>> {
+    return new Set(
+      (
+        await DbService.repository.stationInstances.findByStationId(stationId)
+      ).map((s) => s.connectorInstanceId)
+    );
+  }
+
+  return {
+    provisionOrg,
+    provisionOrgWithStation,
+    linkedInstanceIds,
+    rawCount,
+    entityIdByKey,
+  };
 }

@@ -9,14 +9,14 @@
  * the fixtures/synth yield rows in a stable order, so a re-seed converges to
  * all-`unchanged`.
  *
- * Spawned by the `db:demo:seed` script, which the `portalai demo seed` CLI runs
- * via `runApiScript` (#509 transport decision). No BullMQ jobs, no HTTP.
+ * Spawned by the `db:demo:create` script, which the `portalai demo create` CLI
+ * runs via `runApiScript` (#509 transport decision) against an org it has just
+ * provisioned (#1035). The caller passes the station to seed onto; the service
+ * never looks one up, since an org holds several. No BullMQ jobs, no HTTP.
  */
 
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-
-import { sql } from "drizzle-orm";
 
 import {
   ConnectorEntityModelFactory,
@@ -61,9 +61,6 @@ const logger = createLogger({ module: "demo-seed" });
 
 /** The system actor all seeded rows are attributed to. */
 const SEED_USER = SystemUtilities.id.system;
-
-/** Default transactions row count when `--rows` is not given (CLI overrides). */
-const DEFAULT_TRANSACTION_ROWS = 1_000_000;
 
 /** The demo custom toolpack's name — unique per org, so a re-seed refreshes the
  *  existing row rather than inserting a duplicate (see registerCustomToolpack). */
@@ -154,6 +151,7 @@ export interface InstanceSeedResult {
 
 export interface DemoSeedResult {
   orgId: string;
+  stationId: string;
   rows: number;
   instances: InstanceSeedResult[];
   entities: EntitySeedResult[];
@@ -162,22 +160,18 @@ export interface DemoSeedResult {
   durationMs: number;
 }
 
-export interface DemoResetResult {
-  orgId: string;
-  portalsDeleted: number;
-  entities: Array<{ key: string; deleted: number; reconverged: number }>;
-  durationMs: number;
-}
-
 export class DemoSeedService {
   static async seed(params: {
     orgId: string;
-    rows?: number;
+    /** The station the demo connectors and packs land on (#1035). */
+    stationId: string;
+    /** Synthesized `transactions` rows; 0 skips the table. */
+    rows: number;
   }): Promise<DemoSeedResult> {
     const startedAt = Date.now();
-    const { orgId } = params;
-    const rowCount = params.rows ?? DEFAULT_TRANSACTION_ROWS;
-    logger.info({ orgId, rowCount }, "demo seed starting");
+    const { orgId, stationId } = params;
+    const rowCount = params.rows;
+    logger.info({ orgId, stationId, rowCount }, "demo seed starting");
 
     // Resolve (create if absent) every instance the manifest references, plus
     // Sandbox when the (synthesized) transactions table is being seeded.
@@ -199,13 +193,15 @@ export class DemoSeedService {
       });
     }
 
-    // Link every resolved instance to the org's station (station_instances) so
+    // Link every resolved instance to the demo station (station_instances) so
     // its entities are queryable in a portal. Connector-instance creation does
     // NOT auto-link — only an explicit "add to station" does (station.router) —
     // so without this a freshly-seeded org exposes only the auto-provisioned
     // Sandbox (transactions), and every entity-specific prompt (customers,
     // sites, orders) and the map find no data.
-    await DemoSeedService.ensureStationLinks(orgId, [...instanceIds.values()]);
+    await DemoSeedService.ensureStationLinks(stationId, [
+      ...instanceIds.values(),
+    ]);
 
     const entities: EntitySeedResult[] = [];
     for (const spec of DEMO_ENTITY_SPECS) {
@@ -220,8 +216,7 @@ export class DemoSeedService {
     }
 
     // Large-volume transactions — synthesized (not a file), streamed lazily
-    // into importRows. `rows: 0` skips it; the CLI passes an env-appropriate
-    // count (≈1M app-dev/prod, smaller locally).
+    // into importRows. `rows: 0` skips it; the CLI defaults it to 10,000.
     if (rowCount > 0) {
       entities.push(
         await DemoSeedService.provisionAndImport(
@@ -233,10 +228,11 @@ export class DemoSeedService {
       );
     }
 
-    const toolpacks = await DemoSeedService.seedToolpacks(orgId);
+    const toolpacks = await DemoSeedService.seedToolpacks(orgId, stationId);
 
     return {
       orgId,
+      stationId,
       rows: rowCount,
       instances,
       entities,
@@ -247,115 +243,19 @@ export class DemoSeedService {
   }
 
   /**
-   * Reset the demo org to the checked-in baseline: delete its portals
-   * (conversation history) and every demo entity's records, then re-seed.
-   * Leaves OAuth instances (Google Sheets, #511) and their tokens untouched.
-   * Destructive — the CLI blocks this on prod.
-   */
-  static async reset(params: {
-    orgId: string;
-    rows?: number;
-  }): Promise<DemoResetResult> {
-    const startedAt = Date.now();
-    const { orgId } = params;
-    logger.info({ orgId }, "demo reset starting");
-
-    const portalsDeleted = await DemoSeedService.deletePortals(orgId);
-
-    const demoKeys = [
-      ...DEMO_ENTITY_SPECS.map((s) => s.key),
-      TRANSACTIONS_ENTITY.key,
-    ];
-    const deletedByKey = new Map<string, number>();
-    for (const key of demoKeys) {
-      const deleted = await DemoSeedService.clearEntityRecords(orgId, key);
-      if (deleted !== null) deletedByKey.set(key, deleted);
-    }
-
-    // Re-converge to the checked-in dataset.
-    const seeded = await DemoSeedService.seed({ orgId, rows: params.rows });
-
-    const entities = seeded.entities.map((e) => ({
-      key: e.key,
-      deleted: deletedByKey.get(e.key) ?? 0,
-      reconverged: e.created,
-    }));
-
-    return {
-      orgId,
-      portalsDeleted,
-      entities,
-      durationMs: Date.now() - startedAt,
-    };
-  }
-
-  /** Hard-delete the org's portals (results → messages → portals). */
-  private static async deletePortals(orgId: string): Promise<number> {
-    return DbService.transaction(async (tx) => {
-      const before = (await tx.execute(
-        sql`SELECT count(*)::int AS count FROM portals WHERE organization_id = ${orgId}`
-      )) as unknown as Array<{ count: number }>;
-      await tx.execute(
-        sql`DELETE FROM portal_results WHERE organization_id = ${orgId}`
-      );
-      await tx.execute(
-        sql`DELETE FROM portal_messages WHERE organization_id = ${orgId}`
-      );
-      await tx.execute(
-        sql`DELETE FROM portals WHERE organization_id = ${orgId}`
-      );
-      return before[0]?.count ?? 0;
-    });
-  }
-
-  /**
-   * Hard-delete all records for one demo entity (both the `entity_records` rows
-   * and the wide `er__<id>` table), so a following re-seed is a clean baseline.
-   * Returns null if the entity does not exist yet.
-   */
-  private static async clearEntityRecords(
-    orgId: string,
-    key: string
-  ): Promise<number | null> {
-    const found = (await DbService.transaction(async (tx) =>
-      tx.execute(
-        sql`SELECT id FROM connector_entities WHERE organization_id = ${orgId} AND key = ${key} AND deleted IS NULL LIMIT 1`
-      )
-    )) as unknown as Array<{ id: string }>;
-    const entityId = found[0]?.id;
-    if (!entityId) return null;
-
-    return DbService.transaction(async (tx) => {
-      const before = (await tx.execute(
-        sql`SELECT count(*)::int AS count FROM entity_records WHERE connector_entity_id = ${entityId}`
-      )) as unknown as Array<{ count: number }>;
-      await tx.execute(
-        sql`DELETE FROM entity_records WHERE connector_entity_id = ${entityId}`
-      );
-      // Wide table is `er__<entityId>`; the id is a generated uuid (safe).
-      await tx.execute(sql.raw(`DELETE FROM "er__${entityId}"`));
-      return before[0]?.count ?? 0;
-    });
-  }
-
-  /**
    * Enable all eight built-in toolpacks plus the demo custom webhook toolpack
-   * (#510) on the org's station. The custom pack is registered from the
-   * configured `DEMO_TOOLPACK_URL`; if that is unset or unreachable it is
-   * skipped (built-ins still enable) so seeding never fails on the toolpack.
+   * (#510) on the demo station. The custom pack is registered from the
+   * configured `DEMO_TOOLPACK_URL`. A failed registration (#911: a refused
+   * signature, an unreachable endpoint) **fails the seed** (#1035): every demo
+   * ships with its toolpack, and the create script soft-deletes the org on
+   * failure. With no URL set (local only; `portalai demo create` requires it
+   * on deployed envs) the seed enables built-ins only.
    */
   private static async seedToolpacks(
-    orgId: string
+    orgId: string,
+    stationId: string
   ): Promise<{ builtins: string[]; custom: string | null }> {
     const builtinSlugs = BUILTIN_TOOLPACKS.map((p) => p.slug);
-
-    const [station] =
-      await DbService.repository.stations.findByOrganizationId(orgId);
-    if (!station) {
-      throw new Error(
-        `demo seed: org ${orgId} has no station — provision the org first`
-      );
-    }
 
     let custom: string | null = null;
     const baseUrl = process.env.DEMO_TOOLPACK_URL;
@@ -363,21 +263,20 @@ export class DemoSeedService {
       try {
         custom = await DemoSeedService.registerCustomToolpack(orgId, baseUrl);
       } catch (err) {
-        // A failed refresh (#911: a refused signature, an unreachable
-        // endpoint) keeps an already-registered demo toolpack attached, as
-        // it was; replacing the station's packs without it would detach it.
-        custom = (await DemoSeedService.findDemoToolpack(orgId))?.id ?? null;
-        logger.warn(
-          { orgId, baseUrl, err, kept: custom },
-          custom
-            ? "custom toolpack refresh failed — keeping the registered one"
-            : "custom toolpack registration failed — enabling built-ins only"
+        throw new Error(
+          `demo toolpack registration failed: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err }
         );
       }
+    } else {
+      logger.info(
+        { orgId },
+        "DEMO_TOOLPACK_URL is not set — enabling built-in toolpacks only"
+      );
     }
 
     await DbService.repository.stationToolpacks.replaceForStation(
-      station.id,
+      stationId,
       {
         builtinSlugs,
         organizationToolpackIds: custom ? [custom] : [],
@@ -501,31 +400,25 @@ export class DemoSeedService {
    * are created here so the connector view shows the right connector types.
    */
   /**
-   * Ensure each connector instance is linked to the org's (single) station via
-   * `station_instances` — idempotent, so a re-seed is a no-op. The Sandbox link
-   * already exists (auto-provisioned); the file-upload/REST instances the seeder
-   * creates need it or their entities never appear in a portal.
+   * Ensure each connector instance is linked to the demo station via
+   * `station_instances` — idempotent, so a re-seed is a no-op. Provisioning
+   * attaches Sandbox to Playground only (#848), so every instance the demo
+   * uses, Sandbox included, is linked here or its entities never appear in a
+   * portal on the demo station.
    */
   private static async ensureStationLinks(
-    orgId: string,
+    stationId: string,
     connectorInstanceIds: string[]
   ): Promise<void> {
-    const [station] =
-      await DbService.repository.stations.findByOrganizationId(orgId);
-    if (!station) {
-      throw new Error(
-        `demo seed: org ${orgId} has no station — provision the org first`
-      );
-    }
     const existing =
-      await DbService.repository.stationInstances.findByStationId(station.id);
+      await DbService.repository.stationInstances.findByStationId(stationId);
     const linked = new Set(existing.map((s) => s.connectorInstanceId));
     const now = Date.now();
     for (const connectorInstanceId of connectorInstanceIds) {
       if (linked.has(connectorInstanceId)) continue;
       await DbService.repository.stationInstances.create({
         id: SystemUtilities.id.v4.generate(),
-        stationId: station.id,
+        stationId,
         connectorInstanceId,
         created: now,
         createdBy: SEED_USER,

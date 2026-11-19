@@ -162,7 +162,6 @@
   "src/__tests__/__integration__/services/curated-view-delete.service.integration.test.ts": 1.4,
   "src/__tests__/__integration__/services/curated-view.service.integration.test.ts": 3.7,
   "src/__tests__/__integration__/services/demo-seed.counts.integration.test.ts": 29.2,
-  "src/__tests__/__integration__/services/demo-seed.reset.integration.test.ts": 25.4,
   "src/__tests__/__integration__/services/demo-seed.toolpacks.integration.test.ts": 51.4,
   "src/__tests__/__integration__/services/ensure-provisioned.integration.test.ts": 13,
   "src/__tests__/__integration__/services/field-mappings/reconcile.integration.test.ts": 2.5,

@@ -95,14 +95,14 @@ describe("runApiScript", () => {
   });
 
   it("injects the env's ENCRYPTION_KEY for AWS envs (so encrypted writes use the target env's key)", async () => {
-    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+    await runApiScript(appDev, "db:create-org", [], spawner as never);
 
     expect(getSecretMock).toHaveBeenCalledWith(appDev, "encryption-key");
     expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBe("env-encryption-key");
   });
 
   it("does NOT inject ENCRYPTION_KEY for local (no AWS — the .env key is used as-is)", async () => {
-    await runApiScript(local, "db:demo:seed", [], spawner as never);
+    await runApiScript(local, "db:create-org", [], spawner as never);
 
     expect(getSecretMock).not.toHaveBeenCalled();
     expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBeUndefined();
@@ -111,14 +111,14 @@ describe("runApiScript", () => {
   // #952: without it a script wrote the operator's local SYSTEM_ID ("SYSTEM"),
   // which labeled prod's whole Demo org as no one's for created_by_system.
   it("injects the env's SYSTEM_ID for AWS envs (so platform rows carry the target env's principal)", async () => {
-    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+    await runApiScript(appDev, "db:create-org", [], spawner as never);
 
     expect(getParamMock).toHaveBeenCalledWith(appDev, "system-id");
     expect(spawnerCalls[0].env.SYSTEM_ID).toBe("env-system-id");
   });
 
   it("does NOT inject SYSTEM_ID for local (the .env value is used as-is)", async () => {
-    await runApiScript(local, "db:demo:seed", [], spawner as never);
+    await runApiScript(local, "db:create-org", [], spawner as never);
 
     expect(getParamMock).not.toHaveBeenCalled();
     expect(spawnerCalls[0].env.SYSTEM_ID).toBeUndefined();
@@ -128,7 +128,7 @@ describe("runApiScript", () => {
     getParamMock.mockRejectedValue(new Error("AccessDenied"));
 
     await expect(
-      runApiScript(appDev, "db:demo:seed", [], spawner as never)
+      runApiScript(appDev, "db:create-org", [], spawner as never)
     ).rejects.toThrow("AccessDenied");
     expect(spawnerCalls).toHaveLength(0);
     expect(disposeMock).toHaveBeenCalled();
