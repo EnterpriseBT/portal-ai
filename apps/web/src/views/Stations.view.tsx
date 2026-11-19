@@ -107,7 +107,8 @@ export const StationsView: React.FC = () => {
   const orgResult = sdk.organizations.current();
   const orgId = orgResult.data?.organization.id ?? "";
   // #284: the create picker offers unentitled built-ins as disabled.
-  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
+  const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
+    useBuiltinEntitlements();
   const setDefaultMutation = sdk.stations.setDefault(orgId);
 
   // Create
@@ -171,6 +172,7 @@ export const StationsView: React.FC = () => {
 
       <CreateStationDialog
         entitledBuiltinSlugs={entitledBuiltinSlugs}
+        customPacksEntitled={customPacksEntitled}
         open={createOpen}
         onClose={() => {
           createMutation.reset();

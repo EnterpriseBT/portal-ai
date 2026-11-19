@@ -22,7 +22,11 @@ import { StationAttachmentListUI } from "./StationAttachmentList.component";
 import { ToolPackChipWithMetadata } from "./ToolPackChipWithMetadata.component";
 import { sdk } from "../api/sdk";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
-import { stationDataSetupFor } from "../utils/tool-packs.util";
+import {
+  ToolPackUtil,
+  stationDataSetupFor,
+  stationToolpackLabels,
+} from "../utils/tool-packs.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useLayout } from "../utils/layout.util";
 import { formatUsageValue } from "../utils/usage-format.util";
@@ -115,6 +119,8 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
 
   const attachments = toStationAttachmentItems(station);
   const toolPacks = station.enabledToolpacks ?? [];
+  // #1063: the station read names its packs; one map per station.
+  const packLabels = stationToolpackLabels(station.toolpacks);
 
   const metadata = (
     <MetadataList
@@ -160,6 +166,7 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
                 <ToolPackChipWithMetadata
                   key={pack}
                   pack={pack}
+                  name={ToolPackUtil.getLabel(pack, packLabels)}
                   entitled={isEntitled(pack)}
                 />
               ))}
@@ -206,7 +213,12 @@ export const PortalHeaderMetaUI: React.FC<PortalHeaderMetaUIProps> = ({
       <StationAttachmentAlertsUI
         viewCount={attachments.views.length}
         connectorCount={attachments.connectors.length}
-        {...stationDataSetupFor(toolPacks, isEntitled, customPacksEntitled)}
+        {...stationDataSetupFor(
+          toolPacks,
+          isEntitled,
+          customPacksEntitled,
+          packLabels
+        )}
       />
       {sessionDetails}
     </Stack>

@@ -1651,7 +1651,7 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     {
       name: "station_list",
       description:
-        "Lists the stations the user can see, sorted by name: each with its id, name, description, whether it's this session's station, what the user may do to it (write means they can attach views to it), its tool packs (check for data_query before attaching a view the user wants to query there), and the views attached to it. Use it to find a station's id for curated_view_attach or curated_view_detach.",
+        "Lists the stations the user can see, sorted by name: each with its id, name, description, whether it's this session's station, what the user may do to it (write means they can attach views to it), its tool packs, each a ref and a name (check for the data_query ref before attaching a view the user wants to query there), and the views attached to it. Use it to find a station's id for curated_view_attach or curated_view_detach.",
       parameterSchema: objectSchema({
         search: stringField("Match stations whose name contains this text"),
         limit: integerField("Page size, 1-100 (default 25)"),

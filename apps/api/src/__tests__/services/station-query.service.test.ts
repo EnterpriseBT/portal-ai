@@ -9,12 +9,20 @@ const mockCount = jest.fn<(...a: unknown[]) => Promise<number>>();
 const mockToolpacks = jest.fn<(ids: string[]) => Promise<unknown[]>>();
 const mockLoadSet = jest.fn<(...a: unknown[]) => Promise<unknown>>();
 const mockVisibility = jest.fn<(...a: unknown[]) => unknown>();
+const mockFindNames =
+  jest.fn<
+    (
+      ids: string[],
+      opts: { organizationId: string }
+    ) => Promise<{ id: string; name: string }[]>
+  >();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       stations: { findMany: mockFindMany, count: mockCount },
       stationToolpacks: { findByStationIds: mockToolpacks },
+      organizationToolpacks: { findNamesByIds: mockFindNames },
     },
   },
 }));
@@ -55,6 +63,7 @@ beforeEach(() => {
   });
   mockVisibility.mockReturnValue(undefined);
   mockToolpacks.mockResolvedValue([]);
+  mockFindNames.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -131,6 +140,64 @@ describe("StationQueryService.listForCaller (#1036)", () => {
     expect(result.stations[1].capabilities).toMatchObject({
       read: true,
       write: false,
+    });
+  });
+
+  describe("names each station's packs (#1063)", () => {
+    beforeEach(() => {
+      mockFindMany.mockResolvedValue([station("s1"), station("s2")]);
+      mockCount.mockResolvedValue(2);
+      mockToolpacks.mockResolvedValue([
+        {
+          stationId: "s1",
+          builtinSlug: "data_query",
+          organizationToolpackId: null,
+        },
+        { stationId: "s1", builtinSlug: null, organizationToolpackId: "tp-9" },
+        { stationId: "s2", builtinSlug: null, organizationToolpackId: "tp-9" },
+        { stationId: "s2", builtinSlug: null, organizationToolpackId: "tp-7" },
+      ]);
+    });
+
+    it("gives each row its packs with names, in ref order", async () => {
+      mockFindNames.mockResolvedValue([
+        { id: "tp-7", name: "Beta Tools" },
+        { id: "tp-9", name: "Acme CRM" },
+      ]);
+
+      const result = await StationQueryService.listForCaller(CTX, OPTS);
+
+      expect(result.stations[0].toolpacks).toEqual([
+        { ref: "data_query", kind: "builtin", name: "Data Query" },
+        { ref: "org:tp-9", kind: "custom", name: "Acme CRM" },
+      ]);
+      expect(result.stations[1].toolpacks).toEqual([
+        { ref: "org:tp-9", kind: "custom", name: "Acme CRM" },
+        { ref: "org:tp-7", kind: "custom", name: "Beta Tools" },
+      ]);
+    });
+
+    it("looks the names up once for the page, scoped to the org", async () => {
+      await StationQueryService.listForCaller(CTX, OPTS);
+
+      expect(mockFindNames).toHaveBeenCalledTimes(1);
+      const [ids, opts] = mockFindNames.mock.calls[0];
+      expect([...ids].sort()).toEqual(["tp-7", "tp-9"]);
+      expect(opts).toEqual({ organizationId: "org-1" });
+    });
+
+    it("gives no item for a custom pack that no longer exists", async () => {
+      mockFindNames.mockResolvedValue([{ id: "tp-9", name: "Acme CRM" }]);
+
+      const result = await StationQueryService.listForCaller(CTX, OPTS);
+
+      expect(result.stations[1].enabledToolpacks).toEqual([
+        "org:tp-9",
+        "org:tp-7",
+      ]);
+      expect(result.stations[1].toolpacks).toEqual([
+        { ref: "org:tp-9", kind: "custom", name: "Acme CRM" },
+      ]);
     });
   });
 });

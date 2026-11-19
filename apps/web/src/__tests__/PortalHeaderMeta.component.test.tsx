@@ -301,6 +301,35 @@ describe("PortalHeaderMeta", () => {
       ).toBeInTheDocument();
     });
 
+    // #1063: an excluded custom pack is named by its own name.
+    it("names an excluded custom pack in the notice", () => {
+      render(
+        <PortalHeaderMetaUI
+          {...uiProps}
+          station={
+            {
+              ...stationFixture.station,
+              enabledToolpacks: ["view_management", "org:tp-1"],
+              toolpacks: [
+                {
+                  ref: "view_management",
+                  kind: "builtin",
+                  name: "Curated Views",
+                },
+                { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+              ],
+              views: [],
+            } as never
+          }
+          isEntitled={(pack) => !pack.startsWith("org:")}
+          customPacksEntitled={false}
+        />
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Acme CRM isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+    });
+
     it("renders the station rows when the station is present", () => {
       render(
         <PortalHeaderMetaUI
@@ -372,6 +401,25 @@ describe("PortalHeaderMeta", () => {
       // ToolPackChip uses ToolPackUtil.getLabel — verify both pack labels appear
       expect(screen.getByText(/data query/i)).toBeInTheDocument();
       expect(screen.getByText(/statistics/i)).toBeInTheDocument();
+    });
+
+    // #1063: the station read names a custom pack the caller can't list.
+    it("names a custom pack from the station read", () => {
+      mockStationsGet.mockReturnValue(
+        mockStationResult({
+          station: {
+            ...stationFixture.station,
+            enabledToolpacks: ["data_query", "org:tp-1"],
+            toolpacks: [
+              { ref: "data_query", kind: "builtin", name: "Data Query" },
+              { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+            ],
+          },
+        })
+      );
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+      expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
     });
 
     it("does not render the mobile toggle on desktop", () => {

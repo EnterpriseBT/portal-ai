@@ -213,6 +213,86 @@ describe("StationDetailView — attachments (#674)", () => {
   });
 });
 
+// #1063: a member can't list the org's packs (the list mock answers none),
+// so the station read's names are what the chips show.
+describe("StationDetailView — custom pack names (#1063)", () => {
+  it("names a custom pack from the station read", () => {
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          enabledToolpacks: ["data_query", "org:tp-1"],
+          toolpacks: [
+            { ref: "data_query", kind: "builtin", name: "Data Query" },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+          instances: [],
+          views: [],
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        },
+      })
+    );
+    render(<StationDetailView stationId="st-1" />);
+    expect(screen.getByText("Acme CRM")).toBeInTheDocument();
+    expect(screen.queryByText("org:tp-1")).not.toBeInTheDocument();
+  });
+});
+
+describe("StationDetailView — custom packs and the plan (#1063)", () => {
+  it("marks an excluded custom pack and names it in the notice", () => {
+    mockUsageData = {
+      tier: {
+        tier: "standard",
+        entitlements: {
+          builtinToolpacks: ["data_query", "view_management"],
+          customToolpacks: false,
+        },
+      },
+      usage: { periodId: "2026-11", byClass: {} },
+    };
+    mockStationsGet.mockReturnValue(
+      result({
+        station: {
+          ...base,
+          enabledToolpacks: ["view_management", "org:tp-1"],
+          toolpacks: [
+            {
+              ref: "view_management",
+              kind: "builtin",
+              name: "Curated Views",
+            },
+            { ref: "org:tp-1", kind: "custom", name: "Acme CRM" },
+          ],
+          instances: [instance("ci-1", "CRM", true)],
+          views: [],
+          capabilities: {
+            read: true,
+            write: false,
+            delete: false,
+            share: false,
+          },
+        },
+      })
+    );
+    try {
+      render(<StationDetailView stationId="st-1" />);
+      expect(
+        screen.getByLabelText("Acme CRM — Not included in your plan")
+      ).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Acme CRM isn't included in your plan, so attaching a view won't make data available on this station."
+      );
+    } finally {
+      mockUsageData = undefined;
+    }
+  });
+});
+
 describe("StationDetailView — a failed edit doesn't follow the dialog (#789)", () => {
   beforeEach(() => {
     mockStationsGet.mockReset();

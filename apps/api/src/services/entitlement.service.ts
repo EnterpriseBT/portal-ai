@@ -265,6 +265,23 @@ export class EntitlementService {
     return policy.entitlements.customRbac;
   }
 
+  /**
+   * Whether the org's tier includes custom (organization) tool packs (#214),
+   * with the tier slug for the refusal's log line. The station write guard
+   * holds a newly added custom pack to it (#1063), as it holds a built-in to
+   * `splitBuiltinPacks`. Fail-closed the same way: an unresolvable policy
+   * throws.
+   */
+  static async customPacksEntitlement(
+    organizationId: string
+  ): Promise<{ entitled: boolean; tier: string }> {
+    const policy = await EntitlementService.resolvePolicy(organizationId);
+    return {
+      entitled: policy.entitlements.customToolpacks,
+      tier: policy.tier,
+    };
+  }
+
   /** Whether the org's tier includes advanced (SQL) view filters (#644). */
   static async advancedViewFiltersEntitled(
     organizationId: string

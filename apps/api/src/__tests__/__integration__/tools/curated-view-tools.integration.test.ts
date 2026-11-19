@@ -900,7 +900,7 @@ describe("view_management tools — integration (#645)", () => {
       expect(forOwner.find((s) => s.id === stationId)).toMatchObject({
         isSessionStation: true,
         capabilities: { write: true },
-        toolpacks: ["view_management"],
+        toolpacks: [{ ref: "view_management", name: "Curated Views" }],
       });
     });
 

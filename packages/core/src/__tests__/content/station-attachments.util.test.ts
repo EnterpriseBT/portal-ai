@@ -2,9 +2,9 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   describeStationAttachmentGaps,
+  listPackNames,
   STATION_ATTACHMENT_MISSING_ACTION,
   STATION_ATTACHMENT_NO_ACCESS_ACTION,
-  STATION_PLAN_EXCLUDED_CUSTOM_PACKS,
   type StationAttachmentCounts,
 } from "../../content/station-attachments.util.js";
 
@@ -180,27 +180,13 @@ describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
     );
   });
 
-  it("reads the organization's packs lowercase after another name", () => {
-    expect(missingFor([STATION_PLAN_EXCLUDED_CUSTOM_PACKS])).toMatch(
-      /^Your organization's tool packs aren't included/
+  // #1063: a custom pack is named by its own name, like a built-in.
+  it("names a custom pack like any other", () => {
+    expect(missingFor(["Acme CRM"])).toMatch(
+      /^Acme CRM isn't included in your plan/
     );
-    expect(missingFor(["GIS", STATION_PLAN_EXCLUDED_CUSTOM_PACKS])).toMatch(
-      /^GIS and your organization's tool packs aren't included/
-    );
-  });
-
-  // A cut list keeps the organization's packs named, not folded into the count.
-  it("keeps the organization's packs named when the list is cut", () => {
-    expect(
-      missingFor([
-        "Data Query",
-        "Statistics",
-        "Regression",
-        "GIS",
-        STATION_PLAN_EXCLUDED_CUSTOM_PACKS,
-      ])
-    ).toMatch(
-      /^Data Query, Statistics, your organization's tool packs and 2 more aren't included/
+    expect(missingFor(["GIS", "Acme CRM"])).toMatch(
+      /^GIS and Acme CRM aren't included in your plan/
     );
   });
 
@@ -212,5 +198,16 @@ describe("describeStationAttachmentGaps — plan-excluded (#1055)", () => {
         excludedPackNames: ["GIS"],
       }).noAccess
     ).toBe(describeStationAttachmentGaps(c).noAccess);
+  });
+});
+
+describe("listPackNames (#1063)", () => {
+  it.each([
+    [["A"], "A"],
+    [["A", "B"], "A and B"],
+    [["A", "B", "C", "D"], "A, B, C and D"],
+    [["A", "B", "C", "D", "E", "F"], "A, B, C and 3 more"],
+  ])("lists %j", (names, text) => {
+    expect(listPackNames(names)).toBe(text);
   });
 });

@@ -44,7 +44,11 @@ import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
-import { stationDataSetupFor } from "../utils/tool-packs.util";
+import {
+  ToolPackUtil,
+  stationDataSetupFor,
+  stationToolpackLabels,
+} from "../utils/tool-packs.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -176,6 +180,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
             {({ item }: { item: StationGetResponsePayload }) => {
               const station = item.station;
               const attachments = toStationAttachmentItems(station);
+              // #1063: the station read names its packs; one map per station.
+              const packLabels = stationToolpackLabels(station.toolpacks);
               return (
                 <>
                   <Stack spacing={4}>
@@ -253,6 +259,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                     <ToolPackChipWithMetadata
                                       key={pack}
                                       pack={pack}
+                                      name={ToolPackUtil.getLabel(
+                                        pack,
+                                        packLabels
+                                      )}
                                       entitled={isEntitled(pack)}
                                     />
                                   )
@@ -302,7 +312,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         {...stationDataSetupFor(
                           station.enabledToolpacks ?? [],
                           isEntitled,
-                          customPacksEntitled
+                          customPacksEntitled,
+                          packLabels
                         )}
                       />
                     </PageHeader>
@@ -377,6 +388,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                   {editOpen && (
                     <EditStationDialog
                       entitledBuiltinSlugs={entitledBuiltinSlugs}
+                      customPacksEntitled={customPacksEntitled}
                       key={stationId}
                       open={editOpen}
                       onClose={() => {

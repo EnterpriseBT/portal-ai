@@ -81,7 +81,15 @@ describe("useBuiltinEntitlements (#284)", () => {
     );
     expect(screen.getByTestId("loading").textContent).toBe("false");
     expect(screen.getByTestId("entity-mgmt").textContent).toBe("false");
-    // The custom axis is not this hook's business.
+    // #1063: a custom ref follows the plan's customToolpacks, off here.
+    expect(screen.getByTestId("custom-ref").textContent).toBe("false");
+  });
+
+  it("reads a custom ref as entitled on a plan with custom packs (#1063)", () => {
+    mockUsage.mockReturnValue(loaded(usagePayload(["data_query"], true)));
+
+    render(<Probe />);
+
     expect(screen.getByTestId("custom-ref").textContent).toBe("true");
   });
 

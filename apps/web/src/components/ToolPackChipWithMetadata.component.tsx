@@ -53,6 +53,12 @@ export interface ToolPackChipWithMetadataUIProps {
   pack: string;
   /** Resolved `Toolpack` record, or `null` while loading / unresolved. */
   toolpack: Toolpack | null;
+  /**
+   * #1063: the pack's name as the station read gives it. Shown when
+   * `toolpack` didn't resolve, as for a member, who can't list the
+   * organization's packs.
+   */
+  name?: string;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -71,13 +77,13 @@ export interface ToolPackChipWithMetadataUIProps {
  */
 export const ToolPackChipWithMetadataUI: React.FC<
   ToolPackChipWithMetadataUIProps
-> = ({ pack, toolpack, open, onOpen, onClose, entitled = true }) => {
+> = ({ pack, toolpack, name, open, onOpen, onClose, entitled = true }) => {
   const clickable = toolpack !== null;
   return (
     <>
       <ToolPackChip
         pack={pack}
-        label={toolpack?.kind === "custom" ? toolpack.name : undefined}
+        label={toolpack?.kind === "custom" ? toolpack.name : name}
         onClick={clickable ? onOpen : undefined}
         sx={clickable ? { cursor: "pointer" } : undefined}
         entitled={entitled}
@@ -96,6 +102,8 @@ export const ToolPackChipWithMetadataUI: React.FC<
 
 export interface ToolPackChipWithMetadataProps {
   pack: string;
+  /** #1063: the pack's name from the station read; see the UI's `name`. */
+  name?: string;
   /**
    * Overrides the container's own entitlement read (#284). Views that
    * already hold the entitled-slug set pass it to avoid re-deriving; the
@@ -111,7 +119,7 @@ export interface ToolPackChipWithMetadataProps {
  */
 export const ToolPackChipWithMetadata: React.FC<
   ToolPackChipWithMetadataProps
-> = ({ pack, entitled }) => {
+> = ({ pack, name, entitled }) => {
   const [open, setOpen] = useState(false);
   const listResult = sdk.toolpacks.list();
   const listData = listResult.data;
@@ -126,6 +134,7 @@ export const ToolPackChipWithMetadata: React.FC<
     <ToolPackChipWithMetadataUI
       pack={pack}
       toolpack={toolpack}
+      name={name}
       open={open}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}

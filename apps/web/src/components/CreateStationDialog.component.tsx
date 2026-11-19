@@ -32,7 +32,7 @@ import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import {
   ALL_BUILTIN_SLUGS,
   someBuiltinUnentitled,
-  isBuiltinPackEntitled,
+  isPackEntitled,
   ToolPackUtil,
   UNENTITLED_PACK_REASON,
 } from "../utils/tool-packs.util";
@@ -92,6 +92,13 @@ export interface CreateStationDialogProps {
    * fails open; the server 403 is the real gate.
    */
   entitledBuiltinSlugs?: ReadonlySet<string>;
+  /**
+   * #1063: the plan includes custom (organization) tool packs. Without them
+   * custom packs are listed but unselectable, with the reason named, like an
+   * unentitled built-in. Defaults to `true` (fail open); the server 403 is
+   * the gate.
+   */
+  customPacksEntitled?: boolean;
 }
 
 export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
@@ -101,6 +108,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   isPending,
   serverError,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
+  customPacksEntitled = true,
 }) => {
   const [form, setForm] = useState<StationFormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -247,16 +255,17 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           getOptionKey={(o) => o}
           groupBy={(o) => (o.startsWith("org:") ? "Custom" : "Built-in")}
           getOptionDisabled={(o) =>
-            !isBuiltinPackEntitled(o, entitledBuiltinSlugs)
+            !isPackEntitled(o, entitledBuiltinSlugs, customPacksEntitled)
           }
           renderOption={(props, option) => {
             const { key, ...optionProps } =
               props as React.HTMLAttributes<HTMLLIElement> & {
                 key?: React.Key;
               };
-            const unentitled = !isBuiltinPackEntitled(
+            const unentitled = !isPackEntitled(
               option,
-              entitledBuiltinSlugs
+              entitledBuiltinSlugs,
+              customPacksEntitled
             );
             // The option list carries the same icon as the selected chip
             // below and as the Edit dialog's picker (#302). Without it this
@@ -318,7 +327,11 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           )}
         />
         <ToolPackUpgradeNoteUI
-          show={someBuiltinUnentitled(entitledBuiltinSlugs)}
+          show={
+            someBuiltinUnentitled(entitledBuiltinSlugs) ||
+            // #1063: custom packs are offered, and the plan excludes them.
+            (!customPacksEntitled && customOptions.length > 0)
+          }
         />
         {collisions.length > 0 && (
           <Alert severity="warning" data-testid="toolpack-collision-warning">

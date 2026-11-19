@@ -99,6 +99,7 @@ import {
   ProbeEndpointDraftRequestBodySchema,
   SuggestTransformRequestBodySchema,
   SuggestTransformResponseSchema,
+  AttachedToolpackSchema,
   CreateStationBodySchema,
   UpdateStationBodySchema,
   UpdatePortalBodySchema,
@@ -604,6 +605,7 @@ const withCapabilitiesRef = (shareable: boolean) => ({
 });
 
 const stationSchemas: Record<string, unknown> = {
+  AttachedToolpack: z.toJSONSchema(AttachedToolpackSchema, JSON_SCHEMA_OPTS),
   CreateStationBody: z.toJSONSchema(CreateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdateStationBody: z.toJSONSchema(UpdateStationBodySchema, JSON_SCHEMA_OPTS),
   UpdatePortalBody: z.toJSONSchema(UpdatePortalBodySchema, JSON_SCHEMA_OPTS),
@@ -2010,6 +2012,14 @@ const options: swaggerJsdoc.Options = {
                 "data_query",
                 "org:11111111-1111-4111-8111-111111111111",
               ],
+            },
+            toolpacks: {
+              type: "array",
+              // #1063: reading a station names its packs.
+              items: { $ref: "#/components/schemas/AttachedToolpack" },
+              description:
+                "The enabled packs with their names, in `enabledToolpacks` " +
+                "order. A custom ref whose pack no longer exists has no item.",
             },
             created: {
               type: "number",

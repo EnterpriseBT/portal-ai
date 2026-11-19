@@ -29,7 +29,9 @@ import { SyncTotal } from "./SyncTotal.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import {
   ALL_BUILTIN_SLUGS,
-  isBuiltinPackEntitled,
+  ToolPackUtil,
+  isPackEntitled,
+  stationToolpackLabels,
 } from "../utils/tool-packs.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
@@ -83,6 +85,12 @@ export interface StationCardUIProps {
    * every built-in (fail open).
    */
   entitledBuiltinSlugs?: ReadonlySet<string>;
+  /**
+   * #1063: the plan includes custom (organization) tool packs. Without them
+   * a custom pack's chip renders inert, like an unentitled built-in.
+   * Defaults to `true` (fail open).
+   */
+  customPacksEntitled?: boolean;
 }
 
 export const StationCardUI: React.FC<StationCardUIProps> = ({
@@ -92,8 +100,11 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   onSetDefault,
   onDelete,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
+  customPacksEntitled = true,
 }) => {
   // #690: what this caller may do to this station.
+  // #1063: the station read names its packs; one map per station.
+  const packLabels = stationToolpackLabels(station.toolpacks);
   const actions: ActionSuiteItem[] = [
     ...(!isDefault
       ? [
@@ -153,7 +164,12 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
                   <ToolPackChip
                     key={pack}
                     pack={pack}
-                    entitled={isBuiltinPackEntitled(pack, entitledBuiltinSlugs)}
+                    label={ToolPackUtil.getLabel(pack, packLabels)}
+                    entitled={isPackEntitled(
+                      pack,
+                      entitledBuiltinSlugs,
+                      customPacksEntitled
+                    )}
                   />
                 ))}
               </Stack>
@@ -185,6 +201,12 @@ export interface StationListUIProps {
    * every built-in (fail open).
    */
   entitledBuiltinSlugs?: ReadonlySet<string>;
+  /**
+   * #1063: the plan includes custom (organization) tool packs. Without them
+   * a custom pack's chip renders inert, like an unentitled built-in.
+   * Defaults to `true` (fail open).
+   */
+  customPacksEntitled?: boolean;
 }
 
 export const StationListUI: React.FC<StationListUIProps> = ({
@@ -195,6 +217,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   onDelete,
   hasActiveFilters,
   entitledBuiltinSlugs,
+  customPacksEntitled,
 }) => {
   if (stations.length === 0) {
     return hasActiveFilters ? (
@@ -219,6 +242,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           onSetDefault={onSetDefault}
           onDelete={onDelete}
           entitledBuiltinSlugs={entitledBuiltinSlugs}
+          customPacksEntitled={customPacksEntitled}
         />
       ))}
     </CardList>
@@ -243,7 +267,8 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   hasActiveFilters,
 }) => {
   // #284: one shared usage-query read for every card's chips.
-  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
+  const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
+    useBuiltinEntitlements();
   return (
     <OrgData>
       {(orgResult) => (
@@ -267,6 +292,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                       onDelete={onDelete}
                       hasActiveFilters={hasActiveFilters}
                       entitledBuiltinSlugs={entitledBuiltinSlugs}
+                      customPacksEntitled={customPacksEntitled}
                     />
                   );
                 }}

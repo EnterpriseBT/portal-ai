@@ -39,6 +39,7 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { DbService } = await import("../../../services/db.service.js");
 const {
   stations,
   organizations,
@@ -832,6 +833,197 @@ describe("Station Router", () => {
         .send({ toolPackChanges: { add: ["entity_management"] } })
         .expect(403);
       expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+    });
+
+    // ── Custom packs and the plan (#1063) ───────────────────────────
+    //
+    // A plan without custom packs drops them from every session, so a newly
+    // added one is refused like an unentitled built-in. Removing one always
+    // works, and re-adding one already attached is a no-op.
+
+    async function insertCustomPack(organizationId: string, name: string) {
+      const id = generateId();
+      // Through the repository: it encrypts the signing secret, which a
+      // later decrypting read needs.
+      await DbService.repository.organizationToolpacks.create({
+        id,
+        organizationId,
+        name,
+        description: null,
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [],
+        metadata: null,
+        schemaFetchedAt: Date.now(),
+        metadataFetchedAt: null,
+        signingSecret: "whsec_customplan0123456789abcdef",
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      return id;
+    }
+
+    async function attachCustomPack(stationId: string, packId: string) {
+      await (db as ReturnType<typeof drizzle>).insert(stationToolpacks).values({
+        id: generateId(),
+        stationId,
+        builtinSlug: null,
+        organizationToolpackId: packId,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    const liveRefs = async (stationId: string) =>
+      (await livePackRows(stationId))
+        .map((r) => r.builtinSlug ?? `org:${r.organizationToolpackId}`)
+        .sort();
+
+    it("#1063: 403s POST with a custom pack the plan excludes, naming it, and persists nothing", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Blocked", toolPacks: ["data_query", `org:${packId}`] })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toContain("Acme CRM");
+      expect(res.body.message).not.toContain(packId);
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+      expect(rows.filter((r) => r.deleted === null)).toHaveLength(0);
+    });
+
+    it("#1063: one POST refusal names both an excluded built-in and an excluded custom pack", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Blocked", toolPacks: ["web_search", `org:${packId}`] })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toBe(
+        "Tool packs not included in your plan: web_search, Acme CRM"
+      );
+    });
+
+    it("#1063: 403s a PATCH adding a custom pack the plan excludes", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: [`org:${packId}`] } })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toContain("Acme CRM");
+      expect(await liveRefs(station.id)).toEqual(["data_query"]);
+    });
+
+    it("#1063: a refusal names a repeated ref once", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: [`org:${packId}`, `org:${packId}`] } })
+        .expect(403);
+
+      expect(res.body.message).toBe(
+        "Tool pack not included in your plan: Acme CRM"
+      );
+      expect(await liveRefs(station.id)).toEqual(["data_query"]);
+    });
+
+    it("400s POST with an empty custom ref, `org:`, and persists nothing", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Empty ref", toolPacks: ["org:"] })
+        .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.STATION_INVALID_TOOLPACK);
+      expect(res.body.message).toBe('Unknown toolpack: "org:"');
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+      expect(rows.filter((r) => r.deleted === null)).toHaveLength(0);
+    });
+
+    it("#1063: re-adding an attached custom pack the plan excludes is a no-op, and removing it works", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+      await attachCustomPack(station.id, packId);
+
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: [`org:${packId}`] } })
+        .expect(200);
+      expect(await liveRefs(station.id)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
+
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { remove: [`org:${packId}`] } })
+        .expect(200);
+      expect(await liveRefs(station.id)).toEqual(["data_query"]);
+    });
+
+    it("#1063: adds a custom pack on a plan that includes custom packs", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const packId = await insertCustomPack(organizationId, "Acme CRM");
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPackChanges: { add: [`org:${packId}`] } })
+        .expect(200);
+      expect(await liveRefs(station.id)).toEqual(
+        ["data_query", `org:${packId}`].sort()
+      );
     });
   });
 

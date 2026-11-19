@@ -166,6 +166,42 @@ describe("EntitlementService.customRbacEntitled (#622)", () => {
   });
 });
 
+// ── customPacksEntitlement (#1063) ─────────────────────────────────────
+
+describe("EntitlementService.customPacksEntitlement (#1063)", () => {
+  it("is false, with the tier, on a plan without custom packs", async () => {
+    expect(await EntitlementService.customPacksEntitlement(ORG_ID)).toEqual({
+      entitled: false,
+      tier: "standard",
+    });
+  });
+
+  it("is true on a plan with custom packs", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy(
+        {
+          builtinToolpacks: [],
+          customToolpacks: true,
+          customRbac: false,
+          advancedViewFilters: false,
+        },
+        "pro"
+      )
+    );
+    expect(await EntitlementService.customPacksEntitlement(ORG_ID)).toEqual({
+      entitled: true,
+      tier: "pro",
+    });
+  });
+
+  it("throws when the plan can't be resolved (fail-closed)", async () => {
+    mockResolveTier.mockRejectedValue(new Error("tier lookup failed"));
+    await expect(
+      EntitlementService.customPacksEntitlement(ORG_ID)
+    ).rejects.toThrow("tier lookup failed");
+  });
+});
+
 // ── advancedViewFiltersEntitled (#644) ──────────────────────────────────
 
 describe("EntitlementService.advancedViewFiltersEntitled (#644)", () => {

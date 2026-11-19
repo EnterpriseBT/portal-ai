@@ -45,7 +45,7 @@ export class StationListTool extends Tool<typeof InputSchema> {
   slug = "station_list";
   name = "station_list";
   description =
-    "Lists the stations the user can see, sorted by name: each with its id, name, description, whether it's this session's station, what the user may do to it (write means they can attach views to it), its tool packs (check for data_query before attaching a view the user wants to query there), and the views attached to it. Use it to find a station's id for curated_view_attach or curated_view_detach.";
+    "Lists the stations the user can see, sorted by name: each with its id, name, description, whether it's this session's station, what the user may do to it (write means they can attach views to it), its tool packs, each a ref and a name (check for the data_query ref before attaching a view the user wants to query there), and the views attached to it. Use it to find a station's id for curated_view_attach or curated_view_detach.";
 
   get schema() {
     return InputSchema;
@@ -79,7 +79,9 @@ export class StationListTool extends Tool<typeof InputSchema> {
               description: s.description ?? null,
               isSessionStation: s.id === session.stationId,
               capabilities: s.capabilities,
-              toolpacks: s.enabledToolpacks,
+              // #1063: by name too, so an agent can say which packs a
+              // station carries rather than an `org:<uuid>`.
+              toolpacks: s.toolpacks.map(({ ref, name }) => ({ ref, name })),
               views: (viewsByStation.get(s.id) ?? []).map((v) =>
                 v.canRead
                   ? { id: v.id, key: v.key, label: v.label }
