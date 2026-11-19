@@ -870,7 +870,12 @@ describe("buildSystemPrompt — response style", () => {
       "Two cases have their own guidance above, which takes precedence: " +
       "data that is attached but not shared with the user (they ask for " +
       "access; nothing needs attaching), and a tool pack the plan doesn't " +
-      "include (a plan limit; it can't be added to a station).";
+      "include (a plan limit; it can't be added to a station). " +
+      "If a query comes back empty, or something the user expects isn't " +
+      "here, read `station_context`'s `status` before answering and explain " +
+      "what it reports. When you suggest opening another station, name one " +
+      "the user can read: call `station_context` with " +
+      '`include: ["stations"]`.';
 
     const compositions: StationContext["effectiveToolPacks"][] = [
       [],
@@ -914,6 +919,39 @@ describe("buildSystemPrompt — response style", () => {
           prompt.indexOf("## Response Style")
         );
       };
+
+      it("routes product questions to the Help pack when this station lacks it (#1050)", () => {
+        // The walk finding: without `## Help`, the agent answered "what is a
+        // tool pack?" from its own knowledge — exactly what #367 exists to
+        // prevent — instead of naming the pack that answers it.
+        const ROUTE =
+          "Questions about how Portals itself works (what a portal, station, " +
+          "connector, entity or tool pack is, or how to do something in the " +
+          "product) are the Help pack's, and it isn't on this station: don't " +
+          "answer them from your own knowledge. Say the Help pack answers " +
+          "them and name a station the user can read that has it.";
+        for (const effectiveToolPacks of [[], ["data_query"]] as const) {
+          const section = scopeOf({
+            effectiveToolPacks: [...effectiveToolPacks],
+            otherPlanToolPacks: ["help"],
+          });
+          expect(section).toContain(ROUTE);
+        }
+        const withHelp = scopeOf({
+          effectiveToolPacks: ["data_query", "help"],
+        });
+        expect(withHelp).not.toContain("are the Help pack's");
+      });
+
+      it("names the Help pack when the plan has it and this station doesn't (#1050)", () => {
+        const section = scopeOf({
+          effectiveToolPacks: ["data_query"],
+          otherPlanToolPacks: ["help"],
+        });
+        expect(section).toContain(
+          "- Help: answering questions about how Portals works, with links into Help"
+        );
+      });
 
       it("lists each by name with what it is for", () => {
         const section = scopeOf({
@@ -1850,13 +1888,18 @@ describe("buildSystemPrompt — geospatial SQL guidance (#316)", () => {
 // Help section (#367)
 // ---------------------------------------------------------------------------
 
-describe("buildSystemPrompt — Help (#367)", () => {
+describe("buildSystemPrompt — Help (#367, #1050)", () => {
+  // #1050: `## Help` is the help pack's section, so these run on a station
+  // that has it.
+  const withHelp = (o: Partial<StationContext> = {}) =>
+    makeContext({ effectiveToolPacks: ["data_query", "help"], ...o });
+
   it("renders the ## Help section", () => {
-    expect(buildSystemPrompt(makeContext())).toContain("## Help");
+    expect(buildSystemPrompt(withHelp())).toContain("## Help");
   });
 
   it("names platform_help as the destination for product questions", () => {
-    const prompt = buildSystemPrompt(makeContext());
+    const prompt = buildSystemPrompt(withHelp());
     expect(prompt).toContain("platform_help");
     expect(prompt).toMatch(/product/i);
   });
@@ -1867,7 +1910,7 @@ describe("buildSystemPrompt — Help (#367)", () => {
     // tool's description and this section. It has to say both halves — where
     // product questions go AND where data questions go — or the agent will
     // reach for help mid-analysis.
-    const prompt = buildSystemPrompt(makeContext());
+    const prompt = buildSystemPrompt(withHelp());
     const help = prompt.slice(prompt.indexOf("## Help"));
     expect(help).toMatch(/data tools|data in this station/i);
   });
@@ -1875,18 +1918,19 @@ describe("buildSystemPrompt — Help (#367)", () => {
   it("tells the agent to relay the tool's answer rather than rewrite it", () => {
     // The tool composes because platform behavior is what a model states
     // confidently and wrongly. The prompt is what keeps the relay honest.
-    const help = buildSystemPrompt(makeContext());
+    const help = buildSystemPrompt(withHelp());
     expect(help).toMatch(/relay/i);
     expect(help).toMatch(/do not rewrite|don't rewrite/i);
   });
 
-  it("renders ## Help even when no toolpacks are enabled", () => {
-    // A pack-less station is exactly the session where a user needs
-    // orientation — and since #367 that session exists instead of erroring.
-    const prompt = buildSystemPrompt(
-      makeContext({ effectiveToolPacks: [], entities: [] })
-    );
-    expect(prompt).toContain("## Help");
+  it("has no ## Help and no platform_help without the help pack (#1050)", () => {
+    for (const effectiveToolPacks of [[], ["data_query"]] as const) {
+      const prompt = buildSystemPrompt(
+        makeContext({ effectiveToolPacks: [...effectiveToolPacks] })
+      );
+      expect(prompt).not.toContain("## Help");
+      expect(prompt).not.toContain("platform_help");
+    }
   });
 
   // #711 (spec case 8): policies govern permissions, so the prompt never

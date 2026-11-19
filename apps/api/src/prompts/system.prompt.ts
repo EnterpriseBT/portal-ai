@@ -758,15 +758,32 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
-  // #1050: placeholder until the session switch moves `## Help` (still in the
-  // base prompt) here; the capability phrase is its only marker meanwhile.
+  // #1050: platform help is a pack a station attaches (#367's `## Help`
+  // section, moved here from the base prompt unchanged).
   help: {
     capability: "answer questions about how Portals works",
-    requestShapes: [],
+    requestShapes: ["a product question"],
     blocks: [],
     interpretiveTools: [],
-    markers: ["answer questions about how Portals works"],
-    render: () => [],
+    markers: [
+      "answer questions about how Portals works",
+      "## Help",
+      "platform_help",
+    ],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Help");
+      lines.push("");
+      lines.push(
+        "Questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to get better answers out of a session, what the user can do here, or why this station is returning thin or empty results — go to the `platform_help` tool. Questions about **the data in this station** go to the data tools; `platform_help` never reads records to answer them."
+      );
+      lines.push("");
+      lines.push(
+        "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not."
+      );
+      lines.push("");
+      return lines;
+    },
   },
 };
 
@@ -903,12 +920,6 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "When writing a `date` or `datetime` value into an entity:",
     "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
     "- Otherwise: `date` columns → `YYYY-MM-DD`; `datetime` columns → ISO 8601 with the org's UTC offset (e.g. `2026-06-01T15:00:00-07:00`).",
-    "",
-    "## Help",
-    "",
-    "Questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to get better answers out of a session, what the user can do here, or why this station is returning thin or empty results — go to the `platform_help` tool. Questions about **the data in this station** go to the data tools; `platform_help` never reads records to answer them.",
-    "",
-    "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not.",
     "",
     "## Available Data",
     "",
@@ -1333,9 +1344,28 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "Two cases have their own guidance above, which takes precedence: " +
       "data that is attached but not shared with the user (they ask for " +
       "access; nothing needs attaching), and a tool pack the plan doesn't " +
-      "include (a plan limit; it can't be added to a station)."
+      "include (a plan limit; it can't be added to a station). " +
+      // #1050: the diagnostics platform_help used to give every session.
+      "If a query comes back empty, or something the user expects isn't " +
+      "here, read `station_context`'s `status` before answering and explain " +
+      "what it reports. When you suggest opening another station, name one " +
+      "the user can read: call `station_context` with " +
+      '`include: ["stations"]`.'
   );
   lines.push("");
+  // #1050: with `## Help` gone from this session, nothing else says product
+  // questions belong to the Help pack — and a model-authored answer about
+  // the product is what #367 exists to prevent.
+  if (otherPlanPacks.includes("help")) {
+    lines.push(
+      "Questions about how Portals itself works (what a portal, station, " +
+        "connector, entity or tool pack is, or how to do something in the " +
+        "product) are the Help pack's, and it isn't on this station: don't " +
+        "answer them from your own knowledge. Say the Help pack answers " +
+        "them and name a station the user can read that has it."
+    );
+    lines.push("");
+  }
   // The agent can only "say what is missing" if it knows what exists. Without
   // this list it told a user that attaching views can't be done from a
   // session, on a station that simply lacked the pack for it.

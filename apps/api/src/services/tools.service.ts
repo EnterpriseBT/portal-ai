@@ -607,10 +607,12 @@ export class ToolService {
         permissionContext
       );
     }
-    //   - `platform_help` — in-session answers about the product (#367). Its
-    //     capability now belongs to the `help` pack (#1050); it's still built
-    //     for every session until the session switch moves it behind the pack.
-    {
+
+    // -------------------------------------------------------------------
+    // Pack: help (#1050) — in-session answers about the product (#367).
+    // Attached explicitly; every tier is entitled to it and it's free.
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("help")) {
       tools.platform_help = new PlatformHelpTool().build(
         stationId,
         organizationId,

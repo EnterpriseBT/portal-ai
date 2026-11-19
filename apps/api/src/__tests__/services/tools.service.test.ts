@@ -257,6 +257,7 @@ const ALL_PACK_SLUGS = [
   "rbac_management",
   "view_management",
   "gis",
+  "help",
 ];
 
 /** A TierPolicy with the given entitlements. Allocations are unlimited so
@@ -679,23 +680,33 @@ describe("buildAnalyticsTools()", () => {
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
+    // #1050: platform_help is the help pack's now, not a system tool.
+    expect(Object.keys(tools).sort()).toEqual([
+      "current_time",
+      "station_context",
+    ]);
+  });
+
+  it("doesn't build platform_help on a station without the help pack (#1050)", async () => {
+    setupStationMocks(["data_query"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.platform_help).toBeUndefined();
+    expect(tools.current_time).toBeDefined();
+    expect(tools.station_context).toBeDefined();
+  });
+
+  it("builds platform_help on a station with the help pack (#1050)", async () => {
+    setupStationMocks(["help"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
     expect(Object.keys(tools).sort()).toEqual([
       "current_time",
       "platform_help",
       "station_context",
     ]);
-  });
-
-  it("should offer platform_help on an ordinary station", async () => {
-    setupStationMocks(["data_query"]);
-
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
-
-    // Always available, alongside the other two system tools — there is no
-    // trigger and no directive; the agent routes to it.
-    expect(tools.platform_help).toBeDefined();
-    expect(tools.current_time).toBeDefined();
-    expect(tools.station_context).toBeDefined();
   });
 
   it("should declare platform_help to the cost gate as free", async () => {
@@ -704,7 +715,7 @@ describe("buildAnalyticsTools()", () => {
     // inside CostGateService and is tested there; what this asserts is the
     // half this file owns: the wrap tells the gate the tool is free. (Mocking
     // checkAdmission to deny would bypass the very logic under test.)
-    setupStationMocks(["data_query"]);
+    setupStationMocks(["help"]);
     const spy = jest.spyOn(CostGateService, "checkAdmission");
 
     try {
@@ -2139,7 +2150,7 @@ describe("buildAnalyticsTools() tier entitlements (#214)", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(Object.keys(tools).sort()).toEqual(
-      ["current_time", "platform_help", "station_context"].sort()
+      ["current_time", "station_context"].sort()
     );
   });
 
@@ -2171,11 +2182,11 @@ describe("buildAnalyticsTools() tier entitlements (#214)", () => {
 
     // Enumeration by construction: any new tool-construction path that
     // bypasses the entitlement filter surfaces as an unexpected key here.
-    // All three are system tools, which are never entitlement-gated by
-    // design — `platform_help` joined them in #367 precisely so no tier's
-    // allowlist can withhold platform help.
+    // Both are system tools, never entitlement-gated by design. (#1050:
+    // platform_help is the help pack's; an empty allowlist can't arise for
+    // it in practice, since TierService unions it into every policy.)
     expect(Object.keys(tools).sort()).toEqual(
-      ["current_time", "platform_help", "station_context"].sort()
+      ["current_time", "station_context"].sort()
     );
   });
 
