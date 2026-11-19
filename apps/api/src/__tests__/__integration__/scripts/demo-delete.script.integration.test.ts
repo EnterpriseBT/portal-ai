@@ -94,6 +94,8 @@ describe("db:demo:delete — runDemoDelete", () => {
   it.each([
     ["no --org", ["--actor", "operator-1"]],
     ["no --actor", ["--org", "o-1"]],
+    ["--org's value is a flag", ["--org", "--actor", "operator-1"]],
+    ["an unknown flag", ["--org", "o-1", "--actor", "a", "--force", "x"]],
   ])("is a usage error with %s", async (_label, argv) => {
     expect(await runDemoDelete(argv, undefined, io)).toBe(1);
     expect(err.join("\n")).toMatch(/^Usage: db:demo:delete/);

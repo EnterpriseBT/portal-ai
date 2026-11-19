@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 
 import { ApplicationService } from "../services/application.service.js";
 import { closeDatabase } from "./client.js";
+import { parseFlags } from "./script-args.util.js";
 
 const USAGE = "Usage: db:demo:delete -- --org <id> --actor <who>";
 
@@ -31,11 +32,6 @@ const processIo: DemoDeleteIo = {
 
 export type DemoDeleteStep = typeof ApplicationService.deleteDemoOrganization;
 
-function arg(argv: string[], flag: string): string | undefined {
-  const i = argv.indexOf(flag);
-  return i >= 0 ? argv[i + 1] : undefined;
-}
-
 /** Parse, delete, report. Returns the exit code. */
 export async function runDemoDelete(
   argv: string[],
@@ -43,8 +39,12 @@ export async function runDemoDelete(
     ApplicationService.deleteDemoOrganization(id, actor),
   io: DemoDeleteIo = processIo
 ): Promise<number> {
-  const orgId = arg(argv, "--org");
-  const actor = arg(argv, "--actor");
+  const args = parseFlags(argv, ["org", "actor"]);
+  if (!args.ok) {
+    io.err(`${USAGE} (${args.error})`);
+    return 1;
+  }
+  const { org: orgId, actor } = args.flags;
   if (!orgId || !actor) {
     io.err(`${USAGE} (--org and --actor are required)`);
     return 1;

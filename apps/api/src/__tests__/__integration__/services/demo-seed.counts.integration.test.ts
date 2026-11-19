@@ -190,6 +190,83 @@ describe("DemoSeedService (integration): counts", () => {
     ).toHaveLength(expectedKeys.length);
   }, 90000);
 
+  it("stops a load whose org was deleted mid-stream instead of running on (#1035 adversarial)", async () => {
+    // A `demo delete` racing a running `demo create` used to leave the load
+    // writing into a deleted org for minutes until it ran out of memory.
+    const { orgId } = await provisionOrgWithStation();
+    async function* rows() {
+      for (let i = 0; i < 50; i++) yield { n: String(i) };
+    }
+    const seen: string[] = [];
+    const guarded = DemoSeedService.stopWhenOrgDeleted(orgId, rows(), 10);
+    await expect(
+      (async () => {
+        for await (const row of guarded) {
+          seen.push(row.n);
+          if (seen.length === 15) {
+            await DbService.repository.organizations.softDelete(
+              orgId,
+              SystemUtilities.id.system
+            );
+          }
+        }
+      })()
+    ).rejects.toThrow(`demo org ${orgId} was deleted during the load`);
+    // Caught at the next check (row 20), not at the end of the stream.
+    expect(seen.length).toBe(20);
+  });
+
+  it("also checks on elapsed time, so slow batches can't stretch the stop to minutes", async () => {
+    const { orgId } = await provisionOrgWithStation();
+    let deleted = false;
+    async function* rows() {
+      for (let i = 0; i < 1000; i++) {
+        if (i === 3) {
+          await DbService.repository.organizations.softDelete(
+            orgId,
+            SystemUtilities.id.system
+          );
+          deleted = true;
+        }
+        // Each row "takes" 30ms, as a slow batch would.
+        await new Promise((r) => setTimeout(r, 30));
+        yield { n: String(i) };
+      }
+    }
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const row of DemoSeedService.stopWhenOrgDeleted(
+          orgId,
+          rows(),
+          1_000_000,
+          100
+        )) {
+          seen.push(row.n);
+        }
+      })()
+    ).rejects.toThrow("was deleted during the load");
+    expect(deleted).toBe(true);
+    // Row count alone (every 1,000,000) would never have fired; ~100ms did.
+    expect(seen.length).toBeLessThan(20);
+  });
+
+  it("passes every row through while the org stays live", async () => {
+    const { orgId } = await provisionOrgWithStation();
+    async function* rows() {
+      for (let i = 0; i < 25; i++) yield { n: String(i) };
+    }
+    const out: string[] = [];
+    for await (const row of DemoSeedService.stopWhenOrgDeleted(
+      orgId,
+      rows(),
+      10
+    )) {
+      out.push(row.n);
+    }
+    expect(out).toHaveLength(25);
+  });
+
   it("throws when a required system column definition is missing", async () => {
     const { orgId, stationId } = await provisionOrgWithStation();
     const address = await DbService.repository.columnDefinitions.findByKey(

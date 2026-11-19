@@ -179,6 +179,54 @@ describe("db:demo:create — runDemoCreate", () => {
     expect(err.join("\n")).toMatch(/not found/);
   });
 
+  it.each(["--tier", "--rows", "--owner-email", "--name"])(
+    "a name equal to a flag (%s) is just a name: created on the requested tier (#1035 adversarial)",
+    async (flagName) => {
+      const code = await runDemoCreate(
+        [
+          "--name",
+          flagName,
+          "--owner-email",
+          ownerEmail,
+          "--tier",
+          "standard",
+          "--rows",
+          "0",
+        ],
+        DEFAULT_DEMO_CREATE_STEPS,
+        io
+      );
+      expect(code).toBe(0);
+      const report = JSON.parse(out[0]) as {
+        organizationId: string;
+        tier: string;
+      };
+      expect(report.tier).toBe("standard");
+      const org = await DbService.repository.organizations.findById(
+        report.organizationId
+      );
+      expect(org!.name).toBe(flagName);
+      expect(org!.tier).toBe("standard");
+    },
+    90000
+  );
+
+  it.each([
+    ["an unknown flag", ["--nme", "x"]],
+    ["a flag without a value", ["--rows"]],
+    ["a stray positional argument", ["stray"]],
+  ])("refuses %s before creating anything", async (_label, extra) => {
+    const create = jest.fn<DemoCreateSteps["create"]>();
+    const code = await runDemoCreate(
+      [...args(), ...extra],
+      { ...DEFAULT_DEMO_CREATE_STEPS, create },
+      io
+    );
+    expect(code).toBe(1);
+    expect(create).not.toHaveBeenCalled();
+    expect(err.join("\n")).toMatch(/^Usage: db:demo:create/);
+  });
+
   it.each([
     ["a missing --name", { "--name": "" }],
     ["a name over 120 characters", { "--name": "x".repeat(121) }],

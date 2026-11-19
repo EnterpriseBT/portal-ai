@@ -29,6 +29,9 @@ The branch's code review found four real defects in this contract; the fixes cha
 4. **The name and `--rows` rules live once in core** (`DemoOrganizationCreateInputSchema`, `DEMO_MAX_ROWS`, `organizationNameField`), used by the CLI and the script. The script now also refuses a line break in the name.
 
 5. **The seed attaches one unrestricted curated view per entity to the demo station** (`seedStationViews`; `DemoSeedResult.views`, and `views` in `db:demo:create`'s JSON). Found by the smoke walk: since #674 a station queries data only through attached views, so a demo without them couldn't answer its presenter script.
+6. **Adversarial fixes:**
+   - **Flag parsing.** Both scripts parse their flags strictly as `--flag value` pairs (`db/script-args.util.ts`), so a value equal to a flag name (`--name --tier`) is just a value. Unknown flags, missing values and stray arguments are usage errors.
+   - **Deleted org mid-load.** The seed's row stream checks every 5,000 rows or 2 s that its org is still live (`stopWhenOrgDeleted`). A `demo delete` racing a `demo create` therefore stops the load with `demo org <id> was deleted during the load`, instead of the load running on until it ran out of memory.
 
 Also corrected: the create script's stderr id line isn't seen on a killed run, because `runApiScript` buffers stderr. The runbook finds a leftover org with `org list --search` instead.
 

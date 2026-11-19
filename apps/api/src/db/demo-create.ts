@@ -22,6 +22,7 @@ import { DemoOrganizationCreateInputSchema } from "@portalai/core/contracts";
 import { ApplicationService } from "../services/application.service.js";
 import { DemoSeedService } from "../services/demo-seed.service.js";
 import { closeDatabase } from "./client.js";
+import { parseFlags } from "./script-args.util.js";
 
 const USAGE =
   "Usage: db:demo:create -- --name <name> --owner-email <email> --tier <slug> --rows <n>";
@@ -49,11 +50,6 @@ const processIo: DemoCreateIo = {
   err: (line) => console.error(line),
 };
 
-function arg(argv: string[], flag: string): string | undefined {
-  const i = argv.indexOf(flag);
-  return i >= 0 ? argv[i + 1] : undefined;
-}
-
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -64,19 +60,20 @@ export async function runDemoCreate(
   steps: DemoCreateSteps = DEFAULT_DEMO_CREATE_STEPS,
   io: DemoCreateIo = processIo
 ): Promise<number> {
-  const ownerEmail = arg(argv, "--owner-email");
-  const tier = arg(argv, "--tier");
-
   const usage = (detail: string) => {
     io.err(`${USAGE} (${detail})`);
     return 1;
   };
+  const args = parseFlags(argv, ["name", "owner-email", "tier", "rows"]);
+  if (!args.ok) return usage(args.error);
+  const ownerEmail = args.flags["owner-email"];
+  const tier = args.flags.tier;
   if (!ownerEmail) return usage("--owner-email is required");
   if (!tier) return usage("--tier is required");
   // The rule the CLI checks too (core), so a direct run can't diverge.
   const parsed = DemoOrganizationCreateInputSchema.safeParse({
-    name: arg(argv, "--name") ?? "",
-    rows: arg(argv, "--rows") ?? "",
+    name: args.flags.name ?? "",
+    rows: args.flags.rows ?? "",
   });
   if (!parsed.success) {
     return usage(parsed.error.issues[0]?.message ?? "invalid input");

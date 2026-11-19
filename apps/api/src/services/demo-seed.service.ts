@@ -68,6 +68,11 @@ const SEED_USER = SystemUtilities.id.system;
  *  existing row rather than inserting a duplicate (see registerCustomToolpack). */
 const DEMO_TOOLPACK_NAME = "demo_supply_tools";
 
+/** How many rows the seed loads between checks that its org is still live. */
+const ORG_LIVENESS_CHECK_EVERY = 5_000;
+/** …and at most this long, since writes into a deleted org slow down. */
+const ORG_LIVENESS_CHECK_EVERY_MS = 2_000;
+
 /**
  * Adapt the sync `synthesizeTransactions` generator to the async string-keyed
  * row shape `importRows` consumes — lazily (one row at a time), so peak memory
@@ -254,6 +259,36 @@ export class DemoSeedService {
       googleSheets: { present: false },
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  /**
+   * Pass `rows` through, checking that the org is still live every `every`
+   * rows **or** every `everyMs` of wall time, whichever comes first, and
+   * throw once it isn't (#1035 adversarial review). A `demo delete` that
+   * races a running `demo create` otherwise leaves the load writing into a
+   * deleted org until it runs out of memory. Writes into a deleted org also
+   * get slow, which is why time is a trigger as well as rows: the stop lands
+   * within about one import batch. The check is one indexed lookup.
+   */
+  static async *stopWhenOrgDeleted<T>(
+    orgId: string,
+    rows: AsyncIterable<T>,
+    every = ORG_LIVENESS_CHECK_EVERY,
+    everyMs = ORG_LIVENESS_CHECK_EVERY_MS
+  ): AsyncGenerator<T> {
+    let sinceCheck = 0;
+    let lastCheck = Date.now();
+    for await (const row of rows) {
+      if (sinceCheck >= every || Date.now() - lastCheck >= everyMs) {
+        sinceCheck = 0;
+        lastCheck = Date.now();
+        if (!(await DbService.repository.organizations.findById(orgId))) {
+          throw new Error(`demo org ${orgId} was deleted during the load`);
+        }
+      }
+      sinceCheck++;
+      yield row;
+    }
   }
 
   /**
@@ -602,12 +637,16 @@ export class DemoSeedService {
     // 3. Build the wide table columns from the mappings.
     await wideTableReconcilerService.reconcileEntity(entity.id);
 
-    // 4. Dual-write the records through the app's real import path.
-    const result = await importRows(rows, {
-      connectorEntityId: entity.id,
-      organizationId: orgId,
-      userId: SEED_USER,
-    });
+    // 4. Dual-write the records through the app's real import path. The
+    // stream stops if the org is deleted mid-load (a racing `demo delete`).
+    const result = await importRows(
+      DemoSeedService.stopWhenOrgDeleted(orgId, rows),
+      {
+        connectorEntityId: entity.id,
+        organizationId: orgId,
+        userId: SEED_USER,
+      }
+    );
     logger.info({ orgId, entity: def.key, ...result }, "entity seeded");
     return { key: def.key, connectorEntityId: entity.id, ...result };
   }
