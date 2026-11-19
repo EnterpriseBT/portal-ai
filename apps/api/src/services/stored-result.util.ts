@@ -8,7 +8,9 @@
  * - A block with no recipe isn't kept: it becomes `{ notKept, columns,
  *   rowCount }` (`NotKeptContentSchema`).
  * - A raw `tool-result` (the model's history) keeps a row result's columns,
- *   count and query, not its rows. Other results pass through.
+ *   count, query and handle id, not its rows. A bare array counts as rows
+ *   only when every element is an object (a custom tool may return its data
+ *   that way); a list of ids or names passes through, as do other results.
  *
  * Applied where a message is persisted (`handleToolResult`) and where one is
  * served (`getPortal`, `replayTurn`), so a message stored before this change
@@ -17,7 +19,12 @@
 
 import { VizPipelineSchema } from "@portalai/core/contracts";
 
-const RESULT_BLOCK_TYPES = new Set(["data-table", "d3", "geo"]);
+/** The display blocks that draw rows. The migration (0136) names them too. */
+export const RESULT_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "data-table",
+  "d3",
+  "geo",
+]);
 
 /** Content keys that hold row values (or a handle to them). */
 const ROW_KEYS = new Set(["rows", "samplePeek", "sample", "queryHandle"]);
@@ -30,6 +37,8 @@ export interface StoredResultSummary {
   columns: string[];
   rowCount: number;
   sql?: string;
+  /** The staged handle's id: not data. Its reads re-check access (#1038). */
+  queryHandle?: string;
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -94,14 +103,21 @@ export function isStoredResultSummary(
   return asObject(content)?.rowsNotKept === true;
 }
 
+function isRowArray(content: unknown): content is Row[] {
+  return (
+    Array.isArray(content) &&
+    content.length > 0 &&
+    content.every((item) => asObject(item) != null)
+  );
+}
+
 /** The persisted form of a raw tool result: a row result's shape only. */
 export function toStoredToolResult(content: unknown): unknown {
-  if (Array.isArray(content)) {
-    const rows = content as Row[];
+  if (isRowArray(content)) {
     return {
       rowsNotKept: true,
-      columns: rows[0] != null ? Object.keys(rows[0]) : [],
-      rowCount: rows.length,
+      columns: Object.keys(content[0]),
+      rowCount: content.length,
     } satisfies StoredResultSummary;
   }
   const obj = asObject(content);
@@ -120,6 +136,9 @@ export function toStoredToolResult(content: unknown): unknown {
     columns: columnsOf(obj),
     rowCount: rowCountOf(obj),
     ...(sql ? { sql } : {}),
+    ...(typeof obj.queryHandle === "string"
+      ? { queryHandle: obj.queryHandle }
+      : {}),
   } satisfies StoredResultSummary;
 }
 
@@ -128,10 +147,13 @@ export function describeStoredResult(
   toolName: string,
   summary: StoredResultSummary
 ): string {
+  const reuse = summary.queryHandle
+    ? `pass its queryHandle ${summary.queryHandle} while it's still live, or `
+    : "";
   return (
     `[Previous ${toolName} result: ${summary.rowCount} rows, ` +
     `columns: [${summary.columns.join(", ")}]. ` +
-    `Its rows aren't kept; re-run the query to see values.]`
+    `Its rows aren't kept; ${reuse}re-run the query to see values.]`
   );
 }
 

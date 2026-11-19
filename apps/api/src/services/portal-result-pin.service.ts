@@ -17,6 +17,7 @@ import {
   VizPipelineSchema,
   type VizPipeline,
 } from "@portalai/core/contracts";
+import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
 import type { PortalResultType } from "@portalai/core/models";
 
 import { ApiError } from "./http.service.js";
@@ -103,6 +104,10 @@ export class PortalResultPinService {
     const source = (blockContent ?? {}) as Record<string, unknown>;
     const pipeline = await this.derivePipeline(source, scope, deps);
     if (!pipeline) throw notReexecutable();
+    // #1038: a transform pipeline (technical_indicator) re-runs into a
+    // transform handle, which can't be pin-owned, so its readers couldn't
+    // page it. Refused here rather than on every view.
+    if (pipeline.transform != null) throw notReexecutable();
 
     const recipe: Record<string, unknown> = { pipeline };
     for (const key of RECIPE_KEYS[type] ?? []) {
@@ -118,8 +123,15 @@ export class PortalResultPinService {
           : [];
     }
     // #371: a map whose source was a handle (larger than an inline result)
-    // renders through the pin's tile endpoint from the start.
-    if (type === "geo" && typeof source.queryHandle === "string") {
+    // renders through the pin's tile endpoint from the start. #1038: a stored
+    // block keeps no handle, so its row count past the inline threshold says
+    // the same.
+    if (
+      type === "geo" &&
+      (typeof source.queryHandle === "string" ||
+        (typeof source.rowCount === "number" &&
+          source.rowCount > INLINE_ROWS_THRESHOLD))
+    ) {
       recipe.tiled = true;
     }
 

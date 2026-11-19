@@ -59,6 +59,7 @@ import { toModelView } from "./model-output.util.js";
 import {
   describeStoredResult,
   isStoredResultSummary,
+  RESULT_BLOCK_TYPES,
   stripStoredMessage,
   toStoredBlockContent,
   toStoredToolResult,
@@ -221,8 +222,7 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
     // the stored block keeps only the recipe that re-reads them as its reader.
     const block = displayBlock.block;
     ctx.assistantBlocks.push(
-      typeof block.type === "string" &&
-        ["data-table", "d3", "geo"].includes(block.type)
+      typeof block.type === "string" && RESULT_BLOCK_TYPES.has(block.type)
         ? { ...block, content: toStoredBlockContent(block.type, block.content) }
         : block
     );

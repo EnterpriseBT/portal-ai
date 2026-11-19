@@ -307,6 +307,9 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
       })
     );
     expect(result).toMatchObject({ type: "data-table", queryHandle: "qh-job" });
+    // #1038: an escalated table re-runs like a synchronous one, so it's kept
+    // as a recipe (it had none, and was stored as not kept).
+    expect(result).toMatchObject({ pipeline: INLINE_PIPELINE });
   });
 
   it("rejects retry-with-ack when the acknowledgement is invalid (no prior rejection)", async () => {

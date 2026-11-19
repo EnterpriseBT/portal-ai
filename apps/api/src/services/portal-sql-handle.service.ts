@@ -115,6 +115,17 @@ function requireHandleUser(meta: StoredHandleMeta): string {
   return meta._userId;
 }
 
+/**
+ * #1038: how long one passed access check covers a reader's further pages of
+ * the same handle. A revocation reaches an open handle within this window;
+ * without it a large chart ran an EXPLAIN per page on the shared pool.
+ */
+export const HANDLE_READ_DECISION_TTL_MS = 30_000;
+/** Bound on remembered decisions (per API instance); oldest go first. */
+const HANDLE_READ_DECISION_MAX = 10_000;
+/** `${handleId}:${userId}` → when the passed check stops covering reads. */
+const handleReadDecisions = new Map<string, number>();
+
 export class PortalSqlHandleService {
   /**
    * Run a SELECT and stage its rows in Redis under a fresh handle.
@@ -596,8 +607,18 @@ export class PortalSqlHandleService {
   static async authorizeCallerRead(
     meta: StoredHandleMeta,
     caller: { organizationId: string; userId: string },
-    deps: { explainSqlQuery?: typeof PortalSqlService.explainSqlQuery } = {}
+    deps: {
+      explainSqlQuery?: typeof PortalSqlService.explainSqlQuery;
+      now?: () => number;
+    } = {}
   ): Promise<void> {
+    const now = (deps.now ?? Date.now)();
+    // Only a pass is remembered, per reader: a refusal is re-checked, so
+    // restored access works on the next read.
+    const key = `${meta.queryHandle}:${caller.userId}`;
+    const coveredUntil = handleReadDecisions.get(key);
+    if (coveredUntil != null && coveredUntil > now) return;
+
     const sql = await this.rootSql(meta);
     if (sql == null) return;
     const explain =
@@ -610,6 +631,12 @@ export class PortalSqlHandleService {
         organizationId: caller.organizationId,
         userId: caller.userId,
       });
+      handleReadDecisions.delete(key);
+      handleReadDecisions.set(key, now + HANDLE_READ_DECISION_TTL_MS);
+      if (handleReadDecisions.size > HANDLE_READ_DECISION_MAX) {
+        const oldest = handleReadDecisions.keys().next().value;
+        if (oldest !== undefined) handleReadDecisions.delete(oldest);
+      }
     } catch (err) {
       if (
         err instanceof ApiError &&

@@ -274,8 +274,18 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
 
     if (outcome.status === "completed") {
       // The processor's terminal payload is the handle envelope; tag it
-      // with `type: "data-table"` to match the synchronous handle path.
-      return { type: "data-table", ...(outcome.result ?? {}) };
+      // with `type: "data-table"` and its pipeline (#349), to match the
+      // synchronous handle path. #1038: without the pipeline the stored
+      // table had nothing to re-run and wasn't kept.
+      return {
+        type: "data-table",
+        ...(outcome.result ?? {}),
+        pipeline: {
+          sql: opts.sql,
+          stationId: opts.stationId,
+          organizationId: opts.organizationId,
+        },
+      };
     }
     if (outcome.status === "cancelled") {
       throw new ApiError(

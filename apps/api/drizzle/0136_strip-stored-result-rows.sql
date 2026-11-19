@@ -75,17 +75,20 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
                     ELSE '{}'::jsonb END AS c) AS x
 $$;
 --> statement-breakpoint
--- A raw tool result: a row result's shape, anything else unchanged.
+-- A raw tool result: a row result's shape (with its handle's id), anything
+-- else unchanged. A bare array is rows only when every element is an object.
 CREATE OR REPLACE FUNCTION pg_temp.stored_tool_result(c jsonb) RETURNS jsonb
 LANGUAGE sql IMMUTABLE AS $$
   SELECT CASE
-    WHEN jsonb_typeof(c) = 'array' THEN jsonb_build_object(
+    WHEN jsonb_typeof(c) = 'array'
+         AND jsonb_array_length(c) > 0
+         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(c) AS el(v)
+                          WHERE jsonb_typeof(v) <> 'object')
+      THEN jsonb_build_object(
       'rowsNotKept', true,
-      'columns', CASE WHEN jsonb_typeof(c -> 0) = 'object'
-                      THEN COALESCE((SELECT jsonb_agg(k)
-                                       FROM jsonb_object_keys(c -> 0) AS k),
-                                    '[]'::jsonb)
-                      ELSE '[]'::jsonb END,
+      'columns', COALESCE((SELECT jsonb_agg(k)
+                             FROM jsonb_object_keys(c -> 0) AS k),
+                          '[]'::jsonb),
       'rowCount', jsonb_array_length(c))
     WHEN jsonb_typeof(c) <> 'object' THEN c
     WHEN c -> 'rowsNotKept' = 'true'::jsonb THEN c
@@ -105,6 +108,9 @@ LANGUAGE sql IMMUTABLE AS $$
                 THEN jsonb_build_object('sql', c -> 'sql')
               ELSE '{}'::jsonb
             END
+         || CASE WHEN jsonb_typeof(c -> 'queryHandle') = 'string'
+                 THEN jsonb_build_object('queryHandle', c -> 'queryHandle')
+                 ELSE '{}'::jsonb END
   END
 $$;
 --> statement-breakpoint

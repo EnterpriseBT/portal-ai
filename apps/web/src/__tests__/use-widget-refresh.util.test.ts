@@ -8,6 +8,7 @@
 import { jest } from "@jest/globals";
 import { renderHook, waitFor, act } from "@testing-library/react";
 
+import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
 import type { BlockRef } from "@portalai/core";
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
@@ -111,9 +112,10 @@ describe("useWidgetRefresh — message blocks (#270)", () => {
     expect(result.current.error).toBeNull();
   });
 
-  // #1038: there is no stored copy to fall back on, so a remount reads again
-  // even moments after the last read (no freshness skip for messages).
-  it("reads again on every mount, however recent the last read", async () => {
+  // #1038 review: a remount within the freshness window (the gate re-mounts a
+  // widget scrolled back into view) reuses this tab's last read; after the
+  // window it reads again. Nothing is stored: a new tab starts empty.
+  it("reuses its last read on a remount inside the window, and reads again after", async () => {
     widgetRefreshMutate.mockResolvedValue(FRESH_ROWS);
     const ref = messageRef();
     const first = renderHook(() => useWidgetRefresh(ref));
@@ -121,10 +123,38 @@ describe("useWidgetRefresh — message blocks (#270)", () => {
     first.unmount();
 
     const second = renderHook(() => useWidgetRefresh(ref));
-    await waitFor(() =>
-      expect(second.result.current.fresh).toEqual(FRESH_ROWS)
+    expect(second.result.current.fresh).toEqual(FRESH_ROWS);
+    expect(second.result.current.lastUpdatedAt).not.toBeNull();
+    expect(widgetRefreshMutate).toHaveBeenCalledTimes(1);
+    second.unmount();
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + VIZ_REFRESH_FRESHNESS_MS + 1_000;
+    try {
+      const third = renderHook(() => useWidgetRefresh(ref));
+      await waitFor(() => expect(widgetRefreshMutate).toHaveBeenCalledTimes(2));
+      third.unmount();
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("forgets a read once the reader loses access", async () => {
+    const ref = messageRef();
+    widgetRefreshMutate.mockResolvedValueOnce(FRESH_ROWS);
+    const first = renderHook(() => useWidgetRefresh(ref));
+    await waitFor(() => expect(first.result.current.fresh).toEqual(FRESH_ROWS));
+    widgetRefreshMutate.mockRejectedValueOnce(
+      Object.assign(new Error("gone"), { code: "VIZ_WIDGET_DATA_UNAVAILABLE" })
     );
-    expect(widgetRefreshMutate).toHaveBeenCalledTimes(2);
+    act(() => first.result.current.refresh());
+    await waitFor(() => expect(first.result.current.unavailable).toBe(true));
+    first.unmount();
+
+    widgetRefreshMutate.mockResolvedValueOnce(FRESH_ROWS);
+    const second = renderHook(() => useWidgetRefresh(ref));
+    expect(second.result.current.fresh).toBeNull();
+    await waitFor(() => expect(widgetRefreshMutate).toHaveBeenCalledTimes(3));
   });
 
   it("shows no time until a read completes, then the time of that read (#1038)", async () => {

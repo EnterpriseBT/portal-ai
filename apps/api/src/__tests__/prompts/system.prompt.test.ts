@@ -370,6 +370,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     expect(prompt).toMatch(
       /rows from an earlier turn aren't kept[^.]*re-run the query/i
     );
+    expect(prompt).toMatch(/pass its `queryHandle` if it names one/i);
   });
 
   // #1042: on a station with only the access pack the assistant relayed a

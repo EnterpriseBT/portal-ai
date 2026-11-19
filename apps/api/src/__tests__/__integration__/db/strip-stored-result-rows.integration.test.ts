@@ -73,6 +73,18 @@ describe("0136 strip-stored-result-rows (#1038)", () => {
     { type: "tool-result", toolCallId: "tc-3", toolName: "x", content: rows },
     {
       type: "tool-result",
+      toolCallId: "tc-5",
+      toolName: "list_view_ids",
+      content: ["v-1", "v-2"],
+    },
+    {
+      type: "tool-result",
+      toolCallId: "tc-6",
+      toolName: "mixed",
+      content: [{ id: "v-1" }, "v-2"],
+    },
+    {
+      type: "tool-result",
       toolCallId: "tc-4",
       toolName: "create_entity",
       content: { success: true, entityId: "e-1" },

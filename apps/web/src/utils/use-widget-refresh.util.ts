@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
 import type { BlockRef } from "@portalai/core";
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
 import { toServerError, type ServerError } from "./api.util";
 import { pinDataRefusal } from "./pin-data.util";
+
+/**
+ * #1038 review: the last live read of each message block in this tab, so a
+ * widget that remounts (scrolled back into view, the gate re-mounts it)
+ * within `VIZ_REFRESH_FRESHNESS_MS` reuses it instead of re-running its query
+ * against the org's refresh rate limit. Memory only: nothing is stored, and a
+ * reload starts empty. An "unavailable" answer evicts the entry.
+ */
+const lastReads = new Map<
+  string,
+  { fresh: WidgetRefreshResponse; at: number }
+>();
 
 const keyOf = (ref: BlockRef): string =>
   ref.kind === "message"
@@ -59,7 +72,16 @@ export function useWidgetRefresh(
   const pinData = sdk.portalResults.data(pinId, { enabled: pinId !== "" });
 
   const { mutateAsync: refreshMessageBlock } = sdk.portalSql.widgetRefresh();
-  const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(null);
+  // A remount within the freshness window starts from this tab's last read.
+  const [cachedAt] = useState<number | null>(() => {
+    const last = key != null ? lastReads.get(key) : undefined;
+    return last != null && Date.now() - last.at <= VIZ_REFRESH_FRESHNESS_MS
+      ? last.at
+      : null;
+  });
+  const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(() =>
+    cachedAt != null && key != null ? (lastReads.get(key)?.fresh ?? null) : null
+  );
   const [error, setError] = useState<ServerError | null>(null);
   const [notRefreshable, setNotRefreshable] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
@@ -67,7 +89,7 @@ export function useWidgetRefresh(
   // not reliably clear here (the button spun forever after a resolved
   // refresh). A `try/finally` guarantees the spinner ends when refresh() does.
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(cachedAt);
 
   // Keep the ref itself stable for the callback without spreading its
   // variant fields into dependency arrays.
@@ -84,16 +106,19 @@ export function useWidgetRefresh(
         messageId: ref.messageId,
         blockIndex: ref.blockIndex,
       });
+      const at = Date.now();
+      lastReads.set(keyOf(ref), { fresh: res, at });
       setError(null);
       setUnavailable(false);
       setFresh(res);
-      setLastUpdatedAt(Date.now());
+      setLastUpdatedAt(at);
     } catch (e) {
       const se = toServerError(e as never);
       if (se?.code === "VIZ_WIDGET_NOT_REFRESHABLE") {
         setNotRefreshable(true);
       } else if (se?.code === "VIZ_WIDGET_DATA_UNAVAILABLE") {
         // Drop anything an earlier read drew: access ended since.
+        lastReads.delete(keyOf(ref));
         setFresh(null);
         setLastUpdatedAt(null);
         setUnavailable(true);
@@ -106,13 +131,15 @@ export function useWidgetRefresh(
   }, [refreshMessageBlock]);
 
   // Read once on mount (#1038): a stored block has no rows of its own. The
-  // gates (#271) mount a widget only near the viewport, which bounds this.
+  // gates (#271) mount a widget only near the viewport, and a remount within
+  // the freshness window reuses this tab's last read rather than re-running.
   const autoFired = useRef(false);
   useEffect(() => {
     if (key == null || !allowed || autoFired.current) return;
     autoFired.current = true;
+    if (cachedAt != null) return;
     void refresh();
-  }, [key, allowed, refresh]);
+  }, [key, allowed, refresh, cachedAt]);
 
   if (blockRef?.kind === "pin") {
     const refusal = pinDataRefusal(pinData.error);

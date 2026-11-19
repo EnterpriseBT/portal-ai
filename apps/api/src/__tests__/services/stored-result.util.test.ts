@@ -140,13 +140,27 @@ describe("toStoredToolResult", () => {
     });
   });
 
-  it("summarizes a handle envelope and a bare row array", () => {
+  // #1038 review: the handle's id is kept, not its data. Handle reads re-check
+  // the reader's access, so a follow-up can reuse it while it's live.
+  it("summarizes a handle envelope, keeping the handle's id", () => {
     expect(toStoredToolResult({ type: "data-table", ...envelope })).toEqual({
       rowsNotKept: true,
       columns: ["name"],
       rowCount: 3,
       sql: envelope.sql,
+      queryHandle: "qh-1",
     });
+  });
+
+  // #1038 review: a bare array of ids or names isn't rows and passes through;
+  // an array of objects is row-shaped (a custom tool may return its data
+  // that way) and keeps only its shape.
+  it("summarizes a bare array only when it's row-shaped", () => {
+    const ids = ["v-1", "v-2"];
+    expect(toStoredToolResult(ids)).toBe(ids);
+    const mixed = [{ name: "Acme" }, "v-2"];
+    expect(toStoredToolResult(mixed)).toBe(mixed);
+    expect(toStoredToolResult([])).toEqual([]);
     expect(toStoredToolResult(rows)).toEqual({
       rowsNotKept: true,
       columns: ["name"],
@@ -172,6 +186,16 @@ describe("toStoredToolResult", () => {
       "[Previous sql_query result: 3 rows, columns: [name]. Its rows aren't kept; re-run the query to see values.]"
     );
     expect(text).not.toContain("Acme");
+  });
+
+  it("names a live handle the model may reuse", () => {
+    const text = describeStoredResult(
+      "display_entity_records",
+      toStoredToolResult({ type: "data-table", ...envelope }) as never
+    );
+    expect(text).toBe(
+      "[Previous display_entity_records result: 3 rows, columns: [name]. Its rows aren't kept; pass its queryHandle qh-1 while it's still live, or re-run the query to see values.]"
+    );
   });
 });
 

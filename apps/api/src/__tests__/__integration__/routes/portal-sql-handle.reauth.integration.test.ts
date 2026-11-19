@@ -293,9 +293,10 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
     ).toEqual(["b@x.co", "c@x.co"]);
   });
 
+  // A read inside the last pass's window is still served (below); these read
+  // only after the revocation, so the check runs.
   it("closes the handle once the member's view grant is revoked", async () => {
     const handle = await memberHandle();
-    await read(handle).expect(200);
 
     await revokeMemberViewGrant();
 
@@ -305,7 +306,6 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
 
   it("closes the handle once the view is detached from the station", async () => {
     const handle = await memberHandle();
-    await read(handle).expect(200);
 
     await db
       .delete(schema.stationViews)
@@ -332,12 +332,23 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
       organizationId: fx.orgId,
       userId: definerId,
     });
-    await read(envelope.queryHandle).expect(200);
 
     await revokeMemberViewGrant();
 
     const res = await read(envelope.queryHandle).expect(404);
     expect(res.body.code).toBe(ApiCode.READ_HANDLE_EXPIRED);
+  });
+
+  // #1038 review: one passed check covers the reader's further pages for
+  // HANDLE_READ_DECISION_TTL_MS (30s), so a large chart doesn't EXPLAIN per
+  // page. A revocation reaches an open handle within that window, not at once.
+  it("serves pages inside the last check's window, even after a revocation", async () => {
+    const handle = await memberHandle();
+    await read(handle).expect(200);
+
+    await revokeMemberViewGrant();
+
+    await read(handle, 1).expect(200);
   });
 
   /** A member's portal holding a stored contacts table, as resolveDisplayBlock
