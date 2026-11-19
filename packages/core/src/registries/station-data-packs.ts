@@ -26,6 +26,8 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
   rbac_management: false,
   view_management: false,
   web_search: false,
+  // #1050: answers about the product, not the station's data.
+  help: false,
 };
 
 /**

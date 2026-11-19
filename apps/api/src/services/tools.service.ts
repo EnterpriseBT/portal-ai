@@ -605,10 +605,10 @@ export class ToolService {
         userId
       );
     }
-    //   - `platform_help` — in-session answers about the product itself, and
-    //     about why this station may be returning thin results (#367). A
-    //     system tool rather than a pack so no tier allowlist can remove it.
-    if (SYSTEM_TOOL_CAPABILITIES.platform_help?.alwaysAvailable) {
+    //   - `platform_help` — in-session answers about the product (#367). Its
+    //     capability now belongs to the `help` pack (#1050); it's still built
+    //     for every session until the session switch moves it behind the pack.
+    {
       tools.platform_help = new PlatformHelpTool().build(
         stationId,
         organizationId,

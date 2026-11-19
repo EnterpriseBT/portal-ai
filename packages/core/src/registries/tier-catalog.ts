@@ -134,6 +134,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "entity_management",
         "rbac_management",
         "view_management",
+        // #1050: every tier lists the always-entitled packs.
+        "help",
       ],
       customToolpacks: false,
       customRbac: false,
@@ -173,6 +175,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "entity_management",
         "rbac_management",
         "view_management",
+        // #1050: every tier lists the always-entitled packs.
+        "help",
       ],
       customToolpacks: false,
       customRbac: false,

@@ -3,6 +3,7 @@ import AdminPanelSettingsOutlined from "@mui/icons-material/AdminPanelSettingsOu
 import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
+import HelpOutlineOutlined from "@mui/icons-material/HelpOutlineOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
 import LayersOutlined from "@mui/icons-material/LayersOutlined";
 import MapOutlined from "@mui/icons-material/MapOutlined";
@@ -49,6 +50,8 @@ const ICONS_BY_SLUG: Record<string, SvgIconComponent> = {
   Map: MapOutlined,
   AdminPanelSettings: AdminPanelSettingsOutlined,
   Layers: LayersOutlined,
+  // #1050: the Help pack.
+  HelpOutline: HelpOutlineOutlined,
   [CUSTOM_PACK_ICON_SLUG]: ExtensionOutlined,
 };
 

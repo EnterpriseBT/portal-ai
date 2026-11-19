@@ -1,6 +1,7 @@
 import {
   SYSTEM_TOOL_CAPABILITIES,
   ALL_TOOL_CAPABILITIES,
+  ALWAYS_ENTITLED_PACKS,
   alwaysAvailableToolNames,
   writeGatedToolNames,
   costGatedToolNames,
@@ -38,9 +39,9 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
   it("always-available == today's SYSTEM_TOOL_PACKS expansion", () => {
     // tools.service.ts: SYSTEM_TOOL_PACKS = ["station_context"] → its tools.
     // Sorted — `namesWhere` orders alphabetically.
+    // #1050: platform_help moved into the `help` pack.
     expect(alwaysAvailableToolNames()).toEqual([
       "current_time",
-      "platform_help",
       "station_context",
     ]);
   });
@@ -192,20 +193,25 @@ describe("costHint pin (#184)", () => {
   });
 });
 
-// ── platform_help (#367) ────────────────────────────────────────────
+// ── platform_help (#367, #1050) ─────────────────────────────────────
 
 /**
- * In-session platform help is a **system tool**, not a pack. That is the
- * whole point: a pack slug would be subject to the per-tier
- * `builtinToolpacks` allowlists, which would make platform help
- * entitlement-gateable. Help is never gated and never charged.
+ * Since #1050 platform help is the `help` pack's tool, not a system tool: a
+ * station attaches it explicitly. It stays free and is never gated:
+ * `ALWAYS_ENTITLED_PACKS` makes every tier entitled to its pack.
  */
 describe("platform_help capability", () => {
-  const cap = SYSTEM_TOOL_CAPABILITIES.platform_help;
+  const cap = ALL_TOOL_CAPABILITIES.platform_help;
 
-  it("is declared as a system tool", () => {
+  it("is no longer a system tool", () => {
+    expect(SYSTEM_TOOL_CAPABILITIES).not.toHaveProperty("platform_help");
     expect(cap).toBeDefined();
-    expect(cap.alwaysAvailable).toBe(true);
+    expect(cap.alwaysAvailable).toBeFalsy();
+  });
+
+  it("belongs to the help pack, alone", () => {
+    const help = BUILTIN_TOOLPACKS.find((p) => p.slug === "help")!;
+    expect(help.tools.map((t) => t.name)).toEqual(["platform_help"]);
   });
 
   it("is a valid capability", () => {
@@ -213,8 +219,6 @@ describe("platform_help capability", () => {
   });
 
   it("reads station data, so it cannot be pure", () => {
-    // `superRefine` rejects `pure` alongside any reads — the tool inspects
-    // the station to explain concrete problems, so it declares the read.
     expect(cap.pure).toBe(false);
     expect(cap.reads).toContain("entity_records");
   });
@@ -228,5 +232,20 @@ describe("platform_help capability", () => {
   it("is free, so the cost gate can never deny it", () => {
     expect(cap.costHint).toBe("free");
     expect(isCostGated(cap)).toBe(false);
+  });
+});
+
+describe("ALWAYS_ENTITLED_PACKS (#1050)", () => {
+  it("is exactly the help pack", () => {
+    expect([...ALWAYS_ENTITLED_PACKS]).toEqual(["help"]);
+  });
+
+  it("holds only free tools, so entitling every tier costs nothing", () => {
+    for (const slug of ALWAYS_ENTITLED_PACKS) {
+      const pack = BUILTIN_TOOLPACKS.find((p) => p.slug === slug)!;
+      for (const t of pack.tools) {
+        expect(ALL_TOOL_CAPABILITIES[t.name].costHint).toBe("free");
+      }
+    }
   });
 });

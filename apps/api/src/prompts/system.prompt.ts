@@ -253,6 +253,7 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
     "roles, policies and groups, member assignments, and sharing stations and pins",
   view_management:
     "creating and sharing curated views and attaching them to stations",
+  help: "answering questions about how Portals works, with links into Help",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -756,6 +757,16 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("");
       return lines;
     },
+  },
+  // #1050: placeholder until the session switch moves `## Help` (still in the
+  // base prompt) here; the capability phrase is its only marker meanwhile.
+  help: {
+    capability: "answer questions about how Portals works",
+    requestShapes: [],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["answer questions about how Portals works"],
+    render: () => [],
   },
 };
 
