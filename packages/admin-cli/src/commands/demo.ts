@@ -15,7 +15,10 @@
  * Guard semantics: both commands are **mutations** — `--yes` on app-dev,
  * `--yes --confirm-prod` on prod. `demo delete` only removes an org
  * `demo create` marked (`organizations.is_demo`), which is why it can be a
- * mutation on prod while `org delete` stays refused there.
+ * mutation on prod while `org delete` stays refused there. It runs the app's
+ * full organization deletion (#197) through `db:demo:delete`: the org's
+ * content is hard-deleted and the org and its memberships tombstoned, so a
+ * finished demo leaves no data behind (code review, #1035).
  *
  * Toolpack config: on AWS envs the CLI reads `DEMO_TOOLPACK_URL` (SSM) and
  * `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager) itself and hands them to
@@ -35,17 +38,14 @@ import {
   type WorkspaceSpawner,
 } from "@portalai/cli-env";
 import type { EnvironmentDefinition } from "@portalai/cli-env";
-import { OrganizationUpdateRequestSchema } from "@portalai/core/contracts";
+import { DemoOrganizationCreateInputSchema } from "@portalai/core/contracts";
 
-import { AdminInvalidInputError } from "../errors.js";
+import { AdminConflictError, AdminInvalidInputError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
 import { lastJsonLine } from "./provision.js";
 
 export const DEMO_DEFAULT_TIER = "enterprise";
 export const DEMO_DEFAULT_ROWS = 10_000;
-/** The `--rows` ceiling. apps/api's `src/db/demo-create.ts` holds the same
- *  value (this package can't import apps/api); keep the two equal. */
-export const DEMO_MAX_ROWS = 10_000_000;
 
 export interface DemoCreateOptions {
   name: string;
@@ -55,28 +55,19 @@ export interface DemoCreateOptions {
   rows?: string | number;
 }
 
-/** The app's rule for an org name (trimmed, 1–120, one line), as `org update`. */
-function validName(raw: string): string {
-  const parsed = OrganizationUpdateRequestSchema.safeParse({ name: raw });
-  if (!parsed.success || parsed.data.name === undefined) {
+/** The name and `--rows` rules, shared with the `db:demo:create` script
+ *  through core so the two can't drift (code review, #1035). */
+function validInput(opts: DemoCreateOptions): { name: string; rows: number } {
+  const parsed = DemoOrganizationCreateInputSchema.safeParse({
+    name: opts.name,
+    rows: String(opts.rows ?? DEMO_DEFAULT_ROWS).trim(),
+  });
+  if (!parsed.success) {
     throw new AdminInvalidInputError(
-      parsed.success
-        ? "--name is required"
-        : (parsed.error.issues[0]?.message ?? "Invalid --name")
+      parsed.error.issues[0]?.message ?? "Invalid demo create input"
     );
   }
-  return parsed.data.name;
-}
-
-function validRows(raw: string | number | undefined): number {
-  if (raw === undefined) return DEMO_DEFAULT_ROWS;
-  const text = String(raw).trim();
-  if (!/^\d+$/.test(text) || Number(text) > DEMO_MAX_ROWS) {
-    throw new AdminInvalidInputError(
-      `--rows must be a whole number from 0 to ${DEMO_MAX_ROWS}`
-    );
-  }
-  return Number(text);
+  return parsed.data;
 }
 
 /** Read one catalog value; a missing one is "not configured for this env". */
@@ -125,8 +116,7 @@ export async function demoCreate(
   flags: MutateFlags,
   spawner: WorkspaceSpawner = npmSpawner
 ): Promise<Record<string, unknown>> {
-  const name = validName(opts.name);
-  const rows = validRows(opts.rows);
+  const { name, rows } = validInput(opts);
   const tier = opts.tier ?? DEMO_DEFAULT_TIER;
 
   const operator = await beginMutation(def, flags, false);
@@ -173,11 +163,26 @@ export async function demoCreate(
 export async function demoDelete(
   def: EnvironmentDefinition,
   id: string,
-  flags: MutateFlags
-): Promise<{ id: string; deleted: true }> {
+  flags: MutateFlags,
+  spawner: WorkspaceSpawner = npmSpawner
+): Promise<Record<string, unknown>> {
   // A mutation, not destructive: the marker confines it to demo orgs.
   const operator = await beginMutation(def, flags, false);
-  await withStore(def, (s) => s.softDeleteDemoOrg(id, operator));
+  // Checked here so a refusal keeps its exit code (8 / 9); the script
+  // re-checks, since it can be run directly.
+  const isDemo = await withStore(def, (s) => s.isDemoOrg(id));
+  if (!isDemo) {
+    throw new AdminConflictError(
+      `Organization ${id} is not a demo org — demo delete only removes orgs made by demo create`
+    );
+  }
+  const stdout = await runApiScript(
+    def,
+    "db:demo:delete",
+    ["--org", id, "--actor", operator],
+    spawner
+  );
+  const result = lastJsonLine(stdout);
   await audit(def, operator, "demo delete", { orgId: id });
-  return { id, deleted: true };
+  return result;
 }

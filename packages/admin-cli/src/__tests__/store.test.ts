@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { createAdminStore } from "../store.js";
 import {
   auditLog,
@@ -387,50 +387,41 @@ describe("getTier (#1035)", () => {
   });
 });
 
-describe("softDeleteDemoOrg (#1035)", () => {
-  it("soft-deletes a live demo org, stamping the actor", async () => {
-    await t.db
-      .insert(organizations)
-      .values([org("Demo", { id: "o-d", isDemo: true }) as never]);
-    await store.softDeleteDemoOrg("o-d", "actor-1");
-    const [row] = await t.db
-      .select()
-      .from(organizations)
-      .where(eq(organizations.id, "o-d"));
-    expect(row.deleted).not.toBeNull();
-    expect(row.deletedBy).toBe("actor-1");
+describe("isDemoOrg (#1035)", () => {
+  it("reads the demo marker of a live org", async () => {
+    await t.db.execute(sql`
+      INSERT INTO organizations (id, created, created_by, name, timezone, owner_user_id, is_demo)
+      VALUES ('o-d', 1, 'x', 'Demo', 'UTC', 'u', true),
+             ('o-c', 1, 'x', 'Customer', 'UTC', 'u', false)`);
+    await expect(store.isDemoOrg("o-d")).resolves.toBe(true);
+    await expect(store.isDemoOrg("o-c")).resolves.toBe(false);
   });
 
-  it("refuses an org without the demo marker (exit 9) and leaves it unchanged", async () => {
+  it("a missing or soft-deleted org → 8", async () => {
     await t.db
       .insert(organizations)
-      .values([org("Customer", { id: "o-c" }) as never]);
-    await expect(
-      store.softDeleteDemoOrg("o-c", "actor-1")
-    ).rejects.toMatchObject({
-      code: "ADMIN_CONFLICT",
-      message: expect.stringMatching(/not a demo org/),
-    });
-    await expect(store.getOrg("o-c")).resolves.toMatchObject({
-      id: "o-c",
-      deleted: null,
-    });
-  });
-
-  it("a missing or already-deleted org → 8", async () => {
-    await t.db.insert(organizations).values([
-      org("Gone", {
-        id: "o-g",
-        isDemo: true,
-        deleted: 5,
-        deletedBy: "x",
-      }) as never,
-    ]);
+      .values([
+        org("Gone", { id: "o-g", deleted: 5, deletedBy: "x" }) as never,
+      ]);
     for (const id of ["o-g", "o-missing"]) {
-      await expect(
-        store.softDeleteDemoOrg(id, "actor-1")
-      ).rejects.toBeInstanceOf(AdminNotFoundError);
+      await expect(store.isDemoOrg(id)).rejects.toBeInstanceOf(
+        AdminNotFoundError
+      );
     }
+  });
+});
+
+describe("an env not yet migrated to is_demo (#1035 rollout)", () => {
+  // The CLI ships from main ahead of a prod release, so every command that
+  // doesn't need the marker must work against a database without it.
+  it("org reads and writes never touch is_demo", async () => {
+    await t.db.execute(sql`ALTER TABLE organizations DROP COLUMN is_demo`);
+    await t.db
+      .insert(organizations)
+      .values([org("Acme", { id: "o-1" }) as never]);
+    await expect(store.listOrgs({})).resolves.toHaveLength(1);
+    await expect(store.getOrg("o-1")).resolves.toMatchObject({ id: "o-1" });
+    await store.softDeleteOrg("o-1", "actor-1");
   });
 });
 

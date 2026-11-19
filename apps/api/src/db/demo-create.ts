@@ -9,22 +9,19 @@
  *
  * The org, its marker, tier and Demo station commit in one transaction; the
  * dataset load runs after. A load that throws soft-deletes the org this run
- * created, so a failed create leaves nothing live behind and a retry is a
- * plain re-run. The org id goes to stderr before the load, so a run killed
- * mid-load (where no cleanup can run) still tells the operator what to
- * `portalai demo delete`.
+ * created (the full organization deletion), so a failed create leaves nothing
+ * behind and a retry is a plain re-run. A run killed mid-load can't clean up:
+ * the org stays, marked, and `portalai org list --search <name>` finds it for
+ * `portalai demo delete`. (The id line below goes to stderr, which the CLI
+ * buffers, so it is shown only when the script exits non-zero.)
  */
 import { pathToFileURL } from "node:url";
 
-import { NAME_MAX_LENGTH, tooLongMessage } from "@portalai/core/contracts";
+import { DemoOrganizationCreateInputSchema } from "@portalai/core/contracts";
 
 import { ApplicationService } from "../services/application.service.js";
 import { DemoSeedService } from "../services/demo-seed.service.js";
 import { closeDatabase } from "./client.js";
-
-/** The `--rows` ceiling. `packages/admin-cli/src/commands/demo.ts` holds the
- *  same value (admin-cli can't import apps/api); keep the two equal. */
-export const MAX_DEMO_ROWS = 10_000_000;
 
 const USAGE =
   "Usage: db:demo:create -- --name <name> --owner-email <email> --tier <slug> --rows <n>";
@@ -32,13 +29,13 @@ const USAGE =
 export interface DemoCreateSteps {
   create: typeof ApplicationService.createDemoOrganization;
   seed: typeof DemoSeedService.seed;
-  softDelete: (organizationId: string) => Promise<unknown>;
+  discard: (organizationId: string) => Promise<unknown>;
 }
 
 export const DEFAULT_DEMO_CREATE_STEPS: DemoCreateSteps = {
   create: (opts) => ApplicationService.createDemoOrganization(opts),
   seed: (params) => DemoSeedService.seed(params),
-  softDelete: (organizationId) =>
+  discard: (organizationId) =>
     ApplicationService.discardDemoOrganization(organizationId),
 };
 
@@ -67,29 +64,24 @@ export async function runDemoCreate(
   steps: DemoCreateSteps = DEFAULT_DEMO_CREATE_STEPS,
   io: DemoCreateIo = processIo
 ): Promise<number> {
-  const name = arg(argv, "--name")?.trim();
   const ownerEmail = arg(argv, "--owner-email");
   const tier = arg(argv, "--tier");
-  const rowsArg = arg(argv, "--rows");
 
   const usage = (detail: string) => {
     io.err(`${USAGE} (${detail})`);
     return 1;
   };
-  if (!name) return usage("--name is required");
-  // #801: the same name limit the API holds every other name to.
-  if (name.length > NAME_MAX_LENGTH) {
-    return usage(`--name: ${tooLongMessage("Name", NAME_MAX_LENGTH)}`);
-  }
   if (!ownerEmail) return usage("--owner-email is required");
   if (!tier) return usage("--tier is required");
-  if (rowsArg === undefined || !/^\d+$/.test(rowsArg)) {
-    return usage("--rows must be a whole number");
+  // The rule the CLI checks too (core), so a direct run can't diverge.
+  const parsed = DemoOrganizationCreateInputSchema.safeParse({
+    name: arg(argv, "--name") ?? "",
+    rows: arg(argv, "--rows") ?? "",
+  });
+  if (!parsed.success) {
+    return usage(parsed.error.issues[0]?.message ?? "invalid input");
   }
-  const rows = Number(rowsArg);
-  if (rows > MAX_DEMO_ROWS) {
-    return usage(`--rows must be at most ${MAX_DEMO_ROWS}`);
-  }
+  const { name, rows } = parsed.data;
 
   let created: { organizationId: string; stationId: string };
   try {
@@ -117,9 +109,9 @@ export async function runDemoCreate(
     return 0;
   } catch (err) {
     try {
-      await steps.softDelete(organizationId);
+      await steps.discard(organizationId);
       io.err(
-        `demo create failed; org ${organizationId} soft-deleted: ${message(err)}`
+        `demo create failed; org ${organizationId} deleted: ${message(err)}`
       );
     } catch (cleanupErr) {
       io.err(

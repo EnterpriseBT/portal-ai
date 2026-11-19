@@ -23,10 +23,10 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   DEFAULT_DEMO_CREATE_STEPS,
-  MAX_DEMO_ROWS,
   runDemoCreate,
   type DemoCreateSteps,
 } from "../../../db/demo-create.js";
+import { DEMO_MAX_ROWS } from "@portalai/core/contracts";
 import { DbService } from "../../../services/db.service.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
@@ -105,7 +105,7 @@ describe("db:demo:create — runDemoCreate", () => {
     expect(org!.isDemo).toBe(true);
   }, 90000);
 
-  it("soft-deletes the org it created when the load fails, and exits 1", async () => {
+  it("deletes the org it created when the load fails, and exits 1", async () => {
     let createdId: string | undefined;
     const steps: DemoCreateSteps = {
       ...DEFAULT_DEMO_CREATE_STEPS,
@@ -134,8 +134,13 @@ describe("db:demo:create — runDemoCreate", () => {
     );
     expect(row.deleted).not.toBeNull();
     expect(row.deletedBy).toBe(SystemUtilities.id.system);
+    // The full org deletion ran: the owner's membership went with it.
+    const memberships = (
+      await db.select().from(schema.organizationUsers)
+    ).filter((m) => m.organizationId === createdId);
+    expect(memberships.every((m) => m.deleted !== null)).toBe(true);
     expect(err.join("\n")).toContain(
-      `demo create failed; org ${createdId!} soft-deleted: demo toolpack registration failed: boom`
+      `demo create failed; org ${createdId!} deleted: demo toolpack registration failed: boom`
     );
   });
 
@@ -150,7 +155,7 @@ describe("db:demo:create — runDemoCreate", () => {
       seed: async () => {
         throw new Error("load failed");
       },
-      softDelete: async () => {
+      discard: async () => {
         throw new Error("db gone");
       },
     };
@@ -176,9 +181,10 @@ describe("db:demo:create — runDemoCreate", () => {
   it.each([
     ["a missing --name", { "--name": "" }],
     ["a name over 120 characters", { "--name": "x".repeat(121) }],
+    ["a line break in the name", { "--name": "Acme\nDemo" }],
     ["a non-integer --rows", { "--rows": "1.5" }],
     ["a negative --rows", { "--rows": "-1" }],
-    ["--rows over the cap", { "--rows": String(MAX_DEMO_ROWS + 1) }],
+    ["--rows over the cap", { "--rows": String(DEMO_MAX_ROWS + 1) }],
   ])("refuses %s before creating anything", async (_label, over) => {
     const create = jest.fn<DemoCreateSteps["create"]>();
     const code = await runDemoCreate(

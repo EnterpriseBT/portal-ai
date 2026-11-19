@@ -29,7 +29,7 @@ Session = an active `portalai login` device-flow session for the env. Every muta
 
 Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
 
-Spawned app scripts (`org create`, `org reset`, `seed org`, `demo create`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
+Spawned app scripts (`org create`, `org reset`, `seed org`, `demo create`, `demo delete`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
 
 ---
 
@@ -97,14 +97,23 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
 
   Either one invalid → exit 2. `--owner-email` must be an existing user and `--tier` (default `enterprise`) a live tier, else exit 8.
 - **Toolpack config.** On app-dev/prod the env's `DEMO_TOOLPACK_URL` (SSM `demo-toolpack-url`) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager `demo-toolpack-signing-secrets`) are read and passed to the script. Either missing → exit 3. Locally both come from the shell or `apps/api/.env`, and without them the demo gets built-ins only.
-- **A failed load** (for example a refused toolpack registration) soft-deletes the org it created and exits 7 with the error. The org id is printed to stderr before the load, so a run killed mid-load still names what to `demo delete`.
+- **A failed load** (for example a refused toolpack registration) runs the full org deletion on the org it created and exits 7 with the error. A run killed mid-load can't clean up: find the leftover with `org list --search "<name>"` and `demo delete` it.
+- **The owner's current org doesn't change.** The demo membership's `last_login` is 0, so the owner switches into it deliberately (`member switch`, or the app's org switcher).
 - **stderr reminder:** `--rows` raises the dataset size, and a finished demo is removed with `demo delete`.
 
 `--json`: `{ "organizationId", "stationId", "tier", "rows", "entities", "toolpacks": { "builtins", "custom" }, "durationMs" }`
 
 ### `portalai demo delete <id> --env <env> --yes [--confirm-prod] [--json]`
-**Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Soft-deletes the org like `org delete` (the org row only; no job check, no cascade; record retention reclaims the data), but only when `demo create` marked it:
+**Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:demo:delete`, attributed to you:
+- **Removed:** the org's content is hard-deleted (records, `er__` wide tables, connectors, stations, packs, portals).
+- **Tombstoned:** the org row and **its memberships**, so no member keeps a deleted org as their current one.
+- **Kept:** usage and ledger rows.
+- **Jobs:** queued jobs are cancelled. An active one refuses the delete (exit 7, `ENTITY_LOCKED_BY_JOB`); retry when it finishes.
+
+It only acts on an org `demo create` marked, checked before anything runs:
 - any other live org → `ADMIN_CONFLICT` (exit 9), unchanged;
 - a missing or already-deleted org → exit 8.
+
+Reading the marker needs the env migrated to #1035. The CLI's other org commands don't read it.
 
 `--json`: `{ "id", "deleted": true }`

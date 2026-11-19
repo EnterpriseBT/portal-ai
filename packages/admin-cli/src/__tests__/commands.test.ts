@@ -18,7 +18,7 @@ const mockStore = {
   updateOrg: jest.fn<() => Promise<unknown>>(),
   setTier: jest.fn<() => Promise<unknown>>(),
   softDeleteOrg: jest.fn<() => Promise<void>>(),
-  softDeleteDemoOrg: jest.fn<() => Promise<void>>(),
+  isDemoOrg: jest.fn<(id: string) => Promise<boolean>>(),
   getTier: jest.fn<(slug: string) => Promise<{ slug: string }>>(),
   listUsers: jest.fn<() => Promise<unknown[]>>(),
   getUserByEmail: jest.fn<(email: string) => Promise<{ id: string }>>(),
@@ -435,6 +435,7 @@ describe("demo create / demo delete (#1035)", () => {
   beforeEach(() => {
     spawnerCalls.length = 0;
     spawner.mockClear();
+    deleteSpawner.mockClear();
     stderr = "";
     errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((
       chunk: string
@@ -635,20 +636,40 @@ describe("demo create / demo delete (#1035)", () => {
     expect(stderr).toContain("portalai demo delete o-demo --env app-dev --yes");
   });
 
-  it("demo delete is a mutation (allowed on prod with --yes --confirm-prod) over softDeleteDemoOrg", async () => {
+  const deleted = JSON.stringify({ id: "o-demo", deleted: true });
+  const deleteSpawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      spawnerCalls.push({ args, env });
+      return { code: 0, stdout: `${deleted}\n`, stderr: "" };
+    }
+  );
+
+  it("demo delete checks the marker, then spawns the full deletion as the operator (prod: --yes --confirm-prod)", async () => {
     const { demoDelete } = await import("../commands/demo.js");
-    mockStore.softDeleteDemoOrg.mockResolvedValue(undefined);
-    const out = await demoDelete(prod as never, "o-demo", {
-      yes: true,
-      confirmProd: true,
-    });
+    mockStore.isDemoOrg.mockResolvedValue(true);
+    const out = await demoDelete(
+      prod as never,
+      "o-demo",
+      { yes: true, confirmProd: true },
+      deleteSpawner
+    );
     expect(out).toEqual({ id: "o-demo", deleted: true });
     expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(prod, {
       destructive: false,
       confirmed: true,
       prodConfirmed: true,
     });
-    expect(mockStore.softDeleteDemoOrg).toHaveBeenCalledWith("o-demo", SUB);
+    expect(spawnerCalls[0].args).toEqual([
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:demo:delete",
+      "--",
+      "--org",
+      "o-demo",
+      "--actor",
+      SUB,
+    ]);
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         command: "demo delete",
@@ -657,16 +678,36 @@ describe("demo create / demo delete (#1035)", () => {
     );
   });
 
+  it("demo delete refuses an org without the marker (exit 9) and spawns nothing", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    mockStore.isDemoOrg.mockResolvedValue(false);
+    await expect(
+      demoDelete(appDev, "o-c", { yes: true }, deleteSpawner)
+    ).rejects.toBeInstanceOf(AdminConflictError);
+    expect(deleteSpawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("demo delete of a missing org is not-found (exit 8) and spawns nothing", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.isDemoOrg.mockRejectedValue(new AdminNotFoundError("gone"));
+    await expect(
+      demoDelete(appDev, "o-x", { yes: true }, deleteSpawner)
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+    expect(deleteSpawner).not.toHaveBeenCalled();
+  });
+
   it("demo delete refused by the guard touches nothing", async () => {
     const { demoDelete } = await import("../commands/demo.js");
     mocks.assertOperationAllowed.mockImplementation(() => {
       throw new EnvNotAuthorizedError("needs --confirm-prod");
     });
     await expect(
-      demoDelete(prod as never, "o-demo", { yes: true })
+      demoDelete(prod as never, "o-demo", { yes: true }, deleteSpawner)
     ).rejects.toThrow(/confirm-prod/);
-    expect(mockStore.softDeleteDemoOrg).not.toHaveBeenCalled();
-    expect(mocks.recordAudit).not.toHaveBeenCalled();
+    expect(mockStore.isDemoOrg).not.toHaveBeenCalled();
+    expect(deleteSpawner).not.toHaveBeenCalled();
   });
 });
 

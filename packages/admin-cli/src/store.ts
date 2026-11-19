@@ -96,9 +96,9 @@ export interface AdminStore {
   ): Promise<{ id: string; tier: string; previousTier: string }>;
   /** Soft-delete a live org (deleted/deletedBy stamps). */
   softDeleteOrg(id: string, actor: string): Promise<void>;
-  /** #1035: soft-delete a live org only when `demo create` marked it;
-   *  unmarked → ADMIN_CONFLICT, absent/soft-deleted → ADMIN_NOT_FOUND. */
-  softDeleteDemoOrg(id: string, actor: string): Promise<void>;
+  /** #1035: whether a live org carries `demo create`'s marker;
+   *  absent/soft-deleted → ADMIN_NOT_FOUND. */
+  isDemoOrg(id: string): Promise<boolean>;
   /** A live tier by slug → ADMIN_NOT_FOUND otherwise. */
   getTier(slug: string): Promise<{ slug: string }>;
   /** Live users; `orgId` filters via LIVE membership. */
@@ -334,25 +334,16 @@ export function createAdminStore(
       if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
     },
 
-    async softDeleteDemoOrg(id, actor) {
-      // The marker is in the WHERE, so a customer org can't be deleted by a
-      // race between a check and the write.
+    async isDemoOrg(id) {
+      // Raw on purpose: `is_demo` isn't in the mirror (see tables.ts), so
+      // only this read needs an env migrated to #1035.
       const [row] = await db
-        .update(organizations)
-        .set({ deleted: Date.now(), deletedBy: actor })
-        .where(
-          and(
-            eq(organizations.id, id),
-            eq(organizations.isDemo, true),
-            isNull(organizations.deleted)
-          )
-        )
-        .returning({ id: organizations.id });
-      if (row) return;
-      await this.getOrg(id); // absent or soft-deleted → ADMIN_NOT_FOUND
-      throw new AdminConflictError(
-        `Organization ${id} is not a demo org — demo delete only removes orgs made by demo create`
-      );
+        .select({ isDemo: sql<boolean>`is_demo` })
+        .from(organizations)
+        .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
+        .limit(1);
+      if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
+      return row.isDemo === true;
     },
 
     async addMember(orgId, userId, actor) {

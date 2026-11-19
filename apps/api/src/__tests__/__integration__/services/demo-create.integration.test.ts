@@ -7,13 +7,14 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import postgres from "postgres";
 
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { DbService } from "../../../services/db.service.js";
+import { DemoSeedService } from "../../../services/demo-seed.service.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
 import { DEMO_STATION_NAME } from "../../../demo/dataset-manifest.js";
@@ -158,5 +159,100 @@ describe("ApplicationService.createDemoOrganization (integration)", () => {
     expect(second.organizationId).not.toBe(first.organizationId);
     expect(second.stationId).not.toBe(first.stationId);
     expect(await liveOrgsNamed(name)).toHaveLength(2);
+  });
+
+  // ── Review fixes (#1035 code review) ─────────────────────────────────
+
+  it("leaves the owner's current org where it was (the demo membership never wins the pick)", async () => {
+    const { organization: real } =
+      await ApplicationService.createOrganizationForEmail(
+        ownerEmail,
+        `Real ${generateId()}`
+      );
+
+    const { organizationId } = await ApplicationService.createDemoOrganization({
+      ownerEmail,
+      name: `Acme demo ${generateId()}`,
+      tier: tierSlug,
+    });
+
+    const current = await ApplicationService.getCurrentOrganization(ownerId);
+    expect(current!.organization.id).toBe(real.id);
+    const [membership] = (
+      await db.select().from(schema.organizationUsers)
+    ).filter((m) => m.organizationId === organizationId);
+    expect(membership.lastLogin).toBe(0);
+  });
+
+  describe("deleteDemoOrganization", () => {
+    async function demoWithRecords(): Promise<string> {
+      const { organizationId, stationId } =
+        await ApplicationService.createDemoOrganization({
+          ownerEmail,
+          name: `Acme demo ${generateId()}`,
+          tier: tierSlug,
+        });
+      await DemoSeedService.seed({ orgId: organizationId, stationId, rows: 0 });
+      return organizationId;
+    }
+
+    it("runs the full org deletion: content gone, org and memberships tombstoned", async () => {
+      const orgId = await demoWithRecords();
+      const entityIds = (await db.select().from(schema.connectorEntities))
+        .filter((e) => e.organizationId === orgId)
+        .map((e) => e.id);
+      expect(entityIds.length).toBeGreaterThan(0);
+
+      await ApplicationService.deleteDemoOrganization(orgId, "operator-1");
+
+      const [org] = (await db.select().from(schema.organizations)).filter(
+        (o) => o.id === orgId
+      );
+      expect(org.deleted).not.toBeNull();
+      expect(org.deletedBy).toBe("operator-1");
+      const memberships = (
+        await db.select().from(schema.organizationUsers)
+      ).filter((m) => m.organizationId === orgId);
+      expect(memberships.every((m) => m.deleted !== null)).toBe(true);
+      expect(
+        (await db.select().from(schema.entityRecords)).filter(
+          (r) => r.organizationId === orgId
+        )
+      ).toHaveLength(0);
+      const tables = (await db.execute(
+        sql`SELECT count(*)::int AS count FROM pg_tables WHERE tablename = ANY(${sql.raw(
+          `ARRAY[${entityIds.map((id) => `'er__${id}'`).join(",")}]`
+        )})`
+      )) as unknown as Array<{ count: number }>;
+      expect(tables[0].count).toBe(0);
+      // The owner falls back to no current org rather than a deleted one.
+      expect(
+        await ApplicationService.getCurrentOrganization(ownerId)
+      ).toBeNull();
+    }, 90000);
+
+    it("refuses an org without the demo marker and leaves it whole", async () => {
+      const { organization } =
+        await ApplicationService.createOrganizationForEmail(
+          ownerEmail,
+          `Customer ${generateId()}`
+        );
+      await expect(
+        ApplicationService.deleteDemoOrganization(organization.id, "operator-1")
+      ).rejects.toMatchObject({ code: "DEMO_ORGANIZATION_NOT_DEMO" });
+      expect(
+        await DbService.repository.organizations.findById(organization.id)
+      ).toBeDefined();
+    });
+
+    it("refuses a missing or already-deleted org as not found", async () => {
+      const orgId = await demoWithRecords();
+      await ApplicationService.deleteDemoOrganization(orgId, "operator-1");
+      for (const id of [orgId, generateId()]) {
+        await expect(
+          ApplicationService.deleteDemoOrganization(id, "operator-1")
+        ).rejects.toMatchObject({ code: "DEMO_ORGANIZATION_NOT_FOUND" });
+      }
+    }, 90000);
   });
 });

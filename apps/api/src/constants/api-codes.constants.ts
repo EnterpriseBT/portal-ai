@@ -64,6 +64,10 @@ export enum ApiCode {
    *  membership and makes the web sign them out. */
   ORGANIZATION_MEMBER_NOT_FOUND = "ORGANIZATION_MEMBER_NOT_FOUND",
   ORGANIZATION_NOT_FOUND = "ORGANIZATION_NOT_FOUND",
+  /** #1035: `portalai demo delete`'s target is absent or already deleted. */
+  DEMO_ORGANIZATION_NOT_FOUND = "DEMO_ORGANIZATION_NOT_FOUND",
+  /** #1035: `portalai demo delete` only removes orgs `demo create` marked. */
+  DEMO_ORGANIZATION_NOT_DEMO = "DEMO_ORGANIZATION_NOT_DEMO",
   ORGANIZATION_FETCH_FAILED = "ORGANIZATION_FETCH_FAILED",
   /** The authed user has no live membership in the target org (switch authz). */
   MEMBERSHIP_NOT_FOUND = "MEMBERSHIP_NOT_FOUND",

@@ -13,7 +13,7 @@ All dates are anchored to **2026-08-31** with **30 months** of history, so the t
 ## Preconditions
 
 1. **A fresh demo org.** Create one per client (below). Never re-use a previous demo's org: people change things during a demo, and nothing resets an org back to the baseline.
-2. **Login.** Sign in as the org's owner (the `--owner-email` you created it with). If that user belongs to several orgs, switch to the demo org in the org switcher (or `portalai member switch <orgId> <email> --env <env> --yes`).
+2. **Login.** Sign in as the org's owner (the `--owner-email` you created it with) and switch to the demo org in the org switcher (or `portalai member switch <orgId> <email> --env <env> --yes`). `demo create` deliberately doesn't make it the owner's current org.
 3. **Station.** Use the station named **Demo**. It carries the demo connectors, all the built-in toolpacks and the custom webhook toolpack (#510). The org's Administrate and Playground stations are the ones every new org gets, and the demo doesn't use them.
 4. **Connectors.** Four populated instances: **Sandbox**, **File Upload** (CSV + XLSX), **Google Sheets**, **REST API**. (Microsoft 365 Excel is intentionally excluded — Google Sheets covers the identical file-based OAuth workflow.)
 
@@ -44,14 +44,14 @@ Every step is a CLI command or a named console action; guards are server-enforce
    ```
    This provisions a new org (its Administrate and Playground stations exactly as any new org has them), marks it as a demo, puts it on the tier (`enterprise` by default), adds the **Demo** station, and loads the dataset, connectors and packs onto it. The output's `organizationId` is the org.
    - **Rows.** `--rows` sizes the synthesized `transactions` table and defaults to **10,000**. For the "about a million transactions" beat, pass `--rows 1000000`. That import streams over your DB connection: over a `portalops db tunnel` from a laptop it measured roughly **110 minutes**. Run it from a low-latency vantage inside the env, or keep the machine awake and the tunnel open, and never from the devcontainer, which suspends when idle.
-   - **Failure.** A failed load soft-deletes the org it created and exits non-zero, so just re-run. If the process is killed mid-load, no cleanup runs. The org id was printed to stderr (`demo org <id> created`); remove it with `demo delete`.
+   - **Failure.** A failed load deletes the org it created and exits non-zero, so just re-run. If the process is killed mid-load, no cleanup runs: find the leftover with `portalai org list --search "<Client> demo" --env <env>` and remove it with `demo delete`.
 3. **Google Sheets.** In the app, as the owner, connect **Google Sheets** on the Demo station. The owner's Drive must hold #508's `customers_orders.xlsx`, uploaded once and converted to a Google Sheet. Connect against the env's own OAuth callback.
 4. **Verify.** Settings → Subscription shows the tier, the Demo station lists the four connector instances as `active`, and the presenter script's first prompt answers. Rehearse the script.
 5. **After the demo.** Keep the org as a reference, or remove it:
    ```
    portalai demo delete <orgId> --env <env> --yes [--confirm-prod]
    ```
-   It refuses any org `demo create` didn't make (exit 9). The delete is soft, and record retention reclaims the data.
+   It refuses any org `demo create` didn't make (exit 9). It runs the full org deletion: the dataset and everything the demo added are removed, and the org and its memberships are tombstoned.
 
 ## The dataset
 

@@ -13,6 +13,23 @@ This spec pins the contract for replacing `portalai demo seed` / `demo reset` wi
 7. **The provisioned stations stay as they are.** The default station stays Administrate, and the Demo station is an extra station.
 8. **`demo delete` is a mutation-class soft delete filtered on `is_demo`.** It behaves like `org delete` (no job check, no cascade) but is allowed on prod with `--yes --confirm-prod`. `org delete` doesn't change.
 
+## Amendment — code review (supersedes the matching Surface items)
+
+The branch's code review found four real defects in this contract; the fixes change it as follows:
+
+1. **`demo delete` and the failed-load cleanup run the full organization deletion** (`OrganizationDeleteService`, #197) instead of a soft delete of the org row:
+   - **Why the soft delete was wrong:**
+     - It left the owner's membership live. The current-org pick doesn't skip deleted orgs, so the owner was left with no current org.
+     - Record retention never reclaims a deleted org's data: its purge only covers deleted *entities*.
+   - **The new path:** `ApplicationService.deleteDemoOrganization(orgId, actor)` refuses with `DEMO_ORGANIZATION_NOT_FOUND` (404) or `DEMO_ORGANIZATION_NOT_DEMO` (409). It runs through the new `db:demo:delete --org --actor` script, and `discardDemoOrganization` uses the same deletion.
+   - **CLI:** `portalai demo delete` checks the marker in-process (`store.isDemoOrg`; exit 8 / 9), then spawns the script as the operator.
+   - **Hard deletion of the content is now in scope**; #1035's issue body is amended to match.
+2. **The owner's membership in a demo org gets `last_login = 0`**, so `demo create` never takes over the owner's current org. The owner switches to it deliberately.
+3. **`is_demo` is not mirrored in admin-cli's `tables.ts`.** Every org read selects the mirrored columns, so mirroring it broke `org list/get` against an env not yet migrated (prod lags `main`). Only `isDemoOrg` reads it.
+4. **The name and `--rows` rules live once in core** (`DemoOrganizationCreateInputSchema`, `DEMO_MAX_ROWS`, `organizationNameField`), used by the CLI and the script. The script now also refuses a line break in the name.
+
+Also corrected: the create script's stderr id line isn't seen on a killed run, because `runApiScript` buffers stderr. The runbook finds a leftover org with `org list --search` instead.
+
 ## Scope
 
 ### In scope
