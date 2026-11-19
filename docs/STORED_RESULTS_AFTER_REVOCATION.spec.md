@@ -163,7 +163,7 @@ No schema change and no seed. The serve-time strip covers any row the migration 
   - the unavailable state, with axe;
   - the not-kept state, with axe.
 
-**Totals ≈ 59 cases.**
+**Totals ≈ 56 cases.**
 
 ## Acceptance criteria
 - [ ] After a member's read on a view is revoked, or the view is detached from the station, reloading a portal where they queried it shows "This result is no longer available to you", and no row of it.
