@@ -35,6 +35,12 @@ import {
 import { orgCreate, orgReset, seedOrg } from "./commands/provision.js";
 import { userList, userGet } from "./commands/user.js";
 import { memberAdd, memberRemove, memberSwitch } from "./commands/member.js";
+import {
+  DEMO_DEFAULT_ROWS,
+  DEMO_DEFAULT_TIER,
+  demoCreate,
+  demoDelete,
+} from "./commands/demo.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -301,6 +307,51 @@ export function buildProgram(): Command {
         flags(o)
       )
     )
+  );
+
+  // ── demo ───────────────────────────────────────────────────────────
+  const demo = program
+    .command("demo")
+    .description("ephemeral demo orgs, one per client (#1035)");
+
+  common(
+    demo
+      .command("create")
+      .description(
+        "provision a new demo org owned by an existing user and load the demo dataset"
+      )
+      .requiredOption("--name <name>", "organization name")
+      .requiredOption("--owner-email <email>", "existing user to own it")
+      .option("--tier <slug>", "tier to put it on", DEMO_DEFAULT_TIER)
+      .option(
+        "--rows <n>",
+        "synthesized transactions rows",
+        String(DEMO_DEFAULT_ROWS)
+      )
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) =>
+      demoCreate(
+        def,
+        {
+          name: o.name as string,
+          ownerEmail: o.ownerEmail as string,
+          tier: o.tier as string,
+          rows: o.rows as string,
+        },
+        flags(o)
+      )
+    )
+  );
+
+  common(
+    demo
+      .command("delete")
+      .description(
+        "soft-delete an org made by demo create (refuses any other org)"
+      )
+      .argument("<id>")
+  ).action(async (id: string, o: GlobalOpts) =>
+    execute(o, (def) => demoDelete(def, id, flags(o)))
   );
 
   return program;

@@ -364,6 +364,76 @@ describe("softDeleteOrg", () => {
   });
 });
 
+describe("getTier (#1035)", () => {
+  it("returns a live tier; unknown or soft-deleted → 8", async () => {
+    await t.db.insert(tiers).values([
+      rowBase({ id: "t-1", slug: "enterprise" }) as never,
+      rowBase({
+        id: "t-2",
+        slug: "retired",
+        deleted: 5,
+        deletedBy: "x",
+      }) as never,
+    ]);
+    await expect(store.getTier("enterprise")).resolves.toEqual({
+      slug: "enterprise",
+    });
+    for (const slug of ["nope", "retired"]) {
+      await expect(store.getTier(slug)).rejects.toMatchObject({
+        code: "ADMIN_NOT_FOUND",
+        message: `Tier "${slug}" not found`,
+      });
+    }
+  });
+});
+
+describe("softDeleteDemoOrg (#1035)", () => {
+  it("soft-deletes a live demo org, stamping the actor", async () => {
+    await t.db
+      .insert(organizations)
+      .values([org("Demo", { id: "o-d", isDemo: true }) as never]);
+    await store.softDeleteDemoOrg("o-d", "actor-1");
+    const [row] = await t.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, "o-d"));
+    expect(row.deleted).not.toBeNull();
+    expect(row.deletedBy).toBe("actor-1");
+  });
+
+  it("refuses an org without the demo marker (exit 9) and leaves it unchanged", async () => {
+    await t.db
+      .insert(organizations)
+      .values([org("Customer", { id: "o-c" }) as never]);
+    await expect(
+      store.softDeleteDemoOrg("o-c", "actor-1")
+    ).rejects.toMatchObject({
+      code: "ADMIN_CONFLICT",
+      message: expect.stringMatching(/not a demo org/),
+    });
+    await expect(store.getOrg("o-c")).resolves.toMatchObject({
+      id: "o-c",
+      deleted: null,
+    });
+  });
+
+  it("a missing or already-deleted org → 8", async () => {
+    await t.db.insert(organizations).values([
+      org("Gone", {
+        id: "o-g",
+        isDemo: true,
+        deleted: 5,
+        deletedBy: "x",
+      }) as never,
+    ]);
+    for (const id of ["o-g", "o-missing"]) {
+      await expect(
+        store.softDeleteDemoOrg(id, "actor-1")
+      ).rejects.toBeInstanceOf(AdminNotFoundError);
+    }
+  });
+});
+
 describe("membership", () => {
   beforeEach(async () => {
     await t.db
