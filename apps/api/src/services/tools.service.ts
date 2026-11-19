@@ -28,6 +28,7 @@ import {
 } from "./permission.service.js";
 import { wrapWithLockGate } from "./lock-gate.service.js";
 import { wrapWithInputCharacterGate } from "./input-character-gate.service.js";
+import { wrapWithHandleAccessGate } from "./handle-access-gate.service.js";
 import { wrapWithPermissionGate } from "./permission-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
@@ -1096,6 +1097,16 @@ export class ToolService {
       tools as unknown as Record<string, GateableTool>,
       (name) => customToolNames.has(name)
     );
+
+    // #1038: a tool handed a query handle reads its rows by id with no check
+    // of its own. Every call naming one is checked against the handle route's
+    // rules (org, owner, current view access) first, custom tools included.
+    // Outside the cost gate like the gates above, so a refusal is never
+    // charged; the guard test asserts both.
+    wrapWithHandleAccessGate(tools as unknown as Record<string, GateableTool>, {
+      organizationId,
+      userId,
+    });
 
     // #726: what the model reads of each result is byte-capped (the stream,
     // persistence and the widget keep the full result). Beside the cost gate,

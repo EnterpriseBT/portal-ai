@@ -2,7 +2,10 @@ import React, { useMemo } from "react";
 import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
 import { DataTableBlock, WidgetFreshnessBar } from "@portalai/core";
-import { DataTableBlockContentSchema } from "@portalai/core/contracts";
+import {
+  DataTableBlockContentSchema,
+  NotKeptContentSchema,
+} from "@portalai/core/contracts";
 import {
   HANDLE_ROW_CAP,
   TABLE_DISPLAY_ROW_LIMIT,
@@ -10,6 +13,7 @@ import {
 
 import { sdk } from "../../api/sdk";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { StoredResultNoticeUI } from "../../components/StoredResultNotice.component";
 
 import type { BlockRef } from "@portalai/core";
 import type { DataTableBlockContent } from "@portalai/core/contracts";
@@ -182,14 +186,14 @@ export interface TableWidgetProps {
   /** Persisted-block reference (#270/#312) — enables refresh. Absent for
    *  streaming/unpersisted blocks. */
   blockRef?: BlockRef;
-  /** Epoch ms the block's data was persisted — seeds the freshness clock. */
+  /** Epoch ms the block was persisted. Not shown: a persisted table shows
+   *  the time of the read that drew it (#1038). */
   dataUpdatedAt?: number;
 }
 
 export const TableWidget: React.FC<TableWidgetProps> = ({
   content,
   blockRef,
-  dataUpdatedAt,
 }) => {
   const parsed = useMemo(
     () => DataTableBlockContentSchema.safeParse(content),
@@ -217,14 +221,22 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
     notRefreshable,
     allowed: refreshAllowed,
     lastUpdatedAt,
+    unavailable,
     refresh,
-  } = useWidgetRefresh(blockRef, dataUpdatedAt);
+  } = useWidgetRefresh(blockRef);
+
+  // #1038: a persisted table draws only what a live read returns — never
+  // rows or a handle the block itself carries (a stored copy would outlive
+  // the reader's access). Only the in-turn delivery (no blockRef yet) draws
+  // from its content.
+  const persisted = blockRef != null;
+  const notKept = NotKeptContentSchema.safeParse(content).success;
 
   // A successful refresh's delivery overrides the persisted binding.
   const freshHandle = fresh?.kind === "handle" ? fresh : null;
   const freshInlineRows = fresh?.kind === "inline" ? fresh.rows : null;
 
-  const baseHandle = parsedContent.queryHandle ?? null;
+  const baseHandle = persisted ? null : (parsedContent.queryHandle ?? null);
   const effectiveHandle = freshHandle
     ? freshHandle.queryHandle
     : freshInlineRows
@@ -240,7 +252,8 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
   );
 
   const inlineRows =
-    freshInlineRows ?? (fresh ? null : (parsedContent.rows ?? null));
+    freshInlineRows ??
+    (fresh || persisted ? null : (parsedContent.rows ?? null));
   const rows = inlineRows ?? snapshot.data?.rows ?? [];
 
   const columns =
@@ -261,6 +274,22 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
 
   const hasData = rows.length > 0;
 
+  // No recipe (not kept, or a block from before pipelines): nothing to draw.
+  // A pin's own view renders its not-re-executable state.
+  if (notKept || (blockRef?.kind === "message" && notRefreshable)) {
+    return (
+      <StoredResultNoticeUI reason="not-kept" title={parsedContent.title} />
+    );
+  }
+  if (unavailable) {
+    return (
+      <StoredResultNoticeUI reason="unavailable" title={parsedContent.title} />
+    );
+  }
+
+  // A persisted table waits for its read rather than painting anything.
+  const awaitingRead = persisted && fresh == null && refreshError == null;
+
   return (
     <TableWidgetUI
       columns={columns}
@@ -273,7 +302,7 @@ export const TableWidget: React.FC<TableWidgetProps> = ({
       }
       title={parsedContent.title}
       message={parsedContent.message}
-      loading={effectiveHandle != null && snapshot.isLoading}
+      loading={awaitingRead || (effectiveHandle != null && snapshot.isLoading)}
       // A refresh failure with rows still on screen is reported by the cue,
       // not by replacing the table (#349).
       error={hasData ? null : error}

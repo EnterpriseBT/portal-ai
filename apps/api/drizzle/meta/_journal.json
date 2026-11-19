@@ -953,6 +953,13 @@
       "when": 1795021358292,
       "tag": "0135_retire-deleted-station-toolpacks",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1795056417327,
+      "tag": "0136_strip-stored-result-rows",
+      "breakpoints": true
     }
   ]
 }

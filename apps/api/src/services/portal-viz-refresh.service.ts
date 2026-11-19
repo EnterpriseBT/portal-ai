@@ -23,6 +23,8 @@ import {
 } from "../tools/geo-delivery.util.js";
 import { AnalyticsService } from "./analytics.service.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
+import type { TransformDescriptor } from "./transform-fold.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import type {
   PortalMessageSelect,
@@ -40,6 +42,15 @@ export interface VizRefreshDeps {
   findMessageById?: (id: string) => Promise<PortalMessageSelect | undefined>;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
   sqlQuery?: typeof AnalyticsService.sqlQuery;
+  /** #1038: a transform pipeline stages its source and folds it. */
+  produce?: typeof PortalSqlHandleService.produce;
+  produceFromTransform?: typeof PortalSqlHandleService.produceFromTransform;
+}
+
+/** The handle producers a transform pipeline re-runs through (#1038). */
+interface TransformHandles {
+  produce: typeof PortalSqlHandleService.produce;
+  produceFromTransform: typeof PortalSqlHandleService.produceFromTransform;
 }
 
 /** DI seam (test) for the live pin read (#640). */
@@ -92,6 +103,16 @@ export class PortalVizRefreshService {
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
     const sqlQuery =
       deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
+    const handles: TransformHandles = {
+      produce:
+        deps.produce ??
+        PortalSqlHandleService.produce.bind(PortalSqlHandleService),
+      produceFromTransform:
+        deps.produceFromTransform ??
+        PortalSqlHandleService.produceFromTransform.bind(
+          PortalSqlHandleService
+        ),
+    };
 
     const message = await findMessageById(params.messageId);
     if (!message) throw notFound();
@@ -138,7 +159,9 @@ export class PortalVizRefreshService {
       params.userId,
       resolveSqlDelivery,
       geometryColumns,
-      sqlQuery
+      sqlQuery,
+      undefined,
+      handles
     );
   }
 
@@ -239,10 +262,13 @@ export class PortalVizRefreshService {
         err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
         err.details?.reason === STALE_REFERENCE
       ) {
+        // #1038: a revoked grant, a detached view and a dropped column all
+        // read alike here (the refusal never confirms a hidden view). The
+        // answer is "unavailable", never a cue to show a stored copy.
         throw new ApiError(
           422,
-          ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
-          "This widget's query no longer matches the data you can see — re-run the prompt to rebuild it."
+          ApiCode.VIZ_WIDGET_DATA_UNAVAILABLE,
+          "This result is no longer available to you."
         );
       }
       throw err;
@@ -264,8 +290,32 @@ export class PortalVizRefreshService {
       AnalyticsService
     ),
     /** #640: the pin being delivered; a staged handle then belongs to it. */
-    portalResultId?: string
+    portalResultId?: string,
+    handles?: TransformHandles
   ): Promise<WidgetRefreshResponse> {
+    // #1038: a transform pipeline (technical_indicator) re-runs its source
+    // query as the caller, then folds it into a fresh transform handle. A pin
+    // can't carry one: a transform handle can't be pin-owned, so its readers
+    // couldn't page it.
+    if (pipeline.transform != null) {
+      if (portalResultId != null || handles == null) {
+        throw new ApiError(
+          422,
+          ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE,
+          "This result can't be re-run here."
+        );
+      }
+      const scope = { stationId: pipeline.stationId, organizationId, userId };
+      const source = await handles.produce({ sql: pipeline.sql, ...scope });
+      const { envelope } = await handles.produceFromTransform({
+        transform: {
+          ...(pipeline.transform as Omit<TransformDescriptor, "sourceHandle">),
+          sourceHandle: source.envelope.queryHandle,
+        },
+        ...scope,
+      });
+      return { kind: "handle", ...envelope };
+    }
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
       {

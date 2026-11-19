@@ -163,6 +163,9 @@ const mockFetch =
 const { ToolService, BUILTIN_TOOL_NAMES } =
   await import("../../services/tools.service.js");
 const { CostGateService } = await import("../../services/cost-gate.service.js");
+const { PortalSqlHandleService } =
+  await import("../../services/portal-sql-handle.service.js");
+const { ApiError } = await import("../../services/http.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
 // #658: resolve_identity registration resolves the caller's granted views.
 // Spy on the real singleton (mocking the module would break its other
@@ -1160,6 +1163,72 @@ describe("buildAnalyticsTools()", () => {
     expect(admission).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
 
+    admission.mockRestore();
+    commit.mockRestore();
+  });
+
+  // -----------------------------------------------------------------------
+  // #1038 (adversarial A): every built tool refuses a query handle the caller
+  // may not read before it runs, and before admission, so a refusal is never
+  // charged. Tools read a handle's rows by id with no check of their own.
+  // -----------------------------------------------------------------------
+
+  it("#1038: every built tool refuses an unreadable query handle before admission, uncharged", async () => {
+    setupStationMocks([
+      "data_query",
+      "visualize",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+      "gis",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
+    ]);
+    const handle = "qh-11111111-1111-4111-8111-111111111111";
+    const authorize = jest
+      .spyOn(PortalSqlHandleService, "authorizeToolRead")
+      .mockRejectedValue(
+        new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, "expired")
+      );
+    const admission = jest.spyOn(CostGateService, "checkAdmission");
+    const commit = jest.spyOn(CostGateService, "commitCharge");
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+    const names = Object.keys(tools);
+    expect(names.length).toBeGreaterThan(5);
+
+    for (const name of names) {
+      const out = await (tools[name] as any).execute(
+        { queryHandle: handle },
+        {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        }
+      );
+      expect(out).toEqual({
+        error: { code: ApiCode.READ_HANDLE_EXPIRED, message: "expired" },
+      });
+    }
+    expect(authorize).toHaveBeenCalledWith(handle, {
+      organizationId: ORG_ID,
+      userId: "user-001",
+    });
+    expect(admission).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+
+    authorize.mockRestore();
     admission.mockRestore();
     commit.mockRestore();
   });

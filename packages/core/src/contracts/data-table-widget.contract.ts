@@ -54,6 +54,19 @@ export type DataTableHandleContent = z.infer<
 >;
 
 /**
+ * #1038: a persisted table — its recipe and what it showed, never its rows.
+ * The widget re-runs the pipeline as its reader to draw it.
+ */
+export const DataTableStoredContentSchema = DataTableBaseContentSchema.extend({
+  pipeline: VizPipelineSchema,
+  columns: z.array(z.string()).optional(),
+  rowCount: z.number().int().nonnegative().optional(),
+});
+export type DataTableStoredContent = z.infer<
+  typeof DataTableStoredContentSchema
+>;
+
+/**
  * Handle branch first — same reason as `D3BlockContentSchema`: content
  * carrying a `queryHandle` must resolve to the handle branch, which the
  * inline schema would otherwise accept as an extra key when `rows` is also
@@ -62,5 +75,8 @@ export type DataTableHandleContent = z.infer<
 export const DataTableBlockContentSchema = z.union([
   DataTableHandleContentSchema,
   DataTableInlineContentSchema,
+  // #1038: the persisted form, after the in-turn ones. A not-kept result
+  // (`NotKeptContentSchema`) isn't a branch: a widget checks for it first.
+  DataTableStoredContentSchema,
 ]);
 export type DataTableBlockContent = z.infer<typeof DataTableBlockContentSchema>;

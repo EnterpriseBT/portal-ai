@@ -2,13 +2,17 @@ import React, { useMemo, useState } from "react";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
-import { D3BlockContentSchema } from "@portalai/core/contracts";
+import {
+  D3BlockContentSchema,
+  NotKeptContentSchema,
+} from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
 import { visualSummary } from "@portalai/core/utils";
 
 import { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { StoredResultNoticeUI } from "../../components/StoredResultNotice.component";
 import { buildSandboxTheme } from "./utils/sandbox-theme.util";
 import { VisualFigureUI } from "../../components/VisualFigure.component";
 import { VisualDataTable } from "../../components/VisualDataTable.component";
@@ -220,8 +224,8 @@ export interface D3WidgetProps {
   /** Persisted-block reference (#270) — enables refresh. Absent for
    *  streaming/unpersisted blocks. */
   blockRef?: BlockRef;
-  /** Epoch ms the block's data was persisted (the message's `created`) —
-   *  seeds the freshness clock so a just-minted widget isn't auto-refreshed. */
+  /** Epoch ms the block was persisted (the message's `created`). Not shown:
+   *  a persisted chart shows the time of the read that drew it (#1038). */
   dataUpdatedAt?: number;
   /** Forwarded rendered height (#271) — the gate reuses it to size the
    *  placeholder when the widget is torn down offscreen. */
@@ -231,7 +235,6 @@ export interface D3WidgetProps {
 export const D3Widget: React.FC<D3WidgetProps> = ({
   content,
   blockRef,
-  dataUpdatedAt,
   onHeight,
 }) => {
   const muiTheme = useTheme();
@@ -251,8 +254,15 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     notRefreshable,
     allowed: refreshAllowed,
     lastUpdatedAt,
+    unavailable,
     refresh,
-  } = useWidgetRefresh(blockRef, dataUpdatedAt);
+  } = useWidgetRefresh(blockRef);
+
+  // #640 / #1038: a persisted chart (a pin, or a stored message block) draws
+  // only its live delivery — never rows or a handle the block carries, which
+  // would outlive the reader's access. Only the in-turn delivery (no blockRef
+  // yet) draws from its content.
+  const liveOnly = blockRef != null;
 
   // A successful refresh's delivery overrides the persisted data binding;
   // program/title/params always come from the block itself.
@@ -260,9 +270,13 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
   const freshInlineRows = fresh?.kind === "inline" ? fresh.rows : null;
 
   const baseHandle =
-    parsedContent && "queryHandle" in parsedContent ? parsedContent : null;
+    !liveOnly && parsedContent && "queryHandle" in parsedContent
+      ? parsedContent
+      : null;
   const baseInlineRows =
-    parsedContent && "rows" in parsedContent ? parsedContent.rows : null;
+    !liveOnly && parsedContent && "rows" in parsedContent
+      ? parsedContent.rows
+      : null;
 
   const effectiveHandle = freshHandle
     ? freshHandle.queryHandle
@@ -272,11 +286,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
 
   const progressive = useProgressiveHandleRows(effectiveHandle);
 
-  // #640: a pin stores no rows; its data is only ever the live delivery, so
-  // there is nothing to draw until that arrives.
-  const isPin = blockRef?.kind === "pin";
-  const inlineRows =
-    freshInlineRows ?? (fresh || isPin ? null : baseInlineRows);
+  const inlineRows = freshInlineRows ?? (fresh ? null : baseInlineRows);
   const inlineBatches = useMemo<ProgressiveBatch[]>(
     () => (inlineRows ? [{ rows: inlineRows, seq: 0, done: true }] : []),
     [inlineRows]
@@ -284,6 +294,21 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
   // Each delivery replaces the data, so it gets its own frame (see frameKey);
   // every delivery stamps its own hydration time.
   const frameKey = fresh ? `delivery-${lastUpdatedAt}` : "base";
+
+  // #1038: nothing to draw — no recipe (not kept), or the reader lost access.
+  if (
+    NotKeptContentSchema.safeParse(content).success ||
+    (blockRef?.kind === "message" && notRefreshable)
+  ) {
+    return (
+      <StoredResultNoticeUI reason="not-kept" title={parsedContent?.title} />
+    );
+  }
+  if (unavailable) {
+    return (
+      <StoredResultNoticeUI reason="unavailable" title={parsedContent?.title} />
+    );
+  }
 
   if (!parsedContent) {
     return (
@@ -349,7 +374,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
 
   // #796: the handle the frame reads (a refresh's, else the block's own; a pin
   // has none until its delivery). The summary and the table both read it.
-  const liveHandle = freshHandle ?? (fresh || isPin ? null : baseHandle);
+  const liveHandle = freshHandle ?? (fresh ? null : baseHandle);
 
   // #796: the agent's summary, or one derived from the data the frame draws.
   const summary = visualSummary(

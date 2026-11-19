@@ -2327,6 +2327,7 @@ const options: swaggerJsdoc.Options = {
         WidgetRefreshRequest: {
           type: "object",
           required: ["messageId", "blockIndex"],
+          additionalProperties: false,
           properties: {
             messageId: { type: "string" },
             blockIndex: { type: "integer", minimum: 0 },

@@ -555,6 +555,54 @@ describe("PortalMessageUI", () => {
       );
     });
 
+    // #1038: when a turn ends, its local copy carries the server's message id
+    // but the local block list, so its indexes aren't the stored message's.
+    // Until the refetch replaces it, its blocks get no blockRef (they draw the
+    // live delivery, and send no refresh to the wrong block) and no pin.
+    it("gives a local turn's blocks no blockRef and no pin", () => {
+      registerBlockRenderer("d3", (_b, ctx) => (
+        <div data-testid="d3-blockref-stub">
+          {ctx?.blockRef?.kind === "message"
+            ? `${ctx.blockRef.messageId}:${ctx.blockRef.blockIndex}`
+            : "no-message-ref"}
+        </div>
+      ));
+      const message = makeMessage({
+        id: "msg-42",
+        role: "assistant",
+        blocks: [
+          {
+            type: "d3",
+            content: {
+              program: "api.d3;",
+              rows: [{ x: 1 }],
+              pipeline: {
+                sql: "SELECT x",
+                stationId: "s",
+                organizationId: "o",
+              },
+            },
+          },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          canPin
+          local
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(screen.getByTestId("d3-blockref-stub")).toHaveTextContent(
+        "no-message-ref"
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
+    });
+
     it("still hides registered blocks with empty content", () => {
       registerBlockRenderer("d3", () => <div data-testid="d3-widget-stub" />);
       const message = makeMessage({

@@ -485,9 +485,11 @@ describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
 });
 
 // #727: a stored pipeline naming a column (or view) the caller's views no
-// longer expose was refused by the SQL layer, then answered 500. It's a
-// widget that can't be refreshed until its prompt is re-run: the 422 the web
-// already shows as "can't auto-refresh — re-run the prompt".
+// longer expose was refused by the SQL layer, then answered 500. #1038: that
+// is also what a revoked view grant or a detached view produces, and the two
+// can't be told apart (by design: the refusal never confirms a hidden view),
+// so it answers "no longer available to you". The web must not then fall back
+// to a stored copy, which is what NOT_REFRESHABLE let it do.
 describe("PortalVizRefreshService — stale pipelines (#727)", () => {
   const unknownColumn = () =>
     jest.fn(async () => {
@@ -499,7 +501,7 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
       );
     });
 
-  it("widget refresh: an unknown column → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
+  it("widget refresh: an unknown column → VIZ_WIDGET_DATA_UNAVAILABLE (422, #1038)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(
         {
@@ -510,7 +512,7 @@ describe("PortalVizRefreshService — stale pipelines (#727)", () => {
         },
         deps({ resolveSqlDelivery: unknownColumn() as never })
       ),
-      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+      ApiCode.VIZ_WIDGET_DATA_UNAVAILABLE,
       422
     );
   });
@@ -780,5 +782,72 @@ describe("PortalVizRefreshService.executePin (#640)", () => {
       ApiCode.PORTAL_SQL_UNAVAILABLE,
       503
     );
+  });
+});
+
+// #1038: a technical_indicator table's pipeline carries its transform; a
+// refresh re-runs the source query as the caller and re-folds it.
+describe("PortalVizRefreshService — transform pipelines (#1038)", () => {
+  const TRANSFORM = {
+    kind: "technical_indicator",
+    dateColumn: "d",
+    valueColumn: "v",
+    indicator: "SMA",
+    params: { period: 2 },
+  };
+
+  it("re-runs the source query as a handle and folds the transform over it", async () => {
+    const produce = jest.fn(async () => ({
+      envelope: { ...handleDelivery.envelope, queryHandle: "qh-source" },
+    }));
+    const produceFromTransform = jest.fn(async () => ({
+      envelope: { ...handleDelivery.envelope, queryHandle: "qh-folded" },
+    }));
+    const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+    const message = {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "data-table",
+          content: {
+            type: "data-table",
+            pipeline: { ...PIPELINE, transform: TRANSFORM },
+          },
+        },
+      ],
+    } as never;
+
+    const out = await PortalVizRefreshService.refresh(
+      {
+        messageId: "msg-1",
+        blockIndex: 0,
+        organizationId: "org-1",
+        userId: "user-1",
+      },
+      deps({
+        findMessageById: jest.fn(async () => message) as never,
+        resolveSqlDelivery: resolveSqlDelivery as never,
+        produce: produce as never,
+        produceFromTransform: produceFromTransform as never,
+      })
+    );
+
+    expect(resolveSqlDelivery).not.toHaveBeenCalled();
+    expect(produce).toHaveBeenCalledWith({
+      sql: PIPELINE.sql,
+      stationId: "st-1",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+    expect(produceFromTransform).toHaveBeenCalledWith({
+      transform: { ...TRANSFORM, sourceHandle: "qh-source" },
+      stationId: "st-1",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+    expect(out).toMatchObject({ kind: "handle", queryHandle: "qh-folded" });
   });
 });

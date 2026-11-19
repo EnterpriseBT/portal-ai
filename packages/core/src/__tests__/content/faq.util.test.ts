@@ -282,6 +282,17 @@ describe("portal best-practices FAQ", () => {
     expect(answer).toMatch(/vocabulary/i);
   });
 
+  // #1038: a result in a conversation keeps its query, not its rows, so it
+  // follows the reader's current access.
+  it("answers the refresh question with what a revoked reader sees", () => {
+    const answer = find(
+      "How do I refresh a chart, map, or table with the latest data?"
+    )!.answer;
+    expect(answer).toMatch(/no longer available/i);
+    expect(answer).toMatch(/isn't kept/i);
+    expect(answer).not.toMatch(/last good result/i);
+  });
+
   it("answers the running-job question with the lock's real behavior", () => {
     const answer = find(RUNNING_JOB)!.answer;
     expect(answer).toMatch(/read-only/i);

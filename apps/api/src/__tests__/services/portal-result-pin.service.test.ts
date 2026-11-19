@@ -170,6 +170,42 @@ describe("PortalResultPinService.materialize", () => {
     });
   });
 
+  // #1038: a stored block keeps no queryHandle, so a large map is known by
+  // its row count, past what comes back inline.
+  it("marks a stored large map tiled by its row count, with no handle", async () => {
+    const spec = {
+      layers: [{ kind: "points", source: { geometryColumn: "geom" } }],
+    };
+    const stored = await PortalResultPinService.materialize(
+      "geo",
+      { spec, pipeline: PIPELINE, rowCount: 9000 },
+      SCOPE
+    );
+    expect(stored.content).toMatchObject({ tiled: true });
+
+    const small = await PortalResultPinService.materialize(
+      "geo",
+      { spec, pipeline: PIPELINE, rowCount: 40 },
+      SCOPE
+    );
+    expect(small.content).not.toHaveProperty("tiled");
+  });
+
+  // #1038: a transform pipeline (technical_indicator) can't run for a pin:
+  // its handle can't be pin-owned. Refused here, not on every view.
+  it("refuses a pipeline that carries a transform", async () => {
+    await expect(
+      PortalResultPinService.materialize(
+        "data-table",
+        {
+          columns: ["d", "sma"],
+          pipeline: { ...PIPELINE, transform: { kind: "technical_indicator" } },
+        },
+        SCOPE
+      )
+    ).rejects.toMatchObject({ code: ApiCode.PORTAL_RESULT_NOT_REEXECUTABLE });
+  });
+
   // ── where the query comes from ──────────────────────────────────────
 
   it("derives the query from a block's sql", async () => {

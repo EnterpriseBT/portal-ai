@@ -448,18 +448,18 @@ describe("D3Widget container refresh (#270)", () => {
     );
   });
 
-  it("does not auto-refresh when the data is fresh (within the window)", async () => {
-    const ref = freshRef();
+  // #1038: a stored block has no rows of its own, so it reads on mount even
+  // moments after its message was created.
+  it("reads on mount even when its message was just created", async () => {
+    refreshMutate.mockResolvedValue({ kind: "inline", rows: [{ x: 2 }] });
     render(
       <D3Widget
         content={inlineBlock()}
-        blockRef={ref}
+        blockRef={freshRef()}
         dataUpdatedAt={Date.now()}
       />
     );
-    // Give the mount effect a tick; it must not fire.
-    await waitFor(() => expect(screen.getByTestId("d3-widget")).toBeTruthy());
-    expect(refreshMutate).not.toHaveBeenCalled();
+    await waitFor(() => expect(refreshMutate).toHaveBeenCalled());
   });
 
   it("does not auto-refresh and shows no button without a blockRef", async () => {
@@ -485,33 +485,61 @@ describe("D3Widget container refresh (#270)", () => {
     await waitFor(() => expect(refreshMutate).toHaveBeenCalledTimes(1));
   });
 
-  it("keeps the prior render on a refresh failure (no error card)", async () => {
+  // #1038: a persisted chart never draws the rows its block carries, so a
+  // failed first read leaves nothing to keep on screen.
+  it("a persisted chart's failed first read shows the error, never the stored rows", async () => {
     refreshMutate.mockRejectedValue(new Error("refresh boom"));
-    const ref = freshRef();
     const { container } = render(
-      <D3Widget content={inlineBlock()} blockRef={ref} dataUpdatedAt={STALE} />
+      <D3Widget
+        content={inlineBlock()}
+        blockRef={freshRef()}
+        dataUpdatedAt={STALE}
+      />
     );
-    await waitFor(() => expect(refreshMutate).toHaveBeenCalled());
-    // Inline data was already rendered → the chart stays, no error card.
     await waitFor(() =>
-      expect(container.querySelector("iframe")).not.toBeNull()
+      expect(screen.getByTestId("d3-widget-error")).toBeInTheDocument()
     );
-    expect(screen.queryByTestId("d3-widget-error")).not.toBeInTheDocument();
+    expect(container.querySelector("iframe")).toBeNull();
   });
 
-  it("shows the not-refreshable note when the server says 422", async () => {
+  it("a stored chart with no recipe shows as not kept (#1038)", async () => {
     refreshMutate.mockRejectedValue(
       new ApiError("no pipeline", "VIZ_WIDGET_NOT_REFRESHABLE", 422)
     );
-    const ref = freshRef();
-    render(
-      <D3Widget content={inlineBlock()} blockRef={ref} dataUpdatedAt={STALE} />
+    const { container } = render(
+      <D3Widget
+        content={inlineBlock()}
+        blockRef={freshRef()}
+        dataUpdatedAt={STALE}
+      />
     );
     await waitFor(() =>
-      expect(
-        screen.getByTestId("d3-widget-not-refreshable")
-      ).toBeInTheDocument()
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "This result isn't kept after the conversation"
+      )
     );
+    expect(container.querySelector("iframe")).toBeNull();
+    await expectNoAxeViolations(container);
+  });
+
+  it("a reader who lost access sees no longer available (#1038)", async () => {
+    refreshMutate.mockRejectedValue(
+      new ApiError("gone", "VIZ_WIDGET_DATA_UNAVAILABLE", 422)
+    );
+    const { container } = render(
+      <D3Widget
+        content={inlineBlock()}
+        blockRef={freshRef()}
+        dataUpdatedAt={STALE}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "This result is no longer available to you."
+      )
+    );
+    expect(container.querySelector("iframe")).toBeNull();
+    await expectNoAxeViolations(container);
   });
 });
 
@@ -556,7 +584,9 @@ describe("D3Widget frame replacement", () => {
   // The sandbox accumulates rows, so a delivery that REPLACES the data must
   // start a new frame; reusing the old one dropped it (#640 smoke walk).
   it("mounts a new frame when a refresh replaces the rendered rows", async () => {
-    refreshMutate.mockResolvedValue({ kind: "inline", rows: [{ x: 2 }] });
+    refreshMutate
+      .mockResolvedValueOnce({ kind: "inline", rows: [{ x: 1 }] })
+      .mockResolvedValueOnce({ kind: "inline", rows: [{ x: 2 }] });
     const { container } = render(
       <D3Widget
         content={inlineBlock()}
@@ -564,8 +594,11 @@ describe("D3Widget frame replacement", () => {
         dataUpdatedAt={Date.now()}
       />
     );
+    // #1038: the mount read draws the first frame.
+    await waitFor(() =>
+      expect(container.querySelector("iframe")).not.toBeNull()
+    );
     const before = container.querySelector("iframe");
-    expect(before).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /refresh chart/i }));
     await waitFor(() => expect(refreshMutate).toHaveBeenCalled());
     await waitFor(() => {

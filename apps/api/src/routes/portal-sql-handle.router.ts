@@ -23,6 +23,8 @@ import { PinDefinerService } from "../services/pin-definer.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
+import { WidgetRefreshRequestSchema } from "@portalai/core/contracts";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
@@ -73,7 +75,7 @@ export const portalSqlHandleRouter = Router();
  *                 payload:
  *                   $ref: '#/components/schemas/QueryHandleSnapshotResponse'
  *       404:
- *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing). A pin's handle (#640) is readable by anyone who can read the pin.
+ *         description: Handle expired or unknown, or belonging to another org or user (#685; the same response, so it reveals nothing), or the caller can no longer read what its query reads, after a view grant is revoked or the view is detached from the station (#1038). A pin's handle (#640) is readable by anyone who can read the pin.
  *         content:
  *           application/json:
  *             schema:
@@ -128,6 +130,12 @@ portalSqlHandleRouter.get(
           ApiCode.READ_HANDLE_EXPIRED,
           HANDLE_EXPIRED_MESSAGE
         );
+      } else {
+        // #1038: and only while they can still read what its query reads.
+        await PortalSqlHandleService.authorizeCallerRead(meta, {
+          organizationId,
+          userId,
+        });
       }
 
       const result = await PortalSqlHandleService.getSnapshot(handleId, {
@@ -178,6 +186,12 @@ portalSqlHandleRouter.get(
  *                 success: { type: boolean, example: true }
  *                 payload:
  *                   $ref: '#/components/schemas/WidgetRefreshResponse'
+ *       400:
+ *         description: "`VIZ_WIDGET_INVALID_PAYLOAD` (#1038): the body isn't exactly `{ messageId, blockIndex }` (an unknown key, a missing field, or a negative or non-integer index)."
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: No refreshable widget for this reference (or cross-org)
  *         content:
@@ -185,7 +199,7 @@ portalSqlHandleRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       422:
- *         description: The widget has no durable pipeline (pre-#270)
+ *         description: "`VIZ_WIDGET_NOT_REFRESHABLE`: the widget has no durable pipeline (pre-#270, or a result that isn't kept). `VIZ_WIDGET_DATA_UNAVAILABLE` (#1038): its query no longer matches what the caller can read (a view grant revoked, the view detached from the station, or a column dropped); the widget shows no data, stored or live."
  *         content:
  *           application/json:
  *             schema:
@@ -204,20 +218,15 @@ portalSqlHandleRouter.post(
     try {
       const organizationId = req.application!.metadata.organizationId;
 
-      const { messageId, blockIndex } = req.body ?? {};
-      if (
-        typeof messageId !== "string" ||
-        messageId.length === 0 ||
-        typeof blockIndex !== "number" ||
-        !Number.isInteger(blockIndex) ||
-        blockIndex < 0
-      ) {
-        throw new ApiError(
-          400,
-          ApiCode.PORTAL_SQL_FORBIDDEN,
-          "widget-refresh requires { messageId: string, blockIndex: integer ≥ 0 }"
+      const parsed = WidgetRefreshRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw invalidPayload(
+          ApiCode.VIZ_WIDGET_INVALID_PAYLOAD,
+          "widget-refresh",
+          parsed.error
         );
       }
+      const { messageId, blockIndex } = parsed.data;
 
       // Per-org rate limit (abuse backstop). Fail-open on a Redis blip — the
       // re-execution is already bounded (read-only + statement_timeout + LIMIT).

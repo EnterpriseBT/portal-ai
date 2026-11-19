@@ -814,7 +814,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "not present hand-derived numbers as a tool's output, and do not name a " +
       'method or metric (e.g. "Holt-Winters", "MAPE", "R²") unless those ' +
       "figures came from a tool call in this turn. Never carry a result over " +
-      "from an earlier turn as if freshly computed.",
+      "from an earlier turn as if freshly computed. A result's rows from an " +
+      "earlier turn aren't kept (you see only its row count and columns), so " +
+      "when a follow-up needs their values, pass its `queryHandle` if it " +
+      "names one and it's still live, or re-run the query.",
     "- **Report sign and direction exactly as the tool returns them.** When a " +
       "result carries a direction — a slope, trend, change, correlation, " +
       "growth/decline, drawdown, or delta — read it straight off the tool's " +

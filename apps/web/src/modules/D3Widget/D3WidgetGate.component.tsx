@@ -84,7 +84,9 @@ export const D3WidgetGate: React.FC<D3WidgetGateProps> = ({
     const parsed = D3BlockContentSchema.safeParse(content);
     if (!parsed.success) return null;
     const block = parsed.data;
-    const isPin = blockRef?.kind === "pin";
+    // #640 / #1038: a persisted block (a pin, or a stored message block)
+    // draws only its live read, so its placeholder describes no carried data.
+    const liveOnly = blockRef != null;
     return {
       title: block.title,
       summary: visualSummary(
@@ -92,8 +94,8 @@ export const D3WidgetGate: React.FC<D3WidgetGateProps> = ({
         toSummaryInput({
           kind: "chart",
           title: block.title,
-          rows: !isPin && "rows" in block ? block.rows : null,
-          handle: !isPin && "queryHandle" in block ? block : null,
+          rows: !liveOnly && "rows" in block ? block.rows : null,
+          handle: !liveOnly && "queryHandle" in block ? block : null,
         })
       ),
     };

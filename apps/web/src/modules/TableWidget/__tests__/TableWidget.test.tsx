@@ -23,6 +23,7 @@ const REFRESH_IDLE = {
   isRefreshing: false,
   error: null,
   notRefreshable: false,
+  unavailable: false,
   lastUpdatedAt: null,
   refresh: jest.fn(),
 };
@@ -242,11 +243,12 @@ describe("TableWidget", () => {
     expect(screen.getByText("North Ridge")).toBeInTheDocument();
   });
 
-  it("renders no refresh button when the block is notRefreshable", () => {
+  // #1038: a persisted table with no recipe has nothing it may draw; its
+  // stored rows are never shown.
+  it("shows a persisted table with no pipeline as not kept, never its rows", () => {
     mockUseWidgetRefresh.mockReturnValue({
       ...REFRESH_IDLE,
       notRefreshable: true,
-      lastUpdatedAt: Date.now(),
     });
     render(
       <TableWidget
@@ -254,8 +256,64 @@ describe("TableWidget", () => {
         blockRef={{ kind: "message", messageId: "m1", blockIndex: 0 }}
       />
     );
-    expect(screen.getByTestId("widget-freshness-updated")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Refresh table" })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This result isn't kept after the conversation"
+    );
+    expect(screen.queryByText("North Ridge")).toBeNull();
+  });
+
+  it("paints nothing from a persisted block before its read answers (#1038)", () => {
+    mockUseWidgetRefresh.mockReturnValue({
+      ...REFRESH_IDLE,
+      isRefreshing: true,
+    });
+    render(
+      <TableWidget
+        content={{ type: "data-table", columns: ["name"], rows }}
+        blockRef={{ kind: "message", messageId: "m1", blockIndex: 0 }}
+      />
+    );
+    expect(screen.getByTestId("table-widget-loading")).toBeInTheDocument();
+    expect(screen.queryByText("North Ridge")).toBeNull();
+  });
+
+  it("shows no longer available when the reader lost access (#1038)", async () => {
+    mockUseWidgetRefresh.mockReturnValue({
+      ...REFRESH_IDLE,
+      unavailable: true,
+    });
+    const { container } = render(
+      <TableWidget
+        content={{
+          type: "data-table",
+          columns: ["name"],
+          pipeline: { sql: "SELECT name", stationId: "s", organizationId: "o" },
+        }}
+        blockRef={{ kind: "message", messageId: "m1", blockIndex: 0 }}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This result is no longer available to you."
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("shows a not-kept block's notice (#1038)", async () => {
+    const { container } = render(
+      <TableWidget
+        content={{
+          type: "data-table",
+          notKept: true,
+          columns: ["name"],
+          rowCount: 2,
+        }}
+        blockRef={{ kind: "message", messageId: "m1", blockIndex: 0 }}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This result isn't kept after the conversation"
+    );
+    await expectNoAxeViolations(container);
   });
 
   it("prefers a fresh inline delivery over the block's baked rows", () => {

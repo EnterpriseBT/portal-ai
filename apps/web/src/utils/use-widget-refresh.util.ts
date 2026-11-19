@@ -9,13 +9,17 @@ import { toServerError, type ServerError } from "./api.util";
 import { pinDataRefusal } from "./pin-data.util";
 
 /**
- * Session-scoped last-hydration clock, keyed by the discriminated BlockRef
- * (#312) — `message:<id>:<idx>` / `pin:<id>` never collide. Module-level so
- * it survives remounts — a widget viewed repeatedly within the freshness
- * window refetches at most once (#270 D6). Not persisted; a page reload
- * starts fresh.
+ * #1038 review: the last live read of each message block in this tab, so a
+ * widget that remounts (scrolled back into view, the gate re-mounts it)
+ * within `VIZ_REFRESH_FRESHNESS_MS` reuses it instead of re-running its query
+ * against the org's refresh rate limit. Memory only: nothing is stored, and a
+ * reload starts empty. An "unavailable" answer evicts the entry.
  */
-const lastHydratedAt = new Map<string, number>();
+const lastReads = new Map<
+  string,
+  { fresh: WidgetRefreshResponse; at: number }
+>();
+
 const keyOf = (ref: BlockRef): string =>
   ref.kind === "message"
     ? `message:${ref.messageId}:${ref.blockIndex}`
@@ -33,18 +37,21 @@ export interface UseWidgetRefreshResult {
   error: ServerError | null;
   /** The widget predates durable pipelines (server 422) — can't refresh. */
   notRefreshable: boolean;
-  /** Epoch ms of the last hydration (seeded from the block's data timestamp). */
+  /** #1038: the caller can no longer read what the widget's query reads
+   *  (server 422 `VIZ_WIDGET_DATA_UNAVAILABLE`). Nothing is shown. */
+  unavailable: boolean;
+  /** Epoch ms of the read that drew the widget; null until one completes. */
   lastUpdatedAt: number | null;
   refresh: () => void;
 }
 
 /**
- * Freshness-gated widget refresh (#270 D6, promoted + widened in #312).
- * Auto-refreshes once on mount when the data is stale (older than
- * `VIZ_REFRESH_FRESHNESS_MS`, seeded from `dataUpdatedAt`), and exposes
- * `refresh()` for the always-present manual button. A just-minted widget
- * (`dataUpdatedAt ≈ now`) is fresh and skips the auto-refresh. Absent
- * `blockRef` (streaming/unpersisted) → no refresh at all.
+ * A persisted widget's data, read live (#270, #312, #1038). A stored message
+ * block keeps its recipe, never its rows, so every mount reads it as the
+ * caller and exposes `refresh()` for the always-present manual button. The
+ * widget paints only what a read returns: a reader who lost access to the
+ * data sees "no longer available", never a stored copy. Absent `blockRef`
+ * (the turn still streaming) → no read; the widget draws the live delivery.
  *
  * Dispatch follows the ref's kind: message-block refs hit the
  * widget-refresh endpoint. A pin stores no data (#640): its data is always
@@ -52,8 +59,7 @@ export interface UseWidgetRefreshResult {
  * the manual button refetches it.
  */
 export function useWidgetRefresh(
-  blockRef: BlockRef | undefined,
-  dataUpdatedAt: number | undefined
+  blockRef: BlockRef | undefined
 ): UseWidgetRefreshResult {
   const key = blockRef ? keyOf(blockRef) : undefined;
   // The mount refresh and the manual button below serve message blocks; a
@@ -66,16 +72,24 @@ export function useWidgetRefresh(
   const pinData = sdk.portalResults.data(pinId, { enabled: pinId !== "" });
 
   const { mutateAsync: refreshMessageBlock } = sdk.portalSql.widgetRefresh();
-  const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(null);
+  // A remount within the freshness window starts from this tab's last read.
+  const [cachedAt] = useState<number | null>(() => {
+    const last = key != null ? lastReads.get(key) : undefined;
+    return last != null && Date.now() - last.at <= VIZ_REFRESH_FRESHNESS_MS
+      ? last.at
+      : null;
+  });
+  const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(() =>
+    cachedAt != null && key != null ? (lastReads.get(key)?.fresh ?? null) : null
+  );
   const [error, setError] = useState<ServerError | null>(null);
   const [notRefreshable, setNotRefreshable] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   // Own the in-flight flag rather than react-query's `isPending`, which did
   // not reliably clear here (the button spun forever after a resolved
   // refresh). A `try/finally` guarantees the spinner ends when refresh() does.
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() =>
-    key != null ? (lastHydratedAt.get(key) ?? dataUpdatedAt ?? null) : null
-  );
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(cachedAt);
 
   // Keep the ref itself stable for the callback without spreading its
   // variant fields into dependency arrays.
@@ -92,15 +106,22 @@ export function useWidgetRefresh(
         messageId: ref.messageId,
         blockIndex: ref.blockIndex,
       });
-      const now = Date.now();
-      lastHydratedAt.set(keyOf(ref), now);
+      const at = Date.now();
+      lastReads.set(keyOf(ref), { fresh: res, at });
       setError(null);
+      setUnavailable(false);
       setFresh(res);
-      setLastUpdatedAt(now);
+      setLastUpdatedAt(at);
     } catch (e) {
       const se = toServerError(e as never);
       if (se?.code === "VIZ_WIDGET_NOT_REFRESHABLE") {
         setNotRefreshable(true);
+      } else if (se?.code === "VIZ_WIDGET_DATA_UNAVAILABLE") {
+        // Drop anything an earlier read drew: access ended since.
+        lastReads.delete(keyOf(ref));
+        setFresh(null);
+        setLastUpdatedAt(null);
+        setUnavailable(true);
       } else {
         setError(se);
       }
@@ -109,19 +130,16 @@ export function useWidgetRefresh(
     }
   }, [refreshMessageBlock]);
 
-  // Auto-refresh once on mount when stale. #271 owns the viewport-driven
-  // trigger that fans this across many widgets on a dashboard.
+  // Read once on mount (#1038): a stored block has no rows of its own. The
+  // gates (#271) mount a widget only near the viewport, and a remount within
+  // the freshness window reuses this tab's last read rather than re-running.
   const autoFired = useRef(false);
   useEffect(() => {
     if (key == null || !allowed || autoFired.current) return;
-    const seededAt = lastHydratedAt.get(key) ?? dataUpdatedAt ?? 0;
-    if (Date.now() - seededAt > VIZ_REFRESH_FRESHNESS_MS) {
-      autoFired.current = true;
-      // Mount-triggered async fetch (fires once per stale mount). #271 owns the
-      // viewport-driven trigger for many widgets.
-      void refresh();
-    }
-  }, [key, allowed, dataUpdatedAt, refresh]);
+    autoFired.current = true;
+    if (cachedAt != null) return;
+    void refresh();
+  }, [key, allowed, refresh, cachedAt]);
 
   if (blockRef?.kind === "pin") {
     const refusal = pinDataRefusal(pinData.error);
@@ -133,6 +151,7 @@ export function useWidgetRefresh(
       // block; only an unexpected failure is the widget's error.
       error: refusal ? null : toServerError(pinData.error),
       notRefreshable: refusal === "not-reexecutable",
+      unavailable: false,
       lastUpdatedAt: pinData.dataUpdatedAt || null,
       refresh: () => void pinData.refetch(),
     };
@@ -144,6 +163,7 @@ export function useWidgetRefresh(
     isRefreshing,
     error,
     notRefreshable,
+    unavailable,
     lastUpdatedAt,
     refresh: () => void refresh(),
   };

@@ -82,6 +82,20 @@ export type QueryHandleEnvelope = z.infer<typeof QueryHandleEnvelopeSchema>;
  * query-handle envelope when it's large (same thresholds as the original mint).
  * The web widget swaps this into its existing inline-vs-handle render branch.
  */
+/**
+ * `POST /api/portal-sql/widget-refresh` body: a reference to a persisted
+ * widget, nothing else. Strict (#1038): a smuggled `sql` or `pipeline` is a
+ * 400 naming it, never a key silently dropped; the server only ever re-runs
+ * the block's own stored pipeline.
+ */
+export const WidgetRefreshRequestSchema = z
+  .object({
+    messageId: z.string().min(1),
+    blockIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+export type WidgetRefreshRequest = z.infer<typeof WidgetRefreshRequestSchema>;
+
 export const WidgetRefreshResponseSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("inline"),

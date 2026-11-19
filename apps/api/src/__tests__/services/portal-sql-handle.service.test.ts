@@ -576,3 +576,130 @@ describe("produce for a pin (#640)", () => {
     expect(storedMeta()).not.toHaveProperty("_portalResultId");
   });
 });
+
+// #1038 review: a handle's pages re-check the reader's access, but one check
+// covers a short window, so a chart paging a large handle doesn't run an
+// EXPLAIN per page on the shared pool.
+describe("PortalSqlHandleService.authorizeCallerRead — decision window (#1038)", () => {
+  const caller = { organizationId: "org-1", userId: "user-1" };
+  let seq = 0;
+  const meta = () =>
+    ({
+      queryHandle: `qh-window-${++seq}`,
+      sql: "SELECT id FROM parcels",
+      _stationId: "st-1",
+      _organizationId: "org-1",
+      _userId: "user-1",
+    }) as never;
+
+  it("checks once within the window, then again after it", async () => {
+    const explainSqlQuery = jest.fn(async () => ({
+      totalCost: 1,
+      estimatedRows: 1,
+    }));
+    let now = 1_000_000;
+    const deps = { explainSqlQuery: explainSqlQuery as never, now: () => now };
+    const m = meta();
+
+    await PortalSqlHandleService.authorizeCallerRead(m, caller, deps);
+    await PortalSqlHandleService.authorizeCallerRead(m, caller, deps);
+    expect(explainSqlQuery).toHaveBeenCalledTimes(1);
+
+    now += 31_000;
+    await PortalSqlHandleService.authorizeCallerRead(m, caller, deps);
+    expect(explainSqlQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("never remembers a refusal", async () => {
+    const { ApiError } = await import("../../services/http.service.js");
+    const { STALE_REFERENCE } =
+      await import("../../services/portal-sql-validation.util.js");
+    const explainSqlQuery = jest.fn(async () => {
+      throw new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, "unknown entity", {
+        reason: STALE_REFERENCE,
+      });
+    });
+    const deps = { explainSqlQuery: explainSqlQuery as never, now: () => 5 };
+    const m = meta();
+
+    await expect(
+      PortalSqlHandleService.authorizeCallerRead(m, caller, deps)
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+    await expect(
+      PortalSqlHandleService.authorizeCallerRead(m, caller, deps)
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+    expect(explainSqlQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("keys the window by reader: another user is checked on their own", async () => {
+    const explainSqlQuery = jest.fn(async () => ({
+      totalCost: 1,
+      estimatedRows: 1,
+    }));
+    const deps = { explainSqlQuery: explainSqlQuery as never, now: () => 7 };
+    const m = meta();
+
+    await PortalSqlHandleService.authorizeCallerRead(m, caller, deps);
+    await PortalSqlHandleService.authorizeCallerRead(
+      m,
+      { organizationId: "org-1", userId: "user-2" },
+      deps
+    );
+    expect(explainSqlQuery).toHaveBeenCalledTimes(2);
+  });
+});
+
+// #1038 (adversarial A): what a tool may read of a handle it's handed by id:
+// the caller's own handle in their org, while they can still read its query.
+describe("PortalSqlHandleService.authorizeToolRead (#1038)", () => {
+  const caller = { organizationId: "org-1", userId: "user-1" };
+  let seq = 0;
+  const stage = (meta: Record<string, unknown>) => {
+    const id = `qh-tool-${++seq}`;
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key.includes(id)
+        ? JSON.stringify({
+            queryHandle: id,
+            sql: "SELECT id FROM parcels",
+            _stationId: "st-1",
+            _organizationId: "org-1",
+            _userId: "user-1",
+            ...meta,
+          })
+        : null
+    );
+    return id;
+  };
+  const explainOk = () =>
+    jest.fn(async () => ({ totalCost: 1, estimatedRows: 1 }));
+
+  it("allows the caller's own handle, after the access re-check", async () => {
+    const id = stage({});
+    const explainSqlQuery = explainOk();
+    await PortalSqlHandleService.authorizeToolRead(id, caller, {
+      explainSqlQuery: explainSqlQuery as never,
+    });
+    expect(explainSqlQuery).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another org's", { _organizationId: "org-2" }],
+    ["another user's", { _userId: "user-2" }],
+    ["a pin's", { _portalResultId: "pin-1" }],
+  ])("refuses %s handle as expired", async (_label, meta) => {
+    const id = stage(meta);
+    await expect(
+      PortalSqlHandleService.authorizeToolRead(id, caller, {
+        explainSqlQuery: explainOk() as never,
+      })
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+
+  it("refuses an unknown handle as expired", async () => {
+    await expect(
+      PortalSqlHandleService.authorizeToolRead("qh-missing", caller, {
+        explainSqlQuery: explainOk() as never,
+      })
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+});

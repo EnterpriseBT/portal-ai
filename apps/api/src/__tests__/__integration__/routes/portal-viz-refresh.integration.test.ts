@@ -164,14 +164,38 @@ describe("POST /api/portal-sql/widget-refresh", () => {
     expect(res.body.payload).toEqual({ kind: "inline", rows: [{ n: 1 }] });
   });
 
-  it("ignores any client-supplied SQL — only { messageId, blockIndex } is honored", async () => {
+  it("never runs client-supplied SQL — only { messageId, blockIndex } is accepted", async () => {
     const res = await request(app)
       .post("/api/portal-sql/widget-refresh")
       .send({ messageId, blockIndex: 1, sql: "SELECT 999 AS n" });
 
-    expect(res.status).toBe(200);
-    // The response reflects the PERSISTED pipeline (SELECT 1), not the body sql.
-    expect(res.body.payload).toEqual({ kind: "inline", rows: [{ n: 1 }] });
+    // #1038: refused outright (the body is strict) rather than ignored; the
+    // persisted pipeline is still the only query a refresh can run.
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_INVALID_PAYLOAD);
+    expect(JSON.stringify(res.body)).not.toContain("999");
+  });
+
+  // #1038 (adversarial B): the body is strict, so a smuggled `sql` or
+  // `pipeline` is a 400 naming it rather than a key silently dropped.
+  it("refuses an unknown body key with 400, naming it", async () => {
+    const res = await request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 1, pipeline: { sql: "SELECT 999" } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_INVALID_PAYLOAD);
+    expect(res.body.message).toMatch(/pipeline/);
+  });
+
+  it("refuses a negative or non-integer block index with 400", async () => {
+    for (const blockIndex of [-1, 1.5, "1"]) {
+      const res = await request(app)
+        .post("/api/portal-sql/widget-refresh")
+        .send({ messageId, blockIndex });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_INVALID_PAYLOAD);
+    }
   });
 
   it("a member of another org gets 404, never data", async () => {

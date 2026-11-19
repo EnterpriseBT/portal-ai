@@ -40,7 +40,7 @@ import {
   applyTransformFold,
   type TransformDescriptor,
 } from "./transform-fold.js";
-import { fenceSql } from "./portal-sql-validation.util.js";
+import { fenceSql, STALE_REFERENCE } from "./portal-sql-validation.util.js";
 import { capSamplePeek } from "./portal-sql-response.util.js";
 import { HANDLE_EXPIRED_MESSAGE } from "../constants/query-handle.constants.js";
 
@@ -114,6 +114,17 @@ function requireHandleUser(meta: StoredHandleMeta): string {
   }
   return meta._userId;
 }
+
+/**
+ * #1038: how long one passed access check covers a reader's further pages of
+ * the same handle. A revocation reaches an open handle within this window;
+ * without it a large chart ran an EXPLAIN per page on the shared pool.
+ */
+export const HANDLE_READ_DECISION_TTL_MS = 30_000;
+/** Bound on remembered decisions (per API instance); oldest go first. */
+const HANDLE_READ_DECISION_MAX = 10_000;
+/** `${handleId}:${userId}` → when the passed check stops covering reads. */
+const handleReadDecisions = new Map<string, number>();
 
 export class PortalSqlHandleService {
   /**
@@ -580,6 +591,104 @@ export class PortalSqlHandleService {
       );
     }
     return JSON.parse(raw) as StoredHandleMeta;
+  }
+
+  /**
+   * #1038: a handle serves its rows only while the caller can still read what
+   * its query reads. Runs the query's `EXPLAIN` as the caller, so a revoked
+   * view grant, or a view detached from the station, refuses the read with
+   * the same 404 as an expired handle. Without this, a handle stayed readable
+   * for its whole TTL after access ended.
+   *
+   * A transform handle is checked through the query at the root of its
+   * source chain (a source that has expired is also a 404). A staged-rows
+   * handle has no query to check and keeps its owner check alone.
+   */
+  static async authorizeCallerRead(
+    meta: StoredHandleMeta,
+    caller: { organizationId: string; userId: string },
+    deps: {
+      explainSqlQuery?: typeof PortalSqlService.explainSqlQuery;
+      now?: () => number;
+    } = {}
+  ): Promise<void> {
+    const now = (deps.now ?? Date.now)();
+    // Only a pass is remembered, per reader: a refusal is re-checked, so
+    // restored access works on the next read.
+    const key = `${meta.queryHandle}:${caller.userId}`;
+    const coveredUntil = handleReadDecisions.get(key);
+    if (coveredUntil != null && coveredUntil > now) return;
+
+    const sql = await this.rootSql(meta);
+    if (sql == null) return;
+    const explain =
+      deps.explainSqlQuery ??
+      PortalSqlService.explainSqlQuery.bind(PortalSqlService);
+    try {
+      await explain({
+        sql,
+        stationId: meta._stationId,
+        organizationId: caller.organizationId,
+        userId: caller.userId,
+      });
+      handleReadDecisions.delete(key);
+      handleReadDecisions.set(key, now + HANDLE_READ_DECISION_TTL_MS);
+      if (handleReadDecisions.size > HANDLE_READ_DECISION_MAX) {
+        const oldest = handleReadDecisions.keys().next().value;
+        if (oldest !== undefined) handleReadDecisions.delete(oldest);
+      }
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.code === ApiCode.PORTAL_SQL_FORBIDDEN &&
+        err.details?.reason === STALE_REFERENCE
+      ) {
+        throw new ApiError(
+          404,
+          ApiCode.READ_HANDLE_EXPIRED,
+          HANDLE_EXPIRED_MESSAGE
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * #1038 (adversarial A): what an agent tool may read of a handle it is
+   * handed by id. The same rules as `GET /api/portal-sql/handle/:id`, without
+   * the pin branch (a pin's handle is its readers', never an agent's input):
+   * the handle is in the caller's org, it is theirs when it records a user,
+   * and they can still read what its query reads. Anything else answers the
+   * expired-handle 404, so the check reveals nothing.
+   */
+  static async authorizeToolRead(
+    handleId: string,
+    caller: { organizationId: string; userId: string },
+    deps: Parameters<typeof PortalSqlHandleService.authorizeCallerRead>[2] = {}
+  ): Promise<void> {
+    const expired = () =>
+      new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, HANDLE_EXPIRED_MESSAGE);
+    const meta = await this.getMeta(handleId);
+    if (meta._organizationId !== caller.organizationId) throw expired();
+    if (meta._portalResultId) throw expired();
+    if (meta._userId !== undefined && meta._userId !== caller.userId) {
+      throw expired();
+    }
+    await this.authorizeCallerRead(meta, caller, deps);
+  }
+
+  /** The query a handle's rows come from: its own, or its transform
+   *  source's, followed to the root. Null for a staged-rows handle. */
+  private static async rootSql(meta: StoredHandleMeta): Promise<string | null> {
+    let current = meta;
+    // A transform chain is one or two deep in practice; the bound only
+    // guards against a malformed meta naming itself.
+    for (let depth = 0; depth < 8; depth++) {
+      if (current.sql) return current.sql;
+      if (!current._transform) return null;
+      current = await this.getMeta(current._transform.sourceHandle);
+    }
+    return null;
   }
 
   /**
