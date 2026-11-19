@@ -78,7 +78,14 @@ export class DisplayEntityRecordsTool extends Tool<typeof InputSchema> {
           sql,
         });
 
-        return { type: "data-table", ...envelope };
+        // #1038: the pipeline is what a stored table re-runs as its reader,
+        // so a revoked view stops serving it. Without one, refresh answered
+        // 422 and the table fell back to its stored copy.
+        return {
+          type: "data-table",
+          ...envelope,
+          pipeline: { sql, stationId, organizationId },
+        };
       },
     });
   }
