@@ -129,6 +129,7 @@ This is the code that moves out of `platform-help.tool.ts` (`gatherFindings` :12
 - **`## Station Scope`** (:1312-1365) gains two lines:
   - "If a query comes back empty, or something the user expects isn't here, read `station_context`'s `status` before answering, and explain what it reports."
   - "When suggesting a station, name one from `station_context` with `include: [\"stations\"]`."
+  - **Added in implementation (the slice 4 manual check):** when the plan has Help and this station doesn't, a paragraph says product questions are the Help pack's: don't answer them from the agent's own knowledge; name the pack and a readable station that has it. Without it, the agent answered "what is a tool pack?" itself.
 
 ### `apps/web/src/utils/tool-pack-icons.util.ts`
 `ICONS_BY_SLUG.help = HelpOutlineIcon` (`@mui/icons-material`).

@@ -38,11 +38,12 @@ const MAX_GLOSSARY = 3;
 /**
  * In-session platform help (#367).
  *
- * A **system tool**, not a pack: a pack slug would fall under the per-tier
- * `builtinToolpacks` allowlists, and platform help must never be
- * entitlement-gated or charged. There is deliberately no
- * `builtin-toolpacks.ts` descriptor for it — system tools have no pack mirror,
- * and the registry guard asserts that absence rather than tolerating it.
+ * The `help` pack's tool (#1050), built only on a station that attaches the
+ * pack. It's never gated or charged: every tier is entitled to the pack
+ * (`ALWAYS_ENTITLED_PACKS`) and its capability is `free`. Its station
+ * findings come from `StationDiagnosticsService`, which `station_context`
+ * also reads, so a session without the pack can still explain an empty
+ * answer.
  *
  * The tool **composes the final prose itself** and the agent relays it. That
  * is the point: platform behavior is what a model states confidently and
