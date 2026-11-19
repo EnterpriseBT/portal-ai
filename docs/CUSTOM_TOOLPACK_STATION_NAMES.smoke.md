@@ -36,32 +36,29 @@ For an API call, get a bearer token by copying the `Authorization` header from a
 ### Reset between runs
 
 - [ ] Put the org back on its original tier, and revert any tier row you edited.
-- [ ] As owner, delete the stations named `Smoke 1063 …` and the packs `Smoke CRM 1063` and `Smoke Beta 1063`.
-- [ ] Restore the org's default station if §0 changed it.
+- [ ] As owner, delete the stations named `Smoke 1063 …` and the packs `smoke_crm_1063` and `smoke_beta_1063`.
 
 ---
 
 ## §0 — Fixtures (as owner)
 
-- [ ] Go to **Tool Packs → Register**. Register **`Smoke CRM 1063`** with schema URL `http://localhost:4100/schema` and runtime URL `http://localhost:4100/runtime`. It appears in the custom list.
-- [ ] Register **`Smoke Beta 1063`** the same way.
-- [ ] Go to **Stations → New Station** and create **`Smoke 1063 Names`** with packs **Data Query**, **Smoke CRM 1063** and **Smoke Beta 1063**.
-- [ ] Create **`Smoke 1063 Excluded`** with packs **Web Search** and **Smoke CRM 1063**, and no views or connectors.
+- [ ] Go to **Tool Packs → Register**. Register **`smoke_crm_1063`** (pack names are lowercase snake_case) with schema URL `http://localhost:4100/schema` and runtime URL `http://localhost:4100/runtime`. It appears in the custom list.
+- [ ] Register **`smoke_beta_1063`** the same way. Both packs come from the same mock server, so their tools share names.
+- [ ] Go to **Stations → New Station** and create **`Smoke 1063 Names`** with packs **Data Query**, **smoke_crm_1063** and **smoke_beta_1063**. Edit Station on it later warns about tool-name collisions, and a portal session on it fails; that is the collision guard, and none of the steps below need a session there.
+- [ ] Create **`Smoke 1063 Excluded`** with packs **Web Search**, **Curated Views** and **smoke_crm_1063**, and no views or connectors. Curated Views carries `station_list`, which §7 needs.
 - [ ] Share both stations with the member as **Can edit**.
-- [ ] Make **Smoke 1063 Names** the org's default station (Stations list → star). Note the previous default so Reset can restore it.
 
 ## §1 — A member sees custom packs by name
 
-- [ ] Switch to the member. Open **Smoke 1063 Names**. The Tool Packs row shows chips **Data Query**, **Smoke CRM 1063** and **Smoke Beta 1063**. No chip reads `org:`.
+- [ ] Switch to the member. Open **Smoke 1063 Names**. The Tool Packs row shows chips **Data Query**, **smoke_crm_1063** and **smoke_beta_1063**. No chip reads `org:`.
 - [ ] Open the **Stations** list. The card for Smoke 1063 Names shows the same three names.
-- [ ] Open the **Dashboard**. The default-station card shows the same three names.
-- [ ] From Smoke 1063 Names, open a portal (**New Portal**) and expand the header details. The Tool Packs row shows the same three names.
-- [ ] On the station page, click the **Smoke CRM 1063** chip. Nothing opens (a member has no pack record to show), and the console shows no error beyond the expected `403` on `/api/toolpacks`.
+- [ ] From Smoke 1063 Names, open a portal (**Open Portal**) and expand the header details. The Tool Packs row shows the same three names.
+- [ ] On the station page, click the **smoke_crm_1063** chip. Nothing opens (a member has no pack record to show), and the console shows no error beyond the expected `403` on `/api/toolpacks`.
 
 ## §2 — What a station read returns
 
 - [ ] As the member, on the station page, find the `GET /api/stations/<id>` response in the Network tab. Check `payload.station.toolpacks`:
-  - it equals `[{ref:"data_query",kind:"builtin",name:"Data Query"},{ref:"org:<crm-id>",kind:"custom",name:"Smoke CRM 1063"},{ref:"org:<beta-id>",kind:"custom",name:"Smoke Beta 1063"}]`, in `enabledToolpacks` order;
+  - it equals `[{ref:"data_query",kind:"builtin",name:"Data Query"},{ref:"org:<crm-id>",kind:"custom",name:"smoke_crm_1063"},{ref:"org:<beta-id>",kind:"custom",name:"smoke_beta_1063"}]`, in `enabledToolpacks` order;
   - each item has exactly the keys `ref`, `kind` and `name`, with no endpoints, headers or secret status.
 - [ ] On the Stations list, the `GET /api/stations?...` response has `toolpacks` on the Smoke 1063 Names row, with the same items.
 - [ ] Another org's pack is never named — backend:
@@ -71,21 +68,21 @@ For an API call, get a bearer token by copying the `Authorization` header from a
 
 ## §3 — Edit Station, as the member
 
-- [ ] As the member, open **Smoke 1063 Names → Edit**. The pack picker shows **Data Query** only. Below it reads **"Smoke CRM 1063 and Smoke Beta 1063 can't be changed here."**
+- [ ] As the member, open **Smoke 1063 Names → Edit**. The pack picker shows **Data Query** only. Below it reads **"smoke_crm_1063 and smoke_beta_1063 can't be changed here."**
 - [ ] Remove **Data Query**, then add it back, and **Save**. The dialog closes, and the station still shows both custom packs.
 
 ## §4 — A plan without custom packs (as owner)
 
 - [ ] As the owner, switch the org to **OUT**: `npx portalai org set-tier <orgId> <OUT> --env local --yes --allow-stripe-desync`.
-- [ ] Reload **Smoke 1063 Names**. The **Smoke CRM 1063** chip is muted (dashed). Its tooltip and accessible name read "Smoke CRM 1063 — Not included in your plan".
-- [ ] The Stations list and Dashboard card show the same muted Smoke CRM 1063 chip.
-- [ ] Open **Smoke 1063 Excluded**. The notice reads **"Smoke CRM 1063 isn't included in your plan, so attaching a view won't make data available on this station."**
+- [ ] Reload **Smoke 1063 Names**. The **smoke_crm_1063** chip is muted (dashed). Its tooltip and accessible name read "smoke_crm_1063 — Not included in your plan".
+- [ ] The Stations list shows the same muted smoke_crm_1063 chip.
+- [ ] Open **Smoke 1063 Excluded**. The notice reads **"smoke_crm_1063 isn't included in your plan, so attaching a view won't make data available on this station."**
 - [ ] Open **Smoke 1063 Excluded → Edit**, then open the pack picker:
-  - **Smoke Beta 1063** is listed but disabled, with "Not included in your plan";
+  - **smoke_beta_1063** is listed but disabled, with "Not included in your plan";
   - the **"Some tool packs aren't included in your plan. View plans"** note shows under the picker;
-  - the attached **Smoke CRM 1063** chip is still there and removable.
-- [ ] Remove **Smoke CRM 1063** and **Save**. The save succeeds, and the station shows only Web Search. Removing always works.
-- [ ] **Stations → New Station**: Smoke CRM 1063 and Smoke Beta 1063 are listed under Custom, disabled, with "Not included in your plan", and the upgrade note shows.
+  - the attached **smoke_crm_1063** chip is still there and removable.
+- [ ] Remove **smoke_crm_1063** and **Save**. The save succeeds, and the station shows Web Search and Curated Views. Removing always works.
+- [ ] **Stations → New Station**: smoke_crm_1063 and smoke_beta_1063 are listed under Custom, disabled, with "Not included in your plan", and the upgrade note shows.
 - [ ] Re-adding an attached pack is a no-op — backend. With the owner's token:
   ```
   curl -s -X PATCH localhost:3001/api/stations/<Names id> \
@@ -93,8 +90,8 @@ For an API call, get a bearer token by copying the `Authorization` header from a
     -d '{"toolPackChanges":{"add":["org:<crm-id>"]}}'
   ```
   It returns `200`, and `enabledToolpacks` is unchanged.
-- [ ] Adding a new one is refused — backend. The same call with `org:<beta-id>` (not attached) returns `403 STATION_TOOLPACK_NOT_ENTITLED`, and the message names "Smoke Beta 1063".
-- [ ] One create refusal names both kinds — backend. With the owner's token, `POST /api/stations` with `{"name":"Smoke 1063 Refused","toolPacks":["<a built-in OUT excludes>","org:<beta-id>"]}` returns `403`, and the message names **both** packs. No station is created. If OUT includes every built-in, send only `org:<beta-id>`: the `403` names the pack.
+- [ ] Adding a new one is refused — backend. The same call with `org:<beta-id>` (not attached) returns `403 STATION_TOOLPACK_NOT_ENTITLED`, and the message names "smoke_beta_1063".
+- [ ] One create refusal names both kinds — backend. With the owner's token, `POST /api/stations` with `{"name":"Smoke 1063 Refused","toolPacks":["<a built-in OUT excludes>","org:<beta-id>"]}` returns `403`, and the message names **both** packs (the built-in by its slug, e.g. `statistics`, as before this change). No station is created. If OUT includes every built-in, send only `org:<beta-id>`: the `403` names the pack.
 
 ## §5 — A member can't attach a pack they can't read (backend)
 
@@ -102,12 +99,12 @@ For an API call, get a bearer token by copying the `Authorization` header from a
 
 ## §6 — A plan with custom packs is unchanged for the owner
 
-- [ ] On **IN**, as owner, the **Smoke CRM 1063** chip on Smoke 1063 Names is not muted. Clicking it opens the pack's details dialog with its tools.
+- [ ] On **IN**, as owner, the **smoke_crm_1063** chip on Smoke 1063 Names is not muted. Clicking it opens the pack's details dialog with its tools.
 - [ ] In **Edit**, the custom packs are selectable (not disabled). The upgrade note shows only if IN excludes some built-in.
 
 ## §7 — The agent names the packs
 
-- [ ] As owner, open a portal on Smoke 1063 Names and send **"List the stations I can see and the tool packs on each."** The answer names **Smoke CRM 1063** and **Smoke Beta 1063**, not `org:` ids. In the tool-call panel, `station_list` returns `toolpacks: [{ ref, name }, …]`.
+- [ ] As owner, open a portal on **Smoke 1063 Excluded** (it carries Curated Views; Names fails on the tool-name collision) and send **"List the stations I can see and the tool packs on each."** The answer names **smoke_crm_1063** and **smoke_beta_1063**, not `org:` ids. In the tool-call panel, `station_list` returns `toolpacks: [{ ref, name }, …]`.
 
 ## §8 — Help
 
