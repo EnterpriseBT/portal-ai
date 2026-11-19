@@ -297,14 +297,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     question:
       "Why do some results appear inline and others as a separate streamed table?",
     answer:
-      "It depends on size, and the assistant doesn't choose — it's automatic. A small result comes back inline inside the message. A larger one returns a query handle: the full rows stream into a table or chart you can scroll, while the assistant keeps only a small preview so a big result never crowds out the conversation. You still see every row either way.",
+      "It depends on size, and the assistant doesn't choose — it's automatic. A small result comes back inline inside the message. A larger one returns a query handle: the full rows stream into a table or chart you can scroll, so a big result never crowds out the conversation. You still see every row either way. Neither is saved with the conversation: when you come back, the result re-reads its data.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Query Handle", "Portal Result"],
   },
   {
     question: "How do I refresh a chart, map, or table with the latest data?",
     answer:
-      "You usually don't have to. Every visualization — chart, map, or table, at any size — remembers the query behind it, so when you reopen a session it reloads current data on its own instead of showing a stale snapshot; no need to ask the assistant again. If you want to be sure it's current right now, each one has a refresh button, and an “Updated … ago” note tells you how fresh the data is. A refresh re-runs the whole query, so a “top 10” list picks up a new leader rather than just restating the old rows. If a refresh can't reach your data, a widget in a session keeps showing the last good result and says so instead of going blank. A pinned one keeps no copy of the data, so it opens with current data every time, as the person who pinned it sees it. Refreshing is always free — it never uses your usage allocation. (If a visualization predates this feature, it'll say so and you can re-run the prompt to regenerate it.)",
+      "You usually don't have to. Every visualization — chart, map, or table, at any size — keeps the query behind it, not a copy of its data, so whenever you open a session it re-reads current data, as you can see it now; no need to ask the assistant again. If you want to be sure it's current right now, each one has a refresh button, and an “Updated … ago” note tells you when it was last read. A refresh re-runs the whole query, so a “top 10” list picks up a new leader rather than just restating the old rows. Because nothing is stored, a result follows your access: if you lose access to the data it reads (a view is no longer shared with you, or it's removed from the station), the result says it's no longer available instead of showing what it used to. If a read fails for another reason, the widget says so and offers a retry. A result that has no query behind it, such as a table from a custom tool, isn't kept after the conversation: ask again to see it. A pinned one opens with current data every time, as the person who pinned it sees it. Refreshing is always free — it never uses your usage allocation.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Visualization Widget", "Portal Result"],
   },
