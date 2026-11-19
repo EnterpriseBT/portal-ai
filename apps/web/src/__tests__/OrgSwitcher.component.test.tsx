@@ -32,6 +32,7 @@ const org = (id: string, name: string, isCurrent: boolean): UserMembership => ({
     billingAnchorDay: null,
     marketplaceEntitlementId: null,
     entitlementThrough: null,
+    isDemo: false,
     created: 1,
     createdBy: "SYSTEM",
     updated: null,

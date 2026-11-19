@@ -9,7 +9,7 @@
  * query building only.
  */
 
-import { bigint, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 
 /** Mirrors apps/api/src/db/schema/base.columns.ts (parity-pinned). */
 const base = {
@@ -33,6 +33,8 @@ export const organizations = pgTable("organizations", {
   // `org get`). A live subscription drives the tier, so set-tier must see it.
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // #1035: `demo delete` only removes orgs `demo create` marked.
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const users = pgTable("users", {
