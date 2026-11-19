@@ -74,6 +74,25 @@ function requireAws(
   return def.aws;
 }
 
+const NOT_FOUND_ERROR_NAMES = new Set([
+  "ParameterNotFound",
+  "ResourceNotFoundException",
+]);
+
+/**
+ * Whether a read failed because the parameter or secret doesn't exist (#1035),
+ * as opposed to credentials or transport. `getSecret` / `getParam` wrap every
+ * such failure in `EnvInfraError` with the AWS error as `cause`, so this looks
+ * at the error and its cause. A caller that needs a value turns it into "not
+ * configured for this env" (exit 3) instead of an infra failure (exit 7).
+ */
+export function isAwsNotFound(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (NOT_FOUND_ERROR_NAMES.has(err.name)) return true;
+  const cause = (err as { cause?: unknown }).cause;
+  return cause instanceof Error && NOT_FOUND_ERROR_NAMES.has(cause.name);
+}
+
 /** Secrets Manager: `${secretsPrefix}/<name>`, e.g. portalai/dev/database-url. */
 export async function getSecret(
   def: EnvironmentDefinition,

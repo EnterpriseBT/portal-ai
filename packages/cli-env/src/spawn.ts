@@ -57,12 +57,20 @@ export const npmSpawner: WorkspaceSpawner = (args, env) =>
     child.on("exit", (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
 
-/** Run an apps/api workspace script against the env's DB; returns stdout. */
+/**
+ * Run an apps/api workspace script against the env's DB; returns stdout.
+ *
+ * `extraEnv` is a caller's own per-script config (#1035: `demo create` passes
+ * the env's demo toolpack URL and signing secret). It sits under the injected
+ * values, so it can never redirect a script's DATABASE_URL, ENCRYPTION_KEY or
+ * SYSTEM_ID.
+ */
 export async function runApiScript(
   def: EnvironmentDefinition,
   script: string,
   scriptArgs: string[],
-  spawner: WorkspaceSpawner = npmSpawner
+  spawner: WorkspaceSpawner = npmSpawner,
+  extraEnv: Record<string, string> = {}
 ): Promise<string> {
   const conn = await resolveEnvConnection(def.name);
   try {
@@ -87,7 +95,7 @@ export async function runApiScript(
     }
     const result = await spawner(
       ["run", "--workspace", "@portalai/api", script, "--", ...scriptArgs],
-      injected
+      { ...extraEnv, ...injected }
     );
     if (result.code !== 0) {
       throw new EnvInfraError(

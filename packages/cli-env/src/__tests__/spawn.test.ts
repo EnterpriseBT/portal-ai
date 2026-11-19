@@ -124,6 +124,31 @@ describe("runApiScript", () => {
     expect(spawnerCalls[0].env.SYSTEM_ID).toBeUndefined();
   });
 
+  // #1035: demo create passes the env's toolpack URL + signing secret.
+  it("passes extraEnv through to the script", async () => {
+    await runApiScript(appDev, "db:demo:create", [], spawner as never, {
+      DEMO_TOOLPACK_URL: "https://demo.example",
+      OTHER: "x",
+    });
+
+    expect(spawnerCalls[0].env.DEMO_TOOLPACK_URL).toBe("https://demo.example");
+    expect(spawnerCalls[0].env.OTHER).toBe("x");
+  });
+
+  it("never lets extraEnv override an injected value", async () => {
+    await runApiScript(appDev, "db:demo:create", [], spawner as never, {
+      DATABASE_URL: "postgresql://wrong",
+      SYSTEM_ID: "wrong",
+      ENCRYPTION_KEY: "wrong",
+    });
+
+    expect(spawnerCalls[0].env.DATABASE_URL).toBe(
+      "postgresql://u:p@host:5432/db"
+    );
+    expect(spawnerCalls[0].env.SYSTEM_ID).toBe("env-system-id");
+    expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBe("env-encryption-key");
+  });
+
   it("fails before spawning when the env's SYSTEM_ID can't be read", async () => {
     getParamMock.mockRejectedValue(new Error("AccessDenied"));
 
