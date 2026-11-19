@@ -44,6 +44,9 @@ import { MessageTimestamp } from "./MessageTimestamp.component";
 interface MessageListProps {
   portalId: string;
   messages: PortalMessageResponse[];
+  /** #1038: ids of turns still shown from their local copy (see
+   *  `PortalMessageUIProps.local`). */
+  localMessageIds?: ReadonlySet<string>;
   pinnedBlocks: Map<string, string>;
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
@@ -64,6 +67,7 @@ const MessageList = React.memo<MessageListProps>(
   ({
     portalId,
     messages,
+    localMessageIds,
     pinnedBlocks,
     onPinChange,
     streamingBlocks,
@@ -99,6 +103,7 @@ const MessageList = React.memo<MessageListProps>(
           <PortalMessage
             key={msg.id}
             message={msg}
+            local={localMessageIds?.has(msg.id) ?? false}
             portalId={portalId}
             pinnedBlocks={pinnedBlocks}
             onPinChange={onPinChange}
@@ -208,6 +213,8 @@ const PortalSessionEmptyState: React.FC = () => (
 export interface PortalSessionUIProps {
   portalId: string;
   messages: PortalMessageResponse[];
+  /** #1038: ids of turns still shown from their local copy. */
+  localMessageIds?: ReadonlySet<string>;
   pinnedBlocks: Map<string, string>;
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
@@ -235,6 +242,7 @@ export interface PortalSessionUIProps {
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   portalId,
   messages,
+  localMessageIds,
   pinnedBlocks,
   onPinChange,
   streamingBlocks,
@@ -274,6 +282,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       <MessageList
         portalId={portalId}
         messages={messages}
+        localMessageIds={localMessageIds}
         pinnedBlocks={pinnedBlocks}
         onPinChange={onPinChange}
         streamingBlocks={streamingBlocks}
@@ -413,12 +422,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // Deduplicate: prefer server messages over local optimistic copies so that
   // block arrays (which include tool-call/tool-result metadata blocks) have
   // correct indices for operations like pinning.
-  const allMessages = useMemo(() => {
+  const { allMessages, localMessageIds } = useMemo(() => {
     const serverIds = new Set(serverMessages.map((m) => m.id));
-    return [
-      ...serverMessages,
-      ...streamState.localMessages.filter((m) => !serverIds.has(m.id)),
-    ];
+    const local = streamState.localMessages.filter((m) => !serverIds.has(m.id));
+    return {
+      allMessages: [...serverMessages, ...local],
+      // #1038: still shown from the local copy, whose block indexes aren't
+      // the stored message's (see PortalMessageUIProps.local).
+      localMessageIds: new Set(local.map((m) => m.id)) as ReadonlySet<string>,
+    };
   }, [serverMessages, streamState.localMessages]);
 
   // Auto-scroll to bottom whenever new content is appended — a new message
@@ -517,6 +529,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     <PortalSessionUI
       portalId={portalId}
       messages={allMessages}
+      localMessageIds={localMessageIds}
       pinnedBlocks={pinnedBlocks}
       onPinChange={handlePinChange}
       streamingBlocks={streamState.streamingBlocks}

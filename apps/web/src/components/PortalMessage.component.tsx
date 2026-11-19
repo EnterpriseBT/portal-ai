@@ -140,10 +140,18 @@ export interface PortalMessageUIProps {
   pinServerError?: ServerError | null;
   /** The pin dialog opened: a fresh attempt, without the last error (#789). */
   onPinDialogOpen?: () => void;
+  /**
+   * #1038: a turn's local copy, finalized before the refetch replaces it. It
+   * carries the stored message's id but the local block list, so its block
+   * indexes aren't the stored message's: its blocks get no `blockRef` (they
+   * draw the live delivery and send no refresh) and offer no pin.
+   */
+  local?: boolean;
 }
 
 export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   message,
+  local = false,
   pinnedBlocks,
   canPin,
   onPin,
@@ -215,7 +223,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
         // (bulk-job-progress, bulk-failures-table) stay unpinnable (#92).
         const viaWeb = shouldRenderViaWeb(block);
         if (!viaWeb && !isDisplayableBlock(block)) return null;
-        const pinnable = hasPinnableContent(block);
+        const pinnable = !local && hasPinnableContent(block);
         const pinKey = `${message.id}:${i}`;
         const portalResultId = pinnedBlocks.get(pinKey);
         const isPinned = portalResultId != null;
@@ -245,11 +253,15 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
               ) : (
                 <ContentBlockRenderer
                   block={block}
-                  blockRef={{
-                    kind: "message",
-                    messageId: message.id,
-                    blockIndex: i,
-                  }}
+                  blockRef={
+                    local
+                      ? undefined
+                      : {
+                          kind: "message",
+                          messageId: message.id,
+                          blockIndex: i,
+                        }
+                  }
                   dataUpdatedAt={message.created}
                 />
               )}
@@ -324,10 +336,13 @@ interface PortalMessageProps {
   portalId: string;
   pinnedBlocks: Map<string, string>;
   onPinChange: () => void;
+  /** See `PortalMessageUIProps.local` (#1038). */
+  local?: boolean;
 }
 
 export const PortalMessage: React.FC<PortalMessageProps> = ({
   message,
+  local,
   portalId,
   pinnedBlocks,
   onPinChange,
@@ -377,6 +392,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
   return (
     <PortalMessageUI
       message={message}
+      local={local}
       pinnedBlocks={pinnedBlocks}
       canPin={canOnResource("pin", "create")}
       onPin={handlePin}
