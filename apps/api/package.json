@@ -40,6 +40,7 @@
     "tunnel": "dotenv -e .env -- ngrok http 3001",
     "db:create-org": "dotenv -e .env -- tsx src/db/create-org.ts",
     "db:seed:org": "dotenv -e .env -- tsx src/db/seed-org.ts",
+    "db:demo:create": "dotenv -e .env -- tsx src/db/demo-create.ts",
     "fixtures:demo": "tsx src/scripts/generate-demo-fixtures.ts"
   },
   "dependencies": {

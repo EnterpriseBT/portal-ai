@@ -25,6 +25,10 @@ import type {
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PROVISIONED_STATIONS } from "../constants/provisioned-stations.constants.js";
+import {
+  DEMO_STATION_DESCRIPTION,
+  DEMO_STATION_NAME,
+} from "../demo/dataset-manifest.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
@@ -524,6 +528,63 @@ export class ApplicationService {
       throw new Error(`User ${email} not found — users originate in Auth0`);
     }
     return ApplicationService.provisionOrganizationFor(user.id, { name });
+  }
+
+  /**
+   * `db:demo:create` seam (#1035): a brand-new demo org in one transaction —
+   * the normal provisioning (org, owner, workspace with Administrate and
+   * Playground), the `is_demo` marker, the tier, and a dedicated "Demo"
+   * station the dataset then seeds onto. An unknown owner throws before the
+   * transaction opens; an unknown tier rolls everything back.
+   */
+  static async createDemoOrganization(opts: {
+    ownerEmail: string;
+    name: string;
+    tier: string;
+  }): Promise<{ organizationId: string; stationId: string }> {
+    const user = await DbService.repository.users.findByEmail(opts.ownerEmail);
+    if (!user) {
+      throw new Error(
+        `User ${opts.ownerEmail} not found — users originate in Auth0`
+      );
+    }
+    return DbService.transaction(async (tx) => {
+      const { organization } =
+        await ApplicationService.provisionOrganizationInTx(user.id, tx, {
+          name: opts.name,
+        });
+      await DbService.repository.organizations.update(
+        organization.id,
+        { isDemo: true },
+        tx
+      );
+      await ApplicationService.assignOrgTier(organization.id, opts.tier, tx);
+      const station = await DbService.repository.stations.create(
+        new StationModelFactory()
+          .create(SystemUtilities.id.system)
+          .update({
+            organizationId: organization.id,
+            name: DEMO_STATION_NAME,
+            description: DEMO_STATION_DESCRIPTION,
+          })
+          .parse(),
+        tx
+      );
+      return { organizationId: organization.id, stationId: station.id };
+    });
+  }
+
+  /**
+   * Undo a `createDemoOrganization` whose dataset load failed (#1035): soft
+   * delete the org, as `portalai org delete` does. It is the platform's own
+   * compensating write for an org the same run provisioned, so it carries the
+   * system principal; the operator is on the CLI's audit line.
+   */
+  static async discardDemoOrganization(organizationId: string): Promise<void> {
+    await DbService.repository.organizations.softDelete(
+      organizationId,
+      SystemUtilities.id.system
+    );
   }
 
   /** CLI seam (#190): idempotent-by-name org fixture with a synthetic owner

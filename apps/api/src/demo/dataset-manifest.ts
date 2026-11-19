@@ -73,6 +73,15 @@ const col = (sourceField: string, columnKey: string): DemoMapping => ({
 });
 
 /**
+ * The station `portalai demo create` adds to a new demo org (#1035). The
+ * dataset's connectors and every pack land here; the provisioned Administrate
+ * and Playground stations stay as a normal new org has them.
+ */
+export const DEMO_STATION_NAME = "Demo";
+export const DEMO_STATION_DESCRIPTION =
+  "The demo dataset's connectors and every tool pack.";
+
+/**
  * The demo entities, in seed order (referenced entities before referrers).
  */
 export const DEMO_ENTITY_SPECS: DemoEntitySpec[] = [
