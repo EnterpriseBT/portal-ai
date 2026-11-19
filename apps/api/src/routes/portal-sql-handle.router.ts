@@ -191,7 +191,7 @@ portalSqlHandleRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       422:
- *         description: The widget has no durable pipeline (pre-#270)
+ *         description: "`VIZ_WIDGET_NOT_REFRESHABLE`: the widget has no durable pipeline (pre-#270, or a result that isn't kept). `VIZ_WIDGET_DATA_UNAVAILABLE` (#1038): its query no longer matches what the caller can read (a view grant revoked, the view detached from the station, or a column dropped); the widget shows no data, stored or live."
  *         content:
  *           application/json:
  *             schema:

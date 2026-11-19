@@ -863,6 +863,10 @@ export enum ApiCode {
   /** The `d3` block exists but carries no durable pipeline (pre-#270 mint);
    *  it can't auto-refresh — the user re-runs the prompt for live data. */
   VIZ_WIDGET_NOT_REFRESHABLE = "VIZ_WIDGET_NOT_REFRESHABLE",
+  /** #1038: the widget's query no longer matches what the caller can read (a
+   *  view grant revoked, the view detached from the station, or a column it
+   *  names dropped from the view). Its data isn't shown, stored or live. */
+  VIZ_WIDGET_DATA_UNAVAILABLE = "VIZ_WIDGET_DATA_UNAVAILABLE",
   /** The per-org widget-refresh rate limit tripped (#270 abuse backstop). */
   VIZ_REFRESH_RATE_LIMITED = "VIZ_REFRESH_RATE_LIMITED",
   // PORTAL_SQL_TIMEOUT already declared above (portal SQL surface); reused
@@ -995,6 +999,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Re-run the prompt and pin the result again with someone who can see this data, or restore their access.",
   [ApiCode.VIZ_WIDGET_NOT_REFRESHABLE]:
     "This chart can't be refreshed: it predates live refresh, or its query no longer matches the data the user can see (#727). Re-run the prompt to regenerate it with current data.",
+  [ApiCode.VIZ_WIDGET_DATA_UNAVAILABLE]:
+    "Ask for access to the view this result reads, or ask again for a result built from the data you can see now.",
   [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
     "Too many refreshes in a short window. Wait a moment and try again.",
   [ApiCode.API_RATE_LIMITED]: "Too many requests. Wait a moment and try again.",

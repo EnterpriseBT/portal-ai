@@ -66,10 +66,11 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
         // bounded small by the transport, so they always take the inline
         // (array) path; only a large query handle escalates to a transform
         // handle (which needs a re-foldable source).
-        const sourceCount =
+        const sourceMeta =
           rows != null
-            ? rows.length
-            : (await PortalSqlHandleService.getMeta(queryHandle!)).rowCount;
+            ? null
+            : await PortalSqlHandleService.getMeta(queryHandle!);
+        const sourceCount = sourceMeta?.rowCount ?? rows!.length;
 
         if (queryHandle == null || sourceCount <= INLINE_ROWS_THRESHOLD) {
           // Inline: the array path, returning the established { dates, values }.
@@ -84,20 +85,37 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
         }
 
         // Large source: fold it into a cursor-backed transform handle (#159).
+        const transform = {
+          kind: "technical_indicator" as const,
+          dateColumn: rest.dateColumn,
+          valueColumn: rest.valueColumn,
+          indicator: rest.indicator,
+          params: rest.params,
+        };
         const { envelope } = await PortalSqlHandleService.produceFromTransform({
-          transform: {
-            kind: "technical_indicator",
-            sourceHandle: queryHandle,
-            dateColumn: rest.dateColumn,
-            valueColumn: rest.valueColumn,
-            indicator: rest.indicator,
-            params: rest.params,
-          },
+          transform: { ...transform, sourceHandle: queryHandle },
           stationId,
           organizationId,
           userId,
         });
-        return { type: "data-table", ...envelope };
+        // #1038: the table re-runs as its reader: the source's query, then
+        // the same fold. A source with no query (staged rows) leaves nothing
+        // to re-run, so the table carries no pipeline and isn't kept.
+        const sourceSql = sourceMeta?.sql;
+        return {
+          type: "data-table",
+          ...envelope,
+          ...(sourceSql
+            ? {
+                pipeline: {
+                  sql: sourceSql,
+                  stationId,
+                  organizationId,
+                  transform,
+                },
+              }
+            : {}),
+        };
       },
     });
   }

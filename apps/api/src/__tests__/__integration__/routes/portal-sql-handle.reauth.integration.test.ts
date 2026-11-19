@@ -340,6 +340,74 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
     expect(res.body.code).toBe(ApiCode.READ_HANDLE_EXPIRED);
   });
 
+  /** A member's portal holding a stored contacts table, as resolveDisplayBlock
+   *  persists it. Returns the message id; the table is block 0. */
+  async function memberTableMessage(): Promise<string> {
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      ...base(definerId),
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Portal",
+    } as never);
+    const messageId = generateId();
+    await db.insert(schema.portalMessages).values({
+      ...base(definerId),
+      id: messageId,
+      organizationId: fx.orgId,
+      portalId,
+      role: "assistant",
+      blocks: [
+        {
+          type: "data-table",
+          content: {
+            type: "data-table",
+            columns: ["c_email"],
+            pipeline: {
+              sql: "SELECT c_email FROM contacts ORDER BY c_email",
+              stationId,
+              organizationId: fx.orgId,
+            },
+          },
+        },
+      ],
+    } as never);
+    return messageId;
+  }
+
+  const refresh = (messageId: string) =>
+    request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 0 });
+
+  it("a stored table refreshes as unavailable once the member's view grant is revoked", async () => {
+    const messageId = await memberTableMessage();
+    await refresh(messageId).expect(200);
+
+    await revokeMemberViewGrant();
+
+    const res = await refresh(messageId).expect(422);
+    expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_DATA_UNAVAILABLE);
+  });
+
+  it("a stored table reads its current rows again once access is restored", async () => {
+    const messageId = await memberTableMessage();
+    await revokeMemberViewGrant();
+    await refresh(messageId).expect(422);
+
+    await db
+      .update(schema.permissionGrants)
+      .set({ deleted: null, deletedBy: null } as never)
+      .where(eq(schema.permissionGrants.principalId, definerId));
+
+    const res = await refresh(messageId).expect(200);
+    expect(res.body.payload).toEqual({
+      kind: "inline",
+      rows: [{ c_email: "b@x.co" }, { c_email: "c@x.co" }],
+    });
+  });
+
   it("keeps a staged-rows handle (no query to re-check) to its owner", async () => {
     const { envelope } = await PortalSqlHandleService.produceFromRows({
       rows: [{ n: 1 }, { n: 2 }],
