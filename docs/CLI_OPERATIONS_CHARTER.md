@@ -147,8 +147,8 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 | Set an org's tier | configuration | local · app-dev | portalai | `portalai org set-tier <org-id> <tier> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Add / remove an org member | configuration | local · app-dev | portalai | `portalai member add <email> --org <org-id> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | List / inspect users | maintenance | local · app-dev | portalai | `portalai user list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
-| Seed / refresh the demo org's dataset | maintenance | local · app-dev · prod | portalai | `portalai demo seed --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (prod-refresh path with `--confirm-prod`) |
-| Reset the demo org to the checked-in baseline | maintenance | local · app-dev | portalai | `portalai demo reset --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (destructive — blocked in prod) |
+| Create a demo org with the demo dataset | maintenance | local · app-dev · prod | portalai | `portalai demo create --name <name> --owner-email <email> --env app-dev --yes` | yes | [#1035](https://github.com/EnterpriseBT/portal-ai/issues/1035) | covered (prod with `--confirm-prod`) |
+| Delete a demo org | maintenance | local · app-dev · prod | portalai | `portalai demo delete <id> --env app-dev --yes` | yes | [#1035](https://github.com/EnterpriseBT/portal-ai/issues/1035) | covered (marked demo orgs only; prod with `--confirm-prod`) |
 | Create the standing `demo` custom tier | configuration | local · app-dev · prod | portalops | `portalops tier create --env app-dev --slug demo --display-name "Demo" --visible-to-org <id> --yes` | yes | [#511](https://github.com/EnterpriseBT/portal-ai/issues/511) | covered (local via `local provision`; app-dev/prod one-time) |
 
 ## Common workflows
@@ -211,7 +211,7 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 Computed from the tables above (51 operations total).
 
-**Maintenance + configuration (the bar's denominator):** `D = 61`, of which `N = 58` are operable → **95.1%** (`58/61`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring). The native index now lists 26 operations, all operable: #490's `local provision`, #509's `demo seed`/`demo reset`, #511's `tier create`, and (recounted in #615) `db url`, `db reset-seed`, `db upgrade`, `cache status`, `service scale`, `jobs status`, `jobs redispatch` and `tier update`/`description`.
+**Maintenance + configuration (the bar's denominator):** `D = 61`, of which `N = 58` are operable → **95.1%** (`58/61`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring). The native index now lists 26 operations, all operable: #490's `local provision`, #1035's `demo create`/`demo delete` (which replaced #509's `demo seed`/`demo reset`), #511's `tier create`, and (recounted in #615) `db url`, `db reset-seed`, `db upgrade`, `cache status`, `service scale`, `jobs status`, `jobs redispatch` and `tier update`/`description`.
 
 **Logging (reported separately):** `6 / 6` operable → **100%**.
 

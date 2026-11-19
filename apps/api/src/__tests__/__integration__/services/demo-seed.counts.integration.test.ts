@@ -1,8 +1,10 @@
 /**
  * Integration tests for DemoSeedService (#509), against the postgres-test DB:
- * seeding: every entity at its count, the wide tables, idempotency, and the bounded `--rows` stream.
+ * seeding: every entity at its count on the passed station (#1035), the wide
+ * tables, idempotency, the bounded `--rows` stream, and the missing-column guard.
  *
- * One of three files split by concern from the original suite (#857), so the
+ * One of two files split by concern from the original suite (#857; the reset
+ * suite went with `demo reset` in #1035), so the
  * sharded CI run can place them independently. Each test still wipes the DB
  * and seeds a full demo org, so a single file stays the heaviest unit.
  */
@@ -12,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { DemoSeedService } from "../../../services/demo-seed.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { COUNTS } from "../../../demo/demo-data.js";
+import { SystemUtilities } from "../../../utils/system.util.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   EXPECTED,
@@ -32,12 +35,17 @@ describe("DemoSeedService (integration): counts", () => {
     await connection.end();
   });
 
-  const { provisionOrg, rawCount, entityIdByKey } = demoSeedHelpers(() => db);
+  const {
+    provisionOrgWithStation,
+    linkedInstanceIds,
+    rawCount,
+    entityIdByKey,
+  } = demoSeedHelpers(() => db);
 
   it("creates the File Upload + REST instances and seeds every entity at its count", async () => {
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
 
-    const result = await DemoSeedService.seed({ orgId, rows: 0 });
+    const result = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     // Instances created (Sandbox is not used until the transactions slice).
     expect(result.instances.map((i) => i.name).sort()).toEqual([
@@ -56,16 +64,19 @@ describe("DemoSeedService (integration): counts", () => {
     // A no-reference entity has zero validation errors.
     expect(result.entities.find((e) => e.key === "customers")!.invalid).toBe(0);
 
-    // Every created instance is linked to the org's station — without this the
-    // portal exposes only the auto-provisioned Sandbox and entity-specific
-    // prompts / the map find no data (regression guard for the station-link fix).
-    const [station] =
-      await DbService.repository.stations.findByOrganizationId(orgId);
-    const linkedIds = new Set(
-      (
-        await DbService.repository.stationInstances.findByStationId(station.id)
-      ).map((s) => s.connectorInstanceId)
-    );
+    // Every created instance is linked to the station the caller passed
+    // (#1035) — and none to the provisioned Administrate / Playground, which
+    // the seed must leave as a normal new org has them.
+    expect(result.stationId).toBe(stationId);
+    const linkedIds = await linkedInstanceIds(stationId);
+    const provisioned = (
+      await DbService.repository.stations.findByOrganizationId(orgId)
+    ).filter((s) => s.id !== stationId);
+    expect(provisioned.map((s) => s.name).sort()).toEqual([
+      "Administrate",
+      "Playground",
+    ]);
+    const seededInstanceIds = new Set<string>();
     const instanceRows =
       await DbService.repository.connectorInstances.findByOrganizationId(orgId);
     for (const name of [
@@ -76,12 +87,17 @@ describe("DemoSeedService (integration): counts", () => {
       const inst = instanceRows.find((i) => i.name === name);
       expect(inst).toBeDefined();
       expect(linkedIds.has(inst!.id)).toBe(true);
+      seededInstanceIds.add(inst!.id);
+    }
+    for (const station of provisioned) {
+      const theirs = await linkedInstanceIds(station.id);
+      for (const id of seededInstanceIds) expect(theirs.has(id)).toBe(false);
     }
   });
 
   it("lands XLSX (orders) and JSON (inventory) rows in the wide tables", async () => {
-    const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId, rows: 0 });
+    const { orgId, stationId } = await provisionOrgWithStation();
+    await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     const ordersId = await entityIdByKey(orgId, "orders");
     expect(
@@ -95,10 +111,10 @@ describe("DemoSeedService (integration): counts", () => {
   });
 
   it("is idempotent — a second seed leaves every entity unchanged", async () => {
-    const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId, rows: 0 });
+    const { orgId, stationId } = await provisionOrgWithStation();
+    await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
-    const second = await DemoSeedService.seed({ orgId, rows: 0 });
+    const second = await DemoSeedService.seed({ orgId, stationId, rows: 0 });
 
     expect(second.instances.every((i) => i.action === "existing")).toBe(true);
     for (const [key, count] of Object.entries(EXPECTED)) {
@@ -110,9 +126,9 @@ describe("DemoSeedService (integration): counts", () => {
   });
 
   it("streams a bounded transactions table (--rows) deterministically", async () => {
-    const orgId = await provisionOrg();
+    const { orgId, stationId } = await provisionOrgWithStation();
 
-    const first = await DemoSeedService.seed({ orgId, rows: 2000 });
+    const first = await DemoSeedService.seed({ orgId, stationId, rows: 2000 });
     expect(first.rows).toBe(2000);
     const txns = first.entities.find((e) => e.key === "transactions")!;
     expect(txns.created).toBe(2000);
@@ -123,9 +139,147 @@ describe("DemoSeedService (integration): counts", () => {
     ).toBe(2000);
 
     // Deterministic: a second seed with the same count changes nothing.
-    const second = await DemoSeedService.seed({ orgId, rows: 2000 });
+    const second = await DemoSeedService.seed({ orgId, stationId, rows: 2000 });
     const txns2 = second.entities.find((e) => e.key === "transactions")!;
     expect(txns2.created).toBe(0);
     expect(txns2.unchanged).toBe(2000);
   }, 90000);
+
+  it("attaches one unrestricted view per demo entity to the demo station, so its data is queryable there (#1035 smoke)", async () => {
+    // Since #674 a station reaches entity data only through attached curated
+    // views; connector links alone leave a portal with nothing to query.
+    const { orgId, stationId } = await provisionOrgWithStation();
+
+    const result = await DemoSeedService.seed({ orgId, stationId, rows: 50 });
+
+    const expectedKeys = [...Object.keys(EXPECTED), "transactions"].sort();
+    expect(result.views).toBe(expectedKeys.length);
+    const views =
+      await DbService.repository.curatedViews.findByOrganizationId(orgId);
+    expect(views.map((v) => v.key).sort()).toEqual(expectedKeys);
+    for (const view of views) {
+      // Unrestricted: every column, every row.
+      expect(view.filter).toBeNull();
+      expect(view.filterSql).toBeNull();
+      const entity = result.entities.find((e) => e.key === view.key)!;
+      expect(view.connectorEntityId).toBe(entity.connectorEntityId);
+    }
+    const attached = (
+      await DbService.repository.stationViews.findByStationId(stationId)
+    ).map((sv) => sv.curatedViewId);
+    expect(attached.sort()).toEqual(views.map((v) => v.id).sort());
+
+    // The provisioned stations stay as a normal new org has them.
+    const others = (
+      await DbService.repository.stations.findByOrganizationId(orgId)
+    ).filter((s) => s.id !== stationId);
+    for (const station of others) {
+      expect(
+        await DbService.repository.stationViews.findByStationId(station.id)
+      ).toHaveLength(0);
+    }
+
+    // A re-seed converges: no duplicate views or attachments.
+    const again = await DemoSeedService.seed({ orgId, stationId, rows: 50 });
+    expect(again.views).toBe(expectedKeys.length);
+    expect(
+      await DbService.repository.curatedViews.findByOrganizationId(orgId)
+    ).toHaveLength(expectedKeys.length);
+    expect(
+      await DbService.repository.stationViews.findByStationId(stationId)
+    ).toHaveLength(expectedKeys.length);
+  }, 90000);
+
+  it("stops a load whose org was deleted mid-stream instead of running on (#1035 adversarial)", async () => {
+    // A `demo delete` racing a running `demo create` used to leave the load
+    // writing into a deleted org for minutes until it ran out of memory.
+    const { orgId } = await provisionOrgWithStation();
+    async function* rows() {
+      for (let i = 0; i < 50; i++) yield { n: String(i) };
+    }
+    const seen: string[] = [];
+    const guarded = DemoSeedService.stopWhenOrgDeleted(orgId, rows(), 10);
+    await expect(
+      (async () => {
+        for await (const row of guarded) {
+          seen.push(row.n);
+          if (seen.length === 15) {
+            await DbService.repository.organizations.softDelete(
+              orgId,
+              SystemUtilities.id.system
+            );
+          }
+        }
+      })()
+    ).rejects.toThrow(`demo org ${orgId} was deleted during the load`);
+    // Caught at the next check (row 20), not at the end of the stream.
+    expect(seen.length).toBe(20);
+  });
+
+  it("also checks on elapsed time, so slow batches can't stretch the stop to minutes", async () => {
+    const { orgId } = await provisionOrgWithStation();
+    let deleted = false;
+    async function* rows() {
+      for (let i = 0; i < 1000; i++) {
+        if (i === 3) {
+          await DbService.repository.organizations.softDelete(
+            orgId,
+            SystemUtilities.id.system
+          );
+          deleted = true;
+        }
+        // Each row "takes" 30ms, as a slow batch would.
+        await new Promise((r) => setTimeout(r, 30));
+        yield { n: String(i) };
+      }
+    }
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const row of DemoSeedService.stopWhenOrgDeleted(
+          orgId,
+          rows(),
+          1_000_000,
+          100
+        )) {
+          seen.push(row.n);
+        }
+      })()
+    ).rejects.toThrow("was deleted during the load");
+    expect(deleted).toBe(true);
+    // Row count alone (every 1,000,000) would never have fired; ~100ms did.
+    expect(seen.length).toBeLessThan(20);
+  });
+
+  it("passes every row through while the org stays live", async () => {
+    const { orgId } = await provisionOrgWithStation();
+    async function* rows() {
+      for (let i = 0; i < 25; i++) yield { n: String(i) };
+    }
+    const out: string[] = [];
+    for await (const row of DemoSeedService.stopWhenOrgDeleted(
+      orgId,
+      rows(),
+      10
+    )) {
+      out.push(row.n);
+    }
+    expect(out).toHaveLength(25);
+  });
+
+  it("throws when a required system column definition is missing", async () => {
+    const { orgId, stationId } = await provisionOrgWithStation();
+    const address = await DbService.repository.columnDefinitions.findByKey(
+      orgId,
+      "address"
+    );
+    await DbService.repository.columnDefinitions.softDelete(
+      address!.id,
+      SystemUtilities.id.system
+    );
+
+    await expect(
+      DemoSeedService.seed({ orgId, stationId, rows: 0 })
+    ).rejects.toThrow(/address/);
+  });
 });

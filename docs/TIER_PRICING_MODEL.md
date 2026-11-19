@@ -116,7 +116,7 @@ Computed at the **proposed** prices and allocations in §6 (netRevenue: $29 → 
 | plus | **$29** | $5.55 | **80.1% pass** | $304 → **fail** | $58 budget → turn ceiling ~400/mo | pass | fail today / closes with follow-ups | — |
 | pro | **$99** | $19.00 | **80.2% pass** | $1,800 → **fail** | $198 budget → turn ceiling ~790/mo | pass | fail today / closes with follow-ups | — |
 | enterprise | contact | per deal | — | unbounded by design (#241 custom tiers carry negotiated numbers) | — | — | — | — |
-| demo (#511) | — (internal) | $0 | n/a | unlimited (all allocations null) | all built-in + custom toolpacks | — | — | standing custom tier for the demo org (#507), not sold |
+| demo (#511) | — (internal) | $0 | n/a | unlimited (all allocations null) | all built-in + custom toolpacks | — | — | standing custom tier for demo orgs (#507; one org per demo since #1035, `demo create --tier demo`), not sold |
 
 The **`demo`** tier is a standing custom tier (#241 pattern), never in the declarative catalog and never converged by `tier apply`. It carries no Stripe price (`cta contact`), unlimited allocations, and every toolpack, so a presenter never hits a quota or a checkout CTA. In app-dev/prod it is org-scoped to the demo org; locally it is created unscoped-but-non-public by `portalops local provision` — either way it is excluded from `GET /api/public/site-config`. See `docs/DEMO_ORG.runbook.md`.
 

@@ -95,4 +95,34 @@ describe("runCli — the agent contract", () => {
     });
     expect(out).not.toContain("[env:");
   });
+  it("demo create and demo delete are registered, with create's defaults in --help", async () => {
+    const { buildProgram } = await import("../bin.js");
+    const demo = buildProgram().commands.find((c) => c.name() === "demo")!;
+    expect(demo.commands.map((c) => c.name()).sort()).toEqual([
+      "create",
+      "delete",
+    ]);
+    const create = demo.commands.find((c) => c.name() === "create")!;
+    const opt = (flag: string) => create.options.find((o) => o.long === flag)!;
+    expect(opt("--name").mandatory).toBe(true);
+    expect(opt("--owner-email").mandatory).toBe(true);
+    expect(opt("--tier").defaultValue).toBe("enterprise");
+    expect(opt("--rows").defaultValue).toBe("10000");
+  });
+
+  it.each([["seed"], ["reset"]])(
+    "demo %s no longer exists (#1035) → usage error, exit 2",
+    async (sub) => {
+      const code = await runCli([
+        "demo",
+        sub,
+        "--org",
+        "o-1",
+        "--env",
+        "app-dev",
+        "--yes",
+      ]);
+      expect(code).toBe(2);
+    }
+  );
 });

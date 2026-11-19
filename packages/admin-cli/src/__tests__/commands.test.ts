@@ -18,6 +18,8 @@ const mockStore = {
   updateOrg: jest.fn<() => Promise<unknown>>(),
   setTier: jest.fn<() => Promise<unknown>>(),
   softDeleteOrg: jest.fn<() => Promise<void>>(),
+  isDemoOrg: jest.fn<(id: string) => Promise<boolean>>(),
+  getTier: jest.fn<(slug: string) => Promise<{ slug: string }>>(),
   listUsers: jest.fn<() => Promise<unknown[]>>(),
   getUserByEmail: jest.fn<(email: string) => Promise<{ id: string }>>(),
   addMember: jest.fn<() => Promise<void>>(),
@@ -406,56 +408,306 @@ describe("spawn-backed provisioning commands", () => {
     expect(spawner).not.toHaveBeenCalled();
     expect(mocks.resolveEnvConnection).not.toHaveBeenCalled();
   });
+});
 
-  it("demo seed is non-destructive and spawns db:demo:seed with --org + --rows", async () => {
-    const { demoSeed } = await import("../commands/demo.js");
-    await demoSeed(
-      appDev,
-      { orgId: "o-1", rows: 5000 },
-      { yes: true },
+describe("demo create / demo delete (#1035)", () => {
+  const prod = { ...appDev, name: "prod", kind: "production" as const };
+  const ORG_JSON = JSON.stringify({
+    organizationId: "o-demo",
+    stationId: "st-demo",
+    tier: "enterprise",
+    rows: 10000,
+  });
+  const spawnerCalls: Array<{ args: string[]; env: Record<string, string> }> =
+    [];
+  const spawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      spawnerCalls.push({ args, env });
+      return { code: 0, stdout: `noise\n${ORG_JSON}\n`, stderr: "" };
+    }
+  );
+  let stderr = "";
+  let errSpy: ReturnType<typeof jest.spyOn>;
+
+  const notFound = (name: string) =>
+    Object.assign(new Error(name), { name }) as Error;
+
+  beforeEach(() => {
+    spawnerCalls.length = 0;
+    spawner.mockClear();
+    deleteSpawner.mockClear();
+    stderr = "";
+    errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((
+      chunk: string
+    ) => {
+      stderr += chunk;
+      return true;
+    }) as never);
+    mockStore.getUserByEmail.mockResolvedValue({ id: "u-owner" });
+    mockStore.getTier.mockImplementation(async (slug) => ({ slug }));
+    mocks.getParam.mockResolvedValue("https://demo-toolpack.example");
+    mocks.getSecret.mockImplementation(async (_def, name) =>
+      name === "demo-toolpack-signing-secrets" ? "whsec_demo" : "other"
+    );
+  });
+  afterEach(() => errSpy.mockRestore());
+
+  const create = async (
+    def: typeof appDev,
+    opts: Partial<{
+      name: string;
+      ownerEmail: string;
+      tier: string;
+      rows: string;
+    }> = {},
+    flags: { yes?: boolean; confirmProd?: boolean } = { yes: true }
+  ) => {
+    const { demoCreate } = await import("../commands/demo.js");
+    return demoCreate(
+      def as never,
+      { name: "Acme demo", ownerEmail: "owner@acme.test", ...opts },
+      flags,
       spawner
     );
+  };
+
+  it("spawns db:demo:create with the defaults (enterprise, 10000 rows) and returns its report", async () => {
+    const out = await create(appDev);
+    expect(out).toEqual(JSON.parse(ORG_JSON));
+    expect(spawnerCalls[0].args).toEqual([
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:demo:create",
+      "--",
+      "--name",
+      "Acme demo",
+      "--owner-email",
+      "owner@acme.test",
+      "--tier",
+      "enterprise",
+      "--rows",
+      "10000",
+    ]);
     expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
       destructive: false,
       confirmed: true,
       prodConfirmed: false,
     });
-    expect(spawnerCalls[0].args).toEqual(
-      expect.arrayContaining(["db:demo:seed", "--org", "o-1", "--rows", "5000"])
+  });
+
+  it("passes --tier and --rows through, trimming the name", async () => {
+    await create(appDev, { name: "  Acme  ", tier: "demo", rows: "1000000" });
+    expect(spawnerCalls[0].args.slice(5)).toEqual([
+      "--name",
+      "Acme",
+      "--owner-email",
+      "owner@acme.test",
+      "--tier",
+      "demo",
+      "--rows",
+      "1000000",
+    ]);
+    expect(mockStore.getTier).toHaveBeenCalledWith("demo");
+  });
+
+  it("hands the env's toolpack URL and signing secret to the script", async () => {
+    await create(appDev);
+    expect(mocks.getParam).toHaveBeenCalledWith(appDev, "demo-toolpack-url");
+    expect(mocks.getSecret).toHaveBeenCalledWith(
+      appDev,
+      "demo-toolpack-signing-secrets"
     );
-    expect(mocks.recordAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "demo seed", operator: SUB })
+    expect(spawnerCalls[0].env).toEqual(
+      expect.objectContaining({
+        DEMO_TOOLPACK_URL: "https://demo-toolpack.example",
+        DEMO_TOOLPACK_SIGNING_SECRETS: "whsec_demo",
+      })
     );
   });
 
-  it("demo seed omits --rows when not given", async () => {
-    const { demoSeed } = await import("../commands/demo.js");
-    await demoSeed(appDev, { orgId: "o-1" }, { yes: true }, spawner);
-    expect(spawnerCalls[0].args).not.toContain("--rows");
+  it("reads no AWS config on local (the shell / .env supplies it)", async () => {
+    await create(local);
+    expect(mocks.getParam).not.toHaveBeenCalled();
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(spawnerCalls[0].env.DEMO_TOOLPACK_URL).toBeUndefined();
   });
 
-  it("demo reset is destructive-class and spawns db:demo:reset", async () => {
-    const { demoReset } = await import("../commands/demo.js");
-    await demoReset(appDev, { orgId: "o-1" }, { yes: true }, spawner);
-    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
-      destructive: true,
+  it.each([
+    ["the toolpack URL", "param"],
+    ["the signing secret", "secret"],
+  ])(
+    "is not configured (exit 3) when %s is missing — nothing spawns",
+    async (_label, which) => {
+      const { EnvNotConfiguredError } = await import("@portalai/cli-env");
+      if (which === "param") {
+        mocks.getParam.mockRejectedValue(
+          Object.assign(new Error("Failed to read"), {
+            cause: notFound("ParameterNotFound"),
+          })
+        );
+      } else {
+        mocks.getSecret.mockRejectedValue(
+          Object.assign(new Error("Failed to read"), {
+            cause: notFound("ResourceNotFoundException"),
+          })
+        );
+      }
+      await expect(create(appDev)).rejects.toBeInstanceOf(
+        EnvNotConfiguredError
+      );
+      expect(spawner).not.toHaveBeenCalled();
+    }
+  );
+
+  it("passes any other config read failure through unchanged", async () => {
+    mocks.getParam.mockRejectedValue(new Error("throttled"));
+    await expect(create(appDev)).rejects.toThrow("throttled");
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("an unknown owner is not-found (exit 8) and nothing spawns", async () => {
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.getUserByEmail.mockRejectedValue(
+      new AdminNotFoundError("User owner@acme.test not found")
+    );
+    await expect(create(appDev)).rejects.toBeInstanceOf(AdminNotFoundError);
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("an unknown tier is not-found (exit 8) and nothing spawns", async () => {
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.getTier.mockRejectedValue(
+      new AdminNotFoundError('Tier "nope" not found')
+    );
+    await expect(create(appDev, { tier: "nope" })).rejects.toBeInstanceOf(
+      AdminNotFoundError
+    );
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an empty name", { name: "   " }],
+    ["a name over 120 characters", { name: "x".repeat(121) }],
+    ["a non-integer --rows", { rows: "1.5" }],
+    ["a negative --rows", { rows: "-5" }],
+    ["--rows over 10,000,000", { rows: "10000001" }],
+  ])("%s is a usage error (exit 2) before the guard", async (_l, opts) => {
+    const { AdminInvalidInputError } = await import("../errors.js");
+    await expect(create(appDev, opts)).rejects.toBeInstanceOf(
+      AdminInvalidInputError
+    );
+    expect(mocks.assertOperationAllowed).not.toHaveBeenCalled();
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("is guarded as a mutation: a refused guard spawns nothing", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvNotAuthorizedError("needs --yes --confirm-prod");
+    });
+    await expect(create(prod as never, {}, { yes: true })).rejects.toThrow(
+      /confirm-prod/
+    );
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(prod, {
+      destructive: false,
       confirmed: true,
       prodConfirmed: false,
     });
-    expect(spawnerCalls[0].args).toEqual(
-      expect.arrayContaining(["db:demo:reset", "--org", "o-1"])
+    expect(mockStore.getUserByEmail).not.toHaveBeenCalled();
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("writes the audit line and prints the --rows / demo delete reminder to stderr", async () => {
+    await create(appDev);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "demo create",
+        operator: SUB,
+        // ids/slugs only (common.ts audit rule), as org create records.
+        args: {
+          organizationId: "o-demo",
+          name: "Acme demo",
+          tier: "enterprise",
+          rows: 10000,
+        },
+      })
+    );
+    expect(stderr).toContain("--rows");
+    expect(stderr).toContain("portalai demo delete o-demo --env app-dev --yes");
+  });
+
+  const deleted = JSON.stringify({ id: "o-demo", deleted: true });
+  const deleteSpawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      spawnerCalls.push({ args, env });
+      return { code: 0, stdout: `${deleted}\n`, stderr: "" };
+    }
+  );
+
+  it("demo delete checks the marker, then spawns the full deletion as the operator (prod: --yes --confirm-prod)", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    mockStore.isDemoOrg.mockResolvedValue(true);
+    const out = await demoDelete(
+      prod as never,
+      "o-demo",
+      { yes: true, confirmProd: true },
+      deleteSpawner
+    );
+    expect(out).toEqual({ id: "o-demo", deleted: true });
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(prod, {
+      destructive: false,
+      confirmed: true,
+      prodConfirmed: true,
+    });
+    expect(spawnerCalls[0].args).toEqual([
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:demo:delete",
+      "--",
+      "--org",
+      "o-demo",
+      "--actor",
+      SUB,
+    ]);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "demo delete",
+        args: { orgId: "o-demo" },
+      })
     );
   });
 
-  it("demo reset guards BEFORE spawning — a blocked op never runs the script", async () => {
-    const { demoReset } = await import("../commands/demo.js");
+  it("demo delete refuses an org without the marker (exit 9) and spawns nothing", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    mockStore.isDemoOrg.mockResolvedValue(false);
+    await expect(
+      demoDelete(appDev, "o-c", { yes: true }, deleteSpawner)
+    ).rejects.toBeInstanceOf(AdminConflictError);
+    expect(deleteSpawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("demo delete of a missing org is not-found (exit 8) and spawns nothing", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.isDemoOrg.mockRejectedValue(new AdminNotFoundError("gone"));
+    await expect(
+      demoDelete(appDev, "o-x", { yes: true }, deleteSpawner)
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+    expect(deleteSpawner).not.toHaveBeenCalled();
+  });
+
+  it("demo delete refused by the guard touches nothing", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
     mocks.assertOperationAllowed.mockImplementation(() => {
-      throw new EnvNotAuthorizedError("blocked");
+      throw new EnvNotAuthorizedError("needs --confirm-prod");
     });
     await expect(
-      demoReset(appDev, { orgId: "o-1" }, {}, spawner)
-    ).rejects.toBeInstanceOf(EnvNotAuthorizedError);
-    expect(spawner).not.toHaveBeenCalled();
+      demoDelete(prod as never, "o-demo", { yes: true }, deleteSpawner)
+    ).rejects.toThrow(/confirm-prod/);
+    expect(mockStore.isDemoOrg).not.toHaveBeenCalled();
+    expect(deleteSpawner).not.toHaveBeenCalled();
   });
 });
 

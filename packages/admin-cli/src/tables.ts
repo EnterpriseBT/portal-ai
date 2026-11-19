@@ -33,6 +33,10 @@ export const organizations = pgTable("organizations", {
   // `org get`). A live subscription drives the tier, so set-tier must see it.
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // #1035: `is_demo` is deliberately NOT mirrored. The CLI ships from main
+  // ahead of a prod release, and every org read selects the mirrored
+  // columns, so mirroring it would break `org list/get` against an env not
+  // yet migrated. `store.isDemoOrg` reads it on its own.
 });
 
 export const users = pgTable("users", {

@@ -3,6 +3,7 @@ import {
   text,
   integer,
   bigint,
+  boolean,
   unique,
   check,
 } from "drizzle-orm/pg-core";
@@ -43,6 +44,9 @@ export const organizations = pgTable(
     /** Epoch-ms end of the marketplace contract term (#568). Null = not
      *  marketplace-granted. Read-only is derived when in the past. */
     entitlementThrough: bigint("entitlement_through", { mode: "number" }),
+    /** Created by `portalai demo create` (#1035). Internal marker: never shown
+     *  in the app; `portalai demo delete` refuses an org without it. */
+    isDemo: boolean("is_demo").notNull().default(false),
   },
   (t) => [
     // PG UNIQUE ignores NULLs — "unique where not null" for both ids.

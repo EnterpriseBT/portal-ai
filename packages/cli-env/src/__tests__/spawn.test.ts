@@ -95,14 +95,14 @@ describe("runApiScript", () => {
   });
 
   it("injects the env's ENCRYPTION_KEY for AWS envs (so encrypted writes use the target env's key)", async () => {
-    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+    await runApiScript(appDev, "db:create-org", [], spawner as never);
 
     expect(getSecretMock).toHaveBeenCalledWith(appDev, "encryption-key");
     expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBe("env-encryption-key");
   });
 
   it("does NOT inject ENCRYPTION_KEY for local (no AWS — the .env key is used as-is)", async () => {
-    await runApiScript(local, "db:demo:seed", [], spawner as never);
+    await runApiScript(local, "db:create-org", [], spawner as never);
 
     expect(getSecretMock).not.toHaveBeenCalled();
     expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBeUndefined();
@@ -111,24 +111,49 @@ describe("runApiScript", () => {
   // #952: without it a script wrote the operator's local SYSTEM_ID ("SYSTEM"),
   // which labeled prod's whole Demo org as no one's for created_by_system.
   it("injects the env's SYSTEM_ID for AWS envs (so platform rows carry the target env's principal)", async () => {
-    await runApiScript(appDev, "db:demo:seed", [], spawner as never);
+    await runApiScript(appDev, "db:create-org", [], spawner as never);
 
     expect(getParamMock).toHaveBeenCalledWith(appDev, "system-id");
     expect(spawnerCalls[0].env.SYSTEM_ID).toBe("env-system-id");
   });
 
   it("does NOT inject SYSTEM_ID for local (the .env value is used as-is)", async () => {
-    await runApiScript(local, "db:demo:seed", [], spawner as never);
+    await runApiScript(local, "db:create-org", [], spawner as never);
 
     expect(getParamMock).not.toHaveBeenCalled();
     expect(spawnerCalls[0].env.SYSTEM_ID).toBeUndefined();
+  });
+
+  // #1035: demo create passes the env's toolpack URL + signing secret.
+  it("passes extraEnv through to the script", async () => {
+    await runApiScript(appDev, "db:demo:create", [], spawner as never, {
+      DEMO_TOOLPACK_URL: "https://demo.example",
+      OTHER: "x",
+    });
+
+    expect(spawnerCalls[0].env.DEMO_TOOLPACK_URL).toBe("https://demo.example");
+    expect(spawnerCalls[0].env.OTHER).toBe("x");
+  });
+
+  it("never lets extraEnv override an injected value", async () => {
+    await runApiScript(appDev, "db:demo:create", [], spawner as never, {
+      DATABASE_URL: "postgresql://wrong",
+      SYSTEM_ID: "wrong",
+      ENCRYPTION_KEY: "wrong",
+    });
+
+    expect(spawnerCalls[0].env.DATABASE_URL).toBe(
+      "postgresql://u:p@host:5432/db"
+    );
+    expect(spawnerCalls[0].env.SYSTEM_ID).toBe("env-system-id");
+    expect(spawnerCalls[0].env.ENCRYPTION_KEY).toBe("env-encryption-key");
   });
 
   it("fails before spawning when the env's SYSTEM_ID can't be read", async () => {
     getParamMock.mockRejectedValue(new Error("AccessDenied"));
 
     await expect(
-      runApiScript(appDev, "db:demo:seed", [], spawner as never)
+      runApiScript(appDev, "db:create-org", [], spawner as never)
     ).rejects.toThrow("AccessDenied");
     expect(spawnerCalls).toHaveLength(0);
     expect(disposeMock).toHaveBeenCalled();

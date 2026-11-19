@@ -6,8 +6,8 @@
  *   1. `src/scripts/generate-demo-fixtures.ts` (authoring script, run via
  *      `npm run --workspace @portalai/api fixtures:demo`) emits the committed
  *      CSV/XLSX fixtures from these generators.
- *   2. The `db:demo:seed` script / `DemoSeedService` (#509) imports
- *      {@link synthesizeTransactions} to stream ~1M rows straight into the
+ *   2. `DemoSeedService` (#509, run by `db:demo:create` since #1035) imports
+ *      {@link synthesizeTransactions} to stream its rows straight into the
  *      batch-upsert primitives (`importRows`) at seed time.
  *
  * Because both paths share this module, the committed sample and the seeded

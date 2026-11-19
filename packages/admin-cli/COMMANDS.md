@@ -22,14 +22,14 @@ Machine-oriented reference. Agent-operability contract (exit codes, server-enfor
 | Class | development | staging | production |
 |---|---|---|---|
 | read | — | — | — |
-| mutation (`org create/update/set-tier`, `member *`, `demo seed`) | — | `--yes` **+ session** | `--yes --confirm-prod` **+ session** |
-| destructive (`org delete`, `org reset`, `seed org`, `demo reset`) | — | `--yes` **+ session** | **refused** (exit 6) |
+| mutation (`org create/update/set-tier`, `member *`, `demo create`, `demo delete`) | — | `--yes` **+ session** | `--yes --confirm-prod` **+ session** |
+| destructive (`org delete`, `org reset`, `seed org`) | — | `--yes` **+ session** | **refused** (exit 6) |
 
 Session = an active `portalai login` device-flow session for the env. Every mutation appends a JSONL audit line (`~/.portalai/audit.log`) attributed to the session's Auth0 `sub` (local: OS username); args carry ids/slugs only.
 
 Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
 
-Spawned app scripts (`org create`, `org reset`, `seed org`, `demo seed`, `demo reset`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. A failed read stops the command before anything runs.
+Spawned app scripts (`org create`, `org reset`, `seed org`, `demo create`, `demo delete`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
 
 ---
 
@@ -84,10 +84,37 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
 `--json`: `{ "organizationId", "ownerUserId", "memberUserId"?, "existing": boolean }`
 
 ---
-### `portalai demo seed --org <id> [--rows <n>] --env <env> --yes [--confirm-prod] [--json]`
-**Mutation** class (convergent, not destructive — so it runs on prod with `--yes --confirm-prod`; this is the documented **prod demo-refresh** path). Populates an **existing** org (from the demo-org epic #507) with the committed fictional-company dataset through the app's real import path: File Upload (CSV + XLSX) + REST connector instances, all their entities/records, all eight built-in toolpacks + the custom webhook toolpack, and the large-volume `transactions` table (`--rows`, default ≈1M; use a smaller count locally). Idempotent — a re-run reports every entity `unchanged`. Never touches OAuth (Google Sheets) instances. The custom toolpack registers from `DEMO_TOOLPACK_URL` (env / apps/api `.env`; managed per env via `portalops vars set DEMO_TOOLPACK_URL`); if unset, built-ins still enable and `custom` is `null`.
-`--json`: `{ "orgId", "rows", "instances":[{name,action}], "entities":[{key,created,updated,unchanged,invalid}], "toolpacks":{builtins,custom}, "googleSheets":{present}, "durationMs" }`
+### `portalai demo create --name <name> --owner-email <email> [--tier <slug>] [--rows <n>] --env <env> --yes [--confirm-prod] [--json]`
+**Mutation** (#1035). Provisions a **new** org for one demo through `db:demo:create` and loads the committed fictional-company dataset onto a station of its own. Running it twice with the same name makes two independent orgs.
+- **What it creates:**
+  - the org, through the same path as `org create`, so its Administrate and Playground stations are exactly a normal new org's and Administrate stays the default;
+  - the internal `is_demo` marker;
+  - the tier;
+  - a **Demo** station holding the File Upload (CSV + XLSX), REST and Sandbox instances with all their entities and records, every built-in toolpack, the custom webhook toolpack, and the synthesized `transactions` table;
+  - one unrestricted curated view per entity (keyed like the entity), attached to the Demo station. Since #674 a station queries data only through its attached views, so these are what the presenter script's prompts read.
+- **Checked before anything runs:**
+  - `--name`: the app's org-name rule; trimmed, 1–120 characters, one line.
+  - `--rows`: a whole number from 0 to 10,000,000, default **10,000**.
 
-### `portalai demo reset --org <id> [--rows <n>] --env <env> --yes [--json]`
-**Destructive** class (never prod, exit 6). Returns the demo org to the checked-in baseline: deletes its portals (conversation history) and every demo entity's records, then re-seeds. Leaves OAuth instances + tokens untouched. On prod, the refresh path is a `demo seed` re-run, not `reset`.
-`--json`: `{ "orgId", "portalsDeleted", "entities":[{key,deleted,reconverged}], "durationMs" }`
+  Either one invalid → exit 2. `--owner-email` must be an existing user and `--tier` (default `enterprise`) a live tier, else exit 8.
+- **Toolpack config.** On app-dev/prod the env's `DEMO_TOOLPACK_URL` (SSM `demo-toolpack-url`) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager `demo-toolpack-signing-secrets`) are read and passed to the script. Either missing → exit 3. Locally both come from the shell or `apps/api/.env`, and without them the demo gets built-ins only.
+- **A failed load** (for example a refused toolpack registration) runs the full org deletion on the org it created and exits 7 with the error. A run killed mid-load can't clean up: find the leftover with `org list --search "<name>"` and `demo delete` it.
+- **The owner's current org doesn't change.** The demo membership's `last_login` is 0, so the owner switches into it deliberately (`member switch`, or the app's org switcher).
+- **stderr reminder:** `--rows` raises the dataset size, and a finished demo is removed with `demo delete`.
+
+`--json`: `{ "organizationId", "stationId", "tier", "rows", "entities", "toolpacks": { "builtins", "custom" }, "views", "durationMs" }`
+
+### `portalai demo delete <id> --env <env> --yes [--confirm-prod] [--json]`
+**Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:demo:delete`, attributed to you:
+- **Removed:** the org's content is hard-deleted (records, `er__` wide tables, connectors, stations, packs, portals).
+- **Tombstoned:** the org row and **its memberships**, so no member keeps a deleted org as their current one.
+- **Kept:** usage and ledger rows.
+- **Jobs:** queued jobs are cancelled. An active one refuses the delete (exit 7, `ENTITY_LOCKED_BY_JOB`); retry when it finishes.
+
+It only acts on an org `demo create` marked, checked before anything runs:
+- any other live org → `ADMIN_CONFLICT` (exit 9), unchanged;
+- a missing or already-deleted org → exit 8.
+
+Reading the marker needs the env migrated to #1035. The CLI's other org commands don't read it.
+
+`--json`: `{ "id", "deleted": true }`

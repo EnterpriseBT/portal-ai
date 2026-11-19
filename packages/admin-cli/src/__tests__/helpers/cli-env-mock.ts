@@ -161,7 +161,8 @@ export function cliEnvMockModule(): Record<string, unknown> {
         code: number;
         stdout: string;
         stderr: string;
-      }> = mocks.npmSpawner
+      }> = mocks.npmSpawner,
+      extraEnv: Record<string, string> = {}
     ) => {
       const conn = (await mocks.resolveEnvConnection(def.name)) as {
         db: () => Promise<{ connectionString: string }>;
@@ -171,7 +172,7 @@ export function cliEnvMockModule(): Record<string, unknown> {
         const db = await conn.db();
         const result = await spawner(
           ["run", "--workspace", "@portalai/api", script, "--", ...scriptArgs],
-          { DATABASE_URL: db.connectionString }
+          { ...extraEnv, DATABASE_URL: db.connectionString }
         );
         if (result.code !== 0) {
           throw new EnvInfraError(
@@ -182,6 +183,15 @@ export function cliEnvMockModule(): Record<string, unknown> {
       } finally {
         await conn.dispose();
       }
+    },
+    // #1035: pure, so mirrored rather than seamed (same names as cli-env).
+    isAwsNotFound: (err: unknown) => {
+      const names = new Set(["ParameterNotFound", "ResourceNotFoundException"]);
+      if (!(err instanceof Error)) return false;
+      const cause = (err as { cause?: unknown }).cause;
+      return (
+        names.has(err.name) || (cause instanceof Error && names.has(cause.name))
+      );
     },
     // I/O seams
     ...mocks,

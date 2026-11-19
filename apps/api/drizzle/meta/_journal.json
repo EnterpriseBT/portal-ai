@@ -960,6 +960,13 @@
       "when": 1795056417327,
       "tag": "0136_strip-stored-result-rows",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1795109628402,
+      "tag": "0137_organization-is-demo",
+      "breakpoints": true
     }
   ]
 }

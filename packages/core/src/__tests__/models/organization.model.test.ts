@@ -222,6 +222,15 @@ describe("OrganizationModelFactory", () => {
       expect(parsed.billingAnchorDay).toBe(15);
     });
 
+    it("should default isDemo to false and accept true (#1035)", () => {
+      const model = factory.create("system");
+      model.update(validOrgFields);
+      expect(model.parse().isDemo).toBe(false);
+
+      model.update({ isDemo: true });
+      expect(model.parse().isDemo).toBe(true);
+    });
+
     it.each([0, 29])(
       "should reject billingAnchorDay %i — outside 1..28 (#176)",
       (day) => {

@@ -39,8 +39,14 @@ jest.unstable_mockModule("@aws-sdk/client-ssm", () => ({
   },
 }));
 
-const { getSecret, getSecretByArn, getParam, putSecret, putParam } =
-  await import("../aws.js");
+const {
+  getSecret,
+  getSecretByArn,
+  getParam,
+  putSecret,
+  putParam,
+  isAwsNotFound,
+} = await import("../aws.js");
 const { BUILTIN_ENVIRONMENTS } = await import("../registry.js");
 const { EnvNotAuthorizedError, EnvInfraError, EnvNotConfiguredError } =
   await import("../errors.js");
@@ -137,6 +143,41 @@ describe("getParam", () => {
     };
     expect(cmd.input.Name).toBe("/portalai/dev/auth0-domain");
     expect(cmd.input.WithDecryption).toBe(true);
+  });
+});
+
+describe("isAwsNotFound (#1035)", () => {
+  const named = (name: string) =>
+    Object.assign(new Error(name), { name }) as Error;
+
+  it.each(["ParameterNotFound", "ResourceNotFoundException"])(
+    "is true for a %s error, directly and as an EnvInfraError's cause",
+    (name) => {
+      expect(isAwsNotFound(named(name))).toBe(true);
+      expect(
+        isAwsNotFound(
+          new EnvInfraError("Failed to read", { cause: named(name) })
+        )
+      ).toBe(true);
+    }
+  );
+
+  it("is false for any other failure or a non-error", () => {
+    expect(isAwsNotFound(named("AccessDeniedException"))).toBe(false);
+    expect(
+      isAwsNotFound(
+        new EnvInfraError("x", { cause: named("ThrottlingException") })
+      )
+    ).toBe(false);
+    expect(isAwsNotFound(undefined)).toBe(false);
+    expect(isAwsNotFound("ParameterNotFound")).toBe(false);
+  });
+
+  it("recognizes what getParam throws for a missing parameter", async () => {
+    ssmSend.mockRejectedValue(named("ParameterNotFound"));
+    const err = await getParam(appDev, "demo-toolpack-url").catch((e) => e);
+    expect(err).toBeInstanceOf(EnvInfraError);
+    expect(isAwsNotFound(err)).toBe(true);
   });
 });
 

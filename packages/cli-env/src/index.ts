@@ -42,6 +42,7 @@ export {
   getParam,
   putSecret,
   putParam,
+  isAwsNotFound,
 } from "./aws.js";
 
 export {

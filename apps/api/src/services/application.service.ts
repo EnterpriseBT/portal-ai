@@ -25,7 +25,12 @@ import type {
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PROVISIONED_STATIONS } from "../constants/provisioned-stations.constants.js";
+import {
+  DEMO_STATION_DESCRIPTION,
+  DEMO_STATION_NAME,
+} from "../demo/dataset-manifest.js";
 import { DbService } from "./db.service.js";
+import { OrganizationDeleteService } from "./organization-delete.service.js";
 import { SeedService } from "./seed.service.js";
 import { AuditService } from "./audit.service.js";
 import { SeatService, type SeatAuditContext } from "./seat.service.js";
@@ -524,6 +529,105 @@ export class ApplicationService {
       throw new Error(`User ${email} not found — users originate in Auth0`);
     }
     return ApplicationService.provisionOrganizationFor(user.id, { name });
+  }
+
+  /**
+   * `db:demo:create` seam (#1035): a brand-new demo org in one transaction —
+   * the normal provisioning (org, owner, workspace with Administrate and
+   * Playground), the `is_demo` marker, the tier, and a dedicated "Demo"
+   * station the dataset then seeds onto. An unknown owner throws before the
+   * transaction opens; an unknown tier rolls everything back.
+   */
+  static async createDemoOrganization(opts: {
+    ownerEmail: string;
+    name: string;
+    tier: string;
+  }): Promise<{ organizationId: string; stationId: string }> {
+    const user = await DbService.repository.users.findByEmail(opts.ownerEmail);
+    if (!user) {
+      throw new Error(
+        `User ${opts.ownerEmail} not found — users originate in Auth0`
+      );
+    }
+    return DbService.transaction(async (tx) => {
+      const { organization, organizationUser } =
+        await ApplicationService.provisionOrganizationInTx(user.id, tx, {
+          name: opts.name,
+        });
+      // The owner's current org is the membership with the newest
+      // last_login. A demo must not take that over from their real org, so
+      // its membership sorts last, as `seed org`'s do; the owner switches to
+      // it deliberately (code review, #1035).
+      await DbService.repository.organizationUsers.update(
+        organizationUser.id,
+        { lastLogin: 0 },
+        tx
+      );
+      await DbService.repository.organizations.update(
+        organization.id,
+        { isDemo: true },
+        tx
+      );
+      await ApplicationService.assignOrgTier(organization.id, opts.tier, tx);
+      const station = await DbService.repository.stations.create(
+        new StationModelFactory()
+          .create(SystemUtilities.id.system)
+          .update({
+            organizationId: organization.id,
+            name: DEMO_STATION_NAME,
+            description: DEMO_STATION_DESCRIPTION,
+          })
+          .parse(),
+        tx
+      );
+      return { organizationId: organization.id, stationId: station.id };
+    });
+  }
+
+  /**
+   * Undo a `createDemoOrganization` whose dataset load failed (#1035): the
+   * full organization deletion (#197), which removes whatever the load wrote
+   * and tombstones the org and its memberships. It is the platform's own
+   * compensating write for an org the same run provisioned, so it carries the
+   * system principal; the operator is on the CLI's audit line.
+   */
+  static async discardDemoOrganization(organizationId: string): Promise<void> {
+    await OrganizationDeleteService.deleteOrganization(
+      organizationId,
+      SystemUtilities.id.system
+    );
+  }
+
+  /**
+   * `db:demo:delete` seam (#1035): the full organization deletion (#197) for
+   * an org `demo create` marked, as `actor`. Hard-deletes the org's content
+   * (records, wide tables, connectors, stations, packs…) and tombstones the
+   * org row and its memberships, so no owner keeps a deleted org as their
+   * current one. Usage and ledger rows stay, as for every org deletion. An
+   * active job refuses it with 409 ENTITY_LOCKED_BY_JOB; queued jobs are
+   * cancelled.
+   */
+  static async deleteDemoOrganization(
+    organizationId: string,
+    actor: string
+  ): Promise<void> {
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
+    if (!org) {
+      throw new ApiError(
+        404,
+        ApiCode.DEMO_ORGANIZATION_NOT_FOUND,
+        `Organization ${organizationId} not found`
+      );
+    }
+    if (!org.isDemo) {
+      throw new ApiError(
+        409,
+        ApiCode.DEMO_ORGANIZATION_NOT_DEMO,
+        `Organization ${organizationId} is not a demo org — demo delete only removes orgs made by demo create`
+      );
+    }
+    await OrganizationDeleteService.deleteOrganization(organizationId, actor);
   }
 
   /** CLI seam (#190): idempotent-by-name org fixture with a synthetic owner

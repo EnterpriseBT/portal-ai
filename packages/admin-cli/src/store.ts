@@ -96,6 +96,11 @@ export interface AdminStore {
   ): Promise<{ id: string; tier: string; previousTier: string }>;
   /** Soft-delete a live org (deleted/deletedBy stamps). */
   softDeleteOrg(id: string, actor: string): Promise<void>;
+  /** #1035: whether a live org carries `demo create`'s marker;
+   *  absent/soft-deleted → ADMIN_NOT_FOUND. */
+  isDemoOrg(id: string): Promise<boolean>;
+  /** A live tier by slug → ADMIN_NOT_FOUND otherwise. */
+  getTier(slug: string): Promise<{ slug: string }>;
   /** Live users; `orgId` filters via LIVE membership. */
   listUsers(opts: ListUsersOptions): Promise<User[]>;
   /** Live user by email → ADMIN_NOT_FOUND otherwise. */
@@ -299,13 +304,18 @@ export function createAdminStore(
       });
     },
 
-    async setTier(id, tierSlug, actor) {
+    async getTier(slug) {
       const [tier] = await db
         .select({ slug: tiers.slug })
         .from(tiers)
-        .where(and(eq(tiers.slug, tierSlug), isNull(tiers.deleted)))
+        .where(and(eq(tiers.slug, slug), isNull(tiers.deleted)))
         .limit(1);
-      if (!tier) throw new AdminNotFoundError(`Tier "${tierSlug}" not found`);
+      if (!tier) throw new AdminNotFoundError(`Tier "${slug}" not found`);
+      return tier;
+    },
+
+    async setTier(id, tierSlug, actor) {
+      await this.getTier(tierSlug);
 
       const current = await this.getOrg(id);
       await db
@@ -322,6 +332,18 @@ export function createAdminStore(
         .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
         .returning({ id: organizations.id });
       if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
+    },
+
+    async isDemoOrg(id) {
+      // Raw on purpose: `is_demo` isn't in the mirror (see tables.ts), so
+      // only this read needs an env migrated to #1035.
+      const [row] = await db
+        .select({ isDemo: sql<boolean>`is_demo` })
+        .from(organizations)
+        .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
+        .limit(1);
+      if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
+      return row.isDemo === true;
     },
 
     async addMember(orgId, userId, actor) {

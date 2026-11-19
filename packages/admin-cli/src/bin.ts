@@ -33,9 +33,14 @@ import {
   orgDelete,
 } from "./commands/org.js";
 import { orgCreate, orgReset, seedOrg } from "./commands/provision.js";
-import { demoSeed, demoReset } from "./commands/demo.js";
 import { userList, userGet } from "./commands/user.js";
 import { memberAdd, memberRemove, memberSwitch } from "./commands/member.js";
+import {
+  DEMO_DEFAULT_ROWS,
+  DEMO_DEFAULT_TIER,
+  demoCreate,
+  demoDelete,
+} from "./commands/demo.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -305,21 +310,33 @@ export function buildProgram(): Command {
   );
 
   // ── demo ───────────────────────────────────────────────────────────
-  const demo = program.command("demo").description("demo-org dataset seeding");
+  const demo = program
+    .command("demo")
+    .description("ephemeral demo orgs, one per client (#1035)");
 
   common(
     demo
-      .command("seed")
-      .description("populate a demo org from the committed dataset")
-      .requiredOption("--org <id>", "target organization id")
-      .option("--rows <n>", "transactions row count (default ~1M)")
+      .command("create")
+      .description(
+        "provision a new demo org owned by an existing user and load the demo dataset"
+      )
+      .requiredOption("--name <name>", "organization name")
+      .requiredOption("--owner-email <email>", "existing user to own it")
+      .option("--tier <slug>", "tier to put it on", DEMO_DEFAULT_TIER)
+      .option(
+        "--rows <n>",
+        "synthesized transactions rows",
+        String(DEMO_DEFAULT_ROWS)
+      )
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) =>
-      demoSeed(
+      demoCreate(
         def,
         {
-          orgId: o.org as string,
-          rows: o.rows !== undefined ? Number(o.rows as string) : undefined,
+          name: o.name as string,
+          ownerEmail: o.ownerEmail as string,
+          tier: o.tier as string,
+          rows: o.rows as string,
         },
         flags(o)
       )
@@ -328,21 +345,13 @@ export function buildProgram(): Command {
 
   common(
     demo
-      .command("reset")
-      .description("reset a demo org to the checked-in baseline (never prod)")
-      .requiredOption("--org <id>", "target organization id")
-      .option("--rows <n>", "transactions row count on reconverge")
-  ).action(async (o: GlobalOpts) =>
-    execute(o, (def) =>
-      demoReset(
-        def,
-        {
-          orgId: o.org as string,
-          rows: o.rows !== undefined ? Number(o.rows as string) : undefined,
-        },
-        flags(o)
+      .command("delete")
+      .description(
+        "delete an org made by demo create and all its data (refuses any other org)"
       )
-    )
+      .argument("<id>")
+  ).action(async (id: string, o: GlobalOpts) =>
+    execute(o, (def) => demoDelete(def, id, flags(o)))
   );
 
   return program;

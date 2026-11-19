@@ -29,6 +29,9 @@ export const OrganizationSchema = CoreSchema.extend({
   /** Epoch-ms end of the marketplace contract term (#568). Null = not
    *  marketplace-granted. Read-only is derived when this is in the past. */
   entitlementThrough: z.number().int().nullable().default(null),
+  /** Created by `portalai demo create` (#1035). Internal: never shown in the
+   *  app; `portalai demo delete` refuses an org without it. */
+  isDemo: z.boolean().default(false),
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;

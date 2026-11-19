@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { createAdminStore } from "../store.js";
 import {
   auditLog,
@@ -361,6 +361,67 @@ describe("softDeleteOrg", () => {
     await expect(store.softDeleteOrg("o-1", "actor-1")).rejects.toBeInstanceOf(
       AdminNotFoundError
     );
+  });
+});
+
+describe("getTier (#1035)", () => {
+  it("returns a live tier; unknown or soft-deleted → 8", async () => {
+    await t.db.insert(tiers).values([
+      rowBase({ id: "t-1", slug: "enterprise" }) as never,
+      rowBase({
+        id: "t-2",
+        slug: "retired",
+        deleted: 5,
+        deletedBy: "x",
+      }) as never,
+    ]);
+    await expect(store.getTier("enterprise")).resolves.toEqual({
+      slug: "enterprise",
+    });
+    for (const slug of ["nope", "retired"]) {
+      await expect(store.getTier(slug)).rejects.toMatchObject({
+        code: "ADMIN_NOT_FOUND",
+        message: `Tier "${slug}" not found`,
+      });
+    }
+  });
+});
+
+describe("isDemoOrg (#1035)", () => {
+  it("reads the demo marker of a live org", async () => {
+    await t.db.execute(sql`
+      INSERT INTO organizations (id, created, created_by, name, timezone, owner_user_id, is_demo)
+      VALUES ('o-d', 1, 'x', 'Demo', 'UTC', 'u', true),
+             ('o-c', 1, 'x', 'Customer', 'UTC', 'u', false)`);
+    await expect(store.isDemoOrg("o-d")).resolves.toBe(true);
+    await expect(store.isDemoOrg("o-c")).resolves.toBe(false);
+  });
+
+  it("a missing or soft-deleted org → 8", async () => {
+    await t.db
+      .insert(organizations)
+      .values([
+        org("Gone", { id: "o-g", deleted: 5, deletedBy: "x" }) as never,
+      ]);
+    for (const id of ["o-g", "o-missing"]) {
+      await expect(store.isDemoOrg(id)).rejects.toBeInstanceOf(
+        AdminNotFoundError
+      );
+    }
+  });
+});
+
+describe("an env not yet migrated to is_demo (#1035 rollout)", () => {
+  // The CLI ships from main ahead of a prod release, so every command that
+  // doesn't need the marker must work against a database without it.
+  it("org reads and writes never touch is_demo", async () => {
+    await t.db.execute(sql`ALTER TABLE organizations DROP COLUMN is_demo`);
+    await t.db
+      .insert(organizations)
+      .values([org("Acme", { id: "o-1" }) as never]);
+    await expect(store.listOrgs({})).resolves.toHaveLength(1);
+    await expect(store.getOrg("o-1")).resolves.toMatchObject({ id: "o-1" });
+    await store.softDeleteOrg("o-1", "actor-1");
   });
 });
 

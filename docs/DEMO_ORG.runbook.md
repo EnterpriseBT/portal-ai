@@ -1,6 +1,6 @@
 # Demo org runbook — Harborview Supply Co.
 
-The presenter's script for the `admin@portalsai.io` production demo org (epic #507). It names the fictional company, the dataset, and the exact prompts to run live so a presenter always knows what "working" looks like. The dataset is authored in #508, seeded by #509, extended by the custom toolpack in #510, and provisioned per #511.
+The presenter's script for a Portals demo (epic #507). It names the fictional company, the dataset, and the exact prompts to run live so a presenter always knows what "working" looks like. The dataset is authored in #508, seeded by #509, extended by the custom toolpack in #510, and provisioned per #511. **Each demo gets its own new org** (#1035): `portalai demo create` provisions it from a clean slate, the demo can change it freely, and afterwards it is kept as a reference or removed with `portalai demo delete`.
 
 > **This is a durable reference** (unsuffixed) — it is maintained as the demo evolves, not swept like a phase doc.
 
@@ -12,43 +12,46 @@ All dates are anchored to **2026-08-31** with **30 months** of history, so the t
 
 ## Preconditions
 
-1. **Org & login.** On prod, sign in as `admin@portalsai.io` (Google) — the demo org is its default org on the free, unlimited **Demo** tier (#511). On app-dev/local, the seeded rehearsal org.
-2. **Station.** Use the demo station — it carries all eight built-in toolpacks plus the custom webhook toolpack (#510).
-3. **Reset first.** Run `portalai demo reset --env <env> --org <orgId>` (app-dev/local) or a `portalai demo seed` re-run (prod — reset is guard-blocked there) so the org is at the checked-in state before you begin (#509).
+1. **A fresh demo org.** Create one per client (below). Never re-use a previous demo's org: people change things during a demo, and nothing resets an org back to the baseline.
+2. **Login.** Sign in as the org's owner (the `--owner-email` you created it with) and switch to the demo org in the org switcher (or `portalai member switch <orgId> <email> --env <env> --yes`). `demo create` deliberately doesn't make it the owner's current org.
+3. **Station.** Use the station named **Demo**. It carries the demo connectors, a curated view per entity (the station's queryable data, #674), all the built-in toolpacks and the custom webhook toolpack (#510). The org's Administrate and Playground stations are the ones every new org gets, and the demo doesn't use them.
 4. **Connectors.** Four populated instances: **Sandbox**, **File Upload** (CSV + XLSX), **Google Sheets**, **REST API**. (Microsoft 365 Excel is intentionally excluded — Google Sheets covers the identical file-based OAuth workflow.)
 
-## Provisioning (operator, #511)
+## Provisioning (operator, #511, #1035)
 
-Stand up the demo org **once per environment** before it can be presented. Every step is a CLI command or a named console action; guards are server-enforced (`docs/CLI_OPERATIONS_CHARTER.md`).
+Every step is a CLI command or a named console action; guards are server-enforced (`docs/CLI_OPERATIONS_CHARTER.md`).
 
-### The `demo` tier
+### Once per environment
 
-Free, unlimited, all toolpacks, `cta contact`, no Stripe price — a **custom tier outside the catalog** (`tier apply` never touches it). It is **not** on `GET /api/public/site-config` (it isn't marketing-public), yet any org can be `set-tier`'d onto it.
+- **Toolpack config.** `demo create` reads the shared #510 endpoint and its signing secret from the env's config, and refuses with exit 3 when either is missing. Set them once:
+  - `portalops vars set DEMO_TOOLPACK_URL <url> --env <env> --yes [--confirm-prod]`. The URL is the `portalai-demo-toolpack` CloudFormation stack output `demo-toolpack-url`.
+  - `portalops vars set DEMO_TOOLPACK_SIGNING_SECRETS <whsec_…> --env <env> --yes [--confirm-prod]`. This must be the env's entry in the demo Lambda's allow-list.
 
-- **Local:** created automatically by `portalops local provision --env local --yes` (the `demo-tier` step, idempotent). No manual step.
-- **App-dev:** once, scoped to the rehearsal org —
-  `portalops tier create --env app-dev --slug demo --display-name "Demo" --description "Internal demo organization — unlimited usage." --visible-to-org <app-dev demo orgId> --yes`
-- **Prod:** once, scoped to admin@'s org —
-  `portalops tier create --env prod --slug demo --display-name "Demo" --description "Internal demo organization — unlimited usage." --visible-to-org <prod orgId> --yes --confirm-prod`
-- Verify it stays unmanaged: `portalops tier apply --env <env> --dry-run` lists `demo` under `unmanaged`.
+  Locally, export both in the shell or put them in `apps/api/.env`. Without them a local demo gets built-in packs only.
+- **The `demo` tier (optional).** Free, unlimited, all toolpacks, `cta contact`, no Stripe price. It is a **custom tier outside the catalog** (`tier apply` never touches it) and isn't on `GET /api/public/site-config`.
+  - **Local:** created automatically by `portalops local provision --env local --yes` (the `demo-tier` step).
+  - **App-dev / prod:** `portalops tier create --env <env> --slug demo --display-name "Demo" --description "Internal demo organization — unlimited usage." --yes [--confirm-prod]`.
+  - **Verify:** it stays unmanaged — `portalops tier apply --env <env> --dry-run` lists `demo` under `unmanaged`.
 
-### Local / app-dev rehearsal org
+  Assigning a tier ignores its visibility, so `--tier demo` works for any org once the tier exists. Without it, demos run on `enterprise`, which includes every pack but has finite allocations.
 
-1. Create the org: `portalai seed org --name demo --env <env> --yes` (local also gets the tier from `local provision`).
-2. Put it on the tier: `portalai org set-tier <orgId> demo --env <env> --yes`.
-3. Connect **Google Sheets** in the app (upload `customers_orders.xlsx` to the connecting account's Drive first; #508).
-4. **Toolpack URL + seed.** `export DEMO_TOOLPACK_URL=<url>` (the shared #510 endpoint — read it from the `portalai-demo-toolpack` CloudFormation stack output `demo-toolpack-url`, or `portalops vars get DEMO_TOOLPACK_URL --env <env>`) so the seeder registers the custom toolpack, then `portalai demo seed --env <env> --org <orgId> --yes` (#509). The seeder reads the URL from the **shell env** — `runApiScript` injects only `DATABASE_URL`, not SSM config — so the export is what makes the toolpack register; without it you get built-ins only. Rehearse the presenter script.
+### Per demo
 
-### Prod (admin@portalsai.io)
-
-1. **First login.** admin@portalsai.io signs in with Google on `app.portalsai.io`; the first authenticated request creates the user + default org (`metadata.middleware` → `ApplicationService.ensureProvisioned`, #577). Nothing can target the org before this (`org create --owner-email` throws `User not found`).
-2. **Stripe check.** Read `organizations.stripe_subscription_id` for admin@'s org. If it carries the internal `pro` subscription (`docs/TIER_PRICING_MODEL.md:126`), **cancel it in Stripe** — the `customer.subscription.deleted` webhook reverts the org to `standard` and clears the id (`billing.service.ts:87-120`). **Never `--allow-stripe-desync`** (the grandfathered $49 price is unmapped since #497).
-3. **Tier.** Create the prod `demo` tier (above), then `portalai org set-tier <orgId> demo --env prod --yes --confirm-prod` (refused, exit 9, while a live subscription remains — that's why step 2 comes first).
-4. **OAuth.** admin@ connects **Google Sheets** (its Workspace Drive holds #508's sheet) against the prod callback URL. (No Microsoft/OneDrive step — Excel is out of scope.)
-5. **Toolpack URL.** The shared #510 endpoint is the `portalai-demo-toolpack` CloudFormation stack output `demo-toolpack-url`. **Persist it** for the record + runtime — `portalops vars set DEMO_TOOLPACK_URL <url> --env prod --yes --confirm-prod` — **and** note it for step 6's export. Persisting to SSM alone does **not** make the seeder register the toolpack: the seed reads `DEMO_TOOLPACK_URL` from the shell env (`runApiScript` injects only `DATABASE_URL`), so the export in step 6 is what counts.
-6. **Seed.** `export DEMO_TOOLPACK_URL=<url>` in the same shell, then `portalai demo seed --env prod --org <orgId> --yes --confirm-prod` (#509) — the documented prod refresh path (there is no prod `demo reset`; re-run `seed` to refresh). Registration is idempotent: a re-run refreshes the existing `demo_supply_tools` toolpack in place (unique on `(org, name)`) rather than duplicating it.
-   - **The ~1M-transaction seed streams over your DB connection — mind the transport.** `demo seed` synthesizes the transactions in-process and imports them through the batch-upsert primitives against `DATABASE_URL`. For prod that URL is a `portalops db tunnel` from a laptop, so all ~1M rows cross the tunnel one batch at a time — measured at roughly **~110 min** end-to-end, and a dropped tunnel or a sleeping laptop kills the run mid-import. Two safe options: **(a)** run the seed from a low-latency vantage inside the env (a bastion/one-off task with direct RDS reach) so the import isn't tunnel-bound, or **(b)** accept the long single-run window — keep the machine awake, hold the tunnel open, and do not run it from the devcontainer (which suspends idle and restarts on editor saves — see the local-env note). To rehearse the flow without the wait, seed a smaller volume first with `--rows <n>` (e.g. `--rows 5000`), then do the full run once when the transport is stable.
-7. **Verify.** Settings → Subscription shows the **Demo** card (unlimited, no checkout CTA), `stripe_subscription_id` is null, and the four connector instances are `active`.
+1. **Owner.** The owner must be an existing user: users originate in Auth0, so they sign in once first (`admin@portalsai.io` on prod).
+2. **Create.**
+   ```
+   portalai demo create --name "<Client> demo" --owner-email <email> --env <env> --yes [--confirm-prod] [--tier demo] [--rows <n>]
+   ```
+   This provisions a new org (its Administrate and Playground stations exactly as any new org has them), marks it as a demo, puts it on the tier (`enterprise` by default), adds the **Demo** station, and loads the dataset, connectors and packs onto it. The output's `organizationId` is the org.
+   - **Rows.** `--rows` sizes the synthesized `transactions` table and defaults to **10,000**. For the "about a million transactions" beat, pass `--rows 1000000`. That import streams over your DB connection: over a `portalops db tunnel` from a laptop it measured roughly **110 minutes**. Run it from a low-latency vantage inside the env, or keep the machine awake and the tunnel open, and never from the devcontainer, which suspends when idle.
+   - **Failure.** A failed load deletes the org it created and exits non-zero, so just re-run. If the process is killed mid-load, no cleanup runs: find the leftover with `portalai org list --search "<Client> demo" --env <env>` and remove it with `demo delete`.
+3. **Google Sheets.** In the app, as the owner, connect **Google Sheets** on the Demo station. The owner's Drive must hold #508's `customers_orders.xlsx`, uploaded once and converted to a Google Sheet. Connect against the env's own OAuth callback.
+4. **Verify.** Settings → Subscription shows the tier, the Demo station lists the four connector instances as `active`, and the presenter script's first prompt answers. Rehearse the script.
+5. **After the demo.** Keep the org as a reference, or remove it:
+   ```
+   portalai demo delete <orgId> --env <env> --yes [--confirm-prod]
+   ```
+   It refuses any org `demo create` didn't make (exit 9). It runs the full org deletion: the dataset and everything the demo added are removed, and the org and its memberships are tombstoned.
 
 ## The dataset
 
@@ -69,7 +72,7 @@ Authored deterministically by `apps/api/src/scripts/generate-demo-fixtures.ts` (
 
 **Invariants:** every `orders`/`transactions` `customer_id` and `product_id` resolves; every `shipments`/`transactions` `site_id` resolves; loan schedule closes at ~0; portfolio weights sum to 1. Enforced by `apps/api/src/demo/__tests__/demo-dataset.test.ts`.
 
-The `transactions` table is the **large-volume story**: ~1M rows synthesized at seed time (#509) from the same generator, streamed through the batch-upsert primitives. The committed `transactions.sample.csv` is a 5K slice for parsing/inspection; the full volume is seeded, not committed.
+The `transactions` table is the **large-volume story**: synthesized at seed time (#509) from the same generator, 10,000 rows by default and ~1M with `demo create --rows 1000000` (#1035), streamed through the batch-upsert primitives. The committed `transactions.sample.csv` is a 5K slice for parsing/inspection; the full volume is seeded, not committed.
 
 ### Data dictionary (entity → column → system column definition)
 
@@ -93,7 +96,7 @@ Run these in order — each builds on the last. Every prompt names the **toolpac
 
 1. **Large-volume SQL** — *"What was total revenue by month for the last 12 months?"*
    Toolpack **data_query** (`sql_query`) → a table. Then: *"Show me the full transaction list."* → paginated list stays snappy.
-   *Say:* "That just aggregated about a million transactions, and the list pages instantly — this is production-scale data."
+   *Say:* "That just aggregated about a million transactions, and the list pages instantly — this is production-scale data." (Only with `--rows 1000000` at create time; at the default 10,000, say "ten thousand transactions" and skip the production-scale line.)
 
 2. **Top customers** — *"Who are our top 10 customers by revenue?"*
    **data_query** (`sql_query`, joins transactions→customers) → table.
@@ -140,5 +143,5 @@ All eight of the data & analysis built-in toolpacks (`data_query`, `visualize`, 
 
 ## Notes
 
-- **Google Sheets / OneDrive.** The `customers_orders.xlsx` file is committed; the one-time upload to admin@'s Drive (→ Google Sheet) is a #511 provisioning step, not part of `demo seed`. Microsoft 365 Excel is out of scope for the demo.
-- **Reset semantics.** `demo reset` returns the org to zero portals and the seeded record set; it is guard-blocked in prod, where a `demo seed` re-run is the refresh path (#509).
+- **Google Sheets / OneDrive.** The `customers_orders.xlsx` file is committed. Uploading it to the owner's Drive (→ Google Sheet) is a one-time step per owner, and connecting it is a per-demo step in the app; neither is part of `demo create`. Microsoft 365 Excel is out of scope for the demo.
+- **No reset.** There is no way to return a used org to the baseline (#1035 removed `demo seed --org` / `demo reset`): a fresh `demo create` is the clean slate.

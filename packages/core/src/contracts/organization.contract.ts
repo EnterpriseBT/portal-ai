@@ -65,6 +65,39 @@ export type OrganizationDeleteResponse = z.infer<
 >;
 
 /**
+ * An organization's name: trimmed, 1–120 characters, one line. A line break
+ * would make the org undeletable from the UI: the delete confirmation is a
+ * single-line field that can't hold one.
+ */
+export const organizationNameField = () =>
+  nameField().regex(/^[^\r\n]*$/, "Name can't contain line breaks");
+
+/** The most synthesized `transactions` rows `portalai demo create` loads. */
+export const DEMO_MAX_ROWS = 10_000_000;
+
+/**
+ * `portalai demo create`'s inputs (#1035), checked by the CLI before anything
+ * runs and again by apps/api's `db:demo:create` script, which can be run
+ * directly. `rows` arrives as the flag's text.
+ */
+export const DemoOrganizationCreateInputSchema = z
+  .object({
+    name: organizationNameField(),
+    rows: z
+      .string()
+      .regex(/^\d+$/, "--rows must be a whole number")
+      .transform(Number)
+      .pipe(
+        z.number().max(DEMO_MAX_ROWS, `--rows must be at most ${DEMO_MAX_ROWS}`)
+      ),
+  })
+  .strict();
+
+export type DemoOrganizationCreateInput = z.infer<
+  typeof DemoOrganizationCreateInputSchema
+>;
+
+/**
  * Request body for PATCH /api/organization/:id (#907). Each field is checked
  * and written only when present: `name` needs `org.write`, `defaultStationId`
  * the class station write (#690). `null` clears the default station.
@@ -72,11 +105,7 @@ export type OrganizationDeleteResponse = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const OrganizationUpdateRequestSchema = z
   .object({
-    // A line break would make the org undeletable from the UI: the delete
-    // confirmation is a single-line field that can't hold one.
-    name: nameField()
-      .regex(/^[^\r\n]*$/, "Name can't contain line breaks")
-      .optional(),
+    name: organizationNameField().optional(),
     defaultStationId: z.string().min(1).nullable().optional(),
   })
   .strict()

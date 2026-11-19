@@ -24,7 +24,8 @@ CREATE TABLE organizations (
   default_station_id text,
   tier text NOT NULL DEFAULT 'standard',
   stripe_customer_id text,
-  stripe_subscription_id text
+  stripe_subscription_id text,
+  is_demo boolean NOT NULL DEFAULT false
 );
 CREATE TABLE users (
   id text PRIMARY KEY,
