@@ -331,7 +331,8 @@ export class DemoSeedService {
   /**
    * Register (or refresh) the demo custom webhook toolpack — mirrors
    * POST /api/toolpacks, but **idempotent**: the demo seeder is a re-runnable
-   * convergence (the prod refresh path is a `demo seed` re-run, #509), and
+   * convergence (#509; since #1035 every run targets a fresh org, but the
+   * guarantee stays cheap and keeps a retried seed safe), and
    * `(organization_id, name)` is unique. A plain INSERT on re-run 23505s, and —
    * worse — leaves `seedToolpacks` to fall through to `replaceForStation` with
    * an empty id list, which *disassociates* the already-registered toolpack

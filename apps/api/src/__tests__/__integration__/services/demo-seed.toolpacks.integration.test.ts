@@ -98,7 +98,7 @@ describe("DemoSeedService (integration): toolpacks", () => {
   });
 
   it("re-registers the custom toolpack idempotently — a second seed refreshes, not duplicates", async () => {
-    // The prod refresh path is a `demo seed` re-run, and (org, name) is unique.
+    // The seed is a re-runnable convergence, and (org, name) is unique.
     // A plain INSERT would 23505 on the second pass, `custom` would come back
     // null, and replaceForStation would disassociate the live toolpack. This
     // asserts the second pass refreshes the same row and keeps it attached.

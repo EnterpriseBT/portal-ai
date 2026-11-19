@@ -63,8 +63,8 @@ export const CATALOG: CatalogEntry[] = [
   // NOT marked `siteConfig`: rotating the token is not a published fact.
   secret("GITHUB_DISPATCH_TOKEN", "github-dispatch-token"),
   // #510/#911: this env's demo custom-toolpack signing secret (comma-joined
-  // when it holds several; the first is this env's). `db:demo:seed` registers
-  // the demo toolpack with the first entry, read from the operator's shell. The
+  // when it holds several; the first is this env's). `portalai demo create`
+  // reads it and registers the demo toolpack with the first entry (#1035). The
   // shared `portalai-demo-toolpack` Lambda verifies against its own
   // `SigningSecrets` stack parameter (infra/cloudformation/demo-toolpack.yml),
   // which holds every env's entry. Not read by the API task, so not in
@@ -104,8 +104,9 @@ export const CATALOG: CatalogEntry[] = [
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("SYSTEM_ID", "system-id"),
   // #509: the shared demo custom-toolpack base URL the seeder registers the
-  // demo webhook toolpack from. Config (non-secret); the CLI resolves it and
-  // passes it to `db:demo:seed`. Same shared endpoint across demo envs (#510).
+  // demo webhook toolpack from. Config (non-secret); `portalai demo create`
+  // resolves it and passes it to `db:demo:create` (#1035). Same shared endpoint
+  // across demo envs (#510).
   ssm("DEMO_TOOLPACK_URL", "demo-toolpack-url"),
   // #311/#369: the business contact addresses. Baked into the marketing site
   // and the web app at build time — a `vars set` changes the stored value, and
