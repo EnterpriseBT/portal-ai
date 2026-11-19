@@ -51,14 +51,14 @@ export function stripStoredMessage<M extends { blocks: unknown }>(message: M): M
   - With a parseable `pipeline`, it returns the content minus `rows`, `samplePeek`, `sample` and `queryHandle`, keeping every other key.
   - Without one, it returns `{ type, notKept: true, columns, rowCount }`. `columns` comes from `columns`, from `schema[].name`, or from the first row's keys; `rowCount` from `rowCount` or `rows.length`.
 - **`toStoredToolResult`:**
-  - For an object with `rows`/`sample` or a `queryHandle`, it returns `{ columns, rowCount, sql? }`, where `sql` is `pipeline.sql`, else the envelope's `sql`.
+  - For an object with `rows`/`sample` or a `queryHandle`, or a bare row array, it returns `{ rowsNotKept: true, columns, rowCount, sql? }`, where `sql` is `pipeline.sql`, else the envelope's `sql`. The `rowsNotKept` tag tells the summary apart from a scalar result that happens to have `columns`.
   - Anything else (a scalar result) is returned unchanged.
 - **Idempotence.** All three are idempotent, so stripping an already-stripped block changes nothing.
 
 ### `portal.service.ts`
 - **Persisting.** `handleToolResult` (`:178-214`) persists `content: toStoredToolResult(toolResult)` and `displayBlock.block` with `content: toStoredBlockContent(...)`. `sseResult` is unchanged, so the in-turn stream keeps rows.
 - **Serving.** `getPortal` (`:~529`) returns `messages.map(stripStoredMessage)`, and `replayTurn` (`:995-1030`) re-sends stripped content.
-- **History.** `reconstructModelMessages` reads the stripped `{columns, rowCount, sql}` form:
+- **History.** `reconstructModelMessages` reads the stripped `{rowsNotKept, columns, rowCount, sql}` form, and applies `toStoredToolResult` itself, so an unstripped caller replays no rows either:
   - `replayResult` and `summarizeToolResult` render it as `[Previous <tool> result: <rowCount> rows, columns: [...]; re-run to see values]`, with no sample row.
   - `SUMMARY_CELL_CHARS` and the sample code go away.
 - **System prompt** (`apps/api/src/prompts/system.prompt.ts`): one line saying results from earlier turns aren't kept, and to re-run the query when a follow-up needs their values.
@@ -113,7 +113,7 @@ If the source handle has no `sql` (a staged-rows source), there's no pipeline, a
 ## Migration
 `npm run db:generate -- --name strip-stored-result-rows` produces an empty migration, which is then hand-written as a data-only `UPDATE portal_messages`:
 - It rewrites `blocks` so that every `data-table`/`d3`/`geo` element's `content` loses `rows`, `samplePeek`, `sample` and `queryHandle` when it has a `pipeline`. Without one it becomes `{type, notKept: true, columns, rowCount}`.
-- Every `tool-result` element's row payload becomes `{columns, rowCount, sql}`.
+- Every `tool-result` element's row payload becomes `{rowsNotKept: true, columns, rowCount, sql}`.
 - It's carried in SQL (`jsonb_path` / `jsonb_set` over `jsonb_array_elements`), batched by `id` ranges, and marked `-- destructive-ok: removes stored result rows; the recipe that re-runs them is kept (#1038)`.
 
 No schema change and no seed. The serve-time strip covers any row the migration hasn't reached.
@@ -124,7 +124,7 @@ No schema change and no seed. The serve-time strip covers any row the migration 
 - **`stored-result.util.test.ts`** (new), ≈ 12 cases:
   - per block type (table/d3/geo), with a pipeline: rows, samplePeek and handle dropped, metadata kept;
   - without a pipeline: not-kept, with columns derived from rows, from schema and from columns;
-  - tool-result rows: `{columns, rowCount, sql}`;
+  - tool-result rows: `{rowsNotKept, columns, rowCount, sql}`;
   - a scalar result passes through;
   - idempotence;
   - `stripStoredMessage` over mixed blocks.

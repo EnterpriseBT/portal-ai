@@ -56,6 +56,13 @@ import { stripNulDeep } from "../utils/nul-character.util.js";
 import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
 import { portalResults } from "../db/schema/index.js";
 import { toModelView } from "./model-output.util.js";
+import {
+  describeStoredResult,
+  isStoredResultSummary,
+  stripStoredMessage,
+  toStoredBlockContent,
+  toStoredToolResult,
+} from "./stored-result.util.js";
 
 const logger = createLogger({ module: "portal-service" });
 
@@ -180,12 +187,13 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
   const toolName = chunk.toolName as string;
   const toolCallId = chunk.toolCallId as string | undefined;
 
-  // Persist tool-result part for ModelMessage[] reconstruction
+  // Persist tool-result part for ModelMessage[] reconstruction. #1038: a row
+  // result keeps its shape (columns, count, query), never its rows.
   ctx.assistantBlocks.push({
     type: "tool-result",
     toolCallId,
     toolName,
-    content: toolResult,
+    content: toStoredToolResult(toolResult),
   });
 
   // Close the step FIRST, and unconditionally — deliberately outside the
@@ -209,7 +217,15 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
       result: displayBlock.sseResult ?? toolResult,
     };
     ctx.sse.send("tool_result", event);
-    ctx.assistantBlocks.push(displayBlock.block);
+    // #1038: the live stream above carries the rows the reader may see now;
+    // the stored block keeps only the recipe that re-reads them as its reader.
+    const block = displayBlock.block;
+    ctx.assistantBlocks.push(
+      typeof block.type === "string" &&
+        ["data-table", "d3", "geo"].includes(block.type)
+        ? { ...block, content: toStoredBlockContent(block.type, block.content) }
+        : block
+    );
   }
 }
 
@@ -537,7 +553,11 @@ export class PortalService {
       throw new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");
     }
 
-    const messages = await repo.portalMessages.findByPortal(portalId);
+    // #1038: a message stored before rows stopped being kept still leaves the
+    // API without them, to the UI and to the model alike.
+    const messages = (await repo.portalMessages.findByPortal(portalId)).map(
+      stripStoredMessage
+    );
     // #726 (review): the model messages are built on access only. The UI's
     // GET reads portal + messages and never pays for the projection.
     let coreMessages: ModelMessage[] | undefined;
@@ -994,9 +1014,13 @@ export class PortalService {
    */
   static replayTurn(
     sse: SseUtil,
-    assistantMessage: PortalMessageSelect,
+    storedMessage: PortalMessageSelect,
     portalId: string
   ): void {
+    // #1038: replays what the message keeps, never rows. A table's event then
+    // carries no data; the client refetches the portal on `done` and its
+    // persisted widgets read live.
+    const assistantMessage = stripStoredMessage(storedMessage);
     for (const block of assistantMessage.blocks) {
       const type = block.type as string | undefined;
 
@@ -1042,102 +1066,40 @@ export class PortalService {
 // ---------------------------------------------------------------------------
 
 /**
- * Number of most-recent assistant messages whose tool results are preserved
- * (with row capping). Older tool results are replaced with a compact summary.
+ * Number of most-recent assistant messages whose tool results are replayed in
+ * full. Older tool results are replaced with a compact summary.
  */
 const RECENT_TURNS_FULL_RESULTS = 2;
 
 /**
- * Maximum rows kept in a tool result even for recent turns. Results
- * exceeding this limit are capped with a note so the model knows more
- * data exists.
+ * #1038: a row result is never stored, so history names its shape — columns,
+ * count — and says to re-run it for values. Applied to whatever the message
+ * holds, so a caller that skipped `stripStoredMessage` replays no rows either.
  */
-const MAX_RESULT_ROWS = 50;
-
-/** #726: the longest sample cell an old-turn summary quotes. */
-const SUMMARY_CELL_CHARS = 120;
-
-/**
- * Extract rows from a tool result regardless of shape.
- * Returns the array of rows and a reference to the parent object (if wrapped).
- */
-function extractRows(content: unknown): {
-  rows: Record<string, unknown>[];
-  isWrapped: boolean;
-} {
-  if (Array.isArray(content)) {
-    return { rows: content as Record<string, unknown>[], isWrapped: false };
-  }
-  if (content != null && typeof content === "object") {
-    const obj = content as Record<string, unknown>;
-    if (Array.isArray(obj.rows)) {
-      return { rows: obj.rows as Record<string, unknown>[], isWrapped: true };
-    }
-  }
-  return { rows: [], isWrapped: false };
-}
-
-/**
- * Cap the number of rows in a tool result. Returns the content unchanged if
- * there are no rows or the count is within limits.
- */
-function capResultRows(content: unknown): unknown {
-  const { rows, isWrapped } = extractRows(content);
-  if (rows.length <= MAX_RESULT_ROWS) return content;
-
-  const capped = rows.slice(0, MAX_RESULT_ROWS);
-  const note = `[Showing ${MAX_RESULT_ROWS} of ${rows.length} rows]`;
-
-  if (isWrapped) {
-    return {
-      ...(content as Record<string, unknown>),
-      rows: capped,
-      _truncated: note,
-    };
-  }
-  // Append a sentinel row so the model sees the note
-  return [...capped, { _truncated: note }];
+function storedSummary(toolName: string, content: unknown): string | null {
+  const stored = toStoredToolResult(content);
+  return isStoredResultSummary(stored)
+    ? describeStoredResult(toolName, stored)
+    : null;
 }
 
 /**
  * #726: a recent turn's tool result as the model reads it on replay — the same
  * projection the live step sent (`toModelOutput`), so the model's account of
- * a result doesn't change between turns (true row count, no raw rows it never
- * saw). Only a result that already fits keeps the row cap.
+ * a result doesn't change between turns. A row result is its stored summary.
  */
-function replayResult(content: unknown): unknown {
-  const viewed = toModelView(content);
-  return viewed === content ? capResultRows(content) : viewed;
+function replayResult(toolName: string, content: unknown): unknown {
+  return storedSummary(toolName, content) ?? toModelView(content);
 }
 
 /**
- * Build a compact placeholder for a truncated tool result so the model
- * retains awareness that the tool was called without the full payload.
- * Includes column names and a sample row for context.
+ * A compact placeholder for an older turn's tool result, so the model knows
+ * the tool was called without the full payload.
  */
 function summarizeToolResult(toolName: string, content: unknown): string {
-  const { rows } = extractRows(content);
-
-  if (rows.length === 0) {
-    return `[Previous ${toolName} result — truncated]`;
-  }
-
-  const columns = Object.keys(rows[0] as object);
-  const sample = rows[0];
-  const sampleStr = columns
-    .slice(0, 5)
-    .map((c) => {
-      // #726: a sample cell can be a whole polygon; keep the summary short.
-      const cell = JSON.stringify((sample as Record<string, unknown>)[c]) ?? "";
-      return `${c}: ${cell.length > SUMMARY_CELL_CHARS ? `${cell.slice(0, SUMMARY_CELL_CHARS)}…` : cell}`;
-    })
-    .join(", ");
-  const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
-
   return (
-    `[Previous ${toolName} result: ${rows.length} rows, ` +
-    `columns: [${columns.slice(0, 8).join(", ")}${colExtra}], ` +
-    `sample: {${sampleStr}} — truncated]`
+    storedSummary(toolName, content) ??
+    `[Previous ${toolName} result — truncated]`
   );
 }
 
@@ -1260,7 +1222,7 @@ function reconstructModelMessages(
         const toolName = String(block.toolName ?? "tool");
         const raw = truncateResults
           ? summarizeToolResult(toolName, block.content)
-          : replayResult(block.content);
+          : replayResult(toolName, block.content);
 
         const output =
           typeof raw === "string"

@@ -408,6 +408,55 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
     });
   });
 
+  it("serves a message stored with rows without them (#1038)", async () => {
+    const portalId = generateId();
+    await db.insert(schema.portals).values({
+      ...base(definerId),
+      id: portalId,
+      organizationId: fx.orgId,
+      stationId,
+      name: "Portal",
+    } as never);
+    const pipeline = {
+      sql: "SELECT c_email FROM contacts ORDER BY c_email",
+      stationId,
+      organizationId: fx.orgId,
+    };
+    await db.insert(schema.portalMessages).values({
+      ...base(definerId),
+      id: generateId(),
+      organizationId: fx.orgId,
+      portalId,
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool-result",
+          toolName: "sql_query",
+          content: { rows: [{ c_email: "b@x.co" }], pipeline },
+        },
+        {
+          type: "data-table",
+          content: {
+            type: "data-table",
+            columns: ["c_email"],
+            rows: [{ c_email: "b@x.co" }],
+            pipeline,
+          },
+        },
+      ],
+    } as never);
+
+    const res = await request(app).get(`/api/portals/${portalId}`).expect(200);
+
+    expect(JSON.stringify(res.body)).not.toContain("b@x.co");
+    const blocks = res.body.payload.messages[0].blocks;
+    expect(blocks[1].content).toEqual({
+      type: "data-table",
+      columns: ["c_email"],
+      pipeline,
+    });
+  });
+
   it("keeps a staged-rows handle (no query to re-check) to its owner", async () => {
     const { envelope } = await PortalSqlHandleService.produceFromRows({
       rows: [{ n: 1 }, { n: 2 }],

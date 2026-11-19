@@ -1158,7 +1158,8 @@ describe("PortalService", () => {
       const result = await PortalService.getPortal(PORTAL_ID);
 
       expect(result.portal).toBe(PORTAL);
-      expect(result.messages).toBe(messages);
+      // #1038: served through stripStoredMessage, so a copy, unchanged here.
+      expect(result.messages).toEqual(messages);
       expect(result.coreMessages).toBeDefined();
       expect(mockFindByPortal).toHaveBeenCalledWith(PORTAL_ID);
     });
@@ -1225,7 +1226,12 @@ describe("PortalService", () => {
             type: "tool-result",
             toolCallId: "tc-1",
             toolName: "sql_query",
-            output: { type: "json", value: { rows: [{ id: 1 }] } },
+            // #1038: a row result replays as its shape, never its rows.
+            output: {
+              type: "text",
+              value:
+                "[Previous sql_query result: 1 rows, columns: [id]. Its rows aren't kept; re-run the query to see values.]",
+            },
           },
         ],
       });
@@ -1287,15 +1293,16 @@ describe("PortalService", () => {
 
       const result = await PortalService.getPortal(PORTAL_ID);
       const toolMsg = result.coreMessages.find((m) => m.role === "tool") as {
-        content: Array<{ output: { value: Record<string, unknown> } }>;
+        content: Array<{ output: { type: string; value: string } }>;
       };
-      const value = toolMsg.content[0].output.value;
-      expect(
-        Buffer.byteLength(JSON.stringify(value), "utf8")
-      ).toBeLessThanOrEqual(100_000);
-      // The same projection the live step sent: the true row count.
-      expect(value.rowCount).toBe(80);
-      expect(value.spec).toEqual({ basemap: "streets" });
+      const { output } = toolMsg.content[0];
+      // #1038: the map's rows aren't kept, so the replay is its shape alone:
+      // the true row count, its columns, and no geometry.
+      expect(output.type).toBe("text");
+      expect(output.value).toContain("80 rows");
+      expect(output.value).toContain("columns: [elev, geom]");
+      expect(output.value).not.toContain("MultiPolygon");
+      expect(Buffer.byteLength(output.value, "utf8")).toBeLessThan(1_000);
     });
 
     it("throws PORTAL_NOT_FOUND when portal does not exist", async () => {
@@ -1917,7 +1924,17 @@ describe("PortalService", () => {
     });
 
     it("persists assistant message with tool-call, tool-result, and display blocks", async () => {
-      const d3Result = { type: "d3", program: "/* d3 */", data: [] };
+      const pipeline = {
+        sql: "SELECT month, total FROM sales",
+        stationId: "station-001",
+        organizationId: ORG_ID,
+      };
+      const d3Result = {
+        type: "d3",
+        program: "/* d3 */",
+        rows: [{ month: "Jan", total: 12 }],
+        pipeline,
+      };
       const chunks = [
         { type: "text-delta", text: "Analysis: " },
         {
@@ -1958,17 +1975,32 @@ describe("PortalService", () => {
               toolName: "visualize_d3",
               input: { instruction: "bar chart" },
             },
+            // #1038: the stored tool result keeps the result's shape, and
+            // the stored chart its recipe; neither keeps a row.
             {
               type: "tool-result",
               toolCallId: "tc-1",
               toolName: "visualize_d3",
-              content: d3Result,
+              content: {
+                rowsNotKept: true,
+                columns: ["month", "total"],
+                rowCount: 1,
+                sql: pipeline.sql,
+              },
             },
-            { type: "d3", content: d3Result },
+            {
+              type: "d3",
+              content: { type: "d3", program: "/* d3 */", pipeline },
+            },
             { type: "text", content: "done" },
           ],
         })
       );
+      // The live stream still carries the rows: the reader saw them now.
+      const toolResultEvent = (sse.send as any).mock.calls.find(
+        (c: unknown[]) => c[0] === "tool_result"
+      );
+      expect(toolResultEvent[1].result.rows).toEqual(d3Result.rows);
     });
 
     // ── system prompt: no entity groups ──────────────────────────────────────

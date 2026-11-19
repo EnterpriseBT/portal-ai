@@ -361,6 +361,17 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     expect(prompt).toMatch(/If no tool fits, say so/i);
   });
 
+  // #1038: a result's rows aren't kept after its turn, so a follow-up about
+  // an earlier answer's values has to re-run the query.
+  it("says earlier results' rows aren't kept, so re-run to use their values", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(prompt).toMatch(
+      /rows from an earlier turn aren't kept[^.]*re-run the query/i
+    );
+  });
+
   // #1042: on a station with only the access pack the assistant relayed a
   // refusal and then added "an owner/admin would need to do this", once with
   // the owner's email. The rule against that lived only in the Curated Views
