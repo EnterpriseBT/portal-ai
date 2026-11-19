@@ -90,7 +90,9 @@ export const MapWidgetGate: React.FC<MapWidgetGateProps> = ({
     const parsed = GeoBlockContentSchema.safeParse(content);
     if (!parsed.success) return null;
     const block = parsed.data;
-    const isPin = blockRef?.kind === "pin";
+    // #640 / #1038: a persisted block (a pin, or a stored message block)
+    // draws only its live read, so its placeholder describes no carried data.
+    const liveOnly = blockRef != null;
     return {
       title: block.title,
       summary: visualSummary(
@@ -99,8 +101,9 @@ export const MapWidgetGate: React.FC<MapWidgetGateProps> = ({
           kind: "map",
           title: block.title,
           spec: block.spec,
-          rows: !isPin && "rows" in block && !block.tiled ? block.rows : null,
-          handle: !isPin && "queryHandle" in block ? block : null,
+          rows:
+            !liveOnly && "rows" in block && !block.tiled ? block.rows : null,
+          handle: !liveOnly && "queryHandle" in block ? block : null,
         })
       ),
     };

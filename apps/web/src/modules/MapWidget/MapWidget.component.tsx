@@ -18,7 +18,10 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
-import { GeoBlockContentSchema } from "@portalai/core/contracts";
+import {
+  GeoBlockContentSchema,
+  NotKeptContentSchema,
+} from "@portalai/core/contracts";
 import { WidgetFreshnessBar } from "@portalai/core";
 import { visualSummary } from "@portalai/core/utils";
 import { StatusMessage, THEME_MAP } from "@portalai/core/ui";
@@ -27,6 +30,7 @@ import { useAuth } from "../../providers/Auth.provider";
 import { resolveApiUrl } from "../../utils/api.util";
 import { getInstallBasemap } from "../../utils/runtime-config.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
+import { StoredResultNoticeUI } from "../../components/StoredResultNotice.component";
 import { VisualFigureUI } from "../../components/VisualFigure.component";
 import { VisualDataTable } from "../../components/VisualDataTable.component";
 import { mapTableColumns } from "./utils/map-table-columns.util";
@@ -41,6 +45,7 @@ import { MapAttributionUI } from "./MapAttribution.component";
 import { toSafeAttributions } from "./utils/attribution.util";
 import {
   BASEMAP_LOAD_TIMEOUT_MS,
+  EMPTY_ROWS,
   boundsOf,
   emptyBasemapStyle,
   featuresForLayer,
@@ -939,6 +944,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
 export interface MapWidgetProps {
   content: GeoBlockContent | unknown;
   blockRef?: BlockRef;
+  /** Epoch ms the block was persisted. Not shown: a stored map shows the
+   *  time of the read that drew it (#1038). */
   dataUpdatedAt?: number;
   onHeight?: (height: number) => void;
 }
@@ -946,7 +953,6 @@ export interface MapWidgetProps {
 export const MapWidget: React.FC<MapWidgetProps> = ({
   content,
   blockRef,
-  dataUpdatedAt,
   onHeight,
 }) => {
   const muiTheme = useTheme();
@@ -969,7 +975,8 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     allowed: refreshAllowed,
     refresh,
     lastUpdatedAt,
-  } = useWidgetRefresh(blockRef, dataUpdatedAt);
+    unavailable,
+  } = useWidgetRefresh(blockRef);
 
   const getTileToken = useMemo(
     () => async () => {
@@ -981,6 +988,21 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     },
     [getToken]
   );
+
+  // #1038: nothing to draw — no recipe (not kept), or the reader lost access.
+  if (
+    NotKeptContentSchema.safeParse(content).success ||
+    (blockRef?.kind === "message" && notRefreshable)
+  ) {
+    return (
+      <StoredResultNoticeUI reason="not-kept" title={parsedContent?.title} />
+    );
+  }
+  if (unavailable) {
+    return (
+      <StoredResultNoticeUI reason="unavailable" title={parsedContent?.title} />
+    );
+  }
 
   if (!parsedContent) {
     return (
@@ -1002,12 +1024,16 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   // `isTileBoundGeo` renders it through the pin's tile endpoint on mount (the
   // full dataset), exactly as a refresh would, rather than the bounded inline
   // snapshot.
-  const isHandle = isTileBoundGeo(fresh, parsedContent, blockRef != null);
+  // #1038: a stored message block draws only its live read — never rows or a
+  // handle it carries — so before that read it has nothing to draw.
+  const awaitingRead = blockRef?.kind === "message" && fresh == null;
+  const isHandle =
+    !awaitingRead && isTileBoundGeo(fresh, parsedContent, blockRef != null);
   // Stable identity across renders (#341): the old inline `?? []` handed the
   // map-lifecycle effect a new array every unrelated re-render, remounting every
   // map. `pickMapRows` returns existing references only (shared `EMPTY_ROWS` for
   // tiled/handle maps), so a plain call is stable — no memo needed.
-  const rows = pickMapRows(fresh, parsedContent);
+  const rows = awaitingRead ? EMPTY_ROWS : pickMapRows(fresh, parsedContent);
 
   // Large result → vector tiles keyed to the block's own persisted ref.
   const tileTemplate = isHandle ? tilePath(blockRef) : null;
@@ -1018,12 +1044,12 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   const handle =
     fresh?.kind === "handle"
       ? fresh
-      : fresh == null && "queryHandle" in parsedContent
+      : !awaitingRead && fresh == null && "queryHandle" in parsedContent
         ? parsedContent
         : null;
   const countKnown =
     handle != null ||
-    (!isHandle && (fresh != null || blockRef?.kind !== "pin"));
+    (!isHandle && !awaitingRead && (fresh != null || blockRef?.kind !== "pin"));
   const summary = visualSummary(
     parsedContent.summary,
     toSummaryInput({
@@ -1072,7 +1098,9 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     ? "refreshing"
     : refreshError
       ? "error"
-      : "ready";
+      : awaitingRead
+        ? "loading"
+        : "ready";
 
   return (
     <MapWidgetUI

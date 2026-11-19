@@ -135,7 +135,14 @@ jest.unstable_mockModule("maplibre-gl", () => {
   };
 });
 
-const { MapWidgetUI } = await import("../MapWidget.component");
+// #1038: the container reads its data through useWidgetRefresh; mocked so a
+// case can stand in any read outcome. Only the container cases use it.
+const mockUseWidgetRefresh = jest.fn();
+jest.unstable_mockModule("../../../utils/use-widget-refresh.util", () => ({
+  useWidgetRefresh: mockUseWidgetRefresh,
+}));
+
+const { MapWidget, MapWidgetUI } = await import("../MapWidget.component");
 
 const SUMMARY = "Parcels by class; most are residential.";
 const { MapWidgetPlaceholderUI } = await import("../MapWidgetGate.component");
@@ -1515,5 +1522,76 @@ describe("MapWidget selection ring colour (#796)", () => {
     );
     act(() => lastMap().emit("style.load"));
     expect(ringColour()).toBe("#ffffff");
+  });
+});
+
+// #1038: a stored map draws only what its live read returns.
+describe("MapWidget — stored blocks read live (#1038)", () => {
+  const REFRESH_IDLE = {
+    allowed: true,
+    fresh: null,
+    isRefreshing: false,
+    error: null,
+    notRefreshable: false,
+    unavailable: false,
+    lastUpdatedAt: null,
+    refresh: jest.fn(),
+  };
+  const messageRef = {
+    kind: "message" as const,
+    messageId: "m1",
+    blockIndex: 0,
+  };
+  const storedMap = {
+    type: "geo",
+    title: "Parcels",
+    spec: {
+      layers: [
+        {
+          kind: "points",
+          source: { latColumn: "lat", lngColumn: "lng" },
+        },
+      ],
+    },
+    rows: [{ lat: 1, lng: 2, name: "Stored Parcel" }],
+    pipeline: { sql: "SELECT lat, lng", stationId: "s", organizationId: "o" },
+  };
+
+  it("paints none of a stored block's rows before its read answers", () => {
+    mockUseWidgetRefresh.mockReturnValue({
+      ...REFRESH_IDLE,
+      isRefreshing: true,
+    });
+    renderThemed(<MapWidget content={storedMap} blockRef={messageRef} />);
+    expect(screen.queryByText(/Stored Parcel/)).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("shows no longer available when the reader lost access", async () => {
+    mockUseWidgetRefresh.mockReturnValue({
+      ...REFRESH_IDLE,
+      unavailable: true,
+    });
+    const { container } = renderThemed(
+      <MapWidget content={storedMap} blockRef={messageRef} />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This result is no longer available to you."
+    );
+    await expectNoAxeViolations(container);
+  });
+
+  it("shows a not-kept block's notice", async () => {
+    mockUseWidgetRefresh.mockReturnValue(REFRESH_IDLE);
+    const { container } = renderThemed(
+      <MapWidget
+        content={{ type: "geo", notKept: true, columns: ["lat"], rowCount: 3 }}
+        blockRef={messageRef}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This result isn't kept after the conversation"
+    );
+    await expectNoAxeViolations(container);
   });
 });

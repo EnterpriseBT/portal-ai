@@ -1,13 +1,13 @@
 /**
- * useWidgetRefresh (#270, promoted + widened in #312, #640): message-block
- * refs refresh through the widget-refresh endpoint, freshness-gated. A pin
+ * useWidgetRefresh (#270, promoted + widened in #312, #640, #1038): a stored
+ * message block keeps no rows, so it reads through the widget-refresh
+ * endpoint on every mount and shows only what that read returns. A pin
  * stores no data (#640): its data is always the live `portalResults.data`
  * query, readable by every reader of the pin.
  */
 import { jest } from "@jest/globals";
 import { renderHook, waitFor, act } from "@testing-library/react";
 
-import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
 import type { BlockRef } from "@portalai/core";
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
@@ -50,10 +50,6 @@ const FRESH_ROWS: WidgetRefreshResponse = {
   rows: [{ x: 1 }],
 };
 
-const STALE = Date.now() - VIZ_REFRESH_FRESHNESS_MS - 60_000;
-
-// Unique refs per test so the module-level freshness map doesn't leak
-// hydration timestamps across cases.
 let seq = 0;
 const messageRef = (): BlockRef => ({
   kind: "message",
@@ -78,10 +74,10 @@ beforeEach(() => {
 });
 
 describe("useWidgetRefresh — message blocks (#270)", () => {
-  it("a stale message ref auto-refreshes through the widget-refresh endpoint", async () => {
+  it("a message ref reads through the widget-refresh endpoint on mount", async () => {
     widgetRefreshMutate.mockResolvedValue(FRESH_ROWS);
     const ref = messageRef();
-    const { result } = renderHook(() => useWidgetRefresh(ref, STALE));
+    const { result } = renderHook(() => useWidgetRefresh(ref));
 
     await waitFor(() => expect(result.current.fresh).toEqual(FRESH_ROWS));
     expect(widgetRefreshMutate).toHaveBeenCalledWith({
@@ -96,7 +92,7 @@ describe("useWidgetRefresh — message blocks (#270)", () => {
     widgetRefreshMutate.mockRejectedValue(
       Object.assign(new Error("boom"), { code: "UNKNOWN" })
     );
-    const { result } = renderHook(() => useWidgetRefresh(messageRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(messageRef()));
 
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.fresh).toBeNull();
@@ -109,14 +105,62 @@ describe("useWidgetRefresh — message blocks (#270)", () => {
         code: "VIZ_WIDGET_NOT_REFRESHABLE",
       })
     );
-    const { result } = renderHook(() => useWidgetRefresh(messageRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(messageRef()));
 
     await waitFor(() => expect(result.current.notRefreshable).toBe(true));
     expect(result.current.error).toBeNull();
   });
 
+  // #1038: there is no stored copy to fall back on, so a remount reads again
+  // even moments after the last read (no freshness skip for messages).
+  it("reads again on every mount, however recent the last read", async () => {
+    widgetRefreshMutate.mockResolvedValue(FRESH_ROWS);
+    const ref = messageRef();
+    const first = renderHook(() => useWidgetRefresh(ref));
+    await waitFor(() => expect(first.result.current.fresh).toEqual(FRESH_ROWS));
+    first.unmount();
+
+    const second = renderHook(() => useWidgetRefresh(ref));
+    await waitFor(() =>
+      expect(second.result.current.fresh).toEqual(FRESH_ROWS)
+    );
+    expect(widgetRefreshMutate).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows no time until a read completes, then the time of that read (#1038)", async () => {
+    let resolve!: (r: WidgetRefreshResponse) => void;
+    widgetRefreshMutate.mockReturnValue(
+      new Promise<WidgetRefreshResponse>((r) => (resolve = r))
+    );
+    const before = Date.now();
+    const { result } = renderHook(() => useWidgetRefresh(messageRef()));
+    expect(result.current.lastUpdatedAt).toBeNull();
+
+    await act(async () => resolve(FRESH_ROWS));
+
+    expect(result.current.lastUpdatedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it("a lost-access 422 marks the widget unavailable and drops an earlier read (#1038)", async () => {
+    widgetRefreshMutate.mockResolvedValueOnce(FRESH_ROWS);
+    const { result } = renderHook(() => useWidgetRefresh(messageRef()));
+    await waitFor(() => expect(result.current.fresh).toEqual(FRESH_ROWS));
+
+    widgetRefreshMutate.mockRejectedValueOnce(
+      Object.assign(new Error("gone"), {
+        code: "VIZ_WIDGET_DATA_UNAVAILABLE",
+      })
+    );
+    act(() => result.current.refresh());
+
+    await waitFor(() => expect(result.current.unavailable).toBe(true));
+    expect(result.current.fresh).toBeNull();
+    expect(result.current.lastUpdatedAt).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
   it("no ref → no refresh at all", async () => {
-    const { result } = renderHook(() => useWidgetRefresh(undefined, STALE));
+    const { result } = renderHook(() => useWidgetRefresh(undefined));
     act(() => result.current.refresh());
     expect(widgetRefreshMutate).not.toHaveBeenCalled();
     expect(result.current.allowed).toBe(false);
@@ -127,7 +171,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
   it("a pin's data is its live query, never the widget-refresh endpoint", async () => {
     const ref = pinRef();
     pinQuery = { ...pinQuery, data: FRESH_ROWS, dataUpdatedAt: 1234 };
-    const { result } = renderHook(() => useWidgetRefresh(ref, STALE));
+    const { result } = renderHook(() => useWidgetRefresh(ref));
 
     expect(result.current.fresh).toEqual(FRESH_ROWS);
     expect(result.current.lastUpdatedAt).toBe(1234);
@@ -142,7 +186,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
   });
 
   it("every reader may refresh a pin; the button refetches its query", () => {
-    const { result } = renderHook(() => useWidgetRefresh(pinRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(pinRef()));
     expect(result.current.allowed).toBe(true);
     act(() => result.current.refresh());
     expect(pinQuery.refetch).toHaveBeenCalledTimes(1);
@@ -150,7 +194,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
 
   it("shows the query's fetch as refreshing", () => {
     pinQuery = { ...pinQuery, isFetching: true };
-    const { result } = renderHook(() => useWidgetRefresh(pinRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(pinRef()));
     expect(result.current.isRefreshing).toBe(true);
   });
 
@@ -159,7 +203,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
       ...pinQuery,
       error: { code: "PORTAL_RESULT_NOT_REEXECUTABLE", message: "x" },
     };
-    const { result } = renderHook(() => useWidgetRefresh(pinRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(pinRef()));
     expect(result.current.notRefreshable).toBe(true);
     expect(result.current.error).toBeNull();
   });
@@ -169,7 +213,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
       ...pinQuery,
       error: { code: "PORTAL_RESULT_DATA_UNAVAILABLE", message: "x" },
     };
-    const { result } = renderHook(() => useWidgetRefresh(pinRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(pinRef()));
     expect(result.current.error).toBeNull();
     expect(result.current.fresh).toBeNull();
   });
@@ -179,7 +223,7 @@ describe("useWidgetRefresh — pins read live data (#640)", () => {
       ...pinQuery,
       error: { code: "PORTAL_SQL_UNAVAILABLE", message: "down" },
     };
-    const { result } = renderHook(() => useWidgetRefresh(pinRef(), STALE));
+    const { result } = renderHook(() => useWidgetRefresh(pinRef()));
     expect(result.current.error).toMatchObject({
       code: "PORTAL_SQL_UNAVAILABLE",
     });
