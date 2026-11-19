@@ -23,6 +23,8 @@ import { PinDefinerService } from "../services/pin-definer.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
+import { WidgetRefreshRequestSchema } from "@portalai/core/contracts";
+import { invalidPayload } from "../utils/zod-issue.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
@@ -184,6 +186,12 @@ portalSqlHandleRouter.get(
  *                 success: { type: boolean, example: true }
  *                 payload:
  *                   $ref: '#/components/schemas/WidgetRefreshResponse'
+ *       400:
+ *         description: "`VIZ_WIDGET_INVALID_PAYLOAD` (#1038): the body isn't exactly `{ messageId, blockIndex }` (an unknown key, a missing field, or a negative or non-integer index)."
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: No refreshable widget for this reference (or cross-org)
  *         content:
@@ -210,20 +218,15 @@ portalSqlHandleRouter.post(
     try {
       const organizationId = req.application!.metadata.organizationId;
 
-      const { messageId, blockIndex } = req.body ?? {};
-      if (
-        typeof messageId !== "string" ||
-        messageId.length === 0 ||
-        typeof blockIndex !== "number" ||
-        !Number.isInteger(blockIndex) ||
-        blockIndex < 0
-      ) {
-        throw new ApiError(
-          400,
-          ApiCode.PORTAL_SQL_FORBIDDEN,
-          "widget-refresh requires { messageId: string, blockIndex: integer ≥ 0 }"
+      const parsed = WidgetRefreshRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw invalidPayload(
+          ApiCode.VIZ_WIDGET_INVALID_PAYLOAD,
+          "widget-refresh",
+          parsed.error
         );
       }
+      const { messageId, blockIndex } = parsed.data;
 
       // Per-org rate limit (abuse backstop). Fail-open on a Redis blip — the
       // re-execution is already bounded (read-only + statement_timeout + LIMIT).

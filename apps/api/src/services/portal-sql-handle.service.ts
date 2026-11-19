@@ -653,6 +653,30 @@ export class PortalSqlHandleService {
     }
   }
 
+  /**
+   * #1038 (adversarial A): what an agent tool may read of a handle it is
+   * handed by id. The same rules as `GET /api/portal-sql/handle/:id`, without
+   * the pin branch (a pin's handle is its readers', never an agent's input):
+   * the handle is in the caller's org, it is theirs when it records a user,
+   * and they can still read what its query reads. Anything else answers the
+   * expired-handle 404, so the check reveals nothing.
+   */
+  static async authorizeToolRead(
+    handleId: string,
+    caller: { organizationId: string; userId: string },
+    deps: Parameters<typeof PortalSqlHandleService.authorizeCallerRead>[2] = {}
+  ): Promise<void> {
+    const expired = () =>
+      new ApiError(404, ApiCode.READ_HANDLE_EXPIRED, HANDLE_EXPIRED_MESSAGE);
+    const meta = await this.getMeta(handleId);
+    if (meta._organizationId !== caller.organizationId) throw expired();
+    if (meta._portalResultId) throw expired();
+    if (meta._userId !== undefined && meta._userId !== caller.userId) {
+      throw expired();
+    }
+    await this.authorizeCallerRead(meta, caller, deps);
+  }
+
   /** The query a handle's rows come from: its own, or its transform
    *  source's, followed to the root. Null for a staged-rows handle. */
   private static async rootSql(meta: StoredHandleMeta): Promise<string | null> {

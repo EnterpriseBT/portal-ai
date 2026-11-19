@@ -867,6 +867,8 @@ export enum ApiCode {
    *  view grant revoked, the view detached from the station, or a column it
    *  names dropped from the view). Its data isn't shown, stored or live. */
   VIZ_WIDGET_DATA_UNAVAILABLE = "VIZ_WIDGET_DATA_UNAVAILABLE",
+  /** #1038: the widget-refresh body isn't `{ messageId, blockIndex }`. */
+  VIZ_WIDGET_INVALID_PAYLOAD = "VIZ_WIDGET_INVALID_PAYLOAD",
   /** The per-org widget-refresh rate limit tripped (#270 abuse backstop). */
   VIZ_REFRESH_RATE_LIMITED = "VIZ_REFRESH_RATE_LIMITED",
   // PORTAL_SQL_TIMEOUT already declared above (portal SQL surface); reused

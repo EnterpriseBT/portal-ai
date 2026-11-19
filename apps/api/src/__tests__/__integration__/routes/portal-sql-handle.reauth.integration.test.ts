@@ -468,6 +468,27 @@ describe("GET /api/portal-sql/handle/:id re-authorizes (#1038)", () => {
     });
   });
 
+  // #1038 (adversarial A): what a tool may read of a handle it's handed by id,
+  // checked by the tool gate (wrapWithHandleAccessGate) before the tool runs.
+  it("a tool may read the member's handle until their view grant is revoked", async () => {
+    const handle = await memberHandle();
+    const member = { organizationId: fx.orgId, userId: definerId };
+    await PortalSqlHandleService.authorizeToolRead(handle, member);
+
+    await expect(
+      PortalSqlHandleService.authorizeToolRead(handle, {
+        organizationId: fx.orgId,
+        userId: fx.ownerId,
+      })
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+
+    const fresh = await memberHandle();
+    await revokeMemberViewGrant();
+    await expect(
+      PortalSqlHandleService.authorizeToolRead(fresh, member)
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+
   it("keeps a staged-rows handle (no query to re-check) to its owner", async () => {
     const { envelope } = await PortalSqlHandleService.produceFromRows({
       rows: [{ n: 1 }, { n: 2 }],

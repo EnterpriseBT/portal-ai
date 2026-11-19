@@ -648,3 +648,58 @@ describe("PortalSqlHandleService.authorizeCallerRead — decision window (#1038)
     expect(explainSqlQuery).toHaveBeenCalledTimes(2);
   });
 });
+
+// #1038 (adversarial A): what a tool may read of a handle it's handed by id:
+// the caller's own handle in their org, while they can still read its query.
+describe("PortalSqlHandleService.authorizeToolRead (#1038)", () => {
+  const caller = { organizationId: "org-1", userId: "user-1" };
+  let seq = 0;
+  const stage = (meta: Record<string, unknown>) => {
+    const id = `qh-tool-${++seq}`;
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key.includes(id)
+        ? JSON.stringify({
+            queryHandle: id,
+            sql: "SELECT id FROM parcels",
+            _stationId: "st-1",
+            _organizationId: "org-1",
+            _userId: "user-1",
+            ...meta,
+          })
+        : null
+    );
+    return id;
+  };
+  const explainOk = () =>
+    jest.fn(async () => ({ totalCost: 1, estimatedRows: 1 }));
+
+  it("allows the caller's own handle, after the access re-check", async () => {
+    const id = stage({});
+    const explainSqlQuery = explainOk();
+    await PortalSqlHandleService.authorizeToolRead(id, caller, {
+      explainSqlQuery: explainSqlQuery as never,
+    });
+    expect(explainSqlQuery).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another org's", { _organizationId: "org-2" }],
+    ["another user's", { _userId: "user-2" }],
+    ["a pin's", { _portalResultId: "pin-1" }],
+  ])("refuses %s handle as expired", async (_label, meta) => {
+    const id = stage(meta);
+    await expect(
+      PortalSqlHandleService.authorizeToolRead(id, caller, {
+        explainSqlQuery: explainOk() as never,
+      })
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+
+  it("refuses an unknown handle as expired", async () => {
+    await expect(
+      PortalSqlHandleService.authorizeToolRead("qh-missing", caller, {
+        explainSqlQuery: explainOk() as never,
+      })
+    ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
+  });
+});
