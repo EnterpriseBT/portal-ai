@@ -895,13 +895,15 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 **Structured user-facing Help** (surfaced in `apps/web/src/views/Help.view.tsx`)
 - `packages/core/src/content/glossary.util.ts` — term definitions, examples, related terms. **Shared with the public marketing site** (#311), so a change here is user-facing in two places. In-app routes are NOT here: `apps/web/src/utils/glossary-routes.util.ts` re-attaches them via `withPageRoutes`, and a term renamed in core without updating that map silently loses its Help link (a test catches it).
 - `packages/core/src/content/faq.util.ts` — Q&A pairs. Also rendered as `FAQPage` JSON-LD on the marketing site.
+- `packages/core/src/content/troubleshooting.util.ts` (#1049) — symptom / cause / fix entries for when something goes wrong, on Help's Troubleshooting tab. **In-app only**: the marketing site doesn't render them. Name the permission a refusal needs, never a role.
+- **Help search** (`packages/core/src/content/help-search.util.ts`, #1049) ranks all three for both Help's search box and the `platform_help` tool, so an entry is findable by the words people use. A phrasing that misses gets an `aliases` entry (a content edit), and the findability tests (`help-findability.test.ts`: every entry first for its own title, the paraphrase set in the top 3) prove it. A new entry is covered automatically.
 - `apps/web/src/utils/getting-started.util.ts` — onboarding steps + CTAs
 
 **Customer-facing marketing site** (`apps/site`)
 - `src/pages/*.astro` and `src/lib/use-cases.ts` — what the product does, plans, terms and privacy. A claim here is a public promise: say what ships, never a roadmap item. The `/security/` page's claims carry code evidence checked by `security-controls.test.ts`; pricing reads the public site-config snapshot
 
 **Agent / tool contract** (three places that drift independently)
-- `apps/api/src/tools/<tool>.tool.ts` — the `description` field on the `Tool` subclass (the agent-facing contract). For pack tools, keep the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` in sync (else the modal + `tools.service.ts` disagree); system tools (`current_time`, `station_context`) live only in the tool file — nothing to mirror. `platform_help` is the `help` pack's tool since #1050 (every tier is entitled to it through `ALWAYS_ENTITLED_PACKS`), so it is mirrored like any pack tool. `builtin-toolpack-schema-parity.test.ts` (api) fails CI when a mirror's `parameterSchema` names different fields or `required` keys than the tool's Zod schema (#615); descriptions may still summarise, so wording stays your check.
+- `apps/api/src/tools/<tool>.tool.ts` — the `description` field on the `Tool` subclass (the agent-facing contract). For pack tools, keep the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` in sync (else the modal + `tools.service.ts` disagree); system tools (`current_time`, `station_context`) live only in the tool file — nothing to mirror. `platform_help` is the `help` pack's tool since #1050 (every tier is entitled to it through `ALWAYS_ENTITLED_PACKS`), so it is mirrored like any pack tool. Since #1049 its result renders as a `help` block quoting the matched entries verbatim (`resultKind: "help"`, built server-side; custom tools can't declare it), so the agent frames the block rather than restating it. `builtin-toolpack-schema-parity.test.ts` (api) fails CI when a mirror's `parameterSchema` names different fields or `required` keys than the tool's Zod schema (#615); descriptions may still summarise, so wording stays your check.
 - `apps/api/src/prompts/system.prompt.ts` — agent guidance (which tool to reach for, how to read a result, workflow ordering). Prefer making a tool's **output** unambiguous over prose alone — an LLM can misread guidance; it can't misread a field it must echo.
 
 **In-workflow examples, helper text & sample references**
@@ -924,7 +926,8 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 
 | You changed… | Re-check… |
 |---|---|
-| a new/renamed domain concept | `glossary.util.ts` + `faq.util.ts` |
+| a new/renamed domain concept | `glossary.util.ts` + `faq.util.ts` (+ `troubleshooting.util.ts` if it changes what goes wrong or how to fix it) |
+| a user-visible error, refusal or failure mode | `troubleshooting.util.ts` — the symptom as the user sees it, its cause and fix |
 | a workflow step, its inputs, or its order | that workflow's `helperText`/placeholder copy + `getting-started.util.ts` |
 | an example's output, sample data, or boilerplate | the example/sample components (`SampleFiles`, `TransformEditor` `EXAMPLE_TRANSFORM`, `RegisterToolpackDialog`) |
 | a validation rule or its message | `record-field-serialization.util.ts` (+ the field's `helperText`) |

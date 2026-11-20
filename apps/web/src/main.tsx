@@ -6,6 +6,7 @@ import { Application } from "./Application";
 import { registerD3BlockRenderer } from "./modules/D3Widget";
 import { registerMapBlockRenderer } from "./modules/MapWidget";
 import { registerTableBlockRenderer } from "./modules/TableWidget";
+import { registerHelpBlockRenderer } from "./utils/help-block-renderer.util";
 
 import "@portalai/core/styles";
 
@@ -14,6 +15,7 @@ import "@portalai/core/styles";
 registerD3BlockRenderer();
 registerMapBlockRenderer();
 registerTableBlockRenderer();
+registerHelpBlockRenderer();
 
 // The Notifications region toasts and the update notice portal into (#797).
 ensureNotificationsRoot();

@@ -72,6 +72,8 @@ export function streamingBlockFor(
   if (type === "data-table") return { type: "data-table", content: result };
   if (type === "mutation-result")
     return { type: "mutation-result", content: result };
+  // #1049: platform_help's verbatim help entries.
+  if (type === "help") return { type: "help", content: result };
   return null;
 }
 

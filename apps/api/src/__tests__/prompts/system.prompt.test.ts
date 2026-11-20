@@ -1933,12 +1933,31 @@ describe("buildSystemPrompt — Help (#367, #1050)", () => {
     expect(help).toMatch(/data tools|data in this station/i);
   });
 
-  it("tells the agent to relay the tool's answer rather than rewrite it", () => {
-    // The tool composes because platform behavior is what a model states
-    // confidently and wrongly. The prompt is what keeps the relay honest.
-    const help = buildSystemPrompt(withHelp());
-    expect(help).toMatch(/relay/i);
-    expect(help).toMatch(/do not rewrite|don't rewrite/i);
+  it("tells the agent the help block quotes the entries, so it frames rather than restates (#1049)", () => {
+    // The block puts the entries in front of the user verbatim; the agent's
+    // own text must not repeat, rephrase or extend them.
+    const prompt = buildSystemPrompt(withHelp());
+    const help = prompt.slice(prompt.indexOf("## Help"));
+    expect(help).toMatch(/help block/i);
+    expect(help).toMatch(/don't repeat or rephrase/i);
+    expect(help).toMatch(/noMatch/);
+    expect(help).toMatch(/no help entry covers/i);
+    expect(help).not.toMatch(/relay its `answer`/);
+  });
+
+  it("asks for the agent's reading of the question as keywords (#1049)", () => {
+    const prompt = buildSystemPrompt(withHelp());
+    const help = prompt.slice(prompt.indexOf("## Help"));
+    expect(help).toContain("`keywords`");
+  });
+
+  it("lists help entries among the rendered blocks when Help is on the station (#1049)", () => {
+    expect(buildSystemPrompt(withHelp())).toMatch(
+      /feed of rendered blocks[^.]*help entries/
+    );
+    expect(
+      buildSystemPrompt(makeContext({ effectiveToolPacks: ["data_query"] }))
+    ).not.toMatch(/feed of rendered blocks[^.]*help entries/);
   });
 
   it("has no ## Help and no platform_help without the help pack (#1050)", () => {
