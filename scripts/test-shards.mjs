@@ -1,32 +1,27 @@
 #!/usr/bin/env node
 /**
- * The sharded integration suite's control logic (#857).
+ * The sharded test suites' control logic: the integration suite (#857) and
+ * the web unit suite (#1091).
  *
- * `apps/api`'s integration suite runs as N shards, each on its own runner
- * with its own Postgres + Redis, behind the one required check
- * `Integration Tests`. This file holds the pieces CI calls between those
- * jobs. Each is a pure function with embedded self-test cases
- * (`npm run lint:integration-shards`), and the CLI subcommands are thin
- * wrappers around them.
+ * Each suite runs as N shards behind its one required check (the suite's
+ * `title`). This file holds the pieces CI calls between those jobs. Each is a
+ * pure function in `test-shards.lib.mjs` with embedded self-test cases here
+ * (`npm run lint:test-shards`), and the CLI subcommands are thin wrappers
+ * around them. Every subcommand but the self-test and `sample-runs` takes
+ * `--suite integration|web`.
  *
- * The bin-packing itself (`assignShards`) lives in
- * `apps/api/jest.integration.sequencer.mjs`, not here: turbo hashes
- * `apps/api`'s files into `test:integration`'s cache key, so a change to the
- * packing invalidates every shard's cached result. Kept at the root, a
- * cached "pass" for shard 2 could be restored after the assignment had moved
- * files into shard 2 that never ran.
- *
- * Usage: node scripts/integration-shards.mjs <command>
- *   --self-test                         the embedded cases (lint:integration-shards)
+ * Usage: node scripts/test-shards.mjs <command> [--suite <suite>]
+ *   --self-test                         the embedded cases (lint:test-shards)
  *   plan                                the shard count + matrix for CI (step outputs)
- *   summarize --reports <dir>           the Integration Tests verdict over every shard
- *                                       (job results via CHANGES_RESULT, RUN, PLAN_RESULT,
- *                                       SHARD_RESULT, PLANNED_COUNT, CAPPED)
- *   check-durations                     fail on a file over the ceiling (lint:integration-durations)
+ *   summarize --reports <dir>           the suite's required-check verdict over every shard
+ *                                       (job results via PLAN_RESULT, SHARD_RESULT, PLANNED_COUNT,
+ *                                       CAPPED, plus CHANGES_RESULT + RUN for a skippable suite,
+ *                                       or CHECKS_RESULT for web)
+ *   check-durations                     fail on a file over the ceiling (lint:test-durations)
  *   update-durations --reports <dir> [--if-changed]
- *                                       rewrite durations.json from Jest JSON reports: each file's
- *                                       median over the runs in <dir> (one subdirectory per run,
- *                                       or the shard artifacts of a single run directly)
+ *                                       rewrite the suite's durations file from Jest JSON reports:
+ *                                       each file's median over the runs in <dir> (one subdirectory
+ *                                       per run, or the shard artifacts of a single run directly)
  *   sample-runs                         how many recent runs a refresh samples (SAMPLE_RUNS)
  */
 
@@ -34,26 +29,21 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Only the self-test needs the packer, and it pulls in @jest/test-sequencer.
-// CI's plan and summary jobs run without `npm ci`, so it isn't loaded there.
-const { assignShards } =
-  process.argv[2] === "--self-test"
-    ? await import("../apps/api/jest.integration.sequencer.mjs")
-    : { assignShards: null };
 import {
-  CEILING_ALLOWLIST,
-  DURATIONS_FILE,
-  FILE_CEILING_SECONDS,
+  assignShards,
   ceilingViolations,
   durationsChanged,
   mergeReports,
   mergeRuns,
   SAMPLE_RUNS,
+  SUITES,
   isIntegrationTestPath,
   parseDurations,
   planShards,
   summaryVerdict,
-} from "./integration-shards.lib.mjs";
+} from "./test-shards.lib.mjs";
+
+const INTEGRATION = SUITES.integration;
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -75,7 +65,35 @@ const partitions = (files, shards) => {
 const load = (shards, durations, fallback = 0) =>
   shards.map((s) => s.reduce((n, f) => n + (durations[f] ?? fallback), 0));
 
+const SUITE_FIELDS = [
+  "key", "title", "packageDir", "isTestPath", "durationsFile", "durationsRequired", "budgetSeconds",
+  "minShards", "maxShards", "fallbackShards", "fileCeilingSeconds", "ceilingAllowlist", "shardVar",
+  "turboFile", "turboTask", "reportFile", "artifactPrefix", "workflowFile", "driftIssueTitle",
+  "skippable", "capAdvice",
+];
+
 const CASES = [
+  {
+    name: "SUITES: every suite has every field, and min ≤ fallback ≤ max",
+    run: () =>
+      Object.entries(SUITES).every(
+        ([key, suite]) =>
+          suite.key === key &&
+          SUITE_FIELDS.every((f) => suite[f] !== undefined) &&
+          suite.minShards >= 1 &&
+          suite.minShards <= suite.fallbackShards &&
+          suite.fallbackShards <= suite.maxShards &&
+          suite.budgetSeconds > 0
+      ),
+  },
+  {
+    name: "SUITES: artifact prefixes, shard vars and durations files are distinct",
+    run: () => {
+      const all = Object.values(SUITES);
+      const distinct = (f) => new Set(all.map((s) => s[f])).size === all.length;
+      return distinct("artifactPrefix") && distinct("shardVar") && distinct("durationsFile");
+    },
+  },
   ...[0, 1, 4, 5, 198].map((n) => ({
     name: `assignShards: ${n} files over 5 shards land exactly once each`,
     run: () => {
@@ -141,7 +159,7 @@ const CASES = [
           { name: "/workspace/apps/api/src/b.integration.test.ts", startTime: 0, endTime: 250 },
         ],
       };
-      const out = mergeReports([report], ["src/a.integration.test.ts", "src/b.integration.test.ts"]);
+      const out = mergeReports(INTEGRATION, [report], ["src/a.integration.test.ts", "src/b.integration.test.ts"]);
       return JSON.stringify(out) === JSON.stringify({ "src/a.integration.test.ts": 12.4, "src/b.integration.test.ts": 0.3 });
     },
   },
@@ -149,7 +167,7 @@ const CASES = [
     name: "mergeReports: drops a file the checkout no longer has, keeps the longest of repeats",
     run: () => {
       const r = (name, ms) => ({ testResults: [{ name: `/x/apps/api/${name}`, startTime: 0, endTime: ms }] });
-      const out = mergeReports([r("src/gone.integration.test.ts", 5000), r("src/a.integration.test.ts", 2000), r("src/a.integration.test.ts", 3000)], ["src/a.integration.test.ts"]);
+      const out = mergeReports(INTEGRATION, [r("src/gone.integration.test.ts", 5000), r("src/a.integration.test.ts", 2000), r("src/a.integration.test.ts", 3000)], ["src/a.integration.test.ts"]);
       return JSON.stringify(out) === JSON.stringify({ "src/a.integration.test.ts": 3 });
     },
   },
@@ -174,20 +192,20 @@ const CASES = [
         name: "mergeRuns: each file's median across runs, so one noisy run doesn't skew it",
         run: () =>
           same(
-            mergeRuns([run({ [A]: 20, [B]: 1 }, 0), run({ [A]: 46, [B]: 23 }, 1e6), run({ [A]: 22, [B]: 1.2 }, 2e6)], [A, B]),
+            mergeRuns(INTEGRATION, [run({ [A]: 20, [B]: 1 }, 0), run({ [A]: 46, [B]: 23 }, 1e6), run({ [A]: 22, [B]: 1.2 }, 2e6)], [A, B]),
             { [A]: 22, [B]: 1.2 }
           ),
       },
       {
         name: "mergeRuns: a file only some runs have uses the samples it has",
         run: () =>
-          same(mergeRuns([run({ [A]: 10 }, 0), run({ [A]: 12, [N]: 7 }, 1e6)], [A, N]), { [A]: 11, [N]: 7 }),
+          same(mergeRuns(INTEGRATION, [run({ [A]: 10 }, 0), run({ [A]: 12, [N]: 7 }, 1e6)], [A, N]), { [A]: 11, [N]: 7 }),
       },
       {
         name: "mergeRuns: a run repeated verbatim (a turbo-cached re-run) counts once",
         run: () => {
           const cached = run({ [A]: 40 }, 5);
-          return same(mergeRuns([cached, cached, run({ [A]: 10 }, 1e6)], [A]), { [A]: 25 });
+          return same(mergeRuns(INTEGRATION, [cached, cached, run({ [A]: 10 }, 1e6)], [A]), { [A]: 25 });
         },
       },
     ];
@@ -214,13 +232,16 @@ const CASES = [
   {
     name: "ceilingViolations: a file over the ceiling is listed with its seconds",
     run: () => {
-      const v = ceilingViolations({ "src/slow.integration.test.ts": 121, "src/ok.integration.test.ts": 120 }, []);
+      const v = ceilingViolations(INTEGRATION, { "src/slow.integration.test.ts": 121, "src/ok.integration.test.ts": 120 });
       return v.length === 1 && v[0].file === "src/slow.integration.test.ts" && v[0].seconds === 121;
     },
   },
   {
     name: "ceilingViolations: an allowlisted file is not listed",
-    run: () => ceilingViolations({ "src/slow.integration.test.ts": 300 }, [{ file: "src/slow.integration.test.ts", reason: "x" }]).length === 0,
+    run: () =>
+      ceilingViolations({ ...INTEGRATION, ceilingAllowlist: [{ file: "src/slow.integration.test.ts", reason: "x" }] }, {
+        "src/slow.integration.test.ts": 300,
+      }).length === 0,
   },
   {
     name: "isIntegrationTestPath: only what Jest's testMatch runs (under __tests__/__integration__/)",
@@ -254,7 +275,7 @@ const CASES = [
   ].map(([durations, count, capped, label]) => ({
     name: `planShards: ${label}`,
     run: () => {
-      const plan = planShards(durations);
+      const plan = planShards(INTEGRATION, durations);
       return (
         plan.count === count &&
         plan.capped === capped &&
@@ -292,7 +313,7 @@ const CASES = [
       capped: false,
       reports: [shardReport(1, 3), shardReport(2, 3)],
     };
-    const verdict = (over) => summaryVerdict({ ...green, ...over });
+    const verdict = (over) => summaryVerdict(INTEGRATION, { ...green, ...over });
     return [
       {
         name: "summaryVerdict: a docs-only skip is green, with no shard",
@@ -341,6 +362,13 @@ const CASES = [
         },
       },
       {
+        name: "summaryVerdict: a failed gate is red, naming it",
+        run: () => {
+          const v = verdict({ gates: [{ label: "the checks job", result: "failure" }] });
+          return !v.ok && v.errors.some((e) => /the checks job ended failure/.test(e));
+        },
+      },
+      {
         name: "summaryVerdict: a failed suite is red",
         run: () => !verdict({ reports: [shardReport(1, 3, 10, 1), shardReport(2, 3)] }).ok,
       },
@@ -384,10 +412,10 @@ function selfTest() {
     if (!ok) failed += 1;
   }
   if (failed) {
-    console.error(`integration-shards self-test: ${failed} of ${CASES.length} case(s) failed`);
+    console.error(`test-shards self-test: ${failed} of ${CASES.length} case(s) failed`);
     return false;
   }
-  console.log(`integration-shards self-test: ${CASES.length} case(s) passed`);
+  console.log(`test-shards self-test: ${CASES.length} case(s) passed`);
   return true;
 }
 
@@ -409,24 +437,24 @@ const jsonFilesUnder = (dir) =>
     .filter((f) => f.endsWith(".json"))
     .map((f) => path.join(dir, f));
 
-/** The integration test files the checkout has, relative to apps/api: the
- *  ones Jest's integration config runs, by the same rule. */
-const integrationFiles = () =>
-  readdirSync(path.join(REPO_ROOT, "apps/api/src"), { recursive: true })
+/** The suite's test files the checkout has, relative to its package: the
+ *  ones its Jest config runs, by the suite's own rule. */
+const testFiles = (suite) =>
+  readdirSync(path.join(REPO_ROOT, suite.packageDir, "src"), { recursive: true })
     .map((f) => path.posix.join("src", String(f).split(path.sep).join("/")))
-    .filter(isIntegrationTestPath)
+    .filter(suite.isTestPath)
     .sort();
 
 /**
- * The committed durations. A missing file reads as "nothing recorded" only
- * when `allowMissing`; a malformed one always throws, so the lint and the
- * planner fail on it instead of quietly losing the balance.
+ * The suite's committed durations. A missing file reads as "nothing
+ * recorded" only when `allowMissing`; a malformed one always throws, so the
+ * lint and the planner fail on it instead of quietly losing the balance.
  */
-const readDurations = ({ allowMissing }) => {
-  const file = path.join(REPO_ROOT, DURATIONS_FILE);
+const readDurations = (suite, { allowMissing }) => {
+  const file = path.join(REPO_ROOT, suite.durationsFile);
   if (!existsSync(file)) {
-    if (allowMissing) return {};
-    throw new Error(`${DURATIONS_FILE} is missing`);
+    if (allowMissing) return null;
+    throw new Error(`${suite.durationsFile} is missing`);
   }
   return parseDurations(readFileSync(file, "utf8"));
 };
@@ -441,45 +469,49 @@ const argValue = (flag) => {
   return at === -1 ? undefined : process.argv[at + 1];
 };
 
-function checkDurations() {
-  const durations = readDurations({ allowMissing: false });
-  const over = ceilingViolations(durations, CEILING_ALLOWLIST);
+function checkDurations(suite) {
+  const durations = readDurations(suite, { allowMissing: !suite.durationsRequired });
+  if (durations === null) {
+    console.log(`${suite.key} durations: ${suite.durationsFile} not recorded yet; the planner uses the fallback`);
+    return true;
+  }
+  const over = ceilingViolations(suite, durations);
   if (over.length) {
     for (const { file, seconds } of over) {
       console.error(
-        `✗ apps/api/${file}: ${seconds}s, over the ${FILE_CEILING_SECONDS}s ceiling. A file can't be split ` +
+        `✗ ${suite.packageDir}/${file}: ${seconds}s, over the ${suite.fileCeilingSeconds}s ceiling. A file can't be split ` +
           `across shards, so it sets the floor on its shard's time: split it by concern (as the ` +
-          `demo-seed suite was, #857), or add it to CEILING_ALLOWLIST with a reason.`
+          `demo-seed suite was, #857), or add it to the suite's ceilingAllowlist with a reason.`
       );
     }
     return false;
   }
-  console.log(`integration durations: ${Object.keys(durations).length} file(s) within ${FILE_CEILING_SECONDS}s`);
+  console.log(`${suite.key} durations: ${Object.keys(durations).length} file(s) within ${suite.fileCeilingSeconds}s`);
   return true;
 }
 
-function updateDurations() {
+function updateDurations(suite) {
   const dir = argValue("--reports");
   if (!dir) {
     console.error("update-durations needs --reports <dir>");
     return false;
   }
-  // `<dir>/integration-jest-*/` is one run's shard artifacts; otherwise each
+  // `<dir>/<artifactPrefix>*/` is one run's shard artifacts; otherwise each
   // subdirectory of <dir> is a run (as the refresh workflow lays them out).
   const entries = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : [];
-  const singleRun = entries.some((e) => e.name.startsWith("integration-jest-"));
+  const singleRun = entries.some((e) => e.name.startsWith(suite.artifactPrefix));
   const runDirs = singleRun
     ? [dir]
     : entries.filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name));
   const runs = runDirs.map((d) => jsonFilesUnder(d).map((f) => readJson(f, {})));
   console.log(`sampling ${runs.length} run(s)`);
-  const next = mergeRuns(runs, integrationFiles());
+  const next = mergeRuns(suite, runs, testFiles(suite));
   if (Object.keys(next).length === 0) {
-    console.error(`no integration test results found under ${dir}`);
+    console.error(`no ${suite.key} test results found under ${dir}`);
     return false;
   }
-  const target = path.join(REPO_ROOT, DURATIONS_FILE);
-  const prev = readDurations({ allowMissing: true });
+  const target = path.join(REPO_ROOT, suite.durationsFile);
+  const prev = readDurations(suite, { allowMissing: true }) ?? {};
   const changed = durationsChanged(prev, next);
   setOutput("changed", String(changed));
 
@@ -488,8 +520,8 @@ function updateDurations() {
   console.log(`added ${added.length}, removed ${removed.length}, files ${Object.keys(next).length}`);
   for (const f of added) console.log(`  + ${f} (${next[f]}s)`);
   for (const f of removed) console.log(`  - ${f}`);
-  for (const { file, seconds } of ceilingViolations(next, CEILING_ALLOWLIST)) {
-    console.log(`  ! ${file}: ${seconds}s is over the ${FILE_CEILING_SECONDS}s ceiling`);
+  for (const { file, seconds } of ceilingViolations(suite, next)) {
+    console.log(`  ! ${file}: ${seconds}s is over the ${suite.fileCeilingSeconds}s ceiling`);
   }
 
   if (process.argv.includes("--if-changed") && !changed) {
@@ -497,13 +529,13 @@ function updateDurations() {
     return true;
   }
   writeFileSync(target, JSON.stringify(next, null, 2) + "\n");
-  console.log(`wrote ${DURATIONS_FILE}`);
+  console.log(`wrote ${suite.durationsFile}`);
   return true;
 }
 
-function plan() {
+function plan(suite) {
   // Missing means nothing recorded yet (the fallback count); malformed throws.
-  const result = planShards(readDurations({ allowMissing: true }));
+  const result = planShards(suite, readDurations(suite, { allowMissing: true }) ?? {});
   setOutput("count", String(result.count));
   setOutput("matrix", JSON.stringify(result.matrix));
   setOutput("capped", String(result.capped));
@@ -511,35 +543,43 @@ function plan() {
   return true;
 }
 
-function summarize() {
+/** The gates a suite's summary checks besides its plan and shards. */
+const GATES = {
+  integration: () => [],
+  web: (env) => [{ label: "the checks job (lint + non-web unit tests)", result: env.CHECKS_RESULT ?? "" }],
+};
+
+function summarize(suite) {
   const dir = argValue("--reports");
-  // Each shard's artifact lands in its own `integration-jest-<i>/` folder.
+  // Each shard's artifact lands in its own `<artifactPrefix><i>/` folder.
+  const shardOf = new RegExp(`${suite.artifactPrefix}(\\d+)`);
   const reports = dir
     ? jsonFilesUnder(dir).map((file) => ({
-        shard: Number(/integration-jest-(\d+)/.exec(file)?.[1] ?? 0),
+        shard: Number(shardOf.exec(file)?.[1] ?? 0),
         report: readJson(file, {}),
       }))
     : [];
   const env = process.env;
-  const verdict = summaryVerdict({
+  const verdict = summaryVerdict(suite, {
     changesResult: env.CHANGES_RESULT ?? "",
     run: env.RUN ?? "",
     planResult: env.PLAN_RESULT ?? "",
     shardResult: env.SHARD_RESULT ?? "",
+    gates: GATES[suite.key](env),
     plannedCount: Number(env.PLANNED_COUNT ?? 0),
     capped: env.CAPPED === "true",
-    expectedFiles: integrationFiles(),
+    expectedFiles: testFiles(suite),
     reports,
   });
 
-  for (const e of verdict.errors) console.log(`::error title=Integration Tests::${e}`);
-  for (const w of verdict.warnings) console.log(`::warning title=Integration Tests::${w}`);
+  for (const e of verdict.errors) console.log(`::error title=${suite.title}::${e}`);
+  for (const w of verdict.warnings) console.log(`::warning title=${suite.title}::${w}`);
   console.log(verdict.table);
   if (env.GITHUB_STEP_SUMMARY) {
     appendFileSync(
       env.GITHUB_STEP_SUMMARY,
       [
-        "## Integration Tests",
+        `## ${suite.title}`,
         "",
         verdict.table,
         "",
@@ -552,21 +592,38 @@ function summarize() {
   return verdict.ok;
 }
 
-const COMMANDS = {
-  "sample-runs": () => {
-    console.log(SAMPLE_RUNS);
-    return true;
-  },
-  "--self-test": selfTest,
+/** Commands that act on one suite get it from `--suite`. */
+const SUITE_COMMANDS = {
   plan,
   summarize,
   "check-durations": checkDurations,
   "update-durations": updateDurations,
 };
 
+const COMMANDS = {
+  "sample-runs": () => {
+    console.log(SAMPLE_RUNS);
+    return true;
+  },
+  "--self-test": selfTest,
+  ...Object.fromEntries(
+    Object.entries(SUITE_COMMANDS).map(([name, fn]) => [
+      name,
+      () => {
+        const suite = SUITES[argValue("--suite")];
+        if (!suite) {
+          console.error(`${name} needs --suite <${Object.keys(SUITES).join("|")}>`);
+          process.exit(2);
+        }
+        return fn(suite);
+      },
+    ])
+  ),
+};
+
 const run = COMMANDS[process.argv[2]];
 if (!run) {
-  console.error(`usage: node scripts/integration-shards.mjs <${Object.keys(COMMANDS).join("|")}>`);
+  console.error(`usage: node scripts/test-shards.mjs <${Object.keys(COMMANDS).join("|")}> [--suite <${Object.keys(SUITES).join("|")}>]`);
   process.exit(2);
 }
 let ok;

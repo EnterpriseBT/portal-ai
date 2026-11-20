@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          want=$(node scripts/integration-shards.mjs sample-runs)
+          want=$(node scripts/test-shards.mjs sample-runs)
           gh pr list --state merged --limit 100 --json headRefOid -q '.[].headRefOid' > merged.txt
           gh run list --workflow integration-test.yml --status success --limit 200 \
             --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"' > runs.txt
@@ -81,7 +81,7 @@ jobs:
         if: steps.reports.outputs.run != ''
         run: |
           set -o pipefail
-          node scripts/integration-shards.mjs update-durations --reports reports --if-changed | tee update.log
+          node scripts/test-shards.mjs update-durations --suite integration --reports reports --if-changed | tee update.log
 
       - name: Open or update the drift issue
         if: steps.update.outputs.changed == 'true'
@@ -100,7 +100,7 @@ jobs:
             cat update.log
             echo '```'
             echo
-            echo "A line starting with \`!\` is a file over the 120s ceiling. \`lint:integration-durations\` will fail on it, so split it by concern first (or allowlist it with a reason in \`scripts/integration-shards.lib.mjs\`)."
+            echo "A line starting with \`!\` is a file over the 120s ceiling. \`lint:test-durations\` will fail on it, so split it by concern first (or allowlist it with a reason in \`SUITES.integration.ceilingAllowlist\` in \`scripts/test-shards.lib.mjs\`)."
             echo
             echo "**To apply**, on a branch off \`main\`:"
             echo
@@ -108,7 +108,7 @@ jobs:
             for id in $RUN_IDS; do
               echo "gh run download $id -p 'integration-jest-*' -D /tmp/integration-reports/$id"
             done
-            echo "node scripts/integration-shards.mjs update-durations --reports /tmp/integration-reports"
+            echo "node scripts/test-shards.mjs update-durations --suite integration --reports /tmp/integration-reports"
             echo "git commit -am 'chore(ci): refresh integration durations'"
             echo '```'
             echo

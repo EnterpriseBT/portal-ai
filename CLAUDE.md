@@ -62,8 +62,8 @@ The integration suite runs as **N shards behind one required check**, at about 3
   - `turbo.json` hashes it, and caches the report as an output.
   - The packer and durations live in `apps/api` so turbo hashes them too. A cached "pass" can never be restored for a shard whose files moved.
 - **Guards:**
-  - `npm run lint:integration-shards`: self-test of `scripts/integration-shards.mjs`, above all that every file lands in exactly one shard.
-  - `npm run lint:integration-durations`: no file may exceed **120s**, and a missing or malformed `durations.json` fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/integration-shards.lib.mjs`.
+  - `npm run lint:test-shards`: self-test of `scripts/test-shards.mjs`, above all that every file lands in exactly one shard.
+  - `npm run lint:test-durations`: no file may exceed **120s**, and a missing or malformed `durations.json` fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/test-shards.lib.mjs`.
   - `lint:ci-cache` rules 3 and 6 (below).
 - **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the shard reports of the newest green runs on **merged PRs' heads** (the trees that became `main`; squash merges keep branch commits off `main`), up to 5, and recomputes the medians. It **opens or updates one issue** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
   - Per-file times swing between identical runs, because the first suite on each runner pays the module compile, so smaller moves don't count.
