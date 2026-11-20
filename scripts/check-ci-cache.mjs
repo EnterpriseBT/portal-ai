@@ -27,10 +27,13 @@
  *   - rule 5: `apps/site`'s build stays uncached, with its env declared
  *   - rule 1: a workflow that runs turbo carries the cache credentials
  *   - rule 2: a workflow_call site passes every secret the callee declares
- *   - rule 6: the integration shard var is in test:integration's task hash
- *     (#857), so one shard can never restore another shard's cached result
+ *   - rule 6: each sharded suite's shard var is in its turbo task's hash
+ *     (#857, #1091), so one shard can never restore another shard's cached
+ *     result
  *   - rule 7: every job pins its runner image, never a floating `*-latest`
  *     label (#904)
+ *   - rule 8: one push's peak concurrent jobs, with each shard matrix at its
+ *     suite's cap, stay within GitHub Free's 20 (#1091)
  *
  * Usage: npm run lint:ci-cache [-- --self-test]
  */
@@ -40,6 +43,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { parse as parseJsonc } from "jsonc-parser";
+
+import { CONCURRENT_JOB_LIMIT, SUITES } from "./test-shards.lib.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW_DIR = path.join(REPO_ROOT, ".github", "workflows");
@@ -101,12 +106,13 @@ function invokesTurbo(run, turboScripts) {
  * passed in rather than read from package.json so this stays pure and cannot
  * drift from the real script list.
  *
- * `rootTurbo` follows `siteTurbo`'s convention: `undefined` skips rule 6.
+ * `turboFiles` maps a turbo.json path (`turbo.json`, `apps/web/turbo.json`)
+ * to its parsed contents, or null when absent. `undefined` skips rule 6.
  *
- * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any, rootTurbo?: any, turboScripts?: string[]}} input
+ * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any, turboFiles?: Record<string, any>, turboScripts?: string[]}} input
  * @returns {Array<{rule: number, file: string, message: string}>}
  */
-export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScripts = [] } = {}) {
+export function findViolations({ workflows = [], siteTurbo, turboFiles, turboScripts = [] } = {}) {
   const violations = [];
 
   for (const { file, doc } of workflows) {
@@ -329,27 +335,32 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
     }
   }
 
-  // Rule 6 — the integration shard var must be in test:integration's hash.
+  // Rule 6 — each sharded suite's shard var must be in its turbo task's hash.
   //
   // Each shard runs a different slice of the suite, but every shard runs the
   // same task over the same inputs. The shard var is the only thing that
   // tells their results apart, so if it isn't hashed, every shard shares one
   // cache entry: the first shard to finish caches a "pass", and the rest
   // restore it without running their own files (#857). `passThroughEnv` is
-  // exactly that failure: the var reaches Jest, but not the hash.
-  if (rootTurbo !== undefined) {
-    const setter = workflows.find(({ doc }) => setsEnvVar(doc, SHARD_VAR));
-    if (setter) {
-      const task = rootTurbo?.tasks?.["test:integration"];
+  // exactly that failure: the var reaches Jest, but not the hash. The suites,
+  // their vars and the turbo task that must hash each come from
+  // scripts/test-shards.lib.mjs (#1091).
+  if (turboFiles !== undefined) {
+    for (const suite of Object.values(SUITES)) {
+      const setter = workflows.find(({ doc }) => setsEnvVar(doc, suite.shardVar));
+      if (!setter) continue;
+      const turbo = turboFiles[suite.turboFile];
+      const task = turbo?.tasks?.[suite.turboTask];
       const env = Array.isArray(task?.env) ? task.env : [];
       const passThrough = Array.isArray(task?.passThroughEnv) ? task.passThroughEnv : [];
-      if (!env.includes(SHARD_VAR) || passThrough.includes(SHARD_VAR)) {
+      if (!env.includes(suite.shardVar) || passThrough.includes(suite.shardVar)) {
         violations.push({
           rule: 6,
-          file: "turbo.json",
+          file: suite.turboFile,
           message:
-            `${setter.file} sets ${SHARD_VAR}, but turbo.json's test:integration ` +
-            `must list it in \`env\` (hashed) and not in \`passThroughEnv\`. ` +
+            `${setter.file} sets ${suite.shardVar}, but ${suite.turboFile}'s ${suite.turboTask} ` +
+            `must list it in \`env\` (hashed) and not in \`passThroughEnv\`` +
+            `${turbo ? "" : " (the file is missing or unparseable)"}. ` +
             `Otherwise every shard shares one cache entry and restores another ` +
             `shard's result without running its own files.`,
         });
@@ -379,10 +390,120 @@ export function findViolations({ workflows = [], siteTurbo, rootTurbo, turboScri
     }
   }
 
+  // Rule 8 — one push stays within GitHub Free's concurrent-job limit (#1091).
+  //
+  // The limit is per account and shared by every workflow and PR, and a job
+  // over it queues rather than fails: nothing ever turns red, CI just gets
+  // slower. So the budget lives here, computed from the YAML and each
+  // suite's shard cap, and a new push workflow, a new job, or a raised cap
+  // fails until the total fits.
+  const { total, peaks, problems } = pushConcurrency(workflows);
+  for (const problem of problems) violations.push({ rule: 8, ...problem });
+  if (total > CONCURRENT_JOB_LIMIT) {
+    violations.push({
+      rule: 8,
+      file: peaks.map((p) => p.file).join(", "),
+      message:
+        `one push can run ${total} jobs at once, over GitHub Free's ${CONCURRENT_JOB_LIMIT} ` +
+        `(${peaks.map((p) => `${p.file} ${p.peak}`).join(", ")}). Lower a suite's maxShards in ` +
+        `scripts/test-shards.lib.mjs, or fold a job into another, until it fits.`,
+    });
+  }
+
   return violations;
 }
 
-const SHARD_VAR = "INTEGRATION_SHARD";
+/** Whether a push to a branch other than main starts this workflow. */
+function startsOnBranchPush(doc) {
+  const on = doc?.on;
+  if (on === "push") return true;
+  if (Array.isArray(on)) return on.includes("push");
+  if (!on || typeof on !== "object" || !("push" in on)) return false;
+  const branches = on.push?.branches;
+  return !(Array.isArray(branches) && branches.length === 1 && branches[0] === "main");
+}
+
+/**
+ * A job's weight in concurrent runners: 1, or its matrix's leg count. A
+ * dynamic matrix is bounded only when a `test-shards.mjs plan --suite <s>`
+ * step in the job it reads planned it, and then weighs that suite's cap.
+ * Anything else can't be bounded and is reported.
+ */
+function jobWeight(jobs, id) {
+  const matrix = jobs[id]?.strategy?.matrix;
+  if (matrix === undefined) return { weight: 1 };
+  if (typeof matrix === "string") {
+    const source = /needs\.([\w-]+)\.outputs\.matrix/.exec(matrix)?.[1];
+    const steps = source ? (jobs[source]?.steps ?? []) : [];
+    const suiteKey = steps
+      .map((step) => /test-shards\.mjs\s+plan\b.*--suite\s+([\w-]+)/.exec(String(step?.run ?? ""))?.[1])
+      .find(Boolean);
+    const suite = suiteKey ? SUITES[suiteKey] : undefined;
+    if (suite) return { weight: suite.maxShards };
+    return {
+      weight: 1,
+      problem:
+        `job "${id}" has a dynamic matrix that no \`test-shards.mjs plan --suite <suite>\` step ` +
+        `plans, so its size is unbounded and the concurrency budget can't count it`,
+    };
+  }
+  if (typeof matrix !== "object" || "include" in matrix || "exclude" in matrix) {
+    return { weight: 1, problem: `job "${id}" has a matrix this rule can't size (include/exclude or a non-list value)` };
+  }
+  let weight = 1;
+  for (const [key, values] of Object.entries(matrix)) {
+    if (!Array.isArray(values)) {
+      return { weight: 1, problem: `job "${id}"'s matrix key "${key}" isn't a literal list` };
+    }
+    weight *= values.length;
+  }
+  return { weight };
+}
+
+/**
+ * A workflow's peak concurrent jobs: the heaviest set of jobs with no
+ * `needs` path, direct or transitive, between any two (only those can run
+ * at once). Brute force over subsets; past 16 jobs, the total weight.
+ */
+function workflowPeak(doc) {
+  const jobs = doc?.jobs ?? {};
+  const ids = Object.keys(jobs);
+  const problems = [];
+  const weights = ids.map((id) => {
+    const { weight, problem } = jobWeight(jobs, id);
+    if (problem) problems.push(problem);
+    return weight;
+  });
+  const needs = (id) => [].concat(jobs[id]?.needs ?? []);
+  const reaches = (from, to, seen = new Set()) =>
+    needs(from).some((n) => n === to || (!seen.has(n) && (seen.add(n), reaches(n, to, seen))));
+  const ordered = (a, b) => reaches(ids[a], ids[b]) || reaches(ids[b], ids[a]);
+  if (ids.length > 16) return { peak: weights.reduce((n, w) => n + w, 0), problems };
+  let peak = 0;
+  for (let mask = 1; mask < 1 << ids.length; mask++) {
+    const members = ids.map((_, i) => i).filter((i) => mask & (1 << i));
+    if (members.some((a, x) => members.slice(x + 1).some((b) => ordered(a, b)))) continue;
+    peak = Math.max(peak, members.reduce((n, i) => n + weights[i], 0));
+  }
+  return { peak, problems };
+}
+
+/**
+ * The peak concurrent jobs one branch push can start, summed over every
+ * workflow it triggers.
+ * @returns {{total: number, peaks: Array<{file: string, peak: number}>, problems: Array<{file: string, message: string}>}}
+ */
+export function pushConcurrency(workflows) {
+  const peaks = [];
+  const problems = [];
+  for (const { file, doc } of workflows) {
+    if (!startsOnBranchPush(doc)) continue;
+    const { peak, problems: found } = workflowPeak(doc);
+    peaks.push({ file, peak });
+    for (const message of found) problems.push({ file, message });
+  }
+  return { total: peaks.reduce((n, p) => n + p.peak, 0), peaks, problems };
+}
 
 /** Whether a workflow sets `name` in its workflow, job or step env. */
 function setsEnvVar(doc, name) {
@@ -500,7 +621,81 @@ jobs:
           INTEGRATION_SHARD: "\${{ matrix.index }}/5"
 `;
 
-const rootTurbo = (task) => ({ tasks: { "test:integration": task } });
+// A turboFiles map holding only the root turbo.json's test:integration.
+const rootTurbo = (task) => ({ "turbo.json": { tasks: { "test:integration": task } } });
+
+// Rule 6 (#1091): the web unit suite's shard var, hashed by apps/web's own
+// turbo.json.
+const setsWebShard = () => `
+name: Web shards
+on: workflow_dispatch
+jobs:
+  web:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: npm run test:unit
+        env:
+          WEB_UNIT_SHARD: "\${{ matrix.index }}/3"
+`;
+
+const webTurbo = (task) => ({ "apps/web/turbo.json": { extends: ["//"], tasks: { "test:unit": task } } });
+
+// Rule 3 + rule 8 (#1091): unit-test.yml as checks + plan + web shards behind
+// the Unit Tests summary.
+const shardedUnitTest = () => `
+name: Unit Tests
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_call:
+${cleanConcurrency("unit-test")}
+jobs:
+  checks:
+    name: "Unit Tests: checks"
+    runs-on: ubuntu-26.04
+    steps: [{ run: "npm run lint:test-shards" }]
+  plan:
+    name: "Unit Tests: plan"
+    runs-on: ubuntu-26.04
+    steps: [{ run: "node scripts/test-shards.mjs plan --suite web" }]
+  web:
+    name: "Unit Tests (web shard \${{ matrix.index }})"
+    needs: [plan]
+    strategy:
+      matrix: \${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-26.04
+    steps: [{ run: "true" }]
+  summary:
+    name: Unit Tests
+    needs: [checks, plan, web]
+    if: \${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    steps: [{ run: "true" }]
+`;
+
+// Rule 8 fixtures: push workflows of a chosen weight.
+const pushWith = (jobsYaml, on = "push") => `
+name: Some
+on: ${on}
+jobs:
+${jobsYaml}
+`;
+const legs = (n) => `[${Array.from({ length: n }, (_, i) => i + 1).join(", ")}]`;
+const matrixJob = (id, n, needs) => `
+  ${id}:
+    runs-on: ubuntu-26.04${needs ? `\n    needs: ${needs}` : ""}
+    strategy:
+      matrix:
+        index: ${legs(n)}
+    steps: [{ run: "true" }]
+`;
+const plainJob = (id, needs) => `
+  ${id}:
+    runs-on: ubuntu-26.04${needs ? `\n    needs: ${needs}` : ""}
+    steps: [{ run: "true" }]
+`;
+const fanout = (n) => pushWith(matrixJob("legs", n));
 
 // Rule 3 (#857) fixtures: integration-test.yml as a matrix of shards behind a
 // summary job.
@@ -720,29 +915,149 @@ concurrency:
   {
     name: "rule 6 — shard var set and hashed by test:integration",
     files: { "shards.yml": setsShard() },
-    rootTurbo: rootTurbo({ env: ["REDIS_URL", "INTEGRATION_SHARD"] }),
+    turboFiles: rootTurbo({ env: ["REDIS_URL", "INTEGRATION_SHARD"] }),
     expectRule: null,
   },
   {
     name: "rule 6 — shard var set but missing from test:integration's env",
     files: { "shards.yml": setsShard() },
-    rootTurbo: rootTurbo({ env: ["REDIS_URL"] }),
+    turboFiles: rootTurbo({ env: ["REDIS_URL"] }),
     expectRule: 6,
   },
   {
     name: "rule 6 — shard var only in passThroughEnv (reaches Jest, not the hash)",
     files: { "shards.yml": setsShard() },
-    rootTurbo: rootTurbo({ env: ["REDIS_URL"], passThroughEnv: ["INTEGRATION_SHARD"] }),
+    turboFiles: rootTurbo({ env: ["REDIS_URL"], passThroughEnv: ["INTEGRATION_SHARD"] }),
     expectRule: 6,
   },
   {
     name: "rule 6 — shard var in both env and passThroughEnv",
     files: { "shards.yml": setsShard() },
-    rootTurbo: rootTurbo({
+    turboFiles: rootTurbo({
       env: ["INTEGRATION_SHARD"],
       passThroughEnv: ["INTEGRATION_SHARD"],
     }),
     expectRule: 6,
+  },
+
+  {
+    name: "rule 6 — the web shard var hashed by apps/web/turbo.json's test:unit",
+    files: { "web.yml": setsWebShard() },
+    turboFiles: webTurbo({ env: ["WEB_UNIT_SHARD"] }),
+    expectRule: null,
+  },
+  {
+    name: "rule 6 — the web shard var missing from apps/web's test:unit env",
+    files: { "web.yml": setsWebShard() },
+    turboFiles: webTurbo({ env: [] }),
+    expectRule: 6,
+  },
+  {
+    name: "rule 6 — the web shard var only in passThroughEnv",
+    files: { "web.yml": setsWebShard() },
+    turboFiles: webTurbo({ passThroughEnv: ["WEB_UNIT_SHARD"] }),
+    expectRule: 6,
+  },
+  {
+    name: "rule 6 — the web shard var set, but apps/web/turbo.json absent",
+    files: { "web.yml": setsWebShard() },
+    turboFiles: { "apps/web/turbo.json": null },
+    expectRule: 6,
+  },
+
+  {
+    name: "rule 3 — Unit Tests as checks + plan + web shards behind a !cancelled() summary",
+    files: { "unit-test.yml": shardedUnitTest() },
+    expectRule: null,
+  },
+
+  {
+    name: "rule 8 — a push whose peak is exactly the limit",
+    files: { "a.yml": fanout(20) },
+    expectRule: null,
+  },
+  {
+    name: "rule 8 — one job over the limit",
+    files: { "a.yml": fanout(20), "b.yml": pushWith(plainJob("one")) },
+    expectRule: 8,
+  },
+  {
+    name: "rule 8 — a web-planned dynamic matrix weighs the web cap (6 + 1 checks + 14 = 21)",
+    files: { "unit-test.yml": shardedUnitTest(), "b.yml": fanout(14) },
+    expectRule: 8,
+  },
+  {
+    name: "rule 8 — the same with room to spare (6 + 1 + 13 = 20)",
+    files: { "unit-test.yml": shardedUnitTest(), "b.yml": fanout(13) },
+    expectRule: null,
+  },
+  {
+    name: "rule 8 — a dynamic matrix no test-shards plan sizes is unbounded",
+    files: {
+      "a.yml": pushWith(`${plainJob("plan")}
+  shards:
+    runs-on: ubuntu-26.04
+    needs: [plan]
+    strategy:
+      matrix: \${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps: [{ run: "true" }]
+`),
+    },
+    expectRule: 8,
+  },
+  {
+    name: "rule 8 — a literal 2×3 matrix weighs 6 (6 + 15 = 21)",
+    files: {
+      "a.yml": pushWith(`
+  grid:
+    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        os: [a, b]
+        node: [1, 2, 3]
+    steps: [{ run: "true" }]
+`),
+      "b.yml": fanout(15),
+    },
+    expectRule: 8,
+  },
+  {
+    name: "rule 8 — a needs chain counts its heaviest job, not the sum (10 + 10 = 20)",
+    files: {
+      "a.yml": pushWith(
+        plainJob("changes") + plainJob("plan", "[changes]") + matrixJob("shards", 10, "[changes, plan]") + plainJob("summary", "[changes, plan, shards]")
+      ),
+      "b.yml": fanout(10),
+    },
+    expectRule: null,
+  },
+  {
+    name: "rule 8 — a job beside the shards adds to them (1 + 10 + 10 = 21)",
+    files: {
+      "a.yml": pushWith(plainJob("checks") + matrixJob("shards", 10) + plainJob("summary", "[checks, shards]")),
+      "b.yml": fanout(10),
+    },
+    expectRule: 8,
+  },
+  {
+    name: "rule 8 — a push to main only isn't a branch push",
+    files: { "a.yml": pushWith(matrixJob("legs", 25), "\n  push:\n    branches: [main]") },
+    expectRule: null,
+  },
+  {
+    name: "rule 8 — a matrix with include can't be sized",
+    files: {
+      "a.yml": pushWith(`
+  legs:
+    runs-on: ubuntu-26.04
+    strategy:
+      matrix:
+        index: [1]
+        include: [{ index: 2 }]
+    steps: [{ run: "true" }]
+`),
+    },
+    expectRule: 8,
   },
 ];
 
@@ -761,7 +1076,7 @@ function runSelfTest() {
     const found = findViolations({
       workflows: toWorkflows(fixture.files),
       ...("siteTurbo" in fixture ? { siteTurbo: fixture.siteTurbo } : {}),
-      ...("rootTurbo" in fixture ? { rootTurbo: fixture.rootTurbo } : {}),
+      ...("turboFiles" in fixture ? { turboFiles: fixture.turboFiles } : {}),
       ...(fixture.turboScripts ? { turboScripts: fixture.turboScripts } : {}),
     });
 
@@ -812,11 +1127,15 @@ function runRealTree() {
     siteTurbo = null; // absent or unparseable — rule 5 reports it
   }
 
-  let rootTurbo = null;
-  try {
-    rootTurbo = parseJsonc(readFileSync(path.join(REPO_ROOT, "turbo.json"), "utf8"));
-  } catch {
-    rootTurbo = null; // unparseable — rule 6 reports it once a workflow shards
+  // Every turbo.json a suite's shard var must be hashed in (rule 6), parsed
+  // or null when absent.
+  const turboFiles = {};
+  for (const file of new Set(Object.values(SUITES).map((suite) => suite.turboFile))) {
+    try {
+      turboFiles[file] = parseJsonc(readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    } catch {
+      turboFiles[file] = null; // absent or unparseable — rule 6 reports it once a workflow shards
+    }
   }
 
   // Derived, never hardcoded: any root script whose body starts with `turbo run`
@@ -826,7 +1145,7 @@ function runRealTree() {
     .filter(([, body]) => /^turbo run /.test(body))
     .map(([name]) => name);
 
-  const found = findViolations({ workflows, siteTurbo, rootTurbo, turboScripts });
+  const found = findViolations({ workflows, siteTurbo, turboFiles, turboScripts });
 
   if (found.length) {
     console.error(`\n.github/workflows: ${found.length} violation(s)\n`);
@@ -834,7 +1153,12 @@ function runRealTree() {
     return false;
   }
 
+  const { total, peaks } = pushConcurrency(workflows);
   console.log(`.github/workflows: ${workflows.length} workflow(s) clean`);
+  console.log(
+    `one branch push peaks at ${total} of ${CONCURRENT_JOB_LIMIT} concurrent jobs ` +
+      `(${peaks.map((p) => `${p.file} ${p.peak}`).join(", ")})`
+  );
   return true;
 }
 
