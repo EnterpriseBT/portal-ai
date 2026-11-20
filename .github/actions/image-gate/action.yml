@@ -43,6 +43,11 @@ runs:
     # Fail on any fixable CRITICAL/HIGH in the whole image (OS + language
     # packages). Unfixed + MEDIUM/LOW are reported, not blocking. Patch SLA:
     # Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
+    #
+    # The only exceptions are the time-boxed, reasoned entries in
+    # trivyignore.yaml beside this file (#1096). Each expires, after which
+    # Trivy reports it again and the gate fails. Passed explicitly, so a stray
+    # .trivyignore elsewhere in the repo can't widen the gate.
     - name: Scan (gate — fail on fixable CRITICAL/HIGH)
       uses: aquasecurity/trivy-action@v0.36.0
       with:
@@ -50,5 +55,6 @@ runs:
         scanners: vuln
         severity: CRITICAL,HIGH
         ignore-unfixed: true
+        trivyignores: .github/actions/image-gate/trivyignore.yaml
         exit-code: "1"
         format: table
