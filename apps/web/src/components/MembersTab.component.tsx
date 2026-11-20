@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 
-import { CircularProgress, Divider, Alert, TextField } from "@mui/material";
+import { CircularProgress, Divider, Alert } from "@mui/material";
 
 import {
   Box,
-  Button,
   GatedButton,
   Stack,
   Typography,
@@ -30,6 +29,7 @@ import { MemberListUI, type GroupOption } from "./MemberList.component";
 import { RemoveMemberDialog } from "./RemoveMemberDialog.component";
 import { InviteMemberDialog } from "./InviteMemberDialog.component";
 import { PendingInvitationListUI } from "./PendingInvitationList.component";
+import { InviteLinkFieldUI } from "./InviteLinkField.component";
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
 
@@ -123,28 +123,7 @@ export const MembersTabUI: React.FC<MembersTabUIProps> = ({
 
       {lastInviteUrl && (
         <Alert severity="success" onClose={onDismissLink}>
-          <Stack spacing={1}>
-            <Typography variant="body2">
-              Invitation link — copy and share it now. This link is shown only
-              once.
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <TextField
-                value={lastInviteUrl}
-                size="small"
-                fullWidth
-                slotProps={{
-                  htmlInput: { readOnly: true, "aria-label": "Invite link" },
-                }}
-              />
-              <Button
-                variant="outlined"
-                onClick={() => onCopyLink(lastInviteUrl)}
-              >
-                Copy
-              </Button>
-            </Stack>
-          </Stack>
+          <InviteLinkFieldUI url={lastInviteUrl} onCopy={onCopyLink} />
         </Alert>
       )}
 
