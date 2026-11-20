@@ -48,7 +48,7 @@ Other email inputs checked: `auth.contract.ts:42` is Auth0's claim shape (not us
 2. Same dialog, a normal address with a leading/trailing space → invitation created; Pending shows it without the spaces.
 3. In a portal, ask the assistant to invite the 300-character address → `member_invite` fails input validation and the assistant reports it; no invitation block, nothing in Pending.
 4. `POST /api/organization/invitations` with the long address (devtools/curl) → `400 ORGANIZATION_INVALID_PAYLOAD`, message names `email`.
-5. Sign-in page → "Sign in with SSO" with a 300-character address → field error; a normal work email still resolves as before.
+5. Sign-in page → "Sign in with SSO" with a 300-character address → "Email must be 254 characters or fewer" (an address of 255–320 characters passed before); a malformed one still reads "Enter a valid email address", and a normal work email resolves as before.
 
 ## Out of scope
 

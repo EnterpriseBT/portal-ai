@@ -82,13 +82,15 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
 
   const handleSubmit = () => {
     setTouched({ email: true, role: true });
-    const formErrors = validateForm(form);
-    setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) {
+    // Send the parsed value, so the contract's normalization (a trimmed
+    // email) is the only one (#1101).
+    const result = validateWithSchema(InviteCreateRequestSchema, form);
+    setErrors(result.success ? {} : result.errors);
+    if (!result.success) {
       requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
-    onSubmit({ email: form.email.trim(), role: form.role });
+    onSubmit(result.data);
   };
 
   return (

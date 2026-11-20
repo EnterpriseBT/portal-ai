@@ -228,6 +228,20 @@ describe("Organization seats routes (#584)", () => {
     ).toEqual(["email", "role"]);
   });
 
+  it("#1101: an email over 254 characters → 400 naming its length", async () => {
+    await seed("owner");
+    const res = await auth(
+      request(app)
+        .post("/api/organization/invitations")
+        .send({ email: "a".repeat(288) + "@example.com", role: "member" })
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+    expect(res.body.message).toBe(
+      "Invalid invitation payload: email: Email must be 254 characters or fewer"
+    );
+  });
+
   it("#745: accept with a malformed body → 400 naming token", async () => {
     await seed("owner");
     const res = await auth(

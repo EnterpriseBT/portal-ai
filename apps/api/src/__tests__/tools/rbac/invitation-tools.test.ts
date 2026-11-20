@@ -137,6 +137,15 @@ describe("member_management invitation tools (#847)", () => {
     expect(invite).not.toHaveBeenCalled();
   });
 
+  it("member_invite refuses an email over 254 characters for its length (#1101)", async () => {
+    const r = (await exec(new MemberInviteTool().build(ctx), {
+      email: "a".repeat(288) + "@example.com",
+      role: "member",
+    })) as { error?: string };
+    expect(r.error).toContain("Email must be 254 characters or fewer");
+    expect(invite).not.toHaveBeenCalled();
+  });
+
   it("invitation_list returns id, email, role and expiry for each pending invitation", async () => {
     listInvitations.mockResolvedValue([INVITATION]);
     const r = await exec(new InvitationListTool().build(ctx), {});
