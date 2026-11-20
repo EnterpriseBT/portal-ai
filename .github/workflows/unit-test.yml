@@ -51,9 +51,20 @@ concurrency:
   group: "unit-test-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
   cancel-in-progress: true
 
+# Unit Tests runs as four jobs behind one required name (#1091):
+#   checks   every lint step, and every package's unit suite except web's
+#   plan     how many web shards (2..6), from recorded durations; no npm ci
+#   web      the web unit suite as N shards, one per runner
+#   summary  THE required check, "Unit Tests": green only when checks, the
+#            plan and every web shard passed, and the shards together ran
+#            each web test file exactly once
+# The web suite was ~8 of the job's ~9 minutes on one runner; sharded, the
+# check lands in about 4. lint:ci-cache holds the shape: rule 3 (the
+# required name sits on the summary), rule 6 (each shard is its own turbo
+# cache entry) and rule 8 (one push stays within 20 concurrent jobs).
 jobs:
-  test-unit:
-    name: Unit Tests
+  checks:
+    name: "Unit Tests: checks"
     runs-on: ubuntu-26.04
 
     steps:
@@ -87,15 +98,23 @@ jobs:
       # The sharded integration suite's control logic (#857): above all, that
       # the shard assignment puts every test file in exactly one shard. A
       # file that lands in none is never run, and nothing else would notice.
-      - name: Check the integration shard logic
-        run: npm run lint:integration-shards
+      - name: Check the sharded suites' shard logic
+        run: npm run lint:test-shards
 
       # No integration test file may exceed the per-file ceiling (#857). A
       # file can't be split across shards, so the slowest one is a floor on
       # the check's time; this fails on the durations refresh that first
       # records one, which is where the split belongs.
-      - name: Check no integration test file is over the duration ceiling
-        run: npm run lint:integration-durations
+      - name: Check no sharded test file is over the duration ceiling
+        run: npm run lint:test-durations
+
+      # The sharded suites' summaries find their expected test files by a path
+      # rule, since they run without node_modules (#1091). This holds each rule
+      # equal to what its Jest config really runs: a test the rule missed
+      # would never be checked for, and one it wrongly picked would always
+      # read as "ran in no shard".
+      - name: Check each sharded suite's test-file rule matches Jest
+        run: npm run lint:test-files
 
       # The nginx advisory parser (#918), self-tested against fixtures in
       # nginx.org's page format. The weekly check is the only thing that sees
@@ -122,5 +141,111 @@ jobs:
       - name: Check migrations for unacknowledged destructive DDL
         run: npm run lint:migrations
 
-      - name: Run unit tests
-        run: npm run test:unit
+      # Every unit suite but web's, which runs sharded below.
+      - name: Run unit tests (all packages but web)
+        run: npm run test:unit -- --filter='!@portalai/web'
+
+  # How many web shards: enough for ~300 recorded file-seconds each (about
+  # 100-110s of Jest wall time at its 3 workers), clamped to 2..6. No npm ci: the
+  # planner needs only the durations file and the script.
+  plan:
+    name: "Unit Tests: plan"
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      capped: ${{ steps.plan.outputs.capped }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # src, not just the durations file: tests added since the last
+          # refresh count toward N too.
+          sparse-checkout: |
+            scripts
+            apps/web/src
+          sparse-checkout-cone-mode: false
+
+      - name: Plan the web shards
+        id: plan
+        run: node scripts/test-shards.mjs plan --suite web
+
+  web:
+    name: Unit Tests (web shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
+    needs: [plan]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      # Every shard runs to the end even when one fails: the summary wants
+      # every report, and a failure in one shard says nothing about the rest.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      # WEB_UNIT_SHARD reaches Jest through apps/web's test:unit (`--shard`,
+      # plus a JSON report) and is hashed by apps/web/turbo.json, so each
+      # shard is its own cache entry (lint:ci-cache rule 6). The report is a
+      # turbo output, so a cache hit restores it too.
+      - name: Run web unit tests (shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
+        env:
+          WEB_UNIT_SHARD: ${{ matrix.index }}/${{ needs.plan.outputs.count }}
+        run: npm run test:unit -- --filter=@portalai/web
+
+      - name: Upload the shard's Jest report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-unit-jest-${{ matrix.index }}
+          path: apps/web/jest-unit-report.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  # THE required check. GitHub matches required contexts by job name, so this
+  # job — not the checks job or the shards — carries "Unit Tests". It runs
+  # whatever happened upstream, short of the run being cancelled
+  # (`!cancelled()`): a newer push supersedes a cancelled run and reports for
+  # itself, so the old commit isn't left with a red check. Green only when
+  # the checks job, the plan and every shard passed, and the shards together
+  # ran each web test file exactly once. Over-budget shards and the shard cap
+  # only warn.
+  summary:
+    name: Unit Tests
+    needs: [checks, plan, web]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts
+            apps/web/src
+          sparse-checkout-cone-mode: false
+
+      - name: Download the shards' Jest reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: web-unit-jest-*
+          path: reports
+
+      - name: Checks green, every shard green, every web file run exactly once?
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          SHARD_RESULT: ${{ needs.web.result }}
+          PLANNED_COUNT: ${{ needs.plan.outputs.count }}
+          CAPPED: ${{ needs.plan.outputs.capped }}
+        run: node scripts/test-shards.mjs summarize --suite web --reports reports

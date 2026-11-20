@@ -1,0 +1,25 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test:unit": {
+      // CI runs this package's unit suite as N shards ("i/N" in
+      // WEB_UNIT_SHARD, #1091), each a different slice of the same task over
+      // the same inputs. Hashing the shard is what keeps one shard from
+      // restoring another's cached result; in passThroughEnv it would reach
+      // Jest but not the hash. lint:ci-cache rule 6 holds this. Unset locally,
+      // so a local run is one entry.
+      "env": ["WEB_UNIT_SHARD"],
+      // The packing that splits the suite is shared with the integration
+      // suite and lives at the root, outside the package turbo hashes by
+      // default. Listing it keeps a packer change from restoring a cached
+      // "pass" for a shard whose files moved. `$TURBO_DEFAULT$` keeps the
+      // package's own files; `inputs` would otherwise replace them.
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/test-shards.lib.mjs"],
+      // A sharded run writes its Jest report here (see test:unit). Cached
+      // with the result so a cache hit restores it, and the Unit Tests
+      // summary can still check every file on a fully cached re-run.
+      "outputs": ["jest-unit-report.json"]
+    }
+  }
+}

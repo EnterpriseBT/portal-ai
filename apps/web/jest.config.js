@@ -96,6 +96,10 @@ export default {
   // Ignore patterns
   testPathIgnorePatterns: ["/node_modules/", "/dist/", "/storybook-static/"],
 
+  // CI shards this suite by recorded duration (#1091). The sequencer only
+  // changes anything when `--shard` is passed (WEB_UNIT_SHARD, see test:unit).
+  testSequencer: "<rootDir>/jest.unit.sequencer.mjs",
+
   // Clear mocks between tests
   clearMocks: true,
 

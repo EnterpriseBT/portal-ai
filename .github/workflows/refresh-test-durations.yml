@@ -1,0 +1,145 @@
+name: Refresh test durations
+
+# Watches each sharded suite's durations file for drift: the integration
+# suite (#857) and the web unit suite (#1091). A suite's file sets how many
+# shards its required check runs and how files are split across them, so a
+# stale one means too few shards and slow runs.
+#
+# Weekly, for each suite, it takes the shard reports of the newest green runs
+# of that suite's workflow on MERGED pull requests' heads (the trees that
+# became main; a squash merge never puts the branch's own commits on main),
+# up to SAMPLE_RUNS of them, and recomputes each file's median duration
+# across them. One run is a noisy sample. When planning would act on the
+# change, it opens or updates one issue per suite with the result and the
+# command that applies it. A person runs that command and lands it in a
+# normal PR.
+#
+# The suites' workflows, artifact names and issue titles come from
+# scripts/test-shards.lib.mjs (`describe`), not from this file.
+#
+# Why an issue, not a PR: a workflow opening a PR with GITHUB_TOKEN needs the
+# repo setting "Allow GitHub Actions to create and approve pull requests",
+# which would also let any workflow approve PRs. An issue needs only
+# `issues: write`, and this job pushes nothing.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: "refresh-test-durations"
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  refresh:
+    name: Refresh ${{ matrix.suite }} durations
+    runs-on: ubuntu-26.04
+    strategy:
+      # One suite failing to refresh mustn't skip the other.
+      fail-fast: false
+      matrix:
+        suite: [integration, web]
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Describe the suite
+        id: suite
+        run: node scripts/test-shards.mjs describe --suite ${{ matrix.suite }}
+
+      # Newest first: runs whose commit is a recently merged PR's head, and
+      # that actually ran shards (a docs-only skip reports green with none),
+      # each into its own reports/<run id>/ so the medians are per run.
+      - name: Download the newest merged runs' shard reports
+        id: reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ steps.suite.outputs.workflow }}
+          PREFIX: ${{ steps.suite.outputs.artifact-prefix }}
+          CHECK: ${{ steps.suite.outputs.title }}
+        run: |
+          set -o pipefail
+          want=$(node scripts/test-shards.mjs sample-runs)
+          gh pr list --state merged --limit 100 --json headRefOid -q '.[].headRefOid' > merged.txt
+          gh run list --workflow "$WORKFLOW" --status success --limit 200 \
+            --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"' > runs.txt
+          got=()
+          while read -r id sha; do
+            grep -qx "$sha" merged.txt || continue
+            if gh run download "$id" -p "${PREFIX}*" -D "reports/$id" 2>/dev/null; then
+              got+=("$id")
+              [ "${#got[@]}" -ge "$want" ] && break
+            fi
+          done < runs.txt
+          if [ "${#got[@]}" -eq 0 ]; then
+            echo "::warning::No green $CHECK run on a recently merged PR has shard reports; nothing to refresh."
+            echo "run=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Sampling ${#got[@]} run(s): ${got[*]}"
+          echo "run=${got[0]}" >> "$GITHUB_OUTPUT"
+          echo "runs=${got[*]}" >> "$GITHUB_OUTPUT"
+
+      # pipefail: without it `tee` would mask a failing update-durations and
+      # the job would report green while the durations went stale.
+      - name: Recompute the durations
+        id: update
+        if: steps.reports.outputs.run != ''
+        run: |
+          set -o pipefail
+          node scripts/test-shards.mjs update-durations --suite ${{ matrix.suite }} --reports reports --if-changed | tee update.log
+
+      - name: Open or update the drift issue
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUITE: ${{ matrix.suite }}
+          TITLE: ${{ steps.suite.outputs.issue-title }}
+          CHECK: ${{ steps.suite.outputs.title }}
+          PREFIX: ${{ steps.suite.outputs.artifact-prefix }}
+          DURATIONS_FILE: ${{ steps.suite.outputs.durations-file }}
+          CEILING: ${{ steps.suite.outputs.ceiling }}
+          RUN_ID: ${{ steps.reports.outputs.run }}
+          RUN_IDS: ${{ steps.reports.outputs.runs }}
+        run: |
+          set -o pipefail
+          {
+            echo "The recorded $SUITE durations (\`$DURATIONS_FILE\`) no longer match CI. They set the shard count and the split, so refreshing them keeps the \`$CHECK\` check fast (#857, #1091)."
+            echo
+            echo "Each file's median over $CHECK runs $RUN_IDS (newest: [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)):"
+            echo
+            echo '```'
+            cat update.log
+            echo '```'
+            echo
+            echo "A line starting with \`!\` is a file over the ${CEILING}s ceiling. \`lint:test-durations\` will fail on it, so split it by concern first (or allowlist it with a reason in \`SUITES.$SUITE.ceilingAllowlist\` in \`scripts/test-shards.lib.mjs\`)."
+            echo
+            echo "**To apply**, on a branch off \`main\`:"
+            echo
+            echo '```bash'
+            for id in $RUN_IDS; do
+              echo "gh run download $id -p '${PREFIX}*' -D /tmp/$SUITE-reports/$id"
+            done
+            echo "node scripts/test-shards.mjs update-durations --suite $SUITE --reports /tmp/$SUITE-reports"
+            echo "git commit -am 'chore(ci): refresh $SUITE durations'"
+            echo '```'
+            echo
+            echo "Then open a PR. This issue is updated each week until the drift is gone."
+          } > body.md
+
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -1)
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+            echo "Updated #$existing"
+          else
+            gh issue create --title "$TITLE" --body-file body.md
+          fi

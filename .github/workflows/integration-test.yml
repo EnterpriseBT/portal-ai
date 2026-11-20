@@ -45,7 +45,7 @@ jobs:
   # Redis, behind ONE required check (#857). The suites can't share a database
   # (teardownOrg deletes every row, queue suites obliterate shared queues), so
   # parallelism comes from runners, not Jest workers. The control logic is in
-  # scripts/integration-shards.mjs, self-tested by lint:integration-shards.
+  # scripts/test-shards.mjs, self-tested by lint:test-shards.
   #
   #   changes ─▶ plan ─▶ shard × N ─▶ "Integration Tests" (the required check)
 
@@ -100,14 +100,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # src, not just the durations file: tests added since the last
+          # refresh count toward N too.
           sparse-checkout: |
             scripts
-            apps/api/src/__tests__/__integration__/durations.json
+            apps/api/src
           sparse-checkout-cone-mode: false
 
       - name: Plan the shards
         id: plan
-        run: node scripts/integration-shards.mjs plan
+        run: node scripts/test-shards.mjs plan --suite integration
 
   shard:
     name: Integration Tests (shard ${{ matrix.index }}/${{ needs.plan.outputs.count }})
@@ -198,4 +200,4 @@ jobs:
           SHARD_RESULT: ${{ needs.shard.result }}
           PLANNED_COUNT: ${{ needs.plan.outputs.count }}
           CAPPED: ${{ needs.plan.outputs.capped }}
-        run: node scripts/integration-shards.mjs summarize --reports reports
+        run: node scripts/test-shards.mjs summarize --suite integration --reports reports

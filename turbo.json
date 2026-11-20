@@ -120,6 +120,15 @@
       // Revert path if this ever misleads: set `cache` back to false. It is a
       // one-line change with no other moving parts.
       "cache": true,
+      // The packing that splits the suite into shards is shared with the web
+      // unit suite and lives at the root (#1091), outside the package turbo
+      // hashes by default. Listing it keeps a packer change from restoring a
+      // cached "pass" for a shard whose files moved. `$TURBO_DEFAULT$` keeps
+      // the package's own files; `inputs` would otherwise replace them.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/test-shards.lib.mjs"
+      ],
       "env": [
         "INTEGRATION_TEST_DATABASE_URL",
         "REDIS_URL",

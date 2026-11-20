@@ -17,7 +17,7 @@
     "storybook": "storybook dev -p 7007 --no-open",
     "build-storybook": "storybook build",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "NODE_OPTIONS='--experimental-vm-modules --max-old-space-size=4096' jest",
+    "test:unit": "rm -f jest-unit-report.json && NODE_OPTIONS='--experimental-vm-modules --max-old-space-size=4096' jest${WEB_UNIT_SHARD:+ --shard=$WEB_UNIT_SHARD --json --outputFile=jest-unit-report.json}",
     "test:integration": "true",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
@@ -47,6 +47,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@jest/test-sequencer": "^29.7.0",
     "@storybook/addon-essentials": "^8.6.19",
     "@storybook/addon-interactions": "^8.6.19",
     "@storybook/blocks": "^8.6.19",

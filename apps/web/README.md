@@ -532,6 +532,17 @@ it("has no accessibility violations", async () => {
 
 **The shell (#797).** Each layout starts with a skip link and wraps the page in `main#main-content`. `useRouteAnnouncer()` (`src/utils/route-announcer.util.ts`) sets the tab title from the page's `h1` and moves focus to it after a navigation. To test a page's title or focus behaviour, render it inside a router with a `main#main-content` and call `resetRouteAnnouncer()` in `beforeEach`. The first page of a test counts as a first load, so wait for it to render before navigating (`src/__tests__/route-announcer.util.test.tsx` shows the pattern). Toasts render into the Notifications region on `<body>`, outside a test's container. Find them by `data-testid="toast-<severity>"`, since they carry no `alert` role of their own.
 
+### Sharding in CI
+
+CI runs this suite as N parallel shards behind the one required check `Unit Tests` (#1091):
+- **N** is planned from `src/__tests__/durations.json` at 300 recorded file-seconds per shard, clamped to 2–6. Run `node scripts/test-shards.mjs plan --suite web` from the repo root to see it.
+- **The split** is `jest.unit.sequencer.mjs`: longest-first packing by recorded duration, using only the `--shard` option. A new test file weighs the median until it's recorded.
+- **Reproduce one shard locally:** `WEB_UNIT_SHARD=2/3 npm run test:unit`. It runs exactly the files CI's shard 2 of 3 ran, and writes `jest-unit-report.json`. Without the variable, `npm run test:unit` runs everything, as before.
+- **Durations** are refreshed weekly from CI by `refresh-test-durations.yml`, which opens an issue carrying the command to apply. Use CI times, not a local run, because the planner budgets CI seconds.
+- **Keep files under 120s.** A file can't be split across shards, so `npm run lint:test-durations` (root) fails on one past that.
+
+The full rules, including the 20-job budget the caps fit within, are in the root `CLAUDE.md` → "Sharded test suites".
+
 ### Test Coverage
 
 Minimum coverage thresholds are configured at 60% for:
