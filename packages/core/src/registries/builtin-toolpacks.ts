@@ -892,8 +892,8 @@ const HELP_PACK: BuiltinToolpackSpec = {
         question: stringField(
           "The user's question about the product, verbatim. Omit for the Getting Started entries."
         ),
-        keywords: stringArrayField(
-          "Up to 8 words or short phrases for what the question is about, in your reading of it."
+        keywords: stringField(
+          'A few topic words for what the question is about, separated by spaces (e.g. "upload spreadsheet csv"). Ranked with the question, at lower weight.'
         ),
         entryIds: stringArrayField(
           "Up to 5 entry ids (`<surface>:<slug>`) from a previous result's candidates, to fetch those entries."

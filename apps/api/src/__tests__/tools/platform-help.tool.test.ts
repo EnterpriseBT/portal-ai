@@ -38,7 +38,7 @@ type Result = import("@portalai/core/contracts").HelpBlockContent;
 
 const exec = async (input: {
   question?: string;
-  keywords?: string[];
+  keywords?: string;
   entryIds?: string[];
 }): Promise<Result> =>
   (await new PlatformHelpTool().build().execute!(input, {} as never)) as Result;
@@ -95,8 +95,27 @@ describe("PlatformHelpTool — ranked help content (#1049)", () => {
   });
 
   it("scores the agent's keywords with the question", async () => {
-    const r = await exec({ question: "help me", keywords: ["geocoding"] });
+    const r = await exec({ question: "help me", keywords: "geocoding" });
     expect(r.entries.map((e) => e.slug)).toContain("geocoding");
+  });
+
+  it("takes keywords as one string of topic words, which models format reliably (#1049)", () => {
+    const { schema } = new PlatformHelpTool();
+    expect(
+      schema.safeParse({ question: "q", keywords: "upload spreadsheet csv" })
+        .success
+    ).toBe(true);
+    expect(
+      schema.safeParse({ question: "q", keywords: ["upload", "csv"] }).success
+    ).toBe(false);
+  });
+
+  it("ranks the user's question above the agent's keywords (#1049 smoke walk)", async () => {
+    const r = await exec({
+      question: "What is a portal?",
+      keywords: "portal what is definition",
+    });
+    expect(r.entries[0]?.slug).toBe("portal");
   });
 
   it("fetches entries by id, ignoring ids that don't exist", async () => {

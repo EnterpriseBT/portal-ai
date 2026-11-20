@@ -8,6 +8,17 @@ This spec pins the contract for #1049:
 
 Discovery: `docs/RANKED_PLATFORM_HELP.discovery.md`. Issue: #1049.
 
+## Amendment — smoke walk
+
+- **`keywords` is one string**, not an array: "a few topic words, separated by spaces", at most 200 characters. The tool passes it to `searchHelp` as one keyword.
+  - Why: in the walk the model twice emitted the array as invalid JSON.
+- **Terms only the keywords add weigh `HELP_RANKING.keywordWeight` (0.5)**, so the user's own words lead.
+  - Why: "What is a portal?" with the agent's `keywords: ["portal","what is","definition"]` ranked column definitions first.
+- **`asToolInput` (`portal.service.ts`)** stores, and replays, every tool call's input as an object: a JSON string is parsed, and anything else becomes `{}`.
+  - Why: a malformed call stored as a string made the model API refuse every later turn in that portal. The bug predates #1049, which made it frequent.
+- **The `## Help` prompt** caps the agent's text around a help block at one short sentence, and forbids restating the entries or adding steps, causes or facts of its own.
+  - Why: the walk saw restated fixes and invented causes. This remains prompt-level.
+
 ## Amendment — code review
 
 - **Tokenizing:**

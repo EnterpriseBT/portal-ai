@@ -132,6 +132,31 @@ interface StreamContext {
   invalidToolCalls: Map<string, unknown>;
 }
 
+/**
+ * A tool call's input as an object, whatever the stream produced (#1049).
+ * When the model emits invalid JSON for a tool's input, the SDK hands back
+ * the raw text; stored and later replayed as a string, it makes the model API
+ * refuse every later turn ("tool_use.input: Input should be an object"). A
+ * string that parses to an object is used as that object; anything else is
+ * `{}` (the call already failed, and its tool-result says why).
+ */
+export function asToolInput(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Not JSON: fall through to an empty input.
+    }
+  }
+  return {};
+}
+
 /** Handle a text-delta chunk: accumulate text and send SSE. */
 function handleTextDelta(ctx: StreamContext, text: string): void {
   ctx.currentText += text;
@@ -158,8 +183,8 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
     type: "tool-call",
     toolCallId: chunk.toolCallId,
     toolName: chunk.toolName,
-    // AI SDK v6 renamed `args` → `input`
-    input: chunk.input ?? chunk.args,
+    // AI SDK v6 renamed `args` → `input`. Always stored as an object (#1049).
+    input: asToolInput(chunk.input ?? chunk.args),
   });
 
   const toolCallId = chunk.toolCallId as string | undefined;
@@ -1228,9 +1253,10 @@ function reconstructModelMessages(
           type: "tool-call",
           toolCallId: block.toolCallId,
           toolName: block.toolName,
-          // AI SDK v6 renamed `args` → `input`.
-          // Default to {} for data saved while chunk.args was undefined.
-          input: block.input ?? block.args ?? {},
+          // AI SDK v6 renamed `args` → `input`. Rows saved before #1049 may
+          // hold a malformed call's raw string; replay it as an object, or
+          // `{}`, so one bad call can't break every later turn.
+          input: asToolInput(block.input ?? block.args),
         });
       } else if (block.type === "tool-result") {
         const toolName = String(block.toolName ?? "tool");

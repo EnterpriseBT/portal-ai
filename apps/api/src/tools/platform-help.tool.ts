@@ -27,11 +27,11 @@ const InputSchema = z.object({
       "The user's question about the product, verbatim. Omit for the Getting Started entries."
     ),
   keywords: z
-    .array(z.string().min(1).max(40))
-    .max(8)
+    .string()
+    .max(200)
     .optional()
     .describe(
-      "Up to 8 words or short phrases for what the question is about, in your reading of it. They're ranked with the question."
+      'A few topic words for what the question is about, separated by spaces (e.g. "upload spreadsheet csv"). Ranked with the question, at lower weight.'
     ),
   entryIds: z
     .array(z.string().regex(ENTRY_ID))
@@ -72,7 +72,7 @@ export class PlatformHelpTool extends Tool<typeof InputSchema> {
     "stations, connectors, entities, tool packs, or pinned results are, how " +
     "to do things in the product, and what to do when something goes wrong " +
     "— from the help content. Pass the user's `question`, and your reading " +
-    "of it as `keywords`. The result is shown to the user as a help block " +
+    "of it as `keywords` (a few topic words). The result is shown to the user as a help block " +
     "quoting the best entries with links into Help; its `candidates` are " +
     "further entries you can fetch with `entryIds`. **This is not a " +
     "data-query tool**, and it knows nothing about the user's organization: " +
@@ -158,7 +158,7 @@ function answer(input: z.infer<typeof InputSchema>): HelpBlockContent {
   }
 
   const matches = searchHelp(question, {
-    keywords: input.keywords,
+    keywords: input.keywords ? [input.keywords] : undefined,
     limit: MAX_ENTRIES + MAX_CANDIDATES,
   });
   return {

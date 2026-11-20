@@ -1164,6 +1164,51 @@ describe("PortalService", () => {
       expect(mockFindByPortal).toHaveBeenCalledWith(PORTAL_ID);
     });
 
+    // #1049 smoke walk: the model sent invalid JSON for a tool's input, the
+    // SDK stored it as the raw string, and replaying that string made every
+    // later turn fail ("tool_use.input: Input should be an object").
+    it("replays a tool call whose stored input is a string as an object", async () => {
+      const call = (id: string, input: unknown) => ({
+        type: "tool-call",
+        toolCallId: id,
+        toolName: "platform_help",
+        input,
+      });
+      const result_ = (id: string) => ({
+        type: "tool-result",
+        toolCallId: id,
+        toolName: "platform_help",
+        content: { error: "Invalid input" },
+      });
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue([
+        { id: "m1", role: "user", blocks: [{ type: "text", content: "Q" }] },
+        {
+          id: "m2",
+          role: "assistant",
+          blocks: [
+            call(
+              "tc-bad",
+              '{"question": "weather", "keywords": weather Paris lookup}'
+            ),
+            result_("tc-bad"),
+            call("tc-json", '{"question": "What is a portal?"}'),
+            result_("tc-json"),
+            { type: "text", content: "Done." },
+          ],
+        },
+      ]);
+
+      const { coreMessages } = await PortalService.getPortal(PORTAL_ID);
+      const parts = coreMessages.flatMap(
+        (m) => (Array.isArray(m.content) ? m.content : []) as unknown[]
+      ) as { type: string; input?: unknown }[];
+      const inputs = parts
+        .filter((p) => p.type === "tool-call")
+        .map((p) => p.input);
+      expect(inputs).toEqual([{}, { question: "What is a portal?" }]);
+    });
+
     it("reconstructs full ModelMessage[] including tool turns", async () => {
       const messages = [
         {

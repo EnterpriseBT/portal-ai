@@ -775,11 +775,11 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Help");
       lines.push("");
       lines.push(
-        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to do something in the product, or what to do when something goes wrong — go to the `platform_help` tool. Pass the user's question and your reading of it as `keywords`. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
+        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to do something in the product, or what to do when something goes wrong — go to the `platform_help` tool. Pass the user's question, and your reading of it as `keywords`: a few topic words in one string. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
       );
       lines.push("");
       lines.push(
-        "`platform_help`'s result is shown to the user as a help block that quotes the entries exactly, with links into Help. Don't repeat or rephrase the entries, and don't add claims about how the product behaves: at most one sentence pointing at the block, or naming a `candidates` title they could ask about next (fetch it with `entryIds` if they do). When `noMatch` is true, say no help entry covers it and point them to Help — never answer from your own knowledge."
+        "`platform_help`'s result is shown to the user as a help block that quotes the entries exactly, with links into Help. Your own reply around it is **at most one short sentence**, such as \"Here's what Help says about that.\" Never restate, summarize or extend the entries, and never list steps, causes or facts of your own: if it isn't in the block, Help doesn't say it. You may name one `candidates` title they could ask about next (fetch it with `entryIds` if they do). When `noMatch` is true, say no help entry covers it and point them to Help — never answer from your own knowledge."
       );
       lines.push("");
       return lines;

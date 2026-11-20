@@ -50,6 +50,13 @@ export const HELP_RANKING = {
   b: 0.75,
   weights: { title: 3, aliases: 3, body: 1, related: 1 },
   /**
+   * How much a term found only in the caller's `keywords` (an agent's reading
+   * of the question) counts against one from the question itself. Half, so
+   * the user's own words lead: in the #1049 smoke walk the agent added
+   * "definition" to "What is a portal?" and pulled column definitions first.
+   */
+  keywordWeight: 0.5,
+  /**
    * Added when the query is the entry's title, give or take case and
    * punctuation. Stopwords make "Tool Pack" and "What are tool packs?" the
    * same terms; this is what tells the glossary term from the FAQ question.
@@ -292,10 +299,13 @@ export function searchHelp(
     floor?: number;
   } = {}
 ): HelpMatch[] {
-  const terms = new Set([
-    ...tokenizeHelp(query),
-    ...(opts.keywords ?? []).flatMap(tokenizeHelp),
-  ]);
+  // A question term weighs 1; a term only the keywords add weighs less.
+  const termWeight = new Map<string, number>();
+  for (const t of (opts.keywords ?? []).flatMap(tokenizeHelp)) {
+    termWeight.set(t, HELP_RANKING.keywordWeight);
+  }
+  for (const t of tokenizeHelp(query)) termWeight.set(t, 1);
+  const terms = new Set(termWeight.keys());
   if (terms.size === 0) return [];
 
   const { k1, exactTitleBonus } = HELP_RANKING;
@@ -311,7 +321,10 @@ export function searchHelp(
     for (const term of terms) {
       const f = d.tf.get(term);
       if (!f) continue;
-      score += index.idf(term) * ((f * (k1 + 1)) / (f + d.norm));
+      score +=
+        termWeight.get(term)! *
+        index.idf(term) *
+        ((f * (k1 + 1)) / (f + d.norm));
     }
     if (
       score > 0 &&

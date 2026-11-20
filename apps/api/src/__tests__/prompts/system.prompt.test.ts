@@ -1939,7 +1939,11 @@ describe("buildSystemPrompt — Help (#367, #1050)", () => {
     const prompt = buildSystemPrompt(withHelp());
     const help = prompt.slice(prompt.indexOf("## Help"));
     expect(help).toMatch(/help block/i);
-    expect(help).toMatch(/don't repeat or rephrase/i);
+    // #1049 smoke walk: the agent restated the entries and added causes no
+    // entry held. One short sentence, and nothing of its own.
+    expect(help).toMatch(/at most one short sentence/i);
+    expect(help).toMatch(/never restate, summarize or extend/i);
+    expect(help).toMatch(/steps, causes or facts of your own/i);
     expect(help).toMatch(/noMatch/);
     expect(help).toMatch(/no help entry covers/i);
     expect(help).not.toMatch(/relay its `answer`/);
