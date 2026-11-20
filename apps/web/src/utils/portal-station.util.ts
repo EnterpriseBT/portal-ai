@@ -43,12 +43,13 @@ export function usePortalStation(stationId: string | undefined) {
  * #699: the portal composer's lock for an unavailable station. A send would be
  * refused with 404 `STATION_NOT_FOUND`, so the composer says why instead.
  * Another load failure doesn't lock it: that's transient, and the send decides.
+ * Takes `usePortalStation`'s `unavailable`, so a caller that also reads the
+ * station (#1044) subscribes to its query once.
  */
-export function usePortalStationLock(stationId: string | undefined): {
+export function portalStationLock(unavailable: boolean): {
   locked: boolean;
   reason: string | null;
 } {
-  const { unavailable } = usePortalStation(stationId);
   return {
     locked: unavailable,
     reason: unavailable ? STATION_UNAVAILABLE_MESSAGE : null,

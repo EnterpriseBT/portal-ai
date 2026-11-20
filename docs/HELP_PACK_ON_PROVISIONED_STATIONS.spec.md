@@ -8,6 +8,12 @@ This spec pins:
 
 Discovery: `docs/HELP_PACK_ON_PROVISIONED_STATIONS.discovery.md`. Issue: #1044.
 
+## Amendment — code review
+
+- **The content says the stations "start with" the Help pack, not that they "carry" it.** There's no backfill, and an editor can detach it, so "carry" was false for older organizations. The glossary, FAQ and Getting Started copy use "start with".
+- **One read of the station.** `usePortalStationLock` is replaced by `portalStationLock(unavailable)`, so `PortalSession` reads the station once with `usePortalStation` and derives both the lock and `helpAvailable`.
+- **The pack check is typed.** It uses `HELP_PACK_SLUG = "help" satisfies BuiltinToolpackSlug`.
+
 ## Key decisions (flag for review)
 
 1. **Both provisioned stations get `help`.** No third station is added, and nothing else about either station changes. New and reset organizations only; there's no backfill.

@@ -9,7 +9,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { Box, Icon, IconName, StatusMessage } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
-import { toolPhaseLabel } from "@portalai/core/registries";
+import {
+  toolPhaseLabel,
+  type BuiltinToolpackSlug,
+} from "@portalai/core/registries";
 import Typography from "@mui/material/Typography";
 import MuiLink from "@mui/material/Link";
 import type {
@@ -28,8 +31,8 @@ import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
 import {
+  portalStationLock,
   usePortalStation,
-  usePortalStationLock,
 } from "../utils/portal-station.util";
 import { useElapsed } from "../utils/use-elapsed.util";
 import {
@@ -43,6 +46,10 @@ import { ToolActivityStrip } from "./ToolActivityStrip.component";
 import { MessageTimestamp } from "./MessageTimestamp.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
+
+/** #1044: typed against the registry, so renaming the pack fails the build
+ *  here instead of silently dropping the empty state's Help line. */
+const HELP_PACK_SLUG = "help" satisfies BuiltinToolpackSlug;
 
 interface MessageListProps {
   portalId: string;
@@ -191,8 +198,9 @@ const PortalSessionEmptyState: React.FC<{ helpAvailable: boolean }> = ({
     >
       Ready when you are
     </Typography>
-    {/* #1044: data first, but not assumed (Administrate has none), and what
-        else the assistant reaches depends on the station's packs. */}
+    {/* #1044: data first, then questions about the organization, and both
+        depend on the station's tool packs (Administrate, for one, has no
+        data). */}
     <Typography variant="body2" sx={{ maxWidth: 520, mb: 1.5 }}>
       Ask questions, explore your data, chart it and change it through
       conversation. Depending on this station&apos;s tool packs, the assistant
@@ -556,11 +564,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // caller can no longer read (#699), since the server would refuse the send.
   // The job lock wins when both apply: it's the more transient state.
   const jobLock = usePortalChatLock(portalId);
-  const stationLock = usePortalStationLock(portalQuery.data?.portal.stationId);
-  // #1044: the same station query (and key) the lock and the header read, so
-  // no extra request. Loading, unreadable or failed reads as no Help pack.
-  const { station } = usePortalStation(portalQuery.data?.portal.stationId);
-  const helpAvailable = station?.enabledToolpacks?.includes("help") ?? false;
+  // One read of the portal's station (the same query key as the header) feeds
+  // both the composer lock (#699) and the empty state's Help line (#1044).
+  // Loading, unreadable or failed reads as no Help pack.
+  const portalStation = usePortalStation(portalQuery.data?.portal.stationId);
+  const stationLock = portalStationLock(portalStation.unavailable);
+  const helpAvailable =
+    portalStation.station?.enabledToolpacks?.includes(HELP_PACK_SLUG) ?? false;
   const chatLock = jobLock.locked ? jobLock : stationLock;
 
   // #279 — the newest open tool step is the one the user is shown; when it

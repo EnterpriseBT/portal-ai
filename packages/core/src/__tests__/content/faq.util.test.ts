@@ -368,7 +368,7 @@ describe("FAQ describes station scoping (#848)", () => {
   it("the station explainer states the practice and names both provisioned stations", () => {
     const a = answer("What is a Station and why do I need one?");
     expect(a).toContain(
-      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data. Both carry the Help pack, so you can ask either how Portals works."
+      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works."
     );
   });
 
