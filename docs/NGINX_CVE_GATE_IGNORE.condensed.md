@@ -27,7 +27,10 @@ Options:
 
 **Shape:**
 - **The file:** `.github/actions/image-gate/trivyignore.yaml`, passed explicitly via `trivyignores`, so a stray root `.trivyignore` can't widen the gate.
-- **Each entry:** the CVE id, a `statement` with #1096 and the unreachable feature, and `expired_at: 2026-11-26` (the 7-day Critical SLA from 2026-11-19).
+- **Each entry:**
+  - the CVE id, scoped with `purls: [pkg:apk/alpine/nginx@1.30.6-r1]`, since the gate is shared by both images (verified to match without qualifiers, while a zlib-scoped control isn't ignored);
+  - a `statement` with #1096 and the listener or block the baked `nginx.conf` lacks;
+  - `expired_at: 2026-11-26` (the 7-day Critical SLA from 2026-11-19).
 - **Expiry:** Trivy reports an expired entry again, so a forgotten follow-up fails the next deploy.
 - **Docs:** `SUPPLY_CHAIN.md` gains an **Exceptions** policy and a corrected nginx paragraph; `CLAUDE.md` follows.
 
@@ -37,6 +40,7 @@ Options:
 - new: `.github/actions/image-gate/trivyignore.yaml`
 - edit: `.github/actions/image-gate/action.yml` (the `trivyignores` input and a comment)
 - edit: `docs/SUPPLY_CHAIN.md`, `CLAUDE.md`
+- edit (code review): the comments in `apps/web/Dockerfile`, `scripts/nginx-advisories.mjs` and `.github/workflows/nginx-advisories.yml`, plus `deploy/helm/portalai/README.md` (the residency review records the shipped exceptions). None still says the gate can't see nginx.
 
 **Tests:**
 - There's no unit surface; the gate runs only at deploy.
