@@ -11,7 +11,7 @@ name: nginx advisories
 # and closes that issue once a run comes back clean. The check fails closed:
 # when it can't read the pin or parse nginx.org's pages, the issue says so and
 # the run goes red, so a broken parser never reads as "no advisories". Like
-# refresh-integration-durations.yml it needs only `issues: write` and pushes
+# refresh-test-durations.yml it needs only `issues: write` and pushes
 # nothing; the fix is a normal PR bumping the tag and digest.
 
 on:

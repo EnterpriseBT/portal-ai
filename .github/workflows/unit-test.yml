@@ -145,8 +145,8 @@ jobs:
       - name: Run unit tests (all packages but web)
         run: npm run test:unit -- --filter='!@portalai/web'
 
-  # How many web shards: enough for ~450 recorded file-seconds each (about
-  # 150s of wall time at Jest's 3 workers), clamped to 2..6. No npm ci: the
+  # How many web shards: enough for ~300 recorded file-seconds each (about
+  # 100-110s of Jest wall time at its 3 workers), clamped to 2..6. No npm ci: the
   # planner needs only the durations file and the script.
   plan:
     name: "Unit Tests: plan"

@@ -10,6 +10,12 @@ Discovery: `docs/WEB_UNIT_SHARDS.discovery.md`. Issue: #1091.
   - While `false`, `check-durations` and `plan` read a missing file as "not recorded yet": a notice, and the fallback count.
   - A malformed file still fails either way.
 
+## Amendment — slice 4
+
+- **The web budget is 300 file-seconds per shard, not 450.** On CI the web suite measured about 853 file-seconds, far below the discovery estimate, so 450 would plan 2 shards at about 3.5 min. 300 plans 3 at about 2.5 min.
+  - The `planShards(web)` cases change accordingly: 853 → 3, 1,200 → 4, 1,800 → the cap, 2,000 → capped.
+  - The drift check now compares against 300 × 1.25.
+
 ## Key decisions (flag for review)
 
 1. **One lib, two suites.**

@@ -119,13 +119,13 @@ export const SUITES = {
     packageDir: "apps/web",
     isTestPath: isWebUnitTestPath,
     durationsFile: "apps/web/src/__tests__/durations.json",
-    // Recorded from this suite's first sharded CI runs (#1091); until then
-    // the planner uses the fallback.
-    durationsRequired: false,
+    durationsRequired: true,
     // File-seconds, not wall time: each web shard runs Jest's default 3
-    // workers on a 4-core runner, so 450s of recorded file time is about
-    // 150s of wall time, the integration suite's budget.
-    budgetSeconds: 450,
+    // workers on a 4-core runner, so 300s of recorded file time is about
+    // 100-110s of Jest wall time. The suite measured ~850 file-seconds on CI
+    // (#1091), so this plans 3 shards and a ~2.5 min check; 450 would plan 2
+    // at ~3.5 min.
+    budgetSeconds: 300,
     minShards: 2,
     // 6 shards + the checks job make Unit Tests' peak 7; with integration's
     // 10 and three single-job checks, one push peaks at exactly 20

@@ -24,6 +24,9 @@
  *                                       per run, or the shard artifacts of a single run directly)
  *   list-agreement                      fail unless the suite's path rule picks exactly the files
  *                                       its Jest config lists (lint:test-files; needs node_modules)
+ *   describe                            the suite's workflow, artifact prefix, drift-issue title,
+ *                                       durations file and check title (step outputs), so the
+ *                                       refresh workflow reads them rather than repeating them
  *   sample-runs                         how many recent runs a refresh samples (SAMPLE_RUNS)
  */
 
@@ -404,10 +407,10 @@ const CASES = [
   ...[
     [{}, 3, false, "no recorded durations → the fallback"],
     [{ a: 400 }, 2, false, "a small suite → MIN"],
-    [{ a: 1350 }, 3, false, "1,350 file-seconds → 3"],
-    [{ a: 1800 }, 4, false, "1,800 file-seconds → 4"],
-    [{ a: 2700 }, 6, false, "2,700 file-seconds → exactly the cap"],
-    [{ a: 3000 }, 6, true, "3,000 file-seconds → the cap, flagged"],
+    [{ a: 853 }, 3, false, "the ~853 file-seconds CI measured → 3"],
+    [{ a: 1200 }, 4, false, "1,200 file-seconds → 4"],
+    [{ a: 1800 }, 6, false, "1,800 file-seconds → exactly the cap"],
+    [{ a: 2000 }, 6, true, "2,000 file-seconds → the cap, flagged"],
   ].map(([durations, count, capped, label]) => ({
     name: `planShards(web): ${label}`,
     run: () => {
@@ -533,10 +536,10 @@ const CASES = [
       {
         name: "summaryVerdict(web): drift is measured against the web budget",
         run: () => {
-          // 3 files × 150s = 450 (at budget, quiet); × 190s = 570 > 450 × 1.25 (warns).
-          const quiet = verdict({ reports: [shardReport(1, 3, 150), shardReport(2, 3)] });
-          const loud = verdict({ reports: [shardReport(1, 3, 190), shardReport(2, 3)] });
-          return quiet.warnings.length === 0 && loud.ok && loud.warnings.some((w) => /450s budget/.test(w) && w.includes(WEB.durationsFile));
+          // 3 files × 100s = 300 (at budget, quiet); × 130s = 390 > 300 × 1.25 (warns).
+          const quiet = verdict({ reports: [shardReport(1, 3, 100), shardReport(2, 3)] });
+          const loud = verdict({ reports: [shardReport(1, 3, 130), shardReport(2, 3)] });
+          return quiet.warnings.length === 0 && loud.ok && loud.warnings.some((w) => /300s budget/.test(w) && w.includes(WEB.durationsFile));
         },
       },
       {
@@ -779,6 +782,20 @@ function listAgreement(suite) {
   return true;
 }
 
+function describe(suite) {
+  const fields = {
+    workflow: suite.workflowFile,
+    "artifact-prefix": suite.artifactPrefix,
+    "issue-title": suite.driftIssueTitle,
+    "durations-file": suite.durationsFile,
+    title: suite.title,
+    ceiling: String(suite.fileCeilingSeconds),
+  };
+  for (const [name, value] of Object.entries(fields)) setOutput(name, value);
+  console.log(JSON.stringify(fields));
+  return true;
+}
+
 /** Commands that act on one suite get it from `--suite`. */
 const SUITE_COMMANDS = {
   plan,
@@ -786,6 +803,7 @@ const SUITE_COMMANDS = {
   "check-durations": checkDurations,
   "update-durations": updateDurations,
   "list-agreement": listAgreement,
+  describe,
 };
 
 const COMMANDS = {
