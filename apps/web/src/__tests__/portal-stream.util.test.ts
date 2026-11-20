@@ -7,6 +7,21 @@ import { streamingBlockFor } from "../utils/portal-stream.util";
 const PROGRAM = "api.d3.select(api.container);";
 
 describe("streamingBlockFor (#269)", () => {
+  it("maps a type:help result to a help block (#1049)", () => {
+    const help = {
+      type: "help",
+      query: "q",
+      entries: [],
+      candidates: [],
+      noMatch: true,
+      helpUrl: "/help",
+    };
+    expect(streamingBlockFor("platform_help", help)).toEqual({
+      type: "help",
+      content: help,
+    });
+  });
+
   it("maps a type:d3 result to a d3 block", () => {
     const block = streamingBlockFor("visualize_d3", {
       type: "d3",

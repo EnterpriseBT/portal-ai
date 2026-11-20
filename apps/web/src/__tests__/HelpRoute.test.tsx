@@ -109,6 +109,12 @@ describe("/help search contract", () => {
     expect(search()).toEqual({});
   });
 
+  it("resolves the troubleshooting tab (#1049)", async () => {
+    const search = renderAt("/help?tab=troubleshooting");
+    await screen.findByTestId("probe");
+    expect(search()).toEqual({ tab: "troubleshooting" });
+  });
+
   it("ignores foreign params without throwing, and leaves them intact", async () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     // TanStack replaces the keys the validator returns and passes every other

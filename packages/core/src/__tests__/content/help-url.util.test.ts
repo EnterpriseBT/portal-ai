@@ -14,16 +14,31 @@ import {
  * beside `contentEntrySlug` rather than as a second hardcoded copy.
  */
 describe("HELP_TAB", () => {
-  it("carries the three tab slugs the /help route accepts", () => {
+  it("carries the four tab slugs the /help route accepts", () => {
     expect(HELP_TAB).toEqual({
       gettingStarted: "getting-started",
       glossary: "glossary",
       faq: "faq",
+      troubleshooting: "troubleshooting",
     });
   });
 });
 
 describe("buildHelpUrl", () => {
+  it("addresses a troubleshooting entry (#1049)", () => {
+    expect(
+      buildHelpUrl({
+        tab: HELP_TAB.troubleshooting,
+        entry: {
+          surface: "troubleshooting",
+          slug: "a-sync-or-import-job-failed",
+        },
+      })
+    ).toBe(
+      "/help?tab=troubleshooting#troubleshooting-entry-a-sync-or-import-job-failed"
+    );
+  });
+
   it("returns the bare route with no options", () => {
     expect(buildHelpUrl({})).toBe("/help");
   });

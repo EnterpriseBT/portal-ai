@@ -20,12 +20,13 @@ export const HELP_TAB = {
   gettingStarted: "getting-started",
   glossary: "glossary",
   faq: "faq",
+  troubleshooting: "troubleshooting",
 } as const;
 
 export type HelpTabSlug = (typeof HELP_TAB)[keyof typeof HELP_TAB];
 
-/** The two tabs whose individual entries are addressable by fragment. */
-export type HelpEntrySurface = "glossary" | "faq";
+/** The tabs whose individual entries are addressable by fragment. */
+export type HelpEntrySurface = "glossary" | "faq" | "troubleshooting";
 
 export interface HelpUrlOptions {
   tab?: HelpTabSlug;

@@ -63,6 +63,11 @@ export interface GlossaryEntry {
   example?: string;
   relatedTerms?: string[];
   pageRoute?: string;
+  /**
+   * #1049: words people use for this term that it doesn't contain ("single
+   * sign-on" for SSO). Help search weighs them like the term itself.
+   */
+  aliases?: string[];
 }
 
 // ── Dataset ─────────────────────────────────────────────────────────
@@ -249,6 +254,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "Portal",
       "Default Station",
     ],
+    aliases: ["create a station", "new station", "set up a station"],
   },
   {
     term: "Curated View",
@@ -309,6 +315,12 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Register a "customer_intel" pack with a `score_churn_risk` tool that calls your in-house ML service. Attach it to your retention station and the assistant can compute risk scores mid-session — something a SQL query alone can\'t do.',
     relatedTerms: ["Tool", "Tool Pack", "Station", "Portal", "Signing Secret"],
+    aliases: [
+      "write my own tool",
+      "build my own tool",
+      "custom tool",
+      "webhook tool",
+    ],
   },
   {
     term: "Signing Secret",

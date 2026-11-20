@@ -763,7 +763,7 @@ export const PACK_PROMPT_SECTIONS: Record<
   help: {
     capability: "answer questions about how Portals works",
     requestShapes: ["a product question"],
-    blocks: [],
+    blocks: ["help entries"],
     interpretiveTools: [],
     markers: [
       "answer questions about how Portals works",
@@ -775,11 +775,11 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Help");
       lines.push("");
       lines.push(
-        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, or how to do something in the product — go to the `platform_help` tool. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
+        "General questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to do something in the product, or what to do when something goes wrong — go to the `platform_help` tool. Pass the user's question, and your reading of it as `keywords`: a few topic words in one string. It knows nothing about this organization: questions about **the data in this station** go to the data tools, and why this station returns thin or empty results comes from `station_context`'s `status`."
       );
       lines.push("");
       lines.push(
-        "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not."
+        "`platform_help`'s result is shown to the user as a help block that quotes the entries exactly, with links into Help. **The block is your whole answer: write no text before or after it.** No preamble, no lead-in such as \"Here's what Help says\", no summary, no follow-up suggestion, even when you call it several times for several questions. Never restate, summarize or extend the entries, and never add steps, causes or facts of your own: if it isn't in the block, Help doesn't say it. When `noMatch` is true, the block itself says no help entry covers it and links to Help: add nothing, and never answer from your own knowledge. If the user asks about one of the block's related entries, fetch it with `entryIds`. Your turn ends as soon as the help blocks are shown, so if the same message also asks about their data, answer that part first and call `platform_help` last."
       );
       lines.push("");
       return lines;

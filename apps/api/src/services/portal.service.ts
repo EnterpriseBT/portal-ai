@@ -18,6 +18,7 @@ import type {
   DoneEvent,
   PinnedBlockEntry,
 } from "@portalai/core/contracts";
+import { HelpBlockContentSchema } from "@portalai/core/contracts";
 import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
@@ -131,6 +132,59 @@ interface StreamContext {
   invalidToolCalls: Map<string, unknown>;
 }
 
+/**
+ * #1049: a help block is the whole answer to a product question. A step whose
+ * tool calls were all `platform_help`, each returning a valid help block, ends
+ * the turn, so the model gets no further step in which to restate the entries
+ * around the blocks (the adversarial walk saw it quote all three back, despite
+ * the prompt). A step that also called another tool, or whose help call failed
+ * (the model should retry), carries on as usual.
+ */
+export function endsOnHelpBlocks({
+  steps,
+}: {
+  steps: ReadonlyArray<{
+    toolCalls: ReadonlyArray<{ toolName: string }>;
+    toolResults: ReadonlyArray<{ toolName: string; output: unknown }>;
+  }>;
+}): boolean {
+  const last = steps[steps.length - 1];
+  if (!last || last.toolCalls.length === 0) return false;
+  return (
+    last.toolResults.length === last.toolCalls.length &&
+    last.toolResults.every(
+      (r) =>
+        r.toolName === "platform_help" &&
+        HelpBlockContentSchema.safeParse(r.output).success
+    )
+  );
+}
+
+/**
+ * A tool call's input as an object, whatever the stream produced (#1049).
+ * When the model emits invalid JSON for a tool's input, the SDK hands back
+ * the raw text; stored and later replayed as a string, it makes the model API
+ * refuse every later turn ("tool_use.input: Input should be an object"). A
+ * string that parses to an object is used as that object; anything else is
+ * `{}` (the call already failed, and its tool-result says why).
+ */
+export function asToolInput(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Not JSON: fall through to an empty input.
+    }
+  }
+  return {};
+}
+
 /** Handle a text-delta chunk: accumulate text and send SSE. */
 function handleTextDelta(ctx: StreamContext, text: string): void {
   ctx.currentText += text;
@@ -157,8 +211,8 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
     type: "tool-call",
     toolCallId: chunk.toolCallId,
     toolName: chunk.toolName,
-    // AI SDK v6 renamed `args` → `input`
-    input: chunk.input ?? chunk.args,
+    // AI SDK v6 renamed `args` → `input`. Always stored as an object (#1049).
+    input: asToolInput(chunk.input ?? chunk.args),
   });
 
   const toolCallId = chunk.toolCallId as string | undefined;
@@ -364,6 +418,19 @@ export function resolveDisplayBlock(
     return {
       block: { type: "geo", content: toolResult },
       sseResult: toolResult ?? undefined,
+    };
+  }
+
+  // Help (#1049). platform_help's result is the block, built here from the
+  // tool's own output so the quoted entries reach the user exactly as the
+  // tool chose them; the model's text sits outside the block. A result that
+  // isn't a valid help block makes no block at all.
+  if (resultKind === "help") {
+    const parsed = HelpBlockContentSchema.safeParse(toolResult);
+    if (!parsed.success) return null;
+    return {
+      block: { type: "help", content: parsed.data },
+      sseResult: parsed.data,
     };
   }
 
@@ -865,7 +932,7 @@ export class PortalService {
       system: systemPrompt,
       messages,
       tools: analyticsTools,
-      stopWhen: stepCountIs(10),
+      stopWhen: [stepCountIs(10), endsOnHelpBlocks],
       maxRetries: 3,
     });
 
@@ -1214,9 +1281,10 @@ function reconstructModelMessages(
           type: "tool-call",
           toolCallId: block.toolCallId,
           toolName: block.toolName,
-          // AI SDK v6 renamed `args` → `input`.
-          // Default to {} for data saved while chunk.args was undefined.
-          input: block.input ?? block.args ?? {},
+          // AI SDK v6 renamed `args` → `input`. Rows saved before #1049 may
+          // hold a malformed call's raw string; replay it as an object, or
+          // `{}`, so one bad call can't break every later turn.
+          input: asToolInput(block.input ?? block.args),
         });
       } else if (block.type === "tool-result") {
         const toolName = String(block.toolName ?? "tool");

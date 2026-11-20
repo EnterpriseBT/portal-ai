@@ -84,6 +84,7 @@ export const ResultKindSchema = z.enum([
   "geo", // GIS map (#84, child H)
   "mutation-result",
   "progress",
+  "help", // verbatim help entries, built-in platform_help only (#1049)
 ]);
 export type ResultKind = z.infer<typeof ResultKindSchema>;
 
@@ -232,12 +233,13 @@ export const ToolCapabilitySchema = z
       cap.production.kind === "value" &&
       cap.resultKind !== "scalar" &&
       cap.resultKind !== "mutation-result" &&
-      cap.resultKind !== "progress"
+      cap.resultKind !== "progress" &&
+      cap.resultKind !== "help"
     ) {
       ctx.addIssue({
         code: "custom",
         message:
-          "production.kind 'value' can only render as resultKind 'scalar'/'mutation-result'/'progress'",
+          "production.kind 'value' can only render as resultKind 'scalar'/'mutation-result'/'progress'/'help'",
       });
     }
   });
@@ -291,6 +293,9 @@ export function customToolCapabilityError(
   }
   if (cap.resultKind === "mutation-result" || cap.resultKind === "progress") {
     return `custom tools cannot declare resultKind '${cap.resultKind}' (they don't write)`;
+  }
+  if (cap.resultKind === "help") {
+    return "custom tools cannot declare resultKind 'help' (only the built-in help tool quotes help content)";
   }
   if (!opts.allowedConsumptionModes.includes(cap.consumption.mode)) {
     return `custom tools cannot declare consumption mode '${cap.consumption.mode}' yet (allowed: ${opts.allowedConsumptionModes.join(", ")})`;

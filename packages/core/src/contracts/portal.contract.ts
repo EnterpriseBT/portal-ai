@@ -249,6 +249,7 @@ export const PortalBlockTypeSchema = z.enum([
   "tool-call",
   "tool-result",
   "d3",
+  "help", // platform_help's verbatim entries (#1049); not pinnable
 ]);
 
 export type PortalBlockType = z.infer<typeof PortalBlockTypeSchema>;

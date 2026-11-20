@@ -207,7 +207,7 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService, resolveDisplayBlock } =
+const { PortalService, resolveDisplayBlock, endsOnHelpBlocks } =
   await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -1162,6 +1162,51 @@ describe("PortalService", () => {
       expect(result.messages).toEqual(messages);
       expect(result.coreMessages).toBeDefined();
       expect(mockFindByPortal).toHaveBeenCalledWith(PORTAL_ID);
+    });
+
+    // #1049 smoke walk: the model sent invalid JSON for a tool's input, the
+    // SDK stored it as the raw string, and replaying that string made every
+    // later turn fail ("tool_use.input: Input should be an object").
+    it("replays a tool call whose stored input is a string as an object", async () => {
+      const call = (id: string, input: unknown) => ({
+        type: "tool-call",
+        toolCallId: id,
+        toolName: "platform_help",
+        input,
+      });
+      const result_ = (id: string) => ({
+        type: "tool-result",
+        toolCallId: id,
+        toolName: "platform_help",
+        content: { error: "Invalid input" },
+      });
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue([
+        { id: "m1", role: "user", blocks: [{ type: "text", content: "Q" }] },
+        {
+          id: "m2",
+          role: "assistant",
+          blocks: [
+            call(
+              "tc-bad",
+              '{"question": "weather", "keywords": weather Paris lookup}'
+            ),
+            result_("tc-bad"),
+            call("tc-json", '{"question": "What is a portal?"}'),
+            result_("tc-json"),
+            { type: "text", content: "Done." },
+          ],
+        },
+      ]);
+
+      const { coreMessages } = await PortalService.getPortal(PORTAL_ID);
+      const parts = coreMessages.flatMap(
+        (m) => (Array.isArray(m.content) ? m.content : []) as unknown[]
+      ) as { type: string; input?: unknown }[];
+      const inputs = parts
+        .filter((p) => p.type === "tool-call")
+        .map((p) => p.input);
+      expect(inputs).toEqual([{}, { question: "What is a portal?" }]);
     });
 
     it("reconstructs full ModelMessage[] including tool turns", async () => {
@@ -2359,6 +2404,115 @@ describe("resolveDisplayBlock → geo (#314)", () => {
       (result?.block.content as { queryHandle?: string }).queryHandle
     ).toBe("qh-geo-1");
     expect(result?.sseResult).toBeDefined();
+  });
+});
+
+// resolveDisplayBlock — help (#1049)
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → help (#1049)", () => {
+  const HELP = {
+    type: "help",
+    query: "what is a portal",
+    entries: [
+      {
+        surface: "glossary",
+        slug: "portal",
+        title: "Portal",
+        url: "/help?tab=glossary#glossary-entry-portal",
+        body: "A chat session.",
+      },
+    ],
+    candidates: [],
+    noMatch: false,
+    helpUrl: "/help?tab=getting-started",
+  };
+
+  it("builds a help block from platform_help's own result, quoting it as is", () => {
+    const result = resolveDisplayBlock("platform_help", HELP);
+    expect(result?.block).toEqual({ type: "help", content: HELP });
+    expect(result?.sseResult).toEqual(HELP);
+  });
+
+  it("makes no block from a result that isn't a valid help result", () => {
+    expect(
+      resolveDisplayBlock("platform_help", { ...HELP, entries: "nope" })
+    ).toBeNull();
+    expect(
+      resolveDisplayBlock("platform_help", { answer: "old shape", links: [] })
+    ).toBeNull();
+  });
+});
+
+// endsOnHelpBlocks — a help block is the whole answer (#1049)
+// ---------------------------------------------------------------------------
+
+describe("endsOnHelpBlocks (#1049)", () => {
+  const HELP = {
+    type: "help",
+    query: "what is a portal",
+    entries: [],
+    candidates: [],
+    noMatch: true,
+    helpUrl: "/help?tab=getting-started",
+  };
+  const help = { toolName: "platform_help", output: HELP };
+  const step = (
+    toolCalls: { toolName: string }[],
+    toolResults: { toolName: string; output: unknown }[]
+  ) => ({ toolCalls, toolResults });
+
+  it("ends the turn after a step whose calls were all platform_help help blocks", () => {
+    // The adversarial walk: three help blocks, then a step quoting them back.
+    expect(
+      endsOnHelpBlocks({
+        steps: [step([help, help, help], [help, help, help])],
+      })
+    ).toBe(true);
+  });
+
+  it("carries on when the step also called another tool", () => {
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step(
+            [help, { toolName: "sql_query" }],
+            [help, { toolName: "sql_query", output: { rows: [] } }]
+          ),
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it("carries on when a help call failed, so the model can retry", () => {
+    // Invalid input is a tool error: no result for the call.
+    expect(endsOnHelpBlocks({ steps: [step([help], [])] })).toBe(false);
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step([help], [{ toolName: "platform_help", output: { error: "x" } }]),
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it("carries on after a text-only or empty step", () => {
+    expect(endsOnHelpBlocks({ steps: [] })).toBe(false);
+    expect(endsOnHelpBlocks({ steps: [step([], [])] })).toBe(false);
+  });
+
+  it("looks only at the latest step", () => {
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step([help], [help]),
+          step(
+            [{ toolName: "sql_query" }],
+            [{ toolName: "sql_query", output: {} }]
+          ),
+        ],
+      })
+    ).toBe(false);
   });
 });
 

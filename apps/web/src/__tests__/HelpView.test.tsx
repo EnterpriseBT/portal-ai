@@ -3,6 +3,7 @@ import React from "react";
 import type { GettingStartedStep } from "../utils/getting-started.util";
 import type { GlossaryEntry } from "@portalai/core/content";
 import type { FAQEntry } from "@portalai/core/content";
+import type { TroubleshootingEntry } from "@portalai/core/content";
 import type {
   GlossaryCategory as GlossaryCategoryValue,
   FAQCategory as FAQCategoryValue,
@@ -70,6 +71,15 @@ const faqFixture: FAQEntry[] = [
   },
 ];
 
+const troubleshootingFixture: TroubleshootingEntry[] = [
+  {
+    symptom: "A sync or import job failed",
+    cause: "The source was unreachable.",
+    fix: "Open Jobs and read the error.",
+    related: [{ surface: "faq", title: "Why did my job fail?" }],
+  },
+];
+
 beforeEach(() => {
   // jsdom doesn't implement scrollIntoView; stub it.
   Element.prototype.scrollIntoView =
@@ -121,6 +131,7 @@ const ControlledHelpHarness: React.FC<{
       steps={stepsFixture}
       glossaryEntries={glossaryFixture}
       faqEntries={faqFixture}
+      troubleshootingEntries={troubleshootingFixture}
       onNavigate={onNavigate}
       tabIndex={HELP_TAB_INDEX[tab]}
       glossaryCategory={glossaryCategory}
@@ -164,6 +175,7 @@ const renderControlled = (
       steps={stepsFixture}
       glossaryEntries={glossaryFixture}
       faqEntries={faqFixture}
+      troubleshootingEntries={troubleshootingFixture}
       onNavigate={jest.fn()}
       tabIndex={0}
       glossaryCategory={null}
@@ -179,13 +191,16 @@ const renderControlled = (
 // ── 5.1 — HelpViewUI ────────────────────────────────────────────────
 
 describe("HelpViewUI", () => {
-  it("renders three tabs labeled 'Getting Started', 'Glossary', 'FAQ'", () => {
+  it("renders four tabs labeled 'Getting Started', 'Glossary', 'FAQ', 'Troubleshooting'", () => {
     renderUI();
     expect(
       screen.getByRole("tab", { name: "Getting Started" })
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Glossary" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "FAQ" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Troubleshooting" })
+    ).toBeInTheDocument();
   });
 
   it("Getting Started is the default active tab", () => {
@@ -243,6 +258,45 @@ describe("HelpViewUI", () => {
     expect(
       screen.queryByTestId("faq-entry-how-do-i-connect-my-first-data-source")
     ).not.toBeInTheDocument();
+  });
+
+  it("ranks FAQ results by help search, finding a phrasing no entry contains (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "FAQ" }));
+
+    await user.type(
+      screen.getByPlaceholderText("Search help"),
+      "How do I bring in a spreadsheet?"
+    );
+
+    // No entry contains "spreadsheet"; the entry's aliases do.
+    const entries = screen.getAllByTestId(/^faq-entry-[a-z0-9-]+$/);
+    expect(entries[0]).toHaveAttribute(
+      "data-testid",
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+  });
+
+  it("keeps finding entries by a word still being typed (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "Glossary" }));
+
+    // "stat" is no whole word; the ranker finds nothing, so substring
+    // matching takes over until the word is complete.
+    await user.type(screen.getByPlaceholderText("Search help"), "stat");
+    expect(screen.getByTestId("glossary-entry-station")).toBeInTheDocument();
+  });
+
+  it("finds troubleshooting entries by a word still being typed (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "Troubleshooting" }));
+    await user.type(screen.getByPlaceholderText("Search help"), "unreach");
+    expect(
+      screen.getByTestId("troubleshooting-entry-a-sync-or-import-job-failed")
+    ).toBeInTheDocument();
   });
 
   it("search bar is hidden on the Getting Started tab (filtering applies only to glossary/FAQ)", () => {
@@ -475,6 +529,43 @@ describe("HelpView container", () => {
 // ── 5.1c — Entry anchors (#365) ─────────────────────────────────────
 
 describe("HelpViewUI (entry anchors)", () => {
+  it("expands and scrolls to the anchored troubleshooting entry (#1049)", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Troubleshooting],
+      anchor: {
+        surface: HelpTab.Troubleshooting,
+        slug: "a-sync-or-import-job-failed",
+      },
+    });
+
+    const entry = screen.getByTestId(
+      "troubleshooting-entry-a-sync-or-import-job-failed"
+    );
+    expect(
+      within(entry).getByText("Open Jobs and read the error.")
+    ).toBeVisible();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("reports a troubleshooting entry's related FAQ as a navigation to it (#1049)", async () => {
+    const onNavigateToEntry = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Troubleshooting],
+      anchor: {
+        surface: HelpTab.Troubleshooting,
+        slug: "a-sync-or-import-job-failed",
+      },
+      onNavigateToEntry,
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Why did my job fail?" })
+    );
+    expect(onNavigateToEntry).toHaveBeenCalledWith({
+      surface: HelpTab.Faq,
+      slug: "why-did-my-job-fail",
+    });
+  });
+
   it("expands and scrolls to the anchored FAQ entry", () => {
     renderControlled({
       tabIndex: HELP_TAB_INDEX[HelpTab.Faq],

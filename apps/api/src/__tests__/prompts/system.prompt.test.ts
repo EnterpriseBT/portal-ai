@@ -1933,12 +1933,44 @@ describe("buildSystemPrompt — Help (#367, #1050)", () => {
     expect(help).toMatch(/data tools|data in this station/i);
   });
 
-  it("tells the agent to relay the tool's answer rather than rewrite it", () => {
-    // The tool composes because platform behavior is what a model states
-    // confidently and wrongly. The prompt is what keeps the relay honest.
-    const help = buildSystemPrompt(withHelp());
-    expect(help).toMatch(/relay/i);
-    expect(help).toMatch(/do not rewrite|don't rewrite/i);
+  it("tells the agent the help block quotes the entries, so it adds no text of its own (#1049)", () => {
+    // The block puts the entries in front of the user verbatim; the agent's
+    // own text must not repeat, rephrase or extend them.
+    const prompt = buildSystemPrompt(withHelp());
+    const help = prompt.slice(prompt.indexOf("## Help"));
+    expect(help).toMatch(/help block/i);
+    // #1049 smoke walk: the agent restated the entries and added causes no
+    // entry held. The adversarial walk: with several blocks it restated all
+    // of them. The block is the whole answer, with no text of its own.
+    expect(help).toMatch(/the block is your whole answer/i);
+    expect(help).toMatch(/no text before or after it/i);
+    expect(help).toMatch(/even when you call it several times/i);
+    expect(help).not.toMatch(/at most one short sentence/i);
+    // The turn ends on the help blocks (`endsOnHelpBlocks`), so a data
+    // question in the same message must come first.
+    expect(help).toMatch(/call `platform_help` last/);
+    expect(help).toMatch(/never restate, summarize or extend/i);
+    expect(help).toMatch(/steps, causes or facts of your own/i);
+    expect(help).toMatch(/noMatch/);
+    expect(help).toMatch(
+      /no help entry covers it and links to Help: add nothing/i
+    );
+    expect(help).not.toMatch(/relay its `answer`/);
+  });
+
+  it("asks for the agent's reading of the question as keywords (#1049)", () => {
+    const prompt = buildSystemPrompt(withHelp());
+    const help = prompt.slice(prompt.indexOf("## Help"));
+    expect(help).toContain("`keywords`");
+  });
+
+  it("lists help entries among the rendered blocks when Help is on the station (#1049)", () => {
+    expect(buildSystemPrompt(withHelp())).toMatch(
+      /feed of rendered blocks[^.]*help entries/
+    );
+    expect(
+      buildSystemPrompt(makeContext({ effectiveToolPacks: ["data_query"] }))
+    ).not.toMatch(/feed of rendered blocks[^.]*help entries/);
   });
 
   it("has no ## Help and no platform_help without the help pack (#1050)", () => {

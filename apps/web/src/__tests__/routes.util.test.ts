@@ -159,6 +159,9 @@ describe("helpTabIndexFromSearch", () => {
     expect(helpTabIndexFromSearch({ tab: HelpTab.Faq })).toBe(
       HELP_TAB_INDEX[HelpTab.Faq]
     );
+    expect(helpTabIndexFromSearch({ tab: HelpTab.Troubleshooting })).toBe(
+      HELP_TAB_INDEX[HelpTab.Troubleshooting]
+    );
   });
 
   it("falls back to the first tab for an empty search", () => {
@@ -170,6 +173,7 @@ describe("helpTabIndexFromSearch", () => {
       [HelpTab.GettingStarted]: 0,
       [HelpTab.Glossary]: 1,
       [HelpTab.Faq]: 2,
+      [HelpTab.Troubleshooting]: 3,
     });
   });
 });
@@ -185,6 +189,15 @@ describe("parseHelpAnchor", () => {
     expect(parseHelpAnchor("#faq-entry-why-did-my-job-fail")).toEqual({
       surface: HelpTab.Faq,
       slug: "why-did-my-job-fail",
+    });
+  });
+
+  it("parses a troubleshooting anchor (#1049)", () => {
+    expect(
+      parseHelpAnchor("#troubleshooting-entry-a-sync-or-import-job-failed")
+    ).toEqual({
+      surface: HelpTab.Troubleshooting,
+      slug: "a-sync-or-import-job-failed",
     });
   });
 

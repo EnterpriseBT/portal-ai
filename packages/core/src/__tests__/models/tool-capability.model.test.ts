@@ -267,6 +267,24 @@ describe("deriveToolRole", () => {
 
 // ── Custom-pack subset (#121 child I) ────────────────────────────────
 
+describe("resultKind 'help' (#1049)", () => {
+  it("accepts value production", () => {
+    const cap: ToolCapability = {
+      pure: true,
+      reads: [],
+      writes: [],
+      consumption: { mode: "none" },
+      computeShape: "scan",
+      costHint: "free",
+      locks: [],
+      resultKind: "help",
+      production: { kind: "value" },
+      alwaysAvailable: false,
+    };
+    expect(ToolCapabilitySchema.safeParse(cap).success).toBe(true);
+  });
+});
+
 describe("customToolCapabilityError", () => {
   const customConsumer: ToolCapability = {
     pure: true,
@@ -284,6 +302,19 @@ describe("customToolCapabilityError", () => {
 
   it("accepts a valid pure-consumer capability (consumption none)", () => {
     expect(customToolCapabilityError(customConsumer, allowNone)).toBeNull();
+  });
+
+  it("rejects resultKind 'help': only the built-in help tool quotes help content (#1049)", () => {
+    expect(
+      customToolCapabilityError(
+        {
+          ...customConsumer,
+          resultKind: "help",
+          production: { kind: "value" },
+        },
+        allowNone
+      )
+    ).toMatch(/help/);
   });
 
   it("rejects a non-pure tool", () => {
