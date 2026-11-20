@@ -37,9 +37,3 @@ describe("apiConnector.endpoints.suggestTransform", () => {
     expect(apiConnector.endpoints.suggestTransform()).toBe(handle);
   });
 });
-
-describe("#1091 fail-closed probe", () => {
-  it("fails on purpose", () => {
-    expect(1).toBe(2);
-  });
-});
