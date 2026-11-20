@@ -59,11 +59,12 @@ The fix is a PR moving the web Dockerfile's runtime `FROM` to the fixed stable t
 ## Exceptions
 
 When the gate fails on a fix that can't ship yet, typically a fixed nginx release whose `-alpine-slim` image isn't published (#1096), the gate can carry a **time-boxed exception**. It lives in `.github/actions/image-gate/trivyignore.yaml`, which the gate passes explicitly to Trivy. Every entry needs:
-- **the CVE id**, exactly as Trivy reports it, never a package or a pattern;
+- **the CVE id**, exactly as Trivy reports it, never a pattern;
+- **`purls`** scoping it to the package and version whose unreachability the statement argues, without qualifiers so it matches every platform (e.g. `pkg:apk/alpine/nginx@1.30.6-r1`). The gate is shared by both images, so an unscoped id would also hide that CVE in any other package;
 - **a `statement`** with the tracking issue and the concrete reason the vulnerable code isn't reachable in what we ship (e.g. "nginx.conf enables no http2");
 - **an `expired_at`** no later than the severity's SLA from detection (Critical 7 days, High 30 days).
 
-Trivy reports an expired entry again, so an exception that outlives its fix fails the next deploy rather than staying ignored. The follow-up PR (usually the tag + digest bump) deletes the entries. Leave the file as `vulnerabilities: []` when nothing is excepted. An exception never covers a finding whose vulnerable code we do reach: that waits for the fix, or the deploy waits.
+Trivy reports an expired entry again, so an exception that outlives its fix fails the next deploy rather than staying ignored. A versioned purl also stops matching once the package moves off that version. The follow-up PR (usually the tag + digest bump) deletes the entries. Leave the file as `vulnerabilities: []` when nothing is excepted. An exception never covers a finding whose vulnerable code we do reach: that waits for the fix, or the deploy waits.
 
 ## Verifying a published image
 

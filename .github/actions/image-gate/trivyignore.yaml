@@ -4,33 +4,46 @@
 # next deploy instead of quietly staying ignored. Keep this file empty
 # (`vulnerabilities: []`) whenever nothing is excepted.
 #
-# The policy for adding one is docs/SUPPLY_CHAIN.md → "Exceptions": a
+# The policy for adding one is docs/SUPPLY_CHAIN.md → "Exceptions": the id
+# scoped to one package's purl (the gate is shared by both images), a
 # concrete reason the vulnerable code isn't reachable, the tracking issue,
 # and an expiry no later than the severity's patch SLA.
 #
 # #1096: nginx 1.30.7 (18 Nov 2026) fixes all six, but
-# nginxinc/nginx-unprivileged hasn't published 1.30.7-alpine-slim yet.
-# apps/web/nginx.conf serves plain HTTP/1.1 on 8080 (TLS ends at the load
-# balancer) with no http2, http3/quic, mail, resolver or alias, and the
-# -alpine-slim variant has no dynamic modules. When the image publishes,
+# nginxinc/nginx-unprivileged hasn't published 1.30.7-alpine-slim yet. The
+# baked apps/web/nginx.conf has one plain `listen 8080;` (no ssl, http2 or
+# quic, so TLS ends upstream in every install) and no mail, resolver or
+# alias, and the -alpine-slim variant has no dynamic modules. When the image publishes,
 # bump apps/web/Dockerfile's tag + digest together and delete these entries.
 # Expiry: 7 days (the Critical SLA) from detection on 2026-11-19.
 vulnerabilities:
   - id: CVE-2026-113425
-    statement: "#1096: mail proxy use-after-free; the web image enables no mail module or mail block."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: mail proxy use-after-free; the baked nginx.conf has no mail block."
     expired_at: 2026-11-26
   - id: CVE-2026-121810
-    statement: "#1096: HTTP/3 use-after-free; nginx.conf enables no http3/quic listener."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: HTTP/3 use-after-free; the baked nginx.conf has no quic listener."
     expired_at: 2026-11-26
   - id: CVE-2026-123007
-    statement: "#1096: HTTP/2 flow-control overflow; nginx.conf enables no http2 (plain HTTP/1.1 behind the ALB)."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: HTTP/2 flow-control overflow; the baked nginx.conf has no http2 listener."
     expired_at: 2026-11-26
   - id: CVE-2026-123633
-    statement: "#1096: HTTP/2 use-after-free; nginx.conf enables no http2."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: HTTP/2 use-after-free; the baked nginx.conf has no http2 listener."
     expired_at: 2026-11-26
   - id: CVE-2026-118899
-    statement: "#1096: TLS 1.3 request-body loop; nginx terminates no TLS (the ALB does)."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: TLS 1.3 request-body loop; the baked nginx.conf has no ssl listener, so nginx terminates no TLS."
     expired_at: 2026-11-26
   - id: CVE-2026-123634
-    statement: "#1096: resolver use-after-free; nginx.conf configures no resolver."
+    purls:
+      - "pkg:apk/alpine/nginx@1.30.6-r1"
+    statement: "#1096: resolver use-after-free; the baked nginx.conf configures no resolver."
     expired_at: 2026-11-26

@@ -332,9 +332,12 @@ residency operator most often needs to know about:
 - Verify both images (`image.api`, `image.web`) before mirroring them: each
   is Trivy-gated, SBOM-attested and cosign-signed, the web image for both of
   its platforms (`docs/SUPPLY_CHAIN.md` → "Verifying a published image").
-  The web image's scan covers its OS packages and node. The nginx binary
-  comes from nginx.org's repository, outside Trivy's data, so it is tracked
-  separately: the image runs the stable line with no dynamic modules, and a
-  weekly check compares the pinned version against nginx.org's security
-  advisories (`docs/SUPPLY_CHAIN.md`). Record the image's nginx version
-  (`nginx -v`) in the review.
+  The web image's scan covers its OS packages, node and the nginx binary
+  (from nginx.org's repository). The image runs the stable line with no
+  dynamic modules, and a weekly check also compares the pinned version
+  against nginx.org's security advisories (`docs/SUPPLY_CHAIN.md`). Record
+  the image's nginx version (`nginx -v`) in the review, and any time-boxed
+  scan exceptions it shipped with: `.github/actions/image-gate/trivyignore.yaml`
+  at the image's commit lists each CVE, why it isn't reachable in the baked
+  `nginx.conf`, and when the exception lapses (`docs/SUPPLY_CHAIN.md` →
+  "Exceptions").

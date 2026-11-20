@@ -45,9 +45,11 @@ runs:
     # Critical 7d / High 30d — see docs/SUPPLY_CHAIN.md.
     #
     # The only exceptions are the time-boxed, reasoned entries in
-    # trivyignore.yaml beside this file (#1096). Each expires, after which
-    # Trivy reports it again and the gate fails. Passed explicitly, so a stray
-    # .trivyignore elsewhere in the repo can't widen the gate.
+    # trivyignore.yaml beside this file (#1096), each scoped to one package's
+    # purl. Each expires, after which Trivy reports it again and the gate
+    # fails. Passed explicitly, so a root .trivyignore doesn't apply. Trivy
+    # still auto-loads a trivy.yaml from the working directory (the repo
+    # root): there must not be one, or it would change the gate's options.
     - name: Scan (gate — fail on fixable CRITICAL/HIGH)
       uses: aquasecurity/trivy-action@v0.36.0
       with:
