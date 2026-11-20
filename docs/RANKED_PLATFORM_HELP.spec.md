@@ -8,6 +8,16 @@ This spec pins the contract for #1049:
 
 Discovery: `docs/RANKED_PLATFORM_HELP.discovery.md`. Issue: #1049.
 
+## Amendment — slice 1
+
+- **`searchHelp` takes `floor?`** (default `HELP_MATCH_FLOOR`, which slice 1 tuned to 1.5).
+  - Scores scale with the corpus, so the small-corpus unit tests set their own.
+  - A match must also score above zero.
+- **`HELP_RANKING.exactTitleBonus` (10)** is added when the slugged query equals the entry's slug. Stopwords make "Tool Pack" and "What are tool packs?" the same terms, and this tells them apart.
+- **"The File Upload FAQ entry"** in the acceptance criteria is "How do I connect my first data source?", the entry that covers File Upload for CSV and Excel. No FAQ is titled File Upload.
+  - It gained the aliases spreadsheet, csv, excel, "upload a file", "import a file", "bring in data" and "import data".
+  - Other aliases for the paraphrase set went on: the vague-answers FAQ, the invite FAQ, glossary Station, and glossary Custom Toolpack.
+
 ## Key decisions (flag for review)
 
 1. **The ranker:** BM25-lite (k1 1.2, b 0.75) over field-weighted tokens: title ×3, `aliases` ×3, body ×1, related ×1. It uses a short stopword list and light suffix stemming. It's pure, in `@portalai/core/content`.

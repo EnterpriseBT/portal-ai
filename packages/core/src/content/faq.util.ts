@@ -31,6 +31,12 @@ export interface FAQEntry {
   answer: string;
   category: FAQCategory;
   relatedGlossaryTerms?: string[];
+  /**
+   * #1049: words and phrasings people use for this question that it doesn't
+   * contain ("spreadsheet" for connecting a data source). Help search weighs
+   * them like the question, so adding one is how a missed phrasing gets fixed.
+   */
+  aliases?: string[];
 }
 
 // ── Dataset ─────────────────────────────────────────────────────────
@@ -50,6 +56,15 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "Open the Connectors page, switch to the Catalog tab, and pick a connector definition (for example, File Upload for CSV and Excel files). Configure it with your file or credentials — that creates a connector instance you can use across stations.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Connector Definition", "Connector Instance"],
+    aliases: [
+      "spreadsheet",
+      "csv",
+      "excel",
+      "upload a file",
+      "import a file",
+      "bring in data",
+      "import data",
+    ],
   },
   {
     question: "What is a Station and why do I need one?",
@@ -228,6 +243,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "Open Settings → Members and invite them by email, choosing their role. You'll get an invitation link — copy it and send it to them; it's shown only once and expires after 7 days. They join when they sign in with that email. The Members tab appears for anyone with permission to invite members.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Invitation", "Role"],
+    aliases: [
+      "add a teammate",
+      "add a user",
+      "add a colleague",
+      "new member",
+      "invite a coworker",
+    ],
   },
   {
     question: "How do I control who can see and change things?",
@@ -336,6 +358,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "Entity Record",
       "Connector Instance",
       "Station",
+    ],
+    aliases: [
+      "can't see my data",
+      "no data",
+      "empty answers",
+      "missing data",
+      "answers are empty",
     ],
   },
   {
