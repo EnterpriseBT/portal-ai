@@ -3,10 +3,12 @@ import { DERIVED_KEY_MAX_LENGTH } from "@portalai/spreadsheet-parsing";
 
 import {
   DESCRIPTION_MAX_LENGTH,
+  EMAIL_MAX_LENGTH,
   KEY_MAX_LENGTH,
   NAME_MAX_LENGTH,
   clipToLength,
   descriptionField,
+  emailField,
   keyField,
   nameField,
   planTextLimitIssues,
@@ -81,6 +83,29 @@ describe("text limits (#801)", () => {
     it("keeps the user's text as written", () => {
       expect(descriptionField().parse("  line\n")).toBe("  line\n");
       expect(descriptionField().safeParse("").success).toBe(true);
+    });
+  });
+
+  describe("emailField (#1101)", () => {
+    const at = (n: number) =>
+      "a".repeat(n - "@example.com".length) + "@example.com";
+
+    it("pins RFC 5321's limit", () => {
+      expect(EMAIL_MAX_LENGTH).toBe(254);
+    });
+
+    it("accepts exactly the limit and rejects one more, length first", () => {
+      expect(emailField().safeParse(at(254)).success).toBe(true);
+      expect(firstMessage(emailField().safeParse(at(255)))).toBe(
+        "Email must be 254 characters or fewer"
+      );
+    });
+
+    it("trims, then requires a valid address", () => {
+      expect(emailField().parse("  a@b.com ")).toBe("a@b.com");
+      expect(firstMessage(emailField().safeParse("nope"))).toBe(
+        "Enter a valid email address"
+      );
     });
   });
 

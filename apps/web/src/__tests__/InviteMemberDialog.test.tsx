@@ -136,6 +136,23 @@ describe("InviteMemberDialog", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("blocks submit and shows the length error on an email over 254 characters (#1101)", async () => {
+    const onSubmit = jest.fn();
+    render(<InviteMemberDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a".repeat(288) + "@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    expect(
+      await screen.findByText("Email must be 254 characters or fewer")
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Email/)).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("marks the email field required", () => {
     render(<InviteMemberDialog {...defaultProps} />);
     expect(screen.getByLabelText(/Email/)).toBeRequired();

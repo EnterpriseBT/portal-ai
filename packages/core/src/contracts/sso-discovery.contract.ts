@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { emailField } from "./text-limits.contract.js";
+
 /**
  * "Sign in with SSO" discovery contract (#916): the wire shape of the
  * anonymous `POST /api/public/sso-discovery`. The web sends a work email; the
@@ -9,7 +11,7 @@ import { z } from "zod";
  */
 export const SsoDiscoveryRequestBodySchema = z
   .object({
-    email: z.string().trim().email("Enter a valid email address").max(320),
+    email: emailField(),
   })
   .strict();
 export type SsoDiscoveryRequestBody = z.infer<

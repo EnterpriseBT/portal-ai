@@ -36,7 +36,7 @@ Other email inputs checked: `auth.contract.ts:42` is Auth0's claim shape (not us
 **Tests** (failing first)
 - `packages/core/src/__tests__/contracts/invitation.contract.test.ts`: 254-char address accepted; `"a".repeat(288) + "@example.com"` rejected with `Email must be 254 characters or fewer` as the first issue; padded address parses trimmed.
 - Guard test above (red before the contract edit if `email` is guarded first).
-- `apps/api/src/__tests__/tools/rbac/invitation-tools.test.ts`: `member_invite` with the 300-char address rejects in `validate` (`Tool.validate` is `schema.parse`, `apps/api/src/types/tools.ts:13`) and `SeatService.invite` is never called.
+- `apps/api/src/__tests__/tools/rbac/invitation-tools.test.ts`: `member_invite` with the 300-char address returns an `{ error }` result and `SeatService.invite` is never called (added to the existing bad-input loop).
 - `apps/web/src/__tests__/InviteMemberDialog.test.tsx`: typing an over-long address and submitting shows the length error with `aria-invalid="true"` and doesn't call `onSubmit`.
 - `npm run test:unit` scoped to these files (core, api, web), `npm run build` (core contract change, run the root build), `type-check`, `lint`.
 

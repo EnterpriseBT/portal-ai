@@ -3,6 +3,7 @@ import { InvitationSchema } from "../models/invitation.model.js";
 import { OrganizationSchema } from "../models/organization.model.js";
 import { OrgRoleSchema } from "../models/organization-user.model.js";
 import { RbacKindSchema } from "../models/permission.model.js";
+import { emailField } from "./text-limits.contract.js";
 
 /**
  * Wire contracts for org seats / invitations (#584). The invite-link flow is
@@ -18,7 +19,7 @@ import { RbacKindSchema } from "../models/permission.model.js";
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const InviteCreateRequestSchema = z
   .object({
-    email: z.string().email(),
+    email: emailField(),
     role: OrgRoleSchema.refine((r) => r !== "owner", {
       message: "Cannot invite a user as owner",
     }),

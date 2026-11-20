@@ -12,7 +12,8 @@ import * as contracts from "../../contracts/index.js";
  * enumeration as `strict-request-bodies.test.ts`) and walks into nested
  * objects, arrays and wrappers. A guarded field whose string has no `max`
  * fails unless `EXEMPT` records why. Compose `nameField` / `descriptionField`
- * / `keyField` (`text-limits.contract.ts`) rather than an inline `.max()`.
+ * / `keyField` / `emailField` (`text-limits.contract.ts`) rather than an
+ * inline `.max()`. An email joined the guarded fields with #1101.
  */
 const GUARDED_FIELDS = new Set([
   "name",
@@ -26,6 +27,7 @@ const GUARDED_FIELDS = new Set([
   "validationMessage",
   "proposedLabel",
   "displayName",
+  "email",
 ]);
 
 /** `<Schema>` or `<Schema>.<path>` → why it has no limit. Only shrinks. */
@@ -143,6 +145,7 @@ describe("user-authored text has a length limit (#801)", () => {
         "CreateStationBodySchema.name",
         "CreateStationBodySchema.description",
         "FieldMappingCreateRequestBodySchema.normalizedKey",
+        "InviteCreateRequestSchema.email",
       ])
     );
   });

@@ -126,6 +126,8 @@ describe("member_management invitation tools (#847)", () => {
     for (const input of [
       { email: "alice@example.com", role: "owner" },
       { email: "not-an-email", role: "member" },
+      // #1101: over RFC 5321's 254 characters.
+      { email: "a".repeat(288) + "@example.com", role: "member" },
     ]) {
       const r = (await exec(new MemberInviteTool().build(ctx), input)) as {
         error?: string;
