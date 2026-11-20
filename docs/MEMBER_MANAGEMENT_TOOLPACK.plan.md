@@ -20,7 +20,7 @@ Each slice:
 4. Run `npm run lint && npm run type-check` (plus `npm run build --workspace @portalai/core` before the api/web runs) at the boundary.
 
 **Sequencing rationale:**
-- **Slice 1** lands the leaf pieces nothing else references yet: the `invitation` contract, result kind and display block, `runRbac`'s code and `getPendingInvitation`.
+- **Slice 1** lands the leaf pieces nothing else references yet: the `invitation` contract and result kind, `runRbac`'s code and `getPendingInvitation`.
 - **Slice 2** is the pack itself. Adding the slug is one indivisible step: `PACK_ELSEWHERE`, `PACK_PROMPT_SECTIONS` and `PACK_USES_STATION_DATA` are exhaustive `Record<BuiltinToolpackSlug, …>`s, and the schema-parity test pairs every mirror with a tool class. So registration, tools, wiring and the prompt section compile together.
 - **Slice 3** is web only. The server already sends `invitation` blocks after slice 2, so slice 3 is where they render.
 - **Slice 4** is the copy and provisioning, which name the pack and only make sense once it exists.
@@ -36,7 +36,6 @@ This slice adds the block's contract and how the server builds it, plus the two 
 - New: `packages/core/src/contracts/invitation-block.contract.ts`. It holds `InvitationBlockContentSchema` (`.strict()`) and `toInvitationBlockContent`, exported from `contracts/index.ts`.
 - Edit: `packages/core/src/models/tool-capability.model.ts`. `ResultKindSchema` gets `"invitation"`, the value-production refinement allows it, and `customToolCapabilityError` refuses it.
 - Edit: `packages/core/src/contracts/portal.contract.ts`. `PortalBlockTypeSchema` gets `"invitation"`, and it is not pinnable.
-- Edit: `apps/api/src/services/portal.service.ts`. `resolveDisplayBlock` gets the `invitation` branch.
 - Edit: `apps/api/src/tools/rbac/rbac-tool.util.ts`. `runRbac` returns `{error, code}` for a non-403 `ApiError`.
 - Edit: `apps/api/src/services/seat.service.ts`. Adds `getPendingInvitation(caller, id)`.
 
@@ -44,13 +43,13 @@ This slice adds the block's contract and how the server builds it, plus the two 
 
 1. **Write the failing tests (spec cases).**
    - **Core:** `invitation-block.contract.test.ts` (4), `tool-capability.model.test.ts` (2), `portal.contract.test.ts` (1).
-   - **API:** `portal.service.test.ts`, the `resolveDisplayBlock → invitation` cases (3); `rbac-tools.test.ts`, the `runRbac` code cases (2 of its 4); `seat.service.test.ts`, the `getPendingInvitation` cases (3).
+   - **API:** `rbac-tools.test.ts`, the `runRbac` code cases (2 of its 4); `seat.service.integration.test.ts`, the `getPendingInvitation` cases (3).
 
    Run them and see them fail.
 2. **Implement** the contract, schema edits, branch, `runRbac` change and service read, until they're green.
 3. Lint and type-check core and api.
 
-**Done when:** 15 cases pass, and no tool returns `resultKind: "invitation"` yet.
+**Done when:** 12 cases pass, and no tool returns `resultKind: "invitation"` yet.
 
 **Risk:** the `{error, code}` shape reaches every existing RBAC tool. Their tests assert `error` and so stay green, and `code` is additive.
 
@@ -71,6 +70,7 @@ This slice registers the pack across core, api and web. It adds the six tools an
 - Edit: `packages/core/src/registries/{tool-capabilities,tool-phase-labels,station-data-packs}.ts`. These hold `ALWAYS_ENTITLED_PACKS`, the six phase labels, and `member_management: false`.
 - New: `apps/api/src/tools/rbac/invitation.tool.ts`. It holds `MemberInviteTool`, `InvitationListTool`, `InvitationShowTool` and `InvitationRevokeTool`.
 - Edit: `apps/api/src/tools/rbac/member.tool.ts`. Adds `MemberRemoveTool` and `SeatUsageTool`.
+- Edit: `apps/api/src/services/portal.service.ts`. `resolveDisplayBlock` gets the `invitation` branch. It looks the result kind up by tool name, so it needs `member_invite` registered (moved here from slice 1).
 - Edit: `apps/api/src/services/tools.service.ts`. Covers `BUILTIN_TOOL_NAMES`, the `member_list` and `member_set_roles` build conditions, and the `member_management` block.
 - Edit: `apps/api/src/prompts/system.prompt.ts`:
   - `PACK_ELSEWHERE.member_management`, and the rbac entry without "member assignments";
@@ -87,7 +87,8 @@ This slice registers the pack across core, api and web. It adds the six tools an
      - `invitation-tools.test.ts` (8);
      - `rbac-tools.test.ts`, the `member_remove`/`seat_usage` cases (2);
      - `tools.service.test.ts` (4), adding `member_management` to the explicit pack lists in the cost (:1042), NUL (:1129) and descriptor (:1805) guards;
-     - `system.prompt.test.ts` (4).
+     - `system.prompt.test.ts` (4);
+     - `portal.service.test.ts`, the `resolveDisplayBlock → invitation` cases (3).
    - **API integration:** `member-tools.integration.test.ts` (7).
    - **Web:** `ToolPackIconUtil.test.ts` (1).
 
@@ -96,7 +97,7 @@ This slice registers the pack across core, api and web. It adds the six tools an
 3. Lint and type-check core, api and web.
 
 **Done when:**
-- The 32 cases pass.
+- The 35 cases pass.
 - A station with only `member_management` builds eight tools.
 - `member_invite` returns block content that `resolveDisplayBlock` turns into an `invitation` block.
 
@@ -180,8 +181,8 @@ This slice attaches the pack to Administrate, updates its description, and updat
 
 | Slice | Lands | Gate |
 |---|---|---|
-| 1 | `invitation` contract, result kind and display block; `runRbac` code; `getPendingInvitation` | 15 cases (core, api) |
-| 2 | the pack: registration, 6 tools, shared wiring, `## Members` prompt, icon | 32 cases incl. 7 integration |
+| 1 | `invitation` contract and result kind; `runRbac` code; `getPendingInvitation` | 12 cases (core, api) |
+| 2 | the pack: registration, 6 tools, shared wiring, the `invitation` display block, `## Members` prompt, icon | 35 cases incl. 7 integration |
 | 3 | `InvitationBlock`, `InviteLinkDialog`, `InviteLinkField` (Members tab reuses it) | 16 cases + the web guard suites |
 | 4 | Administrate attaches the pack; help copy | 5 cases + findability and permission-copy guards |
 

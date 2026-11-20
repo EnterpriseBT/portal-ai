@@ -37,15 +37,18 @@ export function agentAudit(portalId: string | null): RbacAuditContext {
  * (`wrapWithPermissionGate`) converts it to the typed `TOOL_PERMISSION_DENIED`
  * refusal the agent relays. Any other failure (404 not-found, 409 conflict,
  * invalid input) is returned as a relayable `{ error }` tool result instead of a
- * throw, so the agent can explain it without crashing the turn.
+ * throw, so the agent can explain it without crashing the turn. An `ApiError`
+ * also carries its `code` (#847), so the agent can tell an already-pending
+ * invitation (show it) from a full seat count (stop).
  */
 export async function runRbac<T>(
   fn: () => Promise<T>
-): Promise<T | { error: string }> {
+): Promise<T | { error: string; code?: string }> {
   try {
     return await fn();
   } catch (err) {
     if (err instanceof ApiError && err.status === 403) throw err;
+    if (err instanceof ApiError) return { error: err.message, code: err.code };
     return {
       error: err instanceof Error ? err.message : "RBAC operation failed",
     };

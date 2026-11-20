@@ -307,6 +307,21 @@ export class SeatService {
     return { used: members + pending, max };
   }
 
+  /**
+   * One live pending invitation of the caller's org, without its token
+   * (#847: `invitation_show`, whose block offers a fresh link through
+   * `resend`). Needs `member.invite`; a missing, other-org or no-longer-
+   * pending id is 404 `INVITATION_NOT_FOUND`, as for revoke and resend.
+   */
+  static async getPendingInvitation(
+    caller: PermissionContext,
+    invitationId: string
+  ): Promise<InvitationResponse> {
+    await PermissionService.check(caller, "member.invite");
+    const inv = await SeatService.requirePending(caller, invitationId);
+    return SeatService.toResponse(inv);
+  }
+
   /** Revoke a pending invitation. Owner + admin only. */
   static async revoke(
     caller: PermissionContext,

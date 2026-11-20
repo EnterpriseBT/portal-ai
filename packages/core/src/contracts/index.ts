@@ -130,3 +130,4 @@ export * from "./sso-discovery.contract.js";
 /** Connector runtime-config contract (#580) — schemas & types */
 export * from "./connector-config.contract.js";
 export * from "./help-block.contract.js";
+export * from "./invitation-block.contract.js";

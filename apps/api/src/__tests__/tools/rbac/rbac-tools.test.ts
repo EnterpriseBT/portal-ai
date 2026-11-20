@@ -105,7 +105,20 @@ describe("rbac_management tools (#629)", () => {
       name: "P",
       statements: validStatements,
     });
-    expect(r).toEqual({ error: "policy not found" });
+    // #847: with its code, so the agent can tell refusals apart.
+    expect(r).toEqual({
+      error: "policy not found",
+      code: ApiCode.POLICY_NOT_FOUND,
+    });
+  });
+
+  it("a non-ApiError failure is relayed as { error } with no code (#847)", async () => {
+    policyCreate.mockRejectedValue(new Error("connection reset"));
+    const r = await exec(new PolicyCreateTool().build(ctx, null), {
+      name: "P",
+      statements: validStatements,
+    });
+    expect(r).toEqual({ error: "connection reset" });
   });
 
   it("invalid input is returned as { error }, not a throw", async () => {

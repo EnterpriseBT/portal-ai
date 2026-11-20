@@ -285,6 +285,24 @@ describe("resultKind 'help' (#1049)", () => {
   });
 });
 
+describe("resultKind 'invitation' (#847)", () => {
+  it("accepts value production", () => {
+    const cap: ToolCapability = {
+      pure: false,
+      reads: [],
+      writes: [],
+      consumption: { mode: "none" },
+      computeShape: "mutate",
+      costHint: "free",
+      locks: [],
+      resultKind: "invitation",
+      production: { kind: "value" },
+      alwaysAvailable: false,
+    };
+    expect(ToolCapabilitySchema.safeParse(cap).success).toBe(true);
+  });
+});
+
 describe("customToolCapabilityError", () => {
   const customConsumer: ToolCapability = {
     pure: true,
@@ -315,6 +333,19 @@ describe("customToolCapabilityError", () => {
         allowNone
       )
     ).toMatch(/help/);
+  });
+
+  it("rejects resultKind 'invitation': only the built-in member tools show invitations (#847)", () => {
+    expect(
+      customToolCapabilityError(
+        {
+          ...customConsumer,
+          resultKind: "invitation",
+          production: { kind: "value" },
+        },
+        allowNone
+      )
+    ).toMatch(/invitation/);
   });
 
   it("rejects a non-pure tool", () => {
