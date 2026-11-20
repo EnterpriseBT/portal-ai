@@ -60,9 +60,12 @@ RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 # Bump the tag and the digest together.
 # The stable line, not mainline, in its -slim variant: nginx with no dynamic
 # modules (geoip, image-filter, njs, xslt), none of which nginx.conf uses
-# (#918). nginx comes from nginx.org's repository, which the Trivy gate can't
-# see, so the tag names the exact version and scripts/nginx-advisories.mjs
-# checks it against nginx.org's security advisories every week.
+# (#918). nginx comes from nginx.org's repository. The Trivy gate matches it
+# by package name since #1096, and scripts/nginx-advisories.mjs checks the
+# exact version against nginx.org's advisories every week, since those land
+# before Trivy's data. A fix that can't ship yet (no -alpine-slim image) gets
+# a time-boxed entry in .github/actions/image-gate/trivyignore.yaml, scoped to
+# this version's purl: delete it in the PR that bumps this tag + digest.
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 AS runtime
 
 # Patch the base layer's OS packages to the latest in its Alpine release, then

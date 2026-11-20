@@ -2,9 +2,10 @@
 /**
  * Checks the residency web image's pinned nginx against nginx.org (#918).
  *
- * The web image installs nginx from nginx.org's own apk repository, which
- * Trivy's Alpine advisory data doesn't cover, so the deploy-time image gate
- * (#909) never sees an nginx CVE. This check covers that gap. It reads the exact
+ * The web image installs nginx from nginx.org's own apk repository. #918 found
+ * the deploy-time image gate (#909) blind to it; since #1096 Trivy matches it
+ * by package name, but nginx.org's advisories still land first, and the gate
+ * can't act until a fixed -alpine-slim image exists. This check reads the exact
  * version from the Dockerfile's FROM tag and reports two things:
  *   - every nginx.org security advisory whose vulnerable range includes it;
  *   - whether it's stale: a newer stable release exists, or it's on mainline.

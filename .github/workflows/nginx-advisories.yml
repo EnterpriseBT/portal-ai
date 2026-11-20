@@ -1,9 +1,10 @@
 name: nginx advisories
 
 # Checks the residency web image's pinned nginx against nginx.org's security
-# advisories (#918). nginx comes from nginx.org's apk repository, which the
-# deploy-time Trivy gate (#909) can't see, so this is how an nginx CVE gets
-# noticed. scripts/nginx-advisories.mjs reads the exact version from
+# advisories (#918). nginx comes from nginx.org's apk repository. The
+# deploy-time Trivy gate (#909) matches it by package name since #1096, but
+# nginx.org's advisories land first, so this is the earliest signal.
+# scripts/nginx-advisories.mjs reads the exact version from
 # apps/web/Dockerfile's runtime FROM and reports any advisory covering it, or
 # a newer stable release.
 #

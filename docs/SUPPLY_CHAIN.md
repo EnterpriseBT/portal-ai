@@ -25,7 +25,7 @@ Both images are built only at deploy time (dev: push to `main` / manual dispatch
 
    The web image's runtime stage (`apps/web/Dockerfile`, `nginx-unprivileged` + `nodejs` for the config renderer) runs `apk upgrade` too. The pinned base tag ships stale Alpine packages: 60 fixable CRITICAL/HIGH findings before the upgrade, 0 after (#909).
 
-   **nginx itself is tracked outside the scan (#918).** `nginx-unprivileged` installs nginx from nginx.org's own apk repository, which Trivy's Alpine advisory data doesn't cover, so an nginx CVE never fails this gate. Three things cover that instead:
+   **nginx is covered by the scan and by its own check (#918, #1096).** `nginx-unprivileged` installs nginx from nginx.org's own apk repository. #918 found Trivy's Alpine advisory data didn't cover that package; since November 2026 it matches `nginx` by package name, so a fixed nginx CVE now **fails this gate** (#1096). The checks below stay, because the advisories list fixes before Trivy's data does, and the gate can't act until a fixed `-alpine-slim` image exists:
    - **Supported line, small surface.** The image runs the current **stable** line in its `-alpine-slim` variant, which ships nginx with no dynamic modules (no geoip, image-filter, njs or xslt).
    - **Exact pin.** The tag names the exact version (`1.30.6-alpine-slim`), and the image is pinned by digest.
    - **Weekly advisory check.** `.github/workflows/nginx-advisories.yml` runs `scripts/nginx-advisories.mjs`. It checks that version against [nginx.org's security advisories](https://nginx.org/en/security_advisories.html) and the current stable release. When the pin is affected or stale, it opens or updates one issue, *nginx in the residency web image needs attention*, with each advisory, its fix version and its SLA (below). It comments when the findings change, since an edited body notifies nobody, and the first clean run closes the issue. A newer stable release only counts once its `-alpine-slim` image is published. The check fails closed: an unreadable pin or page, or an advisory whose affected versions it can't read, turns the run red and adds a comment saying so, leaving the last known advisory table in place. `npm run lint:nginx-advisories` self-tests the parser in Unit Tests.
@@ -55,6 +55,16 @@ A fixable Critical/High blocks the deploy on arrival, so the practical floor is 
 - **none:** ignored. nginx.org uses it for issues it won't fix.
 
 The fix is a PR moving the web Dockerfile's runtime `FROM` to the fixed stable tag and its index digest, together. The deploy's gate then covers the rest of the image.
+
+## Exceptions
+
+When the gate fails on a fix that can't ship yet, typically a fixed nginx release whose `-alpine-slim` image isn't published (#1096), the gate can carry a **time-boxed exception**. It lives in `.github/actions/image-gate/trivyignore.yaml`, which the gate passes explicitly to Trivy. Every entry needs:
+- **the CVE id**, exactly as Trivy reports it, never a pattern;
+- **`purls`** scoping it to the package and version whose unreachability the statement argues, without qualifiers so it matches every platform (e.g. `pkg:apk/alpine/nginx@1.30.6-r1`). The gate is shared by both images, so an unscoped id would also hide that CVE in any other package;
+- **a `statement`** with the tracking issue and the concrete reason the vulnerable code isn't reachable in what we ship (e.g. "nginx.conf enables no http2");
+- **an `expired_at`** no later than the severity's SLA from detection (Critical 7 days, High 30 days).
+
+Trivy reports an expired entry again, so an exception that outlives its fix fails the next deploy rather than staying ignored. A versioned purl also stops matching once the package moves off that version. The follow-up PR (usually the tag + digest bump) deletes the entries. Leave the file as `vulnerabilities: []` when nothing is excepted. An exception never covers a finding whose vulnerable code we do reach: that waits for the fix, or the deploy waits.
 
 ## Verifying a published image
 
