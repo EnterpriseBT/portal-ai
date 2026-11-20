@@ -368,8 +368,15 @@ describe("FAQ describes station scoping (#848)", () => {
   it("the station explainer states the practice and names both provisioned stations", () => {
     const a = answer("What is a Station and why do I need one?");
     expect(a).toContain(
-      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing access, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works."
+      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members and access, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works."
     );
+  });
+
+  // #847: the Members pack is listed, and every plan includes it with Help.
+  it("the tool-pack answer lists the Members pack on every plan", () => {
+    const a = answer("What are tool packs?");
+    expect(a).toMatch(/members \(invitations, removals, roles and seats\)/);
+    expect(a).toMatch(/every plan includes Help and Members/);
   });
 
   // The default station of a new organization has no data by design, so the
@@ -379,7 +386,7 @@ describe("FAQ describes station scoping (#848)", () => {
     const a = answer("How do I start asking questions about my data?");
     expect(a).toMatch(/^From a station set up for your data/);
     expect(a).toContain(
-      "A new organization's default station, Administrate, is for managing access and has no data: use Playground or a station of your own."
+      "A new organization's default station, Administrate, is for managing members and access and has no data: use Playground or a station of your own."
     );
   });
 
@@ -388,7 +395,7 @@ describe("FAQ describes station scoping (#848)", () => {
       "Why are the assistant's answers vague or missing my data?"
     );
     expect(a).toMatch(
-      /^First check the station is set up for data\. A new organization's default station, Administrate, manages access and has no data by design: open Playground or another data station rather than attaching data to it\./
+      /^First check the station is set up for data\. A new organization's default station, Administrate, manages members and access and has no data by design: open Playground or another data station rather than attaching data to it\./
     );
     // The rest of the diagnosis is unchanged.
     expect(a).toMatch(/view attached and shared with you/i);

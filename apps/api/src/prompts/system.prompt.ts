@@ -986,7 +986,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
   // #848: a station with no pack that works on entity data (the provisioned
-  // Administrate station has the access and Help packs) is complete without views
+  // Administrate station has the access, Members and Help packs) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
   // "no data attached" and suggest attaching some.
   // #1045: three states, not two. When packs that work on data are attached

@@ -40,14 +40,14 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     expect(defaultStation.attachSandbox).toBe(false);
   });
 
-  it("Administrate's description doesn't promise custom access on every plan", () => {
+  it("Administrate's description covers members, and doesn't promise custom access on every plan (#847)", () => {
     // Authoring roles, policies and groups needs the plan's custom access
     // (`customRbac`), which the self-serve tiers lack; shares work on all.
     const administrate = PROVISIONED_STATIONS.find(
       (s) => s.name === "Administrate"
     )!;
     expect(administrate.description).toBe(
-      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works."
+      "Manage members and access through the assistant: invitations, members and shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works."
     );
   });
 
@@ -71,7 +71,7 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     ).toEqual([
       {
         name: "Administrate",
-        builtinSlugs: ["rbac_management", "help"],
+        builtinSlugs: ["rbac_management", "member_management", "help"],
         attachSandbox: false,
         isDefault: true,
       },
