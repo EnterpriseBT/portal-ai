@@ -20,6 +20,7 @@ describe("InvitationBlockUI (#847)", () => {
     render(
       <InvitationBlockUI
         content={content}
+        expiresAt={content.expiresAt}
         getLinkGate={{ kind: "allow" }}
         onGetLink={jest.fn()}
       />
@@ -39,6 +40,7 @@ describe("InvitationBlockUI (#847)", () => {
     const { rerender } = render(
       <InvitationBlockUI
         content={content}
+        expiresAt={content.expiresAt}
         getLinkGate={{ kind: "allow" }}
         onGetLink={onGetLink}
       />
@@ -51,6 +53,7 @@ describe("InvitationBlockUI (#847)", () => {
     rerender(
       <InvitationBlockUI
         content={content}
+        expiresAt={content.expiresAt}
         getLinkGate={{ kind: "hide" }}
         onGetLink={onGetLink}
       />
@@ -65,6 +68,7 @@ describe("InvitationBlockUI (#847)", () => {
     render(
       <InvitationBlockUI
         content={content}
+        expiresAt={content.expiresAt}
         getLinkGate={{ kind: "disable", reason: "Generating a link…" }}
         onGetLink={onGetLink}
       />
@@ -80,6 +84,7 @@ describe("InvitationBlockUI (#847)", () => {
     const { container } = render(
       <InvitationBlockUI
         content={content}
+        expiresAt={content.expiresAt}
         getLinkGate={{ kind: "allow" }}
         onGetLink={jest.fn()}
       />

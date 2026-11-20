@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { toInvitationBlockContent } from "@portalai/core/contracts";
+import {
+  InviteCreateRequestSchema,
+  toInvitationBlockContent,
+} from "@portalai/core/contracts";
 import { OrgRoleSchema } from "@portalai/core/models";
 
 import { Tool } from "../../types/tools.js";
@@ -21,14 +24,13 @@ import { AGENT_AUDIT, runRbac } from "./rbac-tool.util.js";
  * asks the resend endpoint for a fresh link in the user's browser.
  */
 
-const InviteInput = z
-  .object({
-    email: z.string().email().describe("The invitee's email address"),
-    role: OrgRoleSchema.exclude(["owner"]).describe(
-      "The system role they receive on accepting: admin or member"
-    ),
-  })
-  .strict();
+// The Settings route's own request contract (strict, a valid email), with the
+// role narrowed to what an invite allows, so the model sees admin and member.
+const InviteInput = InviteCreateRequestSchema.extend({
+  role: OrgRoleSchema.exclude(["owner"]).describe(
+    "The system role they receive on accepting: admin or member"
+  ),
+});
 const ListInput = z.object({}).strict();
 const InvitationIdInput = z
   .object({

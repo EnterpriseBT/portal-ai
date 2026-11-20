@@ -9,7 +9,7 @@ import type { InvitationBlockContent } from "@portalai/core/contracts";
 type MutateOptions = {
   invalidate?: unknown[];
   toast?: { error?: string };
-  onSuccess?: (r: { inviteUrl?: string }) => void;
+  onSuccess?: (r: { inviteUrl?: string; expiresAt: number }) => void;
 };
 const mutate =
   jest.fn<(vars: { id: string }, options: MutateOptions) => void>();
@@ -42,9 +42,10 @@ describe("InvitationBlock (container, #847)", () => {
 
   it("resends this invitation and opens the fresh link in a dialog", async () => {
     mutate.mockImplementation((_vars, options) =>
-      options.onSuccess?.({ inviteUrl: URL })
+      options.onSuccess?.({ inviteUrl: URL, expiresAt: Date.UTC(2027, 0, 15) })
     );
     render(<InvitationBlock content={content} />);
+    const before = screen.getByTestId("invitation-block").textContent;
 
     await user.click(screen.getByRole("button", { name: "Get invite link" }));
 
@@ -59,11 +60,14 @@ describe("InvitationBlock (container, #847)", () => {
     expect(screen.getByRole("textbox", { name: "Invite link" })).toHaveValue(
       URL
     );
+    // The resend extended the expiry; the block shows the new date.
+    expect(screen.getByTestId("invitation-block").textContent).not.toBe(before);
+    expect(screen.getByTestId("invitation-block")).toHaveTextContent("2027");
   });
 
   it("drops the link when the dialog closes", async () => {
     mutate.mockImplementation((_vars, options) =>
-      options.onSuccess?.({ inviteUrl: URL })
+      options.onSuccess?.({ inviteUrl: URL, expiresAt: content.expiresAt })
     );
     render(<InvitationBlock content={content} />);
     await user.click(screen.getByRole("button", { name: "Get invite link" }));

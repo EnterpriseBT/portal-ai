@@ -250,12 +250,12 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   web_search: "looking things up on the web",
   entity_management: "creating and changing entities and their records",
   rbac_management:
-    "roles, policies and groups, members' groups, and sharing stations and pins",
+    "roles, policies and groups, member assignments, and sharing stations and pins",
   view_management:
     "creating and sharing curated views and attaching them to stations",
   help: "answering questions about how Portals works, with links into Help",
   member_management:
-    "inviting and removing members, invitations, members' roles and seat usage",
+    "inviting and removing members, invitations and seat usage",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -708,6 +708,14 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push(
         "**Resolve a person first.** Before removing someone or setting their " +
           "roles, find their `userId` with `member_list`. Never invent an id."
+      );
+      lines.push("");
+      lines.push(
+        "**Setting roles replaces them.** `member_set_roles` replaces the " +
+          "member's whole role set with what you pass: read their current " +
+          "`roleSlugs` from `member_list` and send the complete intended set, " +
+          "not just the addition. System roles are `owner`, `admin` and " +
+          "`member`; a member keeps at least one."
       );
       lines.push("");
       lines.push(

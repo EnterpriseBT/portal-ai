@@ -1262,7 +1262,7 @@ const MEMBER_SET_ROLES_TOOL: ToolpackToolSpec = {
     {
       userId: stringField("The member's user id"),
       roleSlugs: stringArrayField(
-        "The complete set of role slugs to assign (≥1)"
+        "The complete set of role slugs to assign (≥1); it replaces the member's current roles, which member_list returns as roleSlugs"
       ),
     },
     ["userId", "roleSlugs"]

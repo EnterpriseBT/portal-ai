@@ -1000,7 +1000,7 @@ describe("buildSystemPrompt — response style", () => {
           "use it.";
         expect(section).toContain(PRECEDENCE);
         expect(section).toContain(
-          "- Access & Roles: roles, policies and groups, members' groups, and sharing stations and pins"
+          "- Access & Roles: roles, policies and groups, member assignments, and sharing stations and pins"
         );
         // Read before the list it qualifies, and before anything that
         // restricts the agent.
@@ -2159,8 +2159,16 @@ describe("buildSystemPrompt — Members (#847)", () => {
     expect(members).toMatch(/`member_list`/);
   });
 
-  it("names the pack elsewhere, and Access & Roles no longer claims member assignments", () => {
+  it("names the pack elsewhere without claiming the roles Access & Roles also sets", () => {
+    // member_set_roles is shared, so roles stay Access & Roles' line too.
     expect(PACK_ELSEWHERE.member_management).toMatch(/invit/);
-    expect(PACK_ELSEWHERE.rbac_management).not.toMatch(/member assignments/);
+    expect(PACK_ELSEWHERE.member_management).not.toMatch(/role/);
+    expect(PACK_ELSEWHERE.rbac_management).toMatch(/member assignments/);
+  });
+
+  it("says member_set_roles replaces the whole set, read from member_list (code review)", () => {
+    const members = section(withMembers());
+    expect(members).toMatch(/replaces the\s+member's whole role set/);
+    expect(members).toMatch(/`roleSlugs` from `member_list`/);
   });
 });

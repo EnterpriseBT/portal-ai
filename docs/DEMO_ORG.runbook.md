@@ -139,7 +139,7 @@ Run these in order — each builds on the last. Every prompt names the **toolpac
     Custom webhook toolpack → its documented result.
     *Say:* "And you can plug in your own tools — this one is a custom webhook we host."
 
-All eight of the data & analysis built-in toolpacks (`data_query`, `visualize`, `gis`, `statistics`, `regression`, `financial`, `web_search`, `entity_management`) plus the custom toolpack are each exercised at least once. Two more built-in packs are out of this walkthrough: `rbac_management` (#629), which performs RBAC admin actions (create policies/roles/groups, assign members, share objects) rather than reading or writing the demo dataset and is covered by the #629 RBAC smoke, and `help` (#1050), which answers product questions; ask the Demo station "How do I create a station?" to show it.
+All eight of the data & analysis built-in toolpacks (`data_query`, `visualize`, `gis`, `statistics`, `regression`, `financial`, `web_search`, `entity_management`) plus the custom toolpack are each exercised at least once. Three more built-in packs are out of this walkthrough: `rbac_management` (#629), which performs RBAC admin actions (create policies/roles/groups, assign members, share objects) rather than reading or writing the demo dataset and is covered by the #629 RBAC smoke; `member_management` (#847), which invites and removes members on the org's roster; and `help` (#1050), which answers product questions; ask the Demo station "How do I create a station?" to show it.
 
 ## Notes
 

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 
 import Chip from "@mui/material/Chip";
-import Paper from "@mui/material/Paper";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
 import {
   GatedButton,
   pendingGate,
@@ -26,6 +27,8 @@ const ROLE_LABEL: Record<InvitationBlockContent["role"], string> = {
 
 export interface InvitationBlockUIProps {
   content: InvitationBlockContent;
+  /** The expiry to show: the tool's, or a newer one after a resend. */
+  expiresAt: number;
   /** Whether the viewer may get a link, and whether one is being made. */
   getLinkGate: ActionGate;
   onGetLink: () => void;
@@ -38,45 +41,47 @@ export interface InvitationBlockUIProps {
  */
 export const InvitationBlockUI: React.FC<InvitationBlockUIProps> = ({
   content,
+  expiresAt,
   getLinkGate,
   onGetLink,
 }) => (
-  <Paper
+  <Card
     variant="outlined"
     component="section"
     aria-label={`Invitation: ${content.email}`}
     data-testid="invitation-block"
-    sx={{ p: 2 }}
   >
-    <Stack spacing={1.5}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-        <Typography variant="subtitle2" component="p">
-          {content.email}
+    <CardContent>
+      <Stack spacing={1.5}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Typography variant="subtitle2" component="p">
+            {content.email}
+          </Typography>
+          <Chip
+            label={ROLE_LABEL[content.role]}
+            size="small"
+            variant="outlined"
+          />
+        </Stack>
+        <Typography variant="body2" color="text.secondary">
+          Invitation pending · expires{" "}
+          {new Date(expiresAt).toLocaleDateString(undefined, {
+            dateStyle: "medium",
+          } as Intl.DateTimeFormatOptions)}
         </Typography>
-        <Chip
-          label={ROLE_LABEL[content.role]}
-          size="small"
-          variant="outlined"
-        />
+        <Stack direction="row">
+          <GatedButton
+            type="button"
+            variant="outlined"
+            gate={getLinkGate}
+            onClick={onGetLink}
+          >
+            Get invite link
+          </GatedButton>
+        </Stack>
       </Stack>
-      <Typography variant="body2" color="text.secondary">
-        Invitation pending · expires{" "}
-        {new Date(content.expiresAt).toLocaleDateString(undefined, {
-          dateStyle: "medium",
-        } as Intl.DateTimeFormatOptions)}
-      </Typography>
-      <Stack direction="row">
-        <GatedButton
-          type="button"
-          variant="outlined"
-          gate={getLinkGate}
-          onClick={onGetLink}
-        >
-          Get invite link
-        </GatedButton>
-      </Stack>
-    </Stack>
-  </Paper>
+    </CardContent>
+  </Card>
 );
 
 export interface InvitationBlockProps {
@@ -96,6 +101,8 @@ export const InvitationBlock: React.FC<InvitationBlockProps> = ({
   const toast = useToast();
   const resend = sdk.invitations.resend();
   const [url, setUrl] = useState<string | null>(null);
+  // A resend extends the expiry; show the new one rather than the tool's.
+  const [expiresAt, setExpiresAt] = useState(content.expiresAt);
 
   const permitted = decideActionGate({ allowed: can("member.invite") });
   const getLinkGate =
@@ -108,8 +115,13 @@ export const InvitationBlock: React.FC<InvitationBlockProps> = ({
       { id: content.invitationId },
       {
         invalidate: [queryKeys.invitations.root],
+        // A refusal (revoked, accepted, no access) shows the server's own
+        // message; this is only the fallback.
         toast: { error: "Couldn't generate a link" },
-        onSuccess: (updated) => setUrl(updated.inviteUrl ?? null),
+        onSuccess: (updated) => {
+          setExpiresAt(updated.expiresAt);
+          setUrl(updated.inviteUrl ?? null);
+        },
       }
     );
   };
@@ -125,6 +137,7 @@ export const InvitationBlock: React.FC<InvitationBlockProps> = ({
     <>
       <InvitationBlockUI
         content={content}
+        expiresAt={expiresAt}
         getLinkGate={getLinkGate}
         onGetLink={handleGetLink}
       />

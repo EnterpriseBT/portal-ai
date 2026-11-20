@@ -115,6 +115,21 @@ describe("rbac_management tools (#629)", () => {
     });
   });
 
+  it("a 5xx is relayed as a bare internal error: its text and code stay on the server (#847)", async () => {
+    policyCreate.mockRejectedValue(
+      new ApiError(
+        500,
+        ApiCode.SEAT_LIMIT_EXCEEDED,
+        "Unable to resolve the organization's seat entitlement"
+      )
+    );
+    const r = await exec(new PolicyCreateTool().build(ctx, null), {
+      name: "P",
+      statements: validStatements,
+    });
+    expect(r).toEqual({ error: "Internal server error" });
+  });
+
   it("a non-ApiError failure is relayed as { error } with no code (#847)", async () => {
     policyCreate.mockRejectedValue(new Error("connection reset"));
     const r = await exec(new PolicyCreateTool().build(ctx, null), {

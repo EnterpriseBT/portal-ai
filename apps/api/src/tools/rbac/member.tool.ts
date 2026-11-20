@@ -14,7 +14,7 @@ const SetRolesInput = z.object({
     .array(z.string().min(1))
     .min(1)
     .describe(
-      "The complete set of role slugs (from role_list) to assign; replaces the member's current roles. At least one, and at least one system role."
+      "The complete set of role slugs to assign; it replaces the member's current roles, so include the ones they keep (their current roleSlugs are in member_list). System roles are owner, admin and member; custom role slugs come from member_list or role_list. At least one, and at least one system role."
     ),
 });
 const RemoveInput = z

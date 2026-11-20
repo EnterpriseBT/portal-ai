@@ -8,7 +8,7 @@
  *
  * `--all-toolpacks` enables **every** built-in toolpack on each of the org's
  * stations (#629), instead of the scoped packs provisioning gives them (#848,
- * #1044: Administrate gets the access and Help packs, Playground the data,
+ * #1044, #847: Administrate gets the access, Members and Help packs, Playground the data,
  * entity, view and Help packs).
  * The e2e/smoke fixture opts into this so an agent-guided smoke walk can exercise
  * any pack's features (gis, statistics, …) on either station. It is a fixture
