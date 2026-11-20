@@ -323,7 +323,7 @@ These cases live in `apps/web/src/__tests__/`.
 - **`invitation-block-renderer.util.test.tsx`:** an invalid content renders nothing. 1 case.
 - **`ToolPackIconUtil.test.ts`:** the pack's icon maps. 1 case.
 
-**Totals ≈ 73 cases** (core 15, api 40, web 18).
+**Totals ≈ 68 cases** (core 15, api 36, web 17).
 
 ## Acceptance criteria
 
