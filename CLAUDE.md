@@ -45,42 +45,58 @@ The suites do **not** re-run when a PR merges. `main` requires branches to be up
 
 A push to a branch cancels that branch's in-flight run, and a push that is docs-only **since the branch's last successful Integration Tests run** skips the integration suite while still reporting its check (#663: measured from the previous push, a docs push went green after a code push's run was cancelled or failed; the decision lives in `scripts/integration-skip-base.mjs`, self-tested by `npm run lint:integration-skip`). Filtering happens *inside* the workflow, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
 
-#### Sharded integration suite (#857)
+#### Sharded test suites (#857, #1091)
 
-The integration suite runs as **N shards behind one required check**, at about 3–6 min instead of ~20.
-- **Why runners, not workers.** Its suites can't share a database: `teardownOrg()` deletes every row, and the queue suites obliterate shared BullMQ queues. So each shard runs serially on its own runner with its own Postgres + Redis.
-- **Shape.** `integration-test.yml` is `changes` (the docs-only skip) → `plan` → `shard` × N, named `Integration Tests (shard i/N)` → `summary`. The summary job is named **exactly `Integration Tests`**, and it alone is the required context.
+Two suites run as **N shards behind one required check**: the integration suite (`Integration Tests`, about 3–6 min instead of ~20) and the web unit suite (`Unit Tests`, about 2.5 min instead of ~8.5). Both run on one lib, `scripts/test-shards.lib.mjs`, whose `SUITES` record holds each suite's specifics: budget, caps, durations file, shard var, artifact prefix and title. Every CLI subcommand takes `--suite integration|web`.
+
+- **Integration: runners, not workers.** Its suites can't share a database: `teardownOrg()` deletes every row, and the queue suites obliterate shared BullMQ queues. So each shard runs serially on its own runner with its own Postgres + Redis.
+- **Web: workers inside each runner.** Each web shard runs Jest's default 3 workers, so its budget is in **file-seconds** (300 per shard, about 100–110s of Jest wall time).
+- **Shape.**
+  - `integration-test.yml`: `changes` (the docs-only skip) → `plan` → `shard` × N, named `Integration Tests (shard i/N)` → `summary`, named exactly **`Integration Tests`**.
+  - `unit-test.yml`: `checks` (every lint step, plus every package's unit suite but web's) and `plan` → `web` × N, named `Unit Tests (web shard i/N)` → `summary`, named exactly **`Unit Tests`**.
+  - Each summary alone is the required context. `deploy-dev`/`deploy-prod` call both workflows unchanged.
 - **The summary fails closed.** It runs `if: ${{ !cancelled() }}`, so it still runs when a shard fails but stands down when a newer push cancels the run, leaving no red check on the old commit. It goes red on:
   - any failed or cancelled shard;
   - a missing shard report;
   - a failed suite;
-  - any integration test file (by Jest's own `__tests__/__integration__/` rule) that ran in no shard or in more than one. This is checked by name, since counts could cancel out.
-- **N is planned, not fixed.** N = ⌈Σ `durations.json` ÷ 150s⌉, clamped to 2–10 (150s leaves room for runner variance of up to ~30%). The cap is sized to the free plan's 20 concurrent jobs.
-- **Durations.** `apps/api/src/__tests__/__integration__/durations.json` drives both N and the split. Each file's entry is its **median over the last 5 runs** (`SAMPLE_RUNS`), not one run's time: a heavy file measured 21–46s across runs of one commit, and a single-run sample left one shard ~60% slower than the rest. Turbo-cached repeats count once, and a new file uses the samples it has. The split is `jest.integration.sequencer.mjs`, longest-first bin packing used only when `--shard` is passed.
-- **The shard reaches Jest and turbo** as `INTEGRATION_SHARD=i/N`.
-  - `apps/api`'s `test:integration` appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.
-  - `turbo.json` hashes it, and caches the report as an output.
-  - The packer and durations live in `apps/api` so turbo hashes them too. A cached "pass" can never be restored for a shard whose files moved.
+  - for `Unit Tests`, a failed `checks` job;
+  - any test file (by the suite's path rule) that ran in no shard or in more than one. This is checked by name, since counts could cancel out.
+- **N is planned, not fixed.** N = ⌈Σ durations ÷ the suite's budget⌉, clamped:
+  - integration: 150s, 2–10. The 150s leaves room for runner variance of up to ~30%;
+  - web: 300 file-seconds, 2–6.
+- **The caps are a budget, not guesses.** One branch push can run at most integration's 10 shards, web's 6 plus `checks`, and Static Checks, E2E Tests and npm audit: exactly GitHub Free's **20 concurrent jobs**. `lint:ci-cache` rule 8 holds the sum. A new push workflow or job, or a raised cap, fails until something else gives.
+- **Durations.**
+  - Each suite's file drives both N and the split: `apps/api/src/__tests__/__integration__/durations.json` and `apps/web/src/__tests__/durations.json`.
+  - Each file's entry is its **median over the last 5 runs** (`SAMPLE_RUNS`), not one run's time: a heavy file measured 21–46s across runs of one commit, and a single-run sample left one shard ~60% slower than the rest. Turbo-cached repeats count once, and a new file uses the samples it has (the median of the known ones until then).
+  - The split is each package's Jest sequencer (`jest.integration.sequencer.mjs`, `jest.unit.sequencer.mjs`), which calls the lib's shared `assignShards`: longest-first bin packing, used only when `--shard` is passed.
+- **The shard reaches Jest and turbo** as `INTEGRATION_SHARD` / `WEB_UNIT_SHARD` = `i/N`.
+  - Each package's script (`test:integration` / `test:unit`) appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.
+  - The task that runs it hashes the var and caches the report as an output: `turbo.json`'s `test:integration`, and `apps/web/turbo.json`'s `test:unit`.
+  - Both tasks list `$TURBO_ROOT$/scripts/test-shards.lib.mjs` in `inputs`, so a change to the shared packer misses the cache. A cached "pass" can never be restored for a shard whose files moved.
 - **Guards:**
   - `npm run lint:test-shards`: self-test of `scripts/test-shards.mjs`, above all that every file lands in exactly one shard.
-  - `npm run lint:test-durations`: no file may exceed **120s**, and a missing or malformed `durations.json` fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor; split it by concern (as demo-seed was), or allowlist it with a reason in `scripts/test-shards.lib.mjs`.
-  - `lint:ci-cache` rules 3 and 6 (below).
-- **Freshness.** `refresh-integration-durations.yml` runs weekly. It takes the shard reports of the newest green runs on **merged PRs' heads** (the trees that became `main`; squash merges keep branch commits off `main`), up to 5, and recomputes the medians. It **opens or updates one issue** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
+  - `npm run lint:test-durations`: no file may exceed **120s**, and a missing or malformed durations file fails rather than quietly reading as empty. A file can't be split across shards, so it sets the floor. Split it by concern (as demo-seed was), or allowlist it with a reason in its suite's `ceilingAllowlist`.
+  - `npm run lint:test-files`: each suite's path rule picks exactly the files `jest --listTests` lists. The summaries run without `node_modules`, so they find the expected files by the rule.
+  - `lint:ci-cache` rules 3, 6 and 8 (below).
+- **Freshness.** `refresh-test-durations.yml` runs weekly, once per suite. For each, it takes the shard reports of the newest green runs on **merged PRs' heads** (the trees that became `main`; squash merges keep branch commits off `main`), up to 5, and recomputes the medians. It **opens or updates one issue per suite** when planning would act on the change: a file added or removed, the total moving >10%, or one file moving >30s and >50%. The issue carries the result and the command that applies it, and a person lands that in a normal PR.
   - Per-file times swing between identical runs, because the first suite on each runner pays the module compile, so smaller moves don't count.
   - It's an issue rather than a PR because a `GITHUB_TOKEN` PR needs "Allow GitHub Actions to create and approve pull requests", which would also let any workflow approve PRs. The job needs only `issues: write` and pushes nothing.
 - **Warnings, not failures.** The summary warns when a shard runs >25% over budget (refresh durations) or when the planner hit the cap.
-- **The cap warning is the trigger** for the next step: one database per Jest worker inside each shard, rather than more runners or a paid plan.
+- **The cap warning is the trigger** for the next step.
+  - Integration: one database per Jest worker inside each shard, rather than more runners or a paid plan.
+  - Web: split its heaviest suites, or rebalance the caps within rule 8.
 
 #### Turborepo remote caching (#454)
 
 Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds. Since #857 the shared setup action (`.github/actions/setup`) restores `node_modules` itself from an exact-key cache: OS, runner image (`ImageOS`, so a `runs-on` move misses, #904), arch, Node major, and the lockfile + every `package.json`, with no restore-keys, so a hit is always the tree that lockfile installs. That took setup from ~65s to ~8s per job. Any dependency change misses and runs `npm ci` as before, with npm's download cache on for that miss only, and the tree is saved straight after `npm ci`, before any job writes tool caches into it.
 
-The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on seven rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
+The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on eight rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
 
 - **Credentials (rules 1–2).** A workflow that runs turbo carries `TURBO_TOKEN` + `TURBO_TEAM` + `TURBO_REMOTE_CACHE_SIGNATURE_KEY` in scope, and a `workflow_call` site passes every secret the callee declares. **Without the token turbo caches nothing and still reports success** — there is no error to notice, and an unpassed secret is simply empty inside a reusable workflow.
 - **Required-check names and concurrency literals (rules 3–4).** Pre-existing invariants that previously lived only in comments.
 - **A sharded check's name sits on its aggregator (rule 3, #857).** When a required check's workflow has a matrix, the job carrying the required name must be a non-matrix summary that `needs` every matrix job with `if: always()`. Otherwise a leg could report the name, or a red shard could leave the check skipped.
-- **The integration shard is hashed (rule 6, #857).** A workflow that sets `INTEGRATION_SHARD` requires `turbo.json`'s `test:integration` to list it in `env` and never in `passThroughEnv`. Unhashed, every shard shares one cache entry and restores another shard's result without running its own files.
+- **Each suite's shard is hashed (rule 6, #857, #1091).** A workflow that sets a suite's shard var (`INTEGRATION_SHARD`, `WEB_UNIT_SHARD`) requires that suite's turbo task (`turbo.json`'s `test:integration`, `apps/web/turbo.json`'s `test:unit`) to list it in `env` and never in `passThroughEnv`. The suites and their tasks come from `SUITES`. Unhashed, every shard shares one cache entry and restores another shard's result without running its own files.
+- **One push fits in 20 concurrent jobs (rule 8, #1091).** Over every workflow a branch push starts, it sums each workflow's peak: the heaviest set of jobs with no `needs` path between any two, with a literal matrix at its leg count and a dynamic matrix at the cap of the suite its `test-shards.mjs plan --suite` step names. A dynamic matrix nothing bounds is a violation. Over 20 (GitHub Free's per-account limit) fails, since jobs past the limit queue silently rather than fail. The real-tree run prints each workflow's peak.
 - **Runner images are pinned (rule 7, #904).** No job runs on a floating `*-latest` label. `ubuntu-latest` moves to a new OS on GitHub's schedule, changing every job's toolchain (and the deploy's aws CLI, zip and buildx) with no commit to review; a pinned `ubuntu-26.04` makes the next move a reviewed one-line change, and the image in the cache keys makes that move a clean miss.
 - **`apps/site` stays uncached (rule 5).** Its build bakes live prices into static HTML, and its env vars are `passThroughEnv` — they reach the build but are *deliberately* absent from the task hash. Flipping `cache: true` there would let a prod deploy restore dev's artifact, with nothing to indicate it happened.
 
