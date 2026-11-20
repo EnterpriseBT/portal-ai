@@ -40,6 +40,8 @@ describe("content module purity", () => {
       // #613 — the public subprocessor list, rendered by the marketing site's
       // /security/ and privacy pages and checked against the API's egress.
       "subprocessors.util.ts",
+      // #1049 — troubleshooting entries, in-app only.
+      "troubleshooting.util.ts",
     ]);
   });
 

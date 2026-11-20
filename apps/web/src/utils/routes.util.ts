@@ -88,6 +88,7 @@ export enum HelpTab {
   GettingStarted = "getting-started",
   Glossary = "glossary",
   Faq = "faq",
+  Troubleshooting = "troubleshooting",
 }
 
 /** Tab order as rendered by `Help.view.tsx`. */
@@ -95,6 +96,7 @@ export const HELP_TAB_INDEX: Record<HelpTab, number> = {
   [HelpTab.GettingStarted]: 0,
   [HelpTab.Glossary]: 1,
   [HelpTab.Faq]: 2,
+  [HelpTab.Troubleshooting]: 3,
 };
 
 /** The two tabs that carry a category filter. Getting Started has none. */
@@ -151,7 +153,10 @@ export function helpTabIndexFromSearch(search: HelpSearch): number {
 }
 
 /** The tabs an entry anchor can address. */
-export type HelpAnchorSurface = HelpTab.Glossary | HelpTab.Faq;
+export type HelpAnchorSurface =
+  | HelpTab.Glossary
+  | HelpTab.Faq
+  | HelpTab.Troubleshooting;
 
 export interface HelpAnchor {
   surface: HelpAnchorSurface;
@@ -161,10 +166,12 @@ export interface HelpAnchor {
 const HELP_ANCHOR_PREFIX: Record<HelpAnchorSurface, string> = {
   [HelpTab.Glossary]: "glossary-entry-",
   [HelpTab.Faq]: "faq-entry-",
+  [HelpTab.Troubleshooting]: "troubleshooting-entry-",
 };
 
 /**
- * Parse `#glossary-entry-<slug>` / `#faq-entry-<slug>`.
+ * Parse `#glossary-entry-<slug>`, `#faq-entry-<slug>` or
+ * `#troubleshooting-entry-<slug>` (#1049).
  *
  * Accepts the hash with or without its leading `#` — TanStack's
  * `location.hash` omits it, a hand-written href carries it. Anything else,
@@ -177,7 +184,11 @@ export function parseHelpAnchor(
   if (!hash) return undefined;
   const value = hash.startsWith("#") ? hash.slice(1) : hash;
 
-  for (const surface of [HelpTab.Glossary, HelpTab.Faq] as const) {
+  for (const surface of [
+    HelpTab.Glossary,
+    HelpTab.Faq,
+    HelpTab.Troubleshooting,
+  ] as const) {
     const prefix = HELP_ANCHOR_PREFIX[surface];
     if (value.startsWith(prefix)) {
       const slug = value.slice(prefix.length);

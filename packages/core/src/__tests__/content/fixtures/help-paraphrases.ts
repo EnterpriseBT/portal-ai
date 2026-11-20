@@ -22,7 +22,12 @@ export const HELP_PARAPHRASES: readonly { query: string; expect: string }[] = [
     query: "why can't I see any data",
     expect: "faq:why-are-the-assistant-s-answers-vague-or-missing-my-data",
   },
-  { query: "my sync failed", expect: "faq:why-did-my-job-fail" },
+  {
+    // #1049 slice 2: the troubleshooting entry is the more specific answer.
+    query: "my sync failed",
+    expect: "troubleshooting:a-sync-or-import-job-failed",
+  },
+  { query: "what made my job fail", expect: "faq:why-did-my-job-fail" },
   {
     query: "how do I add a teammate",
     expect: "faq:how-do-i-invite-someone-to-my-organization",
@@ -79,6 +84,31 @@ export const HELP_PARAPHRASES: readonly { query: string; expect: string }[] = [
   {
     query: "share a pinned chart with someone",
     expect: "faq:what-do-people-see-when-i-share-a-pinned-result",
+  },
+  // #1049 slice 2: troubleshooting
+  {
+    query: "it says permission denied",
+    expect: "troubleshooting:it-says-you-don-t-have-permission-to",
+  },
+  {
+    query: "the import worked but nothing showed up",
+    expect: "troubleshooting:an-import-finished-but-no-records-appeared",
+  },
+  {
+    query: "entity is locked by a job",
+    expect: "troubleshooting:actions-are-paused-because-a-job-is-running",
+  },
+  {
+    query: "tool pack not included in my plan",
+    expect: "troubleshooting:a-tool-pack-shows-not-included-in-your-plan",
+  },
+  {
+    query: "I hit my turn limit",
+    expect: "troubleshooting:the-assistant-says-i-ve-reached-my-turn-limit",
+  },
+  {
+    query: "the sync job failed",
+    expect: "troubleshooting:a-sync-or-import-job-failed",
   },
 ];
 

@@ -18,6 +18,7 @@
 import { FAQ_ENTRIES } from "./faq.util.js";
 import { GLOSSARY_ENTRIES, contentEntrySlug } from "./glossary.util.js";
 import { HELP_TAB, buildHelpUrl } from "./help-url.util.js";
+import { TROUBLESHOOTING_ENTRIES } from "./troubleshooting.util.js";
 
 export type HelpSurface = "faq" | "glossary" | "troubleshooting";
 
@@ -128,10 +129,28 @@ const glossaryDocuments = (): HelpDocument[] =>
     category: e.category,
   }));
 
+/** A troubleshooting entry's body: its cause and fix under fixed labels, so
+ *  the text a reader sees is the entry's own words and nothing else. */
+export const troubleshootingBody = (e: {
+  cause: string;
+  fix: string;
+}): string => `Why it happens: ${e.cause}\nWhat to do: ${e.fix}`;
+
+const troubleshootingDocuments = (): HelpDocument[] =>
+  TROUBLESHOOTING_ENTRIES.map((e) => ({
+    surface: "troubleshooting",
+    slug: contentEntrySlug(e.symptom),
+    title: e.symptom,
+    body: troubleshootingBody(e),
+    aliases: e.aliases ?? [],
+    related: (e.related ?? []).map((r) => r.title),
+  }));
+
 /** Every help entry, in surface order: FAQ, glossary, troubleshooting. */
 export const HELP_CORPUS: readonly HelpDocument[] = [
   ...faqDocuments(),
   ...glossaryDocuments(),
+  ...troubleshootingDocuments(),
 ];
 
 /** The document an entry id (`<surface>:<slug>`) names, if it exists. */
@@ -145,15 +164,13 @@ export function findHelpDocument(
 const SURFACE_TAB = {
   faq: HELP_TAB.faq,
   glossary: HELP_TAB.glossary,
+  troubleshooting: HELP_TAB.troubleshooting,
 } as const;
 
 /** The Help page address of a document: its tab, scrolled to the entry. */
 export function helpDocumentUrl(
   doc: Pick<HelpDocument, "surface" | "slug">
 ): string {
-  if (doc.surface === "troubleshooting") {
-    throw new Error("troubleshooting has no Help tab yet");
-  }
   return buildHelpUrl({
     tab: SURFACE_TAB[doc.surface],
     entry: { surface: doc.surface, slug: doc.slug },

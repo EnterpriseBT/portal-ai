@@ -26,6 +26,7 @@ import Link from "@mui/material/Link";
 import { GettingStarted } from "../components/GettingStarted.component";
 import { GlossaryList } from "../components/GlossaryList.component";
 import { FAQList } from "../components/FAQList.component";
+import { TroubleshootingListUI } from "../components/TroubleshootingList.component";
 import { HelpSearchBar } from "../components/HelpSearchBar.component";
 import {
   GETTING_STARTED_STEPS,
@@ -44,6 +45,9 @@ import {
   FAQCategory,
   filterFAQ,
   type FAQEntry,
+  TROUBLESHOOTING_ENTRIES,
+  type TroubleshootingEntry,
+  searchHelp,
 } from "@portalai/core/content";
 import { withPageRoutes } from "../utils/glossary-routes.util";
 import {
@@ -62,6 +66,7 @@ import {
 const TAB_GETTING_STARTED = 0;
 const TAB_GLOSSARY = 1;
 const TAB_FAQ = 2;
+const TAB_TROUBLESHOOTING = 3;
 
 /** The shared glossary (`@portalai/core/content`) carries no in-app routes —
  *  they'd be meaningless on the public marketing site. Graft them back on
@@ -74,8 +79,10 @@ export interface HelpViewUIProps {
   steps: GettingStartedStep[];
   glossaryEntries: GlossaryEntry[];
   faqEntries: FAQEntry[];
+  /** #1049: Help's Troubleshooting tab. */
+  troubleshootingEntries: TroubleshootingEntry[];
   onNavigate: (route: string) => void;
-  /** Resolved tab index (0–2). The URL is the source of truth (#365). */
+  /** Resolved tab index (0–3). The URL is the source of truth (#365). */
   tabIndex: number;
   /** Active chip on each tab; `null` is the "All" chip. */
   glossaryCategory: GlossaryCategory | null;
@@ -92,12 +99,14 @@ const TAB_SLUG_BY_INDEX: Record<number, HelpTab> = {
   [TAB_GETTING_STARTED]: HelpTab.GettingStarted,
   [TAB_GLOSSARY]: HelpTab.Glossary,
   [TAB_FAQ]: HelpTab.Faq,
+  [TAB_TROUBLESHOOTING]: HelpTab.Troubleshooting,
 };
 
 export const HelpViewUI: React.FC<HelpViewUIProps> = ({
   steps,
   glossaryEntries,
   faqEntries,
+  troubleshootingEntries,
   onNavigate,
   tabIndex,
   glossaryCategory,
@@ -169,6 +178,10 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
     () => registerEntryRef(HelpTab.Faq),
     [registerEntryRef]
   );
+  const registerTroubleshootingEntryRef = useMemo(
+    () => registerEntryRef(HelpTab.Troubleshooting),
+    [registerEntryRef]
+  );
 
   // An anchor outranks the category chip: a link that names an entry must not
   // land on a filter that hides it. Same rule the cross-tab jump has always
@@ -196,6 +209,20 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
     [faqEntries, searchQuery, effectiveFaqCategory]
   );
 
+  // #1049: troubleshooting search ranks with help search, the same function
+  // the assistant's help tool uses, in score order. No query keeps the
+  // entries' own order.
+  const filteredTroubleshooting = useMemo(() => {
+    const matches = searchHelp(searchQuery, { surfaces: ["troubleshooting"] });
+    if (matches.length === 0 && searchQuery.trim() === "") {
+      return troubleshootingEntries;
+    }
+    const bySlug = new Map(
+      troubleshootingEntries.map((e) => [contentEntrySlug(e.symptom), e])
+    );
+    return matches.flatMap((m) => bySlug.get(m.doc.slug) ?? []);
+  }, [troubleshootingEntries, searchQuery]);
+
   // Scroll to the anchored entry once the tab and list have rendered. An
   // anchor naming an entry that no longer exists finds no ref and is a no-op —
   // content churn must not throw at a reader.
@@ -222,6 +249,18 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
     [onNavigateToEntry]
   );
 
+  /** A troubleshooting entry's related FAQ or glossary entry, by address. */
+  const handleSelectRelated = useCallback(
+    (surface: "faq" | "glossary", title: string) => {
+      setSearchQuery("");
+      onNavigateToEntry({
+        surface: surface === "faq" ? HelpTab.Faq : HelpTab.Glossary,
+        slug: contentEntrySlug(title),
+      });
+    },
+    [onNavigateToEntry]
+  );
+
   const showSearch = value !== TAB_GETTING_STARTED;
 
   return (
@@ -238,6 +277,7 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
           <Tab label="Getting Started" {...getTabProps(TAB_GETTING_STARTED)} />
           <Tab label="Glossary" {...getTabProps(TAB_GLOSSARY)} />
           <Tab label="FAQ" {...getTabProps(TAB_FAQ)} />
+          <Tab label="Troubleshooting" {...getTabProps(TAB_TROUBLESHOOTING)} />
         </Tabs>
 
         {showSearch && (
@@ -347,6 +387,29 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
             </Stack>
           </PageSection>
         </TabPanel>
+
+        <TabPanel {...getTabPanelProps(TAB_TROUBLESHOOTING)}>
+          <PageSection title="Troubleshooting" variant="divider">
+            {filteredTroubleshooting.length === 0 ? (
+              <Box
+                data-testid="troubleshooting-empty"
+                sx={{ py: 4, textAlign: "center" }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  No troubleshooting entries match your search.
+                </Typography>
+              </Box>
+            ) : (
+              <TroubleshootingListUI
+                entries={filteredTroubleshooting}
+                expandedSlugs={expandedSlugs}
+                onToggleEntry={handleToggleEntry}
+                onSelectRelated={handleSelectRelated}
+                registerEntryRef={registerTroubleshootingEntryRef}
+              />
+            )}
+          </PageSection>
+        </TabPanel>
       </Stack>
     </Box>
   );
@@ -436,6 +499,7 @@ export const HelpView: React.FC = () => {
       steps={GETTING_STARTED_STEPS}
       glossaryEntries={GLOSSARY_ENTRIES_WITH_ROUTES}
       faqEntries={FAQ_ENTRIES}
+      troubleshootingEntries={TROUBLESHOOTING_ENTRIES}
       onNavigate={handleNavigate}
       tabIndex={tabIndex}
       glossaryCategory={glossaryCategory}

@@ -13,6 +13,7 @@ import {
   GLOSSARY_ENTRIES,
   contentEntrySlug,
 } from "../../content/glossary.util";
+import { TROUBLESHOOTING_ENTRIES } from "../../content/troubleshooting.util";
 import { buildHelpUrl, HELP_TAB } from "../../content/help-url.util";
 
 const doc = (
@@ -168,6 +169,11 @@ describe("HELP_CORPUS (#1049)", () => {
     expect(glossary.map((d) => d.title)).toEqual(
       GLOSSARY_ENTRIES.map((e) => e.term)
     );
+    expect(
+      HELP_CORPUS.filter((d) => d.surface === "troubleshooting").map(
+        (d) => d.title
+      )
+    ).toEqual(TROUBLESHOOTING_ENTRIES.map((e) => e.symptom));
     for (const surface of ["faq", "glossary", "troubleshooting"] as const) {
       const slugs = HELP_CORPUS.filter((d) => d.surface === surface).map(
         (d) => d.slug
@@ -182,6 +188,15 @@ describe("HELP_CORPUS (#1049)", () => {
     const glossary = HELP_CORPUS.filter((d) => d.surface === "glossary");
     expect(glossary.map((d) => d.body)).toEqual(
       GLOSSARY_ENTRIES.map((e) => e.definition)
+    );
+    expect(
+      HELP_CORPUS.filter((d) => d.surface === "troubleshooting").map(
+        (d) => d.body
+      )
+    ).toEqual(
+      TROUBLESHOOTING_ENTRIES.map(
+        (e) => `Why it happens: ${e.cause}\nWhat to do: ${e.fix}`
+      )
     );
   });
 
