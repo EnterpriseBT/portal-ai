@@ -349,3 +349,8 @@ Run each package's tests with its npm scripts: `cd packages/core && npm run test
 3. Help search on the ranker (web);
 4. the tool contract, the `help` result kind and the server block (core and api);
 5. the block renderer, stream mapping, prompt and docs (web, api and docs).
+
+## Amendment — adversarial walk
+
+- **The `## Help` prompt makes the help block the whole answer.** The agent writes no text before or after it: no preamble, no lead-in, no summary and no follow-up suggestion, even when it calls the tool several times for several questions. On `noMatch` it adds nothing either, since the block says no entry covers it and links to Help. Only a part of the message that isn't a product question (about the user's data) gets text of its own.
+  - Why: asked three questions at once, the agent restated all three entries around the blocks. A one-sentence cap still left room for summaries; no text leaves none.

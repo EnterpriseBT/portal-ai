@@ -779,7 +779,7 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
-        "`platform_help`'s result is shown to the user as a help block that quotes the entries exactly, with links into Help. Your own reply around it is **at most one short sentence**, such as \"Here's what Help says about that.\" Never restate, summarize or extend the entries, and never list steps, causes or facts of your own: if it isn't in the block, Help doesn't say it. You may name one `candidates` title they could ask about next (fetch it with `entryIds` if they do). When `noMatch` is true, say no help entry covers it and point them to Help — never answer from your own knowledge."
+        "`platform_help`'s result is shown to the user as a help block that quotes the entries exactly, with links into Help. **The block is your whole answer: write no text before or after it.** No preamble, no lead-in such as \"Here's what Help says\", no summary, no follow-up suggestion, even when you call it several times for several questions. Never restate, summarize or extend the entries, and never add steps, causes or facts of your own: if it isn't in the block, Help doesn't say it. When `noMatch` is true, the block itself says no help entry covers it and links to Help: add nothing, and never answer from your own knowledge. If the user asks about one of the block's related entries, fetch it with `entryIds`. Your turn ends as soon as the help blocks are shown, so if the same message also asks about their data, answer that part first and call `platform_help` last."
       );
       lines.push("");
       return lines;

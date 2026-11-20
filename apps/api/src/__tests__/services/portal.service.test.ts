@@ -207,7 +207,7 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService, resolveDisplayBlock } =
+const { PortalService, resolveDisplayBlock, endsOnHelpBlocks } =
   await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -2441,6 +2441,78 @@ describe("resolveDisplayBlock → help (#1049)", () => {
     expect(
       resolveDisplayBlock("platform_help", { answer: "old shape", links: [] })
     ).toBeNull();
+  });
+});
+
+// endsOnHelpBlocks — a help block is the whole answer (#1049)
+// ---------------------------------------------------------------------------
+
+describe("endsOnHelpBlocks (#1049)", () => {
+  const HELP = {
+    type: "help",
+    query: "what is a portal",
+    entries: [],
+    candidates: [],
+    noMatch: true,
+    helpUrl: "/help?tab=getting-started",
+  };
+  const help = { toolName: "platform_help", output: HELP };
+  const step = (
+    toolCalls: { toolName: string }[],
+    toolResults: { toolName: string; output: unknown }[]
+  ) => ({ toolCalls, toolResults });
+
+  it("ends the turn after a step whose calls were all platform_help help blocks", () => {
+    // The adversarial walk: three help blocks, then a step quoting them back.
+    expect(
+      endsOnHelpBlocks({
+        steps: [step([help, help, help], [help, help, help])],
+      })
+    ).toBe(true);
+  });
+
+  it("carries on when the step also called another tool", () => {
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step(
+            [help, { toolName: "sql_query" }],
+            [help, { toolName: "sql_query", output: { rows: [] } }]
+          ),
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it("carries on when a help call failed, so the model can retry", () => {
+    // Invalid input is a tool error: no result for the call.
+    expect(endsOnHelpBlocks({ steps: [step([help], [])] })).toBe(false);
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step([help], [{ toolName: "platform_help", output: { error: "x" } }]),
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it("carries on after a text-only or empty step", () => {
+    expect(endsOnHelpBlocks({ steps: [] })).toBe(false);
+    expect(endsOnHelpBlocks({ steps: [step([], [])] })).toBe(false);
+  });
+
+  it("looks only at the latest step", () => {
+    expect(
+      endsOnHelpBlocks({
+        steps: [
+          step([help], [help]),
+          step(
+            [{ toolName: "sql_query" }],
+            [{ toolName: "sql_query", output: {} }]
+          ),
+        ],
+      })
+    ).toBe(false);
   });
 });
 

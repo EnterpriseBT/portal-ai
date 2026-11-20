@@ -133,6 +133,34 @@ interface StreamContext {
 }
 
 /**
+ * #1049: a help block is the whole answer to a product question. A step whose
+ * tool calls were all `platform_help`, each returning a valid help block, ends
+ * the turn, so the model gets no further step in which to restate the entries
+ * around the blocks (the adversarial walk saw it quote all three back, despite
+ * the prompt). A step that also called another tool, or whose help call failed
+ * (the model should retry), carries on as usual.
+ */
+export function endsOnHelpBlocks({
+  steps,
+}: {
+  steps: ReadonlyArray<{
+    toolCalls: ReadonlyArray<{ toolName: string }>;
+    toolResults: ReadonlyArray<{ toolName: string; output: unknown }>;
+  }>;
+}): boolean {
+  const last = steps[steps.length - 1];
+  if (!last || last.toolCalls.length === 0) return false;
+  return (
+    last.toolResults.length === last.toolCalls.length &&
+    last.toolResults.every(
+      (r) =>
+        r.toolName === "platform_help" &&
+        HelpBlockContentSchema.safeParse(r.output).success
+    )
+  );
+}
+
+/**
  * A tool call's input as an object, whatever the stream produced (#1049).
  * When the model emits invalid JSON for a tool's input, the SDK hands back
  * the raw text; stored and later replayed as a string, it makes the model API
@@ -904,7 +932,7 @@ export class PortalService {
       system: systemPrompt,
       messages,
       tools: analyticsTools,
-      stopWhen: stepCountIs(10),
+      stopWhen: [stepCountIs(10), endsOnHelpBlocks],
       maxRetries: 3,
     });
 

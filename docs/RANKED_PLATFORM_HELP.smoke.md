@@ -37,7 +37,7 @@ On the Help org's **Playground**, open a portal for each question.
 - [ ] Ask *"How do I bring in a spreadsheet?"*.
   - The reply has a **help block**, a region named "Help: How do I bring in a spreadsheet?".
   - Its first entry, labelled FAQ, is **"How do I connect my first data source?"**, with its answer and "Open in Help".
-  - The assistant adds at most one sentence and doesn't repeat or rephrase the entry.
+  - The block is the whole reply: the assistant writes no text before or after it.
 - [ ] The stored message has a `help` block whose first entry's `body` equals that FAQ's answer exactly: `select blocks from portal_messages where portal_id='<id>' and role='assistant'`, compared with `FAQ_ENTRIES` in `faq.util.ts`. — backend
 - [ ] Ask *"What is a portal?"*. The block leads with the glossary entry **Portal**.
 - [ ] Ask *"my sync failed"*. The block leads with the troubleshooting entry **"A sync or import job failed"**, showing "Why it happens: …" and "What to do: …".
