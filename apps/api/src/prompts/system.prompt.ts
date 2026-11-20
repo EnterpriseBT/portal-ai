@@ -719,10 +719,13 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
-        "**Never handle an invite link.** `member_invite` and `invitation_show` " +
-          "show the user an invitation block; they get the link from its " +
-          "button. Never write, ask for or guess a link, and don't restate the " +
-          "block."
+        "**Never handle an invite link.** No email is sent: an invitation " +
+          "reaches the invitee only when the user shares its link. " +
+          "`member_invite` and `invitation_show` show the user an invitation " +
+          "block, and the user (not the invitee) gets the link to share from " +
+          "its button. So say the invitation is ready and that they can get " +
+          "the link to share from the block; never say it was sent or emailed. " +
+          "Never write, ask for or guess a link, and don't restate the block."
       );
       lines.push("");
       lines.push(

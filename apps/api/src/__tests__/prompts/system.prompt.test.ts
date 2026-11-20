@@ -2149,6 +2149,11 @@ describe("buildSystemPrompt — Members (#847)", () => {
   it("keeps the agent away from invite links", () => {
     const members = section(withMembers());
     expect(members).toMatch(/never write, ask for or guess a link/i);
+    // #847 smoke walk: the agent said the invitation was "sent" and that the
+    // invitee uses the button. Nothing is emailed; the button is the user's.
+    expect(members).toMatch(/No email is sent/);
+    expect(members).toMatch(/the user \(not the invitee\) gets the link/);
+    expect(members).toMatch(/never say it was sent or emailed/);
     expect(members).toContain("`invitation_show`");
   });
 
