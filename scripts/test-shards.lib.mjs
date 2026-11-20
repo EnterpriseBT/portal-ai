@@ -38,6 +38,16 @@ export function isIntegrationTestPath(relative) {
 }
 
 /**
+ * Whether a path (relative to apps/web) is a test web's Jest config runs:
+ * its testMatch (`jest.config.js`) is any `*.test.ts(x)` or `*.spec.ts(x)`,
+ * and every one of them lives under `src`. `lint:test-files` holds this
+ * equal to `jest --listTests`, so the two can't drift apart unnoticed.
+ */
+export function isWebUnitTestPath(relative) {
+  return /^src\/(.*\/)?[^/]+\.(test|spec)\.tsx?$/.test(relative);
+}
+
+/**
  * @typedef {{
  *   key: "integration" | "web",
  *   title: string,
@@ -70,7 +80,7 @@ export function isIntegrationTestPath(relative) {
  * - `skippable`: the suite's workflow has a docs-only `changes` job (#663).
  */
 
-/** @type {Record<"integration", Suite>} */
+/** @type {Record<"integration" | "web", Suite>} */
 export const SUITES = {
   integration: {
     key: "integration",
@@ -102,6 +112,37 @@ export const SUITES = {
     driftIssueTitle: "Integration test durations have drifted",
     skippable: true,
     capAdvice: "time for one database per Jest worker (#857 follow-up)",
+  },
+  web: {
+    key: "web",
+    title: "Unit Tests",
+    packageDir: "apps/web",
+    isTestPath: isWebUnitTestPath,
+    durationsFile: "apps/web/src/__tests__/durations.json",
+    // Recorded from this suite's first sharded CI runs (#1091); until then
+    // the planner uses the fallback.
+    durationsRequired: false,
+    // File-seconds, not wall time: each web shard runs Jest's default 3
+    // workers on a 4-core runner, so 450s of recorded file time is about
+    // 150s of wall time, the integration suite's budget.
+    budgetSeconds: 450,
+    minShards: 2,
+    // 6 shards + the checks job make Unit Tests' peak 7; with integration's
+    // 10 and three single-job checks, one push peaks at exactly 20
+    // (lint:ci-cache rule 8).
+    maxShards: 6,
+    fallbackShards: 3,
+    fileCeilingSeconds: 120,
+    ceilingAllowlist: [],
+    shardVar: "WEB_UNIT_SHARD",
+    turboFile: "apps/web/turbo.json",
+    turboTask: "test:unit",
+    reportFile: "apps/web/jest-unit-report.json",
+    artifactPrefix: "web-unit-jest-",
+    workflowFile: "unit-test.yml",
+    driftIssueTitle: "Web unit test durations have drifted",
+    skippable: false,
+    capAdvice: "split the heaviest web suites, or rebalance the caps within lint:ci-cache rule 8",
   },
 };
 

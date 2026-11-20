@@ -4,6 +4,12 @@ This spec pins the contract for running `apps/web`'s unit suite as planned, capp
 
 Discovery: `docs/WEB_UNIT_SHARDS.discovery.md`. Issue: #1091.
 
+## Amendment — slice 2
+
+- **`Suite` gains `durationsRequired: boolean`:** `true` for integration, and `false` for web until slice 5 seeds its file.
+  - While `false`, `check-durations` and `plan` read a missing file as "not recorded yet": a notice, and the fallback count.
+  - A malformed file still fails either way.
+
 ## Key decisions (flag for review)
 
 1. **One lib, two suites.**

@@ -87,15 +87,23 @@ jobs:
       # The sharded integration suite's control logic (#857): above all, that
       # the shard assignment puts every test file in exactly one shard. A
       # file that lands in none is never run, and nothing else would notice.
-      - name: Check the integration shard logic
+      - name: Check the sharded suites' shard logic
         run: npm run lint:test-shards
 
       # No integration test file may exceed the per-file ceiling (#857). A
       # file can't be split across shards, so the slowest one is a floor on
       # the check's time; this fails on the durations refresh that first
       # records one, which is where the split belongs.
-      - name: Check no integration test file is over the duration ceiling
+      - name: Check no sharded test file is over the duration ceiling
         run: npm run lint:test-durations
+
+      # The sharded suites' summaries find their expected test files by a path
+      # rule, since they run without node_modules (#1091). This holds each rule
+      # equal to what its Jest config really runs: a test the rule missed
+      # would never be checked for, and one it wrongly picked would always
+      # read as "ran in no shard".
+      - name: Check each sharded suite's test-file rule matches Jest
+        run: npm run lint:test-files
 
       # The nginx advisory parser (#918), self-tested against fixtures in
       # nginx.org's page format. The weekly check is the only thing that sees

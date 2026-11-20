@@ -22,9 +22,12 @@
  *                                       rewrite the suite's durations file from Jest JSON reports:
  *                                       each file's median over the runs in <dir> (one subdirectory
  *                                       per run, or the shard artifacts of a single run directly)
+ *   list-agreement                      fail unless the suite's path rule picks exactly the files
+ *                                       its Jest config lists (lint:test-files; needs node_modules)
  *   sample-runs                         how many recent runs a refresh samples (SAMPLE_RUNS)
  */
 
+import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,12 +41,15 @@ import {
   SAMPLE_RUNS,
   SUITES,
   isIntegrationTestPath,
+  isWebUnitTestPath,
   parseDurations,
   planShards,
   summaryVerdict,
+  toPackageRelative,
 } from "./test-shards.lib.mjs";
 
 const INTEGRATION = SUITES.integration;
+const WEB = SUITES.web;
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -395,6 +401,153 @@ const CASES = [
       },
     ];
   })(),
+  ...[
+    [{}, 3, false, "no recorded durations → the fallback"],
+    [{ a: 400 }, 2, false, "a small suite → MIN"],
+    [{ a: 1350 }, 3, false, "1,350 file-seconds → 3"],
+    [{ a: 1800 }, 4, false, "1,800 file-seconds → 4"],
+    [{ a: 2700 }, 6, false, "2,700 file-seconds → exactly the cap"],
+    [{ a: 3000 }, 6, true, "3,000 file-seconds → the cap, flagged"],
+  ].map(([durations, count, capped, label]) => ({
+    name: `planShards(web): ${label}`,
+    run: () => {
+      const plan = planShards(WEB, durations);
+      return plan.count === count && plan.capped === capped && plan.matrix.index.length === count;
+    },
+  })),
+  ...[
+    ["src/views/Dashboard.test.tsx", true],
+    ["src/__tests__/api/stations.test.ts", true],
+    ["src/utils/x.spec.ts", true],
+    ["src/utils/x.test.js", false],
+    ["scripts/generate-routes.test.ts", false],
+    ["src/stories/Header.stories.tsx", false],
+    ["dist/x.test.ts", false],
+  ].map(([file, expected]) => ({
+    name: `isWebUnitTestPath: ${file} → ${expected}`,
+    run: () => isWebUnitTestPath(file) === expected,
+  })),
+  {
+    name: "toPackageRelative: a web path is relative to apps/web",
+    run: () => toPackageRelative(WEB, "/home/runner/work/portal-ai/portal-ai/apps/web/src/a.test.tsx") === "src/a.test.tsx",
+  },
+  {
+    name: "toPackageRelative: an API path isn't under the web suite",
+    run: () => toPackageRelative(WEB, "/x/apps/api/src/a.integration.test.ts") === null,
+  },
+  {
+    name: "toPackageRelative: Windows separators are normalized",
+    run: () => toPackageRelative(WEB, "C:\\w\\apps\\web\\src\\a.test.tsx") === "src/a.test.tsx",
+  },
+  {
+    name: "mergeRuns(web): keys are relative to apps/web",
+    run: () => {
+      const report = { testResults: [{ name: "/x/apps/web/src/a.test.tsx", startTime: 0, endTime: 1500 }] };
+      return JSON.stringify(mergeRuns(WEB, [[report]], ["src/a.test.tsx"])) === '{"src/a.test.tsx":1.5}';
+    },
+  },
+  {
+    name: "mergeRuns(web): a file the checkout no longer has is dropped",
+    run: () => {
+      const report = { testResults: [{ name: "/x/apps/web/src/gone.test.tsx", startTime: 0, endTime: 1500 }] };
+      return Object.keys(mergeRuns(WEB, [[report]], ["src/a.test.tsx"])).length === 0;
+    },
+  },
+  {
+    name: "ceilingViolations(web): uses the web suite's ceiling",
+    run: () => {
+      const v = ceilingViolations(WEB, { "src/slow.test.tsx": WEB.fileCeilingSeconds + 1, "src/ok.test.tsx": 5 });
+      return v.length === 1 && v[0].file === "src/slow.test.tsx";
+    },
+  },
+  ...(() => {
+    const file = (shard, i) => `src/s${shard}-${i}.test.tsx`;
+    const shardReport = (shard, suites, seconds = 10, failed = 0, files) => {
+      const names = files ?? Array.from({ length: suites }, (_, i) => file(shard, i));
+      return {
+        shard,
+        report: {
+          numTotalTestSuites: names.length,
+          numFailedTestSuites: failed,
+          testResults: names.map((f) => ({
+            name: `/home/runner/work/portal-ai/portal-ai/apps/web/${f}`,
+            startTime: 0,
+            endTime: seconds * 1000,
+          })),
+        },
+      };
+    };
+    const expectedFiles = [1, 2].flatMap((shard) => [0, 1, 2].map((i) => file(shard, i)));
+    const green = {
+      planResult: "success",
+      shardResult: "success",
+      gates: [{ label: "the checks job (lint + non-web unit tests)", result: "success" }],
+      plannedCount: 2,
+      expectedFiles,
+      capped: false,
+      reports: [shardReport(1, 3), shardReport(2, 3)],
+    };
+    const verdict = (over) => summaryVerdict(WEB, { ...green, ...over });
+    return [
+      {
+        name: "summaryVerdict(web): every shard and the checks job green is green",
+        run: () => {
+          const v = verdict({});
+          return v.ok && !v.skipped && v.warnings.length === 0;
+        },
+      },
+      {
+        name: "summaryVerdict(web): a failed checks job is red, naming it",
+        run: () => {
+          const v = verdict({ gates: [{ label: "the checks job (lint + non-web unit tests)", result: "failure" }] });
+          return !v.ok && v.errors.some((e) => /checks job/.test(e));
+        },
+      },
+      {
+        name: "summaryVerdict(web): no docs-only skip, even if `run` says false",
+        run: () => {
+          const v = verdict({ run: "false", changesResult: "" });
+          return v.ok && !v.skipped;
+        },
+      },
+      {
+        name: "summaryVerdict(web): a file run in two shards and another in none is red",
+        run: () => {
+          const v = verdict({
+            reports: [shardReport(1, 3), shardReport(2, 3, 10, 0, [file(2, 0), file(2, 1), file(1, 0)])],
+          });
+          return !v.ok && v.errors.some((e) => /more than one shard/.test(e)) && v.errors.some((e) => /no shard/.test(e));
+        },
+      },
+      {
+        name: "summaryVerdict(web): an unknown file is named as not a web test file",
+        run: () => {
+          const v = verdict({ expectedFiles: expectedFiles.slice(1) });
+          return !v.ok && v.errors.some((e) => /isn't a web test file/.test(e));
+        },
+      },
+      {
+        name: "summaryVerdict(web): a failed suite is red",
+        run: () => !verdict({ reports: [shardReport(1, 3, 10, 1), shardReport(2, 3)] }).ok,
+      },
+      {
+        name: "summaryVerdict(web): drift is measured against the web budget",
+        run: () => {
+          // 3 files × 150s = 450 (at budget, quiet); × 190s = 570 > 450 × 1.25 (warns).
+          const quiet = verdict({ reports: [shardReport(1, 3, 150), shardReport(2, 3)] });
+          const loud = verdict({ reports: [shardReport(1, 3, 190), shardReport(2, 3)] });
+          return quiet.warnings.length === 0 && loud.ok && loud.warnings.some((w) => /450s budget/.test(w) && w.includes(WEB.durationsFile));
+        },
+      },
+      {
+        name: "summaryVerdict(web): the cap warning names 6 and the web advice",
+        run: () => {
+          const v = verdict({ capped: true });
+          return v.ok && v.warnings.some((w) => /6-shard cap/.test(w) && w.includes(WEB.capAdvice));
+        },
+      },
+    ];
+  })(),
 ];
 
 function selfTest() {
@@ -592,12 +745,47 @@ function summarize(suite) {
   return verdict.ok;
 }
 
+/** Extra `jest` arguments that select each suite's config. */
+const JEST_ARGS = { integration: ["--config", "jest.integration.config.js"], web: [] };
+
+/**
+ * The suite's path rule against Jest itself: the files `jest --listTests`
+ * lists must be exactly the files `isTestPath` picks. The summary job has no
+ * node_modules, so it can only find the expected files by the rule; this
+ * holds the rule to what Jest would really run.
+ */
+function listAgreement(suite) {
+  const cwd = path.join(REPO_ROOT, suite.packageDir);
+  const out = spawnSync("npx", ["jest", ...JEST_ARGS[suite.key], "--listTests"], { cwd, encoding: "utf8" });
+  if (out.status !== 0) {
+    console.error(`✗ jest --listTests failed in ${suite.packageDir}:\n${out.stderr}`);
+    return false;
+  }
+  const listed = out.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => path.relative(cwd, l).split(path.sep).join("/"))
+    .sort();
+  const byRule = testFiles(suite);
+  const ruleSet = new Set(byRule);
+  const listedSet = new Set(listed);
+  const onlyJest = listed.filter((f) => !ruleSet.has(f));
+  const onlyRule = byRule.filter((f) => !listedSet.has(f));
+  for (const f of onlyJest) console.error(`✗ ${suite.packageDir}/${f}: Jest runs it, but the ${suite.key} path rule misses it`);
+  for (const f of onlyRule) console.error(`✗ ${suite.packageDir}/${f}: the ${suite.key} path rule picks it, but Jest doesn't run it`);
+  if (onlyJest.length || onlyRule.length) return false;
+  console.log(`${suite.key} test files: the path rule and jest --listTests agree on ${listed.length} file(s)`);
+  return true;
+}
+
 /** Commands that act on one suite get it from `--suite`. */
 const SUITE_COMMANDS = {
   plan,
   summarize,
   "check-durations": checkDurations,
   "update-durations": updateDurations,
+  "list-agreement": listAgreement,
 };
 
 const COMMANDS = {
