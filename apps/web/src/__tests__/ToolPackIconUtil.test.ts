@@ -1,3 +1,4 @@
+import GroupAddOutlined from "@mui/icons-material/GroupAddOutlined";
 import AdminPanelSettingsOutlined from "@mui/icons-material/AdminPanelSettingsOutlined";
 import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
@@ -25,6 +26,10 @@ describe("ToolPackIconUtil.getIcon", () => {
     expect(ToolPackIconUtil.getIcon("gis")).toBe(MapOutlined);
     expect(ToolPackIconUtil.getIcon("rbac_management")).toBe(
       AdminPanelSettingsOutlined
+    );
+    // #847
+    expect(ToolPackIconUtil.getIcon("member_management")).toBe(
+      GroupAddOutlined
     );
   });
 

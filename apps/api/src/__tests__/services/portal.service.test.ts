@@ -2444,6 +2444,49 @@ describe("resolveDisplayBlock → help (#1049)", () => {
   });
 });
 
+// resolveDisplayBlock — invitation (#847)
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → invitation (#847)", () => {
+  const INVITATION = {
+    type: "invitation",
+    invitationId: "inv-1",
+    email: "alice@example.com",
+    role: "member",
+    status: "pending",
+    expiresAt: 1_800_000_000_000,
+  };
+
+  it("builds an invitation block from member_invite's and invitation_show's results", () => {
+    for (const tool of ["member_invite", "invitation_show"]) {
+      const result = resolveDisplayBlock(tool, INVITATION);
+      expect(result?.block).toEqual({
+        type: "invitation",
+        content: INVITATION,
+      });
+      expect(result?.sseResult).toEqual(INVITATION);
+    }
+  });
+
+  it("makes no block from a relayed refusal", () => {
+    expect(
+      resolveDisplayBlock("member_invite", {
+        error: "An invitation is already pending for this email",
+        code: "INVITATION_ALREADY_PENDING",
+      })
+    ).toBeNull();
+  });
+
+  it("makes no block from a result carrying a link", () => {
+    expect(
+      resolveDisplayBlock("member_invite", {
+        ...INVITATION,
+        inviteUrl: "https://app/invitations/accept?token=secret",
+      })
+    ).toBeNull();
+  });
+});
+
 // endsOnHelpBlocks — a help block is the whole answer (#1049)
 // ---------------------------------------------------------------------------
 

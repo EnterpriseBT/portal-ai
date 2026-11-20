@@ -1000,7 +1000,7 @@ describe("buildSystemPrompt — response style", () => {
           "use it.";
         expect(section).toContain(PRECEDENCE);
         expect(section).toContain(
-          "- Access & Roles: roles, policies and groups, member assignments, and sharing stations and pins"
+          "- Access & Roles: roles, policies and groups, members' groups, and sharing stations and pins"
         );
         // Read before the list it qualifies, and before anything that
         // restricts the agent.
@@ -2124,5 +2124,43 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
     expect(usable).toContain(
       "_No views or connectors are attached to this station."
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Members section (#847)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Members (#847)", () => {
+  const withMembers = () =>
+    buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["member_management"] })
+    );
+  const section = (prompt: string) =>
+    prompt.slice(prompt.indexOf("## Members"));
+
+  it("renders ## Members only when the pack is on the station", () => {
+    expect(withMembers()).toContain("## Members");
+    expect(
+      buildSystemPrompt(makeContext({ effectiveToolPacks: ["data_query"] }))
+    ).not.toContain("## Members");
+  });
+
+  it("keeps the agent away from invite links", () => {
+    const members = section(withMembers());
+    expect(members).toMatch(/never write, ask for or guess a link/i);
+    expect(members).toContain("`invitation_show`");
+  });
+
+  it("shows a pending invitation instead of inviting again, and resolves people first", () => {
+    const members = section(withMembers());
+    expect(members).toContain("INVITATION_ALREADY_PENDING");
+    expect(members).toMatch(/don't invite again/i);
+    expect(members).toMatch(/`member_list`/);
+  });
+
+  it("names the pack elsewhere, and Access & Roles no longer claims member assignments", () => {
+    expect(PACK_ELSEWHERE.member_management).toMatch(/invit/);
+    expect(PACK_ELSEWHERE.rbac_management).not.toMatch(/member assignments/);
   });
 });

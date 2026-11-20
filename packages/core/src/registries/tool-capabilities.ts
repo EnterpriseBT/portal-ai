@@ -65,7 +65,11 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
  * excluded. Free, never upsold: every tool in them must be `costHint: free`
  * (a guard test holds that).
  */
-export const ALWAYS_ENTITLED_PACKS: readonly BuiltinToolpackSlug[] = ["help"];
+export const ALWAYS_ENTITLED_PACKS: readonly BuiltinToolpackSlug[] = [
+  "help",
+  // #847: member management is decided by permissions, not by plan.
+  "member_management",
+];
 
 // ── Aggregate ───────────────────────────────────────────────────────
 

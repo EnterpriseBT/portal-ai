@@ -102,12 +102,20 @@ import {
   MemberListTool,
   MemberSetRolesTool,
   MemberSetGroupsTool,
+  MemberRemoveTool,
+  SeatUsageTool,
 } from "../tools/rbac/member.tool.js";
 import {
   GrantShareTool,
   GrantRevokeTool,
   GrantListTool,
 } from "../tools/rbac/grant.tool.js";
+import {
+  InvitationListTool,
+  InvitationRevokeTool,
+  InvitationShowTool,
+  MemberInviteTool,
+} from "../tools/rbac/invitation.tool.js";
 import { CuratedViewListTool } from "../tools/curated-views/curated-view-list.tool.js";
 import { CuratedViewEntityListTool } from "../tools/curated-views/curated-view-entity-list.tool.js";
 import { CuratedViewGetTool } from "../tools/curated-views/curated-view-get.tool.js";
@@ -277,6 +285,12 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "grant_share",
   "grant_revoke",
   "grant_list",
+  "member_invite",
+  "invitation_list",
+  "invitation_show",
+  "invitation_revoke",
+  "member_remove",
+  "seat_usage",
   "curated_view_list",
   "curated_view_entity_list",
   "curated_view_get",
@@ -872,9 +886,6 @@ export class ToolService {
       tools.group_set_members = new GroupSetMembersTool().build(
         permissionContext
       );
-      tools.member_set_roles = new MemberSetRolesTool().build(
-        permissionContext
-      );
       tools.member_set_groups = new MemberSetGroupsTool().build(
         permissionContext
       );
@@ -888,9 +899,40 @@ export class ToolService {
     // when either pack is on.
     if (
       enabledPacks.has("rbac_management") ||
-      enabledPacks.has("view_management")
+      enabledPacks.has("view_management") ||
+      enabledPacks.has("member_management")
     ) {
       tools.member_list = new MemberListTool().build(permissionContext);
+    }
+
+    // #847: setting a member's roles is shared by rbac_management and
+    // member_management (it needs member.role.assign, not custom RBAC), so
+    // it's one definition, built once when either is on.
+    if (
+      enabledPacks.has("rbac_management") ||
+      enabledPacks.has("member_management")
+    ) {
+      tools.member_set_roles = new MemberSetRolesTool().build(
+        permissionContext
+      );
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: member_management (#847)
+    // -------------------------------------------------------------------
+    // The roster half of Settings → Members. Each tool wraps the SeatService
+    // method the Settings routes call, which checks its own permission; a
+    // refusal surfaces as TOOL_PERMISSION_DENIED (the gate's catch-403) or a
+    // relayable { error, code }. Control-plane (`writes:[]`), always entitled.
+    if (enabledPacks.has("member_management")) {
+      tools.member_invite = new MemberInviteTool().build(permissionContext);
+      tools.invitation_list = new InvitationListTool().build(permissionContext);
+      tools.invitation_show = new InvitationShowTool().build(permissionContext);
+      tools.invitation_revoke = new InvitationRevokeTool().build(
+        permissionContext
+      );
+      tools.member_remove = new MemberRemoveTool().build(permissionContext);
+      tools.seat_usage = new SeatUsageTool().build(permissionContext);
     }
 
     // -------------------------------------------------------------------

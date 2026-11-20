@@ -18,7 +18,10 @@ import type {
   DoneEvent,
   PinnedBlockEntry,
 } from "@portalai/core/contracts";
-import { HelpBlockContentSchema } from "@portalai/core/contracts";
+import {
+  HelpBlockContentSchema,
+  InvitationBlockContentSchema,
+} from "@portalai/core/contracts";
 import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
@@ -430,6 +433,19 @@ export function resolveDisplayBlock(
     if (!parsed.success) return null;
     return {
       block: { type: "help", content: parsed.data },
+      sseResult: parsed.data,
+    };
+  }
+
+  // Invitation (#847). member_invite / invitation_show return an invitation
+  // without its link; the block's button gets a fresh link in the browser.
+  // The schema is strict, so a result carrying a link (or a relayed
+  // { error, code }) makes no block.
+  if (resultKind === "invitation") {
+    const parsed = InvitationBlockContentSchema.safeParse(toolResult);
+    if (!parsed.success) return null;
+    return {
+      block: { type: "invitation", content: parsed.data },
       sseResult: parsed.data,
     };
   }

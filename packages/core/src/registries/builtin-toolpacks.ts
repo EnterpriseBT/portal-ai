@@ -44,6 +44,8 @@ export const BuiltinToolpackSlugSchema = z.enum([
   // #1050: platform help, attached explicitly. Every tier is entitled to it
   // (`ALWAYS_ENTITLED_PACKS`) and its tool is free.
   "help",
+  // #847: the member roster and invitations, on every plan.
+  "member_management",
 ]);
 
 export type BuiltinToolpackSlug = z.infer<typeof BuiltinToolpackSlugSchema>;
@@ -1247,6 +1249,27 @@ const MEMBER_LIST_TOOL: ToolpackToolSpec = {
 };
 
 /**
+ * Setting a member's roles (#629), shared by `rbac_management` and
+ * `member_management` (#847): one definition, so a session with both gets a
+ * single `member_set_roles`. Needs `member.role.assign`, not custom-RBAC
+ * entitlement (`SeatService.setMemberRoles`).
+ */
+const MEMBER_SET_ROLES_TOOL: ToolpackToolSpec = {
+  name: "member_set_roles",
+  description:
+    "Sets a member's complete role assignment by role slug (the passed slugs replace their current roles). A member must keep at least one system role. Requires the member.role.assign capability.",
+  parameterSchema: objectSchema(
+    {
+      userId: stringField("The member's user id"),
+      roleSlugs: stringArrayField(
+        "The complete set of role slugs to assign (≥1)"
+      ),
+    },
+    ["userId", "roleSlugs"]
+  ),
+};
+
+/**
  * RBAC management pack (#629) — the agent-facing companion to the RBAC admin UI
  * (`AccessAuthoring` + `ShareDialog`). Mirrors what the UI lets an admin do:
  * policy / role / group CRUD, group membership, member role + group assignment,
@@ -1443,20 +1466,7 @@ const RBAC_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       ),
     },
     MEMBER_LIST_TOOL,
-    {
-      name: "member_set_roles",
-      description:
-        "Sets a member's complete role assignment by role slug (the passed slugs replace their current roles). A member must keep at least one system role. Requires the member.role.assign capability.",
-      parameterSchema: objectSchema(
-        {
-          userId: stringField("The member's user id"),
-          roleSlugs: stringArrayField(
-            "The complete set of role slugs to assign (≥1)"
-          ),
-        },
-        ["userId", "roleSlugs"]
-      ),
-    },
+    MEMBER_SET_ROLES_TOOL,
     {
       name: "member_set_groups",
       description:
@@ -1728,6 +1738,103 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
     },
     // Shared with rbac_management, to resolve "share with Jane" to a userId.
     MEMBER_LIST_TOOL,
+  ],
+};
+
+/**
+ * Member management pack (#847): the roster half of Settings → Members, for
+ * the agent. Every tool wraps the `SeatService` method the Settings routes
+ * call, so it refuses what Settings refuses. Entitled on every plan
+ * (`ALWAYS_ENTITLED_PACKS`): access is decided by permissions, not by plan.
+ * Invitations come back as `invitation` blocks with a "Get invite link"
+ * button; no result carries the link. Hand-authored to match the `Tool`
+ * classes in `apps/api/src/tools/rbac/{member,invitation}.tool.ts`.
+ */
+const MEMBER_MANAGEMENT_PACK: BuiltinToolpackSpec = {
+  slug: "member_management",
+  name: "Members",
+  description:
+    "Manage the organization's members in a session: invite people, show, list and revoke pending invitations, remove members, set members' roles, and check seat usage. Available on every plan; each action needs its permission (member.invite, member.remove, member.role.assign).",
+  iconSlug: "GroupAdd",
+  tools: [
+    {
+      name: "member_invite",
+      description:
+        "Invites someone by email with a system role (admin or member). The user sees the invitation as a block with a button that generates the link to share; the result never contains a link. Refuses an existing member, an already-pending invitation (show it with invitation_show instead) and a full seat count. Needs member.invite.",
+      parameterSchema: objectSchema(
+        {
+          email: stringField("The invitee's email address"),
+          role: enumField(
+            ["admin", "member"],
+            "The system role they receive on accepting"
+          ),
+        },
+        ["email", "role"]
+      ),
+      examples: [
+        {
+          title: "Invite a colleague as a member",
+          input: { email: "alice@example.com", role: "member" },
+          output: {
+            type: "invitation",
+            invitationId: "inv_1",
+            email: "alice@example.com",
+            role: "member",
+            status: "pending",
+            expiresAt: 1767225600000,
+          },
+        },
+      ],
+    },
+    MEMBER_LIST_TOOL,
+    MEMBER_SET_ROLES_TOOL,
+    {
+      name: "invitation_list",
+      description:
+        "Lists the organization's pending invitations: id, email, role and expiry. Needs member.invite.",
+      parameterSchema: objectSchema({}),
+    },
+    {
+      name: "invitation_show",
+      description:
+        "Shows a pending invitation to the user as a block whose button generates a fresh link (which replaces the old one). Use it to reshare an invitation instead of inviting again. Needs member.invite.",
+      parameterSchema: objectSchema(
+        {
+          invitationId: stringField(
+            "The invitation's id, from invitation_list"
+          ),
+        },
+        ["invitationId"]
+      ),
+    },
+    {
+      name: "invitation_revoke",
+      description:
+        "Revokes a pending invitation so its link stops working. Needs member.invite.",
+      parameterSchema: objectSchema(
+        {
+          invitationId: stringField(
+            "The invitation's id, from invitation_list"
+          ),
+        },
+        ["invitationId"]
+      ),
+    },
+    {
+      name: "member_remove",
+      description:
+        "Removes a member from the organization, with their roles, groups and grants. The last owner can't be removed. Resolve the person with member_list first. Needs member.remove.",
+      parameterSchema: objectSchema(
+        { userId: stringField("The member's user id, from member_list") },
+        ["userId"]
+      ),
+    },
+    {
+      name: "seat_usage",
+      description:
+        "Returns the organization's seat usage: used (members plus pending invitations) and max (the plan's limit; null means unlimited).",
+      parameterSchema: objectSchema({}),
+    },
   ],
 };
 
@@ -2126,6 +2233,14 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   grant_share: rbacWrite(),
   grant_revoke: rbacWrite(),
   grant_list: rbacRead(),
+  // member_management (#847) — roster admin over SeatService, like RBAC.
+  // Invitations render as `invitation` blocks (never with their link).
+  member_invite: { ...rbacWrite(), resultKind: "invitation" },
+  invitation_list: rbacRead(),
+  invitation_show: { ...rbacRead(), resultKind: "invitation" },
+  invitation_revoke: rbacWrite(),
+  member_remove: rbacWrite(),
+  seat_usage: rbacRead(),
   // view_management (#645) — control-plane over curated views, like RBAC.
   curated_view_list: rbacRead(),
   curated_view_entity_list: rbacRead(),
@@ -2331,6 +2446,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     VIEW_MANAGEMENT_PACK,
     GIS_PACK,
     HELP_PACK,
+    MEMBER_MANAGEMENT_PACK,
   ].map(attachCapabilities)
 );
 

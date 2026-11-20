@@ -25,8 +25,10 @@ jest.unstable_mockModule("../../../services/grant.service.js", () => ({
 
 const setMemberRoles = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const listMembers = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const removeMember = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const seatUsage = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule("../../../services/seat.service.js", () => ({
-  SeatService: { setMemberRoles, listMembers },
+  SeatService: { setMemberRoles, listMembers, removeMember, seatUsage },
 }));
 
 const { PolicyCreateTool, PolicyListTool } =
@@ -37,8 +39,9 @@ const { RoleCreateTool, RoleUpdateTool } =
 const { GroupCreateTool, GroupUpdateTool } =
   await import("../../../tools/rbac/group.tool.js");
 const { PolicyUpdateTool } = await import("../../../tools/rbac/policy.tool.js");
-const { MemberSetRolesTool, MemberListTool } =
+const { MemberSetRolesTool, MemberListTool, MemberRemoveTool, SeatUsageTool } =
   await import("../../../tools/rbac/member.tool.js");
+const { AGENT_AUDIT } = await import("../../../tools/rbac/rbac-tool.util.js");
 
 const ctx: PermissionContext = {
   userId: "u-1",
@@ -242,5 +245,37 @@ describe("rbac_management tools (#629)", () => {
       success: true,
       roleSlugs: ["member", "analyst"],
     });
+  });
+
+  // #847: the member_management roster tools.
+  it("member_remove removes through SeatService with the agent audit stamp, and relays the last-owner refusal with its code", async () => {
+    removeMember.mockResolvedValue(undefined);
+    expect(
+      await exec(new MemberRemoveTool().build(ctx), { userId: "u-2" })
+    ).toEqual({ success: true, userId: "u-2" });
+    expect(removeMember).toHaveBeenCalledWith(ctx, "u-2", AGENT_AUDIT);
+
+    removeMember.mockRejectedValue(
+      new ApiError(
+        409,
+        ApiCode.LAST_OWNER_REMOVAL,
+        "Cannot remove the last owner"
+      )
+    );
+    expect(
+      await exec(new MemberRemoveTool().build(ctx), { userId: "u-1" })
+    ).toEqual({
+      error: "Cannot remove the last owner",
+      code: ApiCode.LAST_OWNER_REMOVAL,
+    });
+  });
+
+  it("seat_usage returns SeatService.seatUsage's used and max", async () => {
+    seatUsage.mockResolvedValue({ used: 3, max: 5 });
+    expect(await exec(new SeatUsageTool().build(ctx), {})).toEqual({
+      used: 3,
+      max: 5,
+    });
+    expect(seatUsage).toHaveBeenCalledWith(ctx);
   });
 });

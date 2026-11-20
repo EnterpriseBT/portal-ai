@@ -250,10 +250,12 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   web_search: "looking things up on the web",
   entity_management: "creating and changing entities and their records",
   rbac_management:
-    "roles, policies and groups, member assignments, and sharing stations and pins",
+    "roles, policies and groups, members' groups, and sharing stations and pins",
   view_management:
     "creating and sharing curated views and attaching them to stations",
   help: "answering questions about how Portals works, with links into Help",
+  member_management:
+    "inviting and removing members, invitations, members' roles and seat usage",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -673,6 +675,54 @@ export const PACK_PROMPT_SECTIONS: Record<
           "least one system role. Policy, role, and group authoring requires the " +
           "organization's custom-RBAC entitlement; without it those tools return " +
           "a permission error you should relay as an upgrade prompt."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
+
+  // #847: the roster half of Settings → Members.
+  member_management: {
+    capability: "manage the organization's members and invitations",
+    requestShapes: ["invite someone", "remove a member"],
+    blocks: ["invitations"],
+    interpretiveTools: [],
+    markers: [
+      "manage the organization's members and invitations",
+      "## Members",
+      "member_invite",
+    ],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Members");
+      lines.push("");
+      lines.push(
+        "You can invite people, show, list and revoke pending invitations, " +
+          "remove members, set members' roles and check seat usage with the " +
+          "member_management tools. They act on the user's own authority: " +
+          "what they can't do in Settings → Members you can't do here. A " +
+          "refusal names the permission it needs; relay it as is and do not " +
+          "retry."
+      );
+      lines.push("");
+      lines.push(
+        "**Resolve a person first.** Before removing someone or setting their " +
+          "roles, find their `userId` with `member_list`. Never invent an id."
+      );
+      lines.push("");
+      lines.push(
+        "**Never handle an invite link.** `member_invite` and `invitation_show` " +
+          "show the user an invitation block; they get the link from its " +
+          "button. Never write, ask for or guess a link, and don't restate the " +
+          "block."
+      );
+      lines.push("");
+      lines.push(
+        "On `INVITATION_ALREADY_PENDING`, don't invite again: find the " +
+          "invitation with `invitation_list` and show it with " +
+          "`invitation_show`. On `SEAT_LIMIT_EXCEEDED`, say the seats are full " +
+          "(with `seat_usage`'s numbers) and that a plan with more seats is " +
+          "under Settings → Billing."
       );
       lines.push("");
       return lines;

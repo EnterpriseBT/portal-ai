@@ -49,7 +49,7 @@ This pins the `member_management` ("Members") built-in pack: its tools, the serv
 - **`MEMBER_MANAGEMENT_PACK: BuiltinToolpackSpec`:**
   - **identity:** `slug: "member_management"`, `name: "Members"`, `iconSlug: "GroupAdd"`;
   - **description:** "Manage the organization's members in a session: invite people, show, list and revoke pending invitations, remove members, set members' roles, and check seat usage. Available on every plan; each action needs its permission (`member.invite`, `member.remove`, `member.role.assign`)."
-  - **tools, in order:** `MEMBER_LIST_TOOL`, `MEMBER_SET_ROLES_TOOL`, then:
+  - **tools, in order:** `member_invite` first (a pack's first tool carries its example), then `MEMBER_LIST_TOOL`, `MEMBER_SET_ROLES_TOOL`, and the rest:
 
 | Tool | `parameterSchema` (required) | Description (agent-facing) |
 |---|---|---|
@@ -165,7 +165,7 @@ if (resultKind === "invitation") {
 ### API — `prompts/system.prompt.ts`
 
 - **`PACK_ELSEWHERE.member_management`:** "inviting and removing members, invitations and seat usage".
-- **`rbac_management`'s entry** drops "member assignments" and keeps roles, policies, groups and sharing.
+- **`rbac_management`'s entry** says "members' groups" instead of "member assignments" (roles moved to the shared tool), and keeps roles, policies, groups and sharing.
 - **`PACK_PROMPT_SECTIONS.member_management`:**
   - `capability: "manage the organization's members and invitations"`
   - `requestShapes: ["invite someone", "remove a member"]`

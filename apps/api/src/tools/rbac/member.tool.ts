@@ -17,6 +17,15 @@ const SetRolesInput = z.object({
       "The complete set of role slugs (from role_list) to assign; replaces the member's current roles. At least one, and at least one system role."
     ),
 });
+const RemoveInput = z
+  .object({
+    userId: z
+      .string()
+      .min(1)
+      .describe("The member's user id, from member_list"),
+  })
+  .strict();
+const SeatUsageInput = z.object({}).strict();
 const SetGroupsInput = z.object({
   userId: z.string().describe("The member's user id"),
   groupIds: z
@@ -104,6 +113,59 @@ export class MemberSetGroupsTool extends Tool<typeof SetGroupsInput> {
             )),
           };
         }),
+    });
+  }
+}
+
+/**
+ * `member_management` (#847): removes a member through
+ * `SeatService.removeMember`, the Settings route's own path, so the last
+ * owner can't be removed and the member's roles, groups and grants go with
+ * them. Needs `member.remove`.
+ */
+export class MemberRemoveTool extends Tool<typeof RemoveInput> {
+  slug = "member_remove";
+  name = "member_remove";
+  description =
+    "Removes a member from the organization, with their roles, groups and grants. The last owner can't be removed. Resolve the person with member_list first. Needs member.remove.";
+
+  get schema() {
+    return RemoveInput;
+  }
+
+  build(ctx: PermissionContext) {
+    return tool({
+      description: this.description,
+      inputSchema: this.schema,
+      execute: (input) =>
+        runRbac(async () => {
+          const { userId } = this.validate(input);
+          await SeatService.removeMember(ctx, userId, AGENT_AUDIT);
+          return { success: true as const, userId };
+        }),
+    });
+  }
+}
+
+/**
+ * `member_management` (#847): the seat count Settings → Members shows,
+ * members plus pending invitations against the plan's limit.
+ */
+export class SeatUsageTool extends Tool<typeof SeatUsageInput> {
+  slug = "seat_usage";
+  name = "seat_usage";
+  description =
+    "Returns the organization's seat usage: used (members plus pending invitations) and max (the plan's limit; null means unlimited).";
+
+  get schema() {
+    return SeatUsageInput;
+  }
+
+  build(ctx: PermissionContext) {
+    return tool({
+      description: this.description,
+      inputSchema: this.schema,
+      execute: () => runRbac(() => SeatService.seatUsage(ctx)),
     });
   }
 }

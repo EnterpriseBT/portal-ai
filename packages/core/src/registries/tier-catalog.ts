@@ -136,6 +136,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "view_management",
         // #1050: every tier lists the always-entitled packs.
         "help",
+        // #847: always entitled; listed so the catalog says so.
+        "member_management",
       ],
       customToolpacks: false,
       customRbac: false,
@@ -177,6 +179,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "view_management",
         // #1050: every tier lists the always-entitled packs.
         "help",
+        // #847: always entitled; listed so the catalog says so.
+        "member_management",
       ],
       customToolpacks: false,
       customRbac: false,
