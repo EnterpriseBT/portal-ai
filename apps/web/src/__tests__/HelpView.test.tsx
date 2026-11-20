@@ -260,6 +260,45 @@ describe("HelpViewUI", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("ranks FAQ results by help search, finding a phrasing no entry contains (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "FAQ" }));
+
+    await user.type(
+      screen.getByPlaceholderText("Search help"),
+      "How do I bring in a spreadsheet?"
+    );
+
+    // No entry contains "spreadsheet"; the entry's aliases do.
+    const entries = screen.getAllByTestId(/^faq-entry-[a-z0-9-]+$/);
+    expect(entries[0]).toHaveAttribute(
+      "data-testid",
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+  });
+
+  it("keeps finding entries by a word still being typed (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "Glossary" }));
+
+    // "stat" is no whole word; the ranker finds nothing, so substring
+    // matching takes over until the word is complete.
+    await user.type(screen.getByPlaceholderText("Search help"), "stat");
+    expect(screen.getByTestId("glossary-entry-station")).toBeInTheDocument();
+  });
+
+  it("finds troubleshooting entries by a word still being typed (#1049)", async () => {
+    const user = userEvent.setup();
+    renderUI();
+    await user.click(screen.getByRole("tab", { name: "Troubleshooting" }));
+    await user.type(screen.getByPlaceholderText("Search help"), "unreach");
+    expect(
+      screen.getByTestId("troubleshooting-entry-a-sync-or-import-job-failed")
+    ).toBeInTheDocument();
+  });
+
   it("search bar is hidden on the Getting Started tab (filtering applies only to glossary/FAQ)", () => {
     renderUI();
     expect(

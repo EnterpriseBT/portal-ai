@@ -8,6 +8,11 @@ This spec pins the contract for #1049:
 
 Discovery: `docs/RANKED_PLATFORM_HELP.discovery.md`. Issue: #1049.
 
+## Amendment — slice 3
+
+- **Help search ranks over `HELP_CORPUS`**, keeping the page's own entries in the ranker's order, so a whole-word query gives the same order as the tool.
+- **The fallback:** when the ranker finds nothing (a word still being typed, such as "stat"), the page falls back to substring matching, so typing still narrows the list. That's `filterFAQ` / `filterGlossary`, and the same over symptom, cause and fix for troubleshooting.
+
 ## Amendment — slice 1
 
 - **`searchHelp` takes `floor?`** (default `HELP_MATCH_FLOOR`, which slice 1 tuned to 1.5).

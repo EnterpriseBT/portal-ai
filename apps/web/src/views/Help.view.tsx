@@ -73,6 +73,23 @@ const TAB_TROUBLESHOOTING = 3;
  *  once at module scope; the dataset is static. */
 const GLOSSARY_ENTRIES_WITH_ROUTES = withPageRoutes(GLOSSARY_ENTRIES);
 
+/**
+ * `entries` in help search's order for `query`, or `null` when the ranker
+ * finds nothing (no query, or only a partial word), so the caller falls back.
+ */
+function rankBySearch<T>(
+  entries: readonly T[],
+  slugOf: (entry: T) => string,
+  surface: "faq" | "glossary" | "troubleshooting",
+  query: string,
+  category: string | undefined
+): T[] | null {
+  const matches = searchHelp(query, { surfaces: [surface], category });
+  if (matches.length === 0) return null;
+  const bySlug = new Map(entries.map((e) => [slugOf(e), e]));
+  return matches.flatMap((m) => bySlug.get(m.doc.slug) ?? []);
+}
+
 // ── UI props ────────────────────────────────────────────────────────
 
 export interface HelpViewUIProps {
@@ -191,36 +208,52 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
   const effectiveFaqCategory =
     anchor?.surface === HelpTab.Faq ? null : faqCategory;
 
-  const filteredGlossary = useMemo(
-    () =>
-      filterGlossary(glossaryEntries, {
-        query: searchQuery,
-        category: effectiveGlossaryCategory ?? undefined,
-      }),
-    [glossaryEntries, searchQuery, effectiveGlossaryCategory]
-  );
-
-  const filteredFAQ = useMemo(
-    () =>
-      filterFAQ(faqEntries, {
-        query: searchQuery,
-        category: effectiveFaqCategory ?? undefined,
-      }),
-    [faqEntries, searchQuery, effectiveFaqCategory]
-  );
-
-  // #1049: troubleshooting search ranks with help search, the same function
-  // the assistant's help tool uses, in score order. No query keeps the
-  // entries' own order.
-  const filteredTroubleshooting = useMemo(() => {
-    const matches = searchHelp(searchQuery, { surfaces: ["troubleshooting"] });
-    if (matches.length === 0 && searchQuery.trim() === "") {
-      return troubleshootingEntries;
-    }
-    const bySlug = new Map(
-      troubleshootingEntries.map((e) => [contentEntrySlug(e.symptom), e])
+  // #1049: search ranks with help search, the function the assistant's help
+  // tool uses, so a query finds the same entries in the same order on the
+  // page and in a portal. A word still being typed ("stat") is no whole token
+  // and ranks nothing, so substring matching takes over until it is. No query
+  // keeps the entries' own order.
+  const filteredGlossary = useMemo(() => {
+    const category = effectiveGlossaryCategory ?? undefined;
+    const ranked = rankBySearch(
+      glossaryEntries,
+      (e) => contentEntrySlug(e.term),
+      "glossary",
+      searchQuery,
+      category
     );
-    return matches.flatMap((m) => bySlug.get(m.doc.slug) ?? []);
+    return (
+      ranked ??
+      filterGlossary(glossaryEntries, { query: searchQuery, category })
+    );
+  }, [glossaryEntries, searchQuery, effectiveGlossaryCategory]);
+
+  const filteredFAQ = useMemo(() => {
+    const category = effectiveFaqCategory ?? undefined;
+    const ranked = rankBySearch(
+      faqEntries,
+      (e) => contentEntrySlug(e.question),
+      "faq",
+      searchQuery,
+      category
+    );
+    return ranked ?? filterFAQ(faqEntries, { query: searchQuery, category });
+  }, [faqEntries, searchQuery, effectiveFaqCategory]);
+
+  const filteredTroubleshooting = useMemo(() => {
+    const ranked = rankBySearch(
+      troubleshootingEntries,
+      (e) => contentEntrySlug(e.symptom),
+      "troubleshooting",
+      searchQuery,
+      undefined
+    );
+    if (ranked) return ranked;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return troubleshootingEntries;
+    return troubleshootingEntries.filter((e) =>
+      [e.symptom, e.cause, e.fix].some((t) => t.toLowerCase().includes(q))
+    );
   }, [troubleshootingEntries, searchQuery]);
 
   // Scroll to the anchored entry once the tab and list have rendered. An
