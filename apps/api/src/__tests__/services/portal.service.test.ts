@@ -2362,6 +2362,43 @@ describe("resolveDisplayBlock → geo (#314)", () => {
   });
 });
 
+// resolveDisplayBlock — help (#1049)
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → help (#1049)", () => {
+  const HELP = {
+    type: "help",
+    query: "what is a portal",
+    entries: [
+      {
+        surface: "glossary",
+        slug: "portal",
+        title: "Portal",
+        url: "/help?tab=glossary#glossary-entry-portal",
+        body: "A chat session.",
+      },
+    ],
+    candidates: [],
+    noMatch: false,
+    helpUrl: "/help?tab=getting-started",
+  };
+
+  it("builds a help block from platform_help's own result, quoting it as is", () => {
+    const result = resolveDisplayBlock("platform_help", HELP);
+    expect(result?.block).toEqual({ type: "help", content: HELP });
+    expect(result?.sseResult).toEqual(HELP);
+  });
+
+  it("makes no block from a result that isn't a valid help result", () => {
+    expect(
+      resolveDisplayBlock("platform_help", { ...HELP, entries: "nope" })
+    ).toBeNull();
+    expect(
+      resolveDisplayBlock("platform_help", { answer: "old shape", links: [] })
+    ).toBeNull();
+  });
+});
+
 // resolveDisplayBlock — mutation-result variants
 // ---------------------------------------------------------------------------
 

@@ -887,10 +887,16 @@ const HELP_PACK: BuiltinToolpackSpec = {
     {
       name: "platform_help",
       description:
-        "Answer a general question about Portals AI itself: what portals, stations, connectors, entities, tool packs or pinned results are, and how to do things in the product, from the help content with links into Help. Not a data-query tool, and it knows nothing about the user's organization.",
+        "Answer a general question about Portals AI itself: what portals, stations, connectors, entities, tool packs or pinned results are, how to do things in the product, and what to do when something goes wrong. It ranks the help content (FAQ, glossary and troubleshooting) and shows the user the best entries verbatim as a help block, with links into Help. Not a data-query tool, and it knows nothing about the user's organization.",
       parameterSchema: objectSchema({
         question: stringField(
-          "The user's question about the product, verbatim. Omit for a general orientation answer."
+          "The user's question about the product, verbatim. Omit for the Getting Started entries."
+        ),
+        keywords: stringArrayField(
+          "Up to 8 words or short phrases for what the question is about, in your reading of it."
+        ),
+        entryIds: stringArrayField(
+          "Up to 5 entry ids (`<surface>:<slug>`) from a previous result's candidates, to fetch those entries."
         ),
       }),
       examples: [
@@ -2048,7 +2054,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     computeShape: "scan",
     costHint: "free",
     locks: [],
-    resultKind: "scalar",
+    // #1049: its result renders as a help block quoting the entries verbatim.
+    resultKind: "help",
     production: { kind: "value" },
     alwaysAvailable: false,
   },

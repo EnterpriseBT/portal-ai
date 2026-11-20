@@ -245,6 +245,12 @@ describe("PortalBlockTypeSchema", () => {
   it('should accept "d3" as a valid block type', () => {
     expect(PortalBlockTypeSchema.safeParse("d3").success).toBe(true);
   });
+
+  // #1049: platform_help's verbatim help entries.
+  it('should accept "help" as a valid block type, not pinnable', () => {
+    expect(PortalBlockTypeSchema.safeParse("help").success).toBe(true);
+    expect(PINNABLE_BLOCK_TYPES.has("help" as never)).toBe(false);
+  });
 });
 
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────

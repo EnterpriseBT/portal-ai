@@ -8,6 +8,10 @@ This spec pins the contract for #1049:
 
 Discovery: `docs/RANKED_PLATFORM_HELP.discovery.md`. Issue: #1049.
 
+## Amendment — slice 4
+
+- **No Swagger change.** The enum at `swagger.config.ts:2185` is the **pinned result** type, and help blocks aren't pinnable. Swagger documents no message-block enum, so there's nothing to add.
+
 ## Amendment — slice 3
 
 - **Help search ranks over `HELP_CORPUS`**, keeping the page's own entries in the ranker's order, so a whole-word query gives the same order as the tool.

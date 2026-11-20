@@ -233,6 +233,11 @@ describe("platform_help capability", () => {
     expect(cap.costHint).toBe("free");
     expect(isCostGated(cap)).toBe(false);
   });
+
+  it("renders as a help block (#1049)", () => {
+    expect(cap.resultKind).toBe("help");
+    expect(cap.production).toEqual({ kind: "value" });
+  });
 });
 
 describe("ALWAYS_ENTITLED_PACKS (#1050)", () => {

@@ -18,6 +18,7 @@ import type {
   DoneEvent,
   PinnedBlockEntry,
 } from "@portalai/core/contracts";
+import { HelpBlockContentSchema } from "@portalai/core/contracts";
 import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
@@ -364,6 +365,19 @@ export function resolveDisplayBlock(
     return {
       block: { type: "geo", content: toolResult },
       sseResult: toolResult ?? undefined,
+    };
+  }
+
+  // Help (#1049). platform_help's result is the block, built here from the
+  // tool's own output so the quoted entries reach the user exactly as the
+  // tool chose them; the model's text sits outside the block. A result that
+  // isn't a valid help block makes no block at all.
+  if (resultKind === "help") {
+    const parsed = HelpBlockContentSchema.safeParse(toolResult);
+    if (!parsed.success) return null;
+    return {
+      block: { type: "help", content: parsed.data },
+      sseResult: parsed.data,
     };
   }
 
