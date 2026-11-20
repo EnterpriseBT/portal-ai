@@ -27,7 +27,10 @@ import { changedStationAttachments } from "../utils/station-attachment-tools.uti
 import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
-import { usePortalStationLock } from "../utils/portal-station.util";
+import {
+  usePortalStation,
+  usePortalStationLock,
+} from "../utils/portal-station.util";
 import { useElapsed } from "../utils/use-elapsed.util";
 import {
   PortalMessage,
@@ -61,6 +64,8 @@ interface MessageListProps {
   activeToolLabel?: string | null;
   /** Whole seconds on that tool's step (#279). */
   activeToolElapsedSeconds?: number;
+  /** #1044: the station has the Help pack, so the empty state offers it. */
+  helpAvailable?: boolean;
 }
 
 const MessageList = React.memo<MessageListProps>(
@@ -77,6 +82,7 @@ const MessageList = React.memo<MessageListProps>(
     streamStartedAt = null,
     activeToolLabel = null,
     activeToolElapsedSeconds,
+    helpAvailable = false,
   }) => {
     const hasStreamingContent =
       streamingBlocks !== null && streamingBlocks.length > 0;
@@ -94,7 +100,7 @@ const MessageList = React.memo<MessageListProps>(
       isStreaming && (!hasStreamingContent || activeToolLabel !== null);
 
     if (isEmpty) {
-      return <PortalSessionEmptyState />;
+      return <PortalSessionEmptyState helpAvailable={helpAvailable} />;
     }
 
     return (
@@ -156,7 +162,9 @@ const MessageList = React.memo<MessageListProps>(
 
 // ── Empty State ──────────────────────────────────────────────────────
 
-const PortalSessionEmptyState: React.FC = () => (
+const PortalSessionEmptyState: React.FC<{ helpAvailable: boolean }> = ({
+  helpAvailable,
+}) => (
   <Box
     data-testid="portal-session-empty"
     sx={{
@@ -183,11 +191,42 @@ const PortalSessionEmptyState: React.FC = () => (
     >
       Ready when you are
     </Typography>
+    {/* #1044: data first, but not assumed (Administrate has none), and what
+        else the assistant reaches depends on the station's packs. */}
     <Typography variant="body2" sx={{ maxWidth: 520, mb: 1.5 }}>
-      Portal sessions let you explore your data through conversation — ask
-      questions, generate charts, and create or modify records, entities, and
-      field mappings, all in natural language.
+      Ask questions, explore your data, chart it and change it through
+      conversation. Depending on this station&apos;s tool packs, the assistant
+      can also answer questions about your organization, from its stations and
+      views to who has access.
     </Typography>
+    {/* #1044: only where the Help pack is attached, since only there can the
+        assistant answer how Portals works. The sentence invites asking the
+        assistant; the link is for reading instead. */}
+    {helpAvailable && (
+      <>
+        <Typography
+          variant="body2"
+          sx={{ maxWidth: 520, mb: 1 }}
+          data-testid="portal-session-empty-help"
+        >
+          Not sure where to start? Ask how anything in Portals works.
+        </Typography>
+        <Link
+          to="/help"
+          search={{ tab: HelpTab.Faq, category: FAQCategory.GettingStarted }}
+          style={{ textDecoration: "none" }}
+          data-testid="portal-session-empty-getting-started-link"
+        >
+          <MuiLink
+            component="span"
+            variant="body2"
+            sx={{ cursor: "pointer", display: "inline-block", mb: 1 }}
+          >
+            Getting started with Portals →
+          </MuiLink>
+        </Link>
+      </>
+    )}
     {/* Deep-linked to the portal FAQ (#365): this link promises portal
         material, so landing on the Getting Started checklist is a dead end.
         The router `Link` is the anchor and `MuiLink component="span"` supplies
@@ -237,6 +276,8 @@ export interface PortalSessionUIProps {
   activeToolLabel?: string | null;
   /** Whole seconds on that tool's step (#279). */
   activeToolElapsedSeconds?: number;
+  /** #1044: the portal's station has the Help pack attached. */
+  helpAvailable?: boolean;
 }
 
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
@@ -259,6 +300,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   chatLockReason = null,
   activeToolLabel = null,
   activeToolElapsedSeconds,
+  helpAvailable = false,
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
@@ -292,6 +334,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
         streamStartedAt={streamStartedAt}
         activeToolLabel={activeToolLabel}
         activeToolElapsedSeconds={activeToolElapsedSeconds}
+        helpAvailable={helpAvailable}
       />
     </ChatWindowUI>
   </Box>
@@ -514,6 +557,10 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // The job lock wins when both apply: it's the more transient state.
   const jobLock = usePortalChatLock(portalId);
   const stationLock = usePortalStationLock(portalQuery.data?.portal.stationId);
+  // #1044: the same station query (and key) the lock and the header read, so
+  // no extra request. Loading, unreadable or failed reads as no Help pack.
+  const { station } = usePortalStation(portalQuery.data?.portal.stationId);
+  const helpAvailable = station?.enabledToolpacks?.includes("help") ?? false;
   const chatLock = jobLock.locked ? jobLock : stationLock;
 
   // #279 — the newest open tool step is the one the user is shown; when it
@@ -546,6 +593,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       chatLockReason={chatLock.reason}
       activeToolLabel={activeStep ? toolPhaseLabel(activeStep.toolName) : null}
       activeToolElapsedSeconds={activeToolElapsedSeconds}
+      helpAvailable={helpAvailable}
     />
   );
 };

@@ -23,6 +23,9 @@ const mockPinPortalResult = jest.fn();
 // #699: the container reads the portal's station to lock the composer when
 // it's gone for the caller; null = the station loads fine.
 const mockStationError = jest.fn<() => unknown>(() => null);
+// #1044: the station the portal loads; its enabledToolpacks decide whether
+// the empty conversation offers product help. undefined = not loaded.
+const mockStationData = jest.fn<() => unknown>(() => undefined);
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -41,7 +44,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
     },
     stations: {
       get: () => ({
-        data: undefined,
+        data: mockStationData(),
         isLoading: false,
         error: mockStationError(),
       }),
@@ -244,6 +247,48 @@ describe("PortalSessionUI", () => {
   it("renders the empty state when there are no messages or streaming content", () => {
     render(<PortalSessionUI {...defaultProps} />);
     expect(screen.getByTestId("portal-session-empty")).toBeInTheDocument();
+  });
+
+  // #1044: the body no longer assumes data, since Administrate has none.
+  const EMPTY_BODY =
+    "Ask questions, explore your data, chart it and change it through conversation. Depending on this station's tool packs, the assistant can also answer questions about your organization, from its stations and views to who has access.";
+
+  it("shows the generic body, and no product-help line by default (#1044)", () => {
+    render(<PortalSessionUI {...defaultProps} />);
+    expect(screen.getByText(EMPTY_BODY)).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-session-empty-help")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-session-empty-getting-started-link")
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers product help, linked to Getting Started, when the station has the Help pack (#1044)", () => {
+    render(<PortalSessionUI {...defaultProps} helpAvailable />);
+    expect(screen.getByText(EMPTY_BODY)).toBeInTheDocument();
+    expect(screen.getByTestId("portal-session-empty-help")).toHaveTextContent(
+      "Not sure where to start? Ask how anything in Portals works."
+    );
+    const link = screen.getByTestId(
+      "portal-session-empty-getting-started-link"
+    );
+    expect(link).toHaveAttribute(
+      "href",
+      "/help?tab=faq&category=getting-started"
+    );
+    expect(link).toHaveTextContent("Getting started with Portals →");
+  });
+
+  it("drops the product-help line when the station has no Help pack (#1044)", () => {
+    render(<PortalSessionUI {...defaultProps} helpAvailable={false} />);
+    expect(
+      screen.queryByTestId("portal-session-empty-help")
+    ).not.toBeInTheDocument();
+    // The portal FAQ link stays either way.
+    expect(
+      screen.getByTestId("portal-session-empty-help-link")
+    ).toHaveAttribute("href", "/help?tab=faq&category=analytics");
   });
 
   it("points the empty state's help link at the portal FAQ, not the Help front door (#365)", () => {
@@ -453,6 +498,14 @@ describe("PortalSessionUI", () => {
     await expectNoAxeViolations(empty.container);
     empty.unmount();
 
+    // #1044: with the product-help line and its link.
+    const withHelp = render(
+      <PortalSessionUI {...defaultProps} helpAvailable />
+    );
+    expect(screen.getByTestId("portal-session-empty-help")).toBeInTheDocument();
+    await expectNoAxeViolations(withHelp.container);
+    withHelp.unmount();
+
     const messages = [
       makeMessage({
         id: "msg-1",
@@ -477,6 +530,7 @@ describe("PortalSession (container) via PortalSessionUI", () => {
   beforeEach(() => {
     // #699: tests that lock on the station set it; reset so none leaks.
     mockStationError.mockReturnValue(null);
+    mockStationData.mockReturnValue(undefined);
     mockGetPortal.mockReset();
     mockSendMessage.mockReset();
     MockEventSource.reset();
@@ -652,6 +706,47 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     expect(
       screen.getByText("This portal's station isn't available to you.")
     ).toBeInTheDocument();
+  });
+
+  // #1044: the container reads the station the portal already loads, so the
+  // empty conversation offers product help exactly where the pack is.
+  it("offers product help when the portal's station has the Help pack", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockStationData.mockReturnValue({
+      station: { id: "station-1", enabledToolpacks: ["data_query", "help"] },
+    });
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    expect(screen.getByTestId("portal-session-empty-help")).toBeInTheDocument();
+  });
+
+  it("offers no product help on a station without the pack, or one that can't load", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockStationData.mockReturnValue({
+      station: { id: "station-1", enabledToolpacks: ["data_query"] },
+    });
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    const first = render(<PortalSession portalId="portal-1" />);
+    expect(screen.getByTestId("portal-session-empty")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-session-empty-help")
+    ).not.toBeInTheDocument();
+    first.unmount();
+
+    mockStationData.mockReturnValue(undefined);
+    mockStationError.mockReturnValue({
+      status: 404,
+      code: "STATION_NOT_FOUND",
+      message: "Station not found",
+    });
+    render(<PortalSession portalId="portal-1" />);
+    expect(
+      screen.queryByTestId("portal-session-empty-help")
+    ).not.toBeInTheDocument();
   });
 
   it("submit triggers sendMessage", async () => {
