@@ -47,9 +47,10 @@ import {
   type FAQEntry,
   TROUBLESHOOTING_ENTRIES,
   type TroubleshootingEntry,
-  searchHelp,
+  filterTroubleshooting,
 } from "@portalai/core/content";
 import { withPageRoutes } from "../utils/glossary-routes.util";
+import { orderBySearch } from "../utils/help-search-order.util";
 import {
   HelpTab,
   helpAnchorHash,
@@ -72,23 +73,6 @@ const TAB_TROUBLESHOOTING = 3;
  *  they'd be meaningless on the public marketing site. Graft them back on
  *  once at module scope; the dataset is static. */
 const GLOSSARY_ENTRIES_WITH_ROUTES = withPageRoutes(GLOSSARY_ENTRIES);
-
-/**
- * `entries` in help search's order for `query`, or `null` when the ranker
- * finds nothing (no query, or only a partial word), so the caller falls back.
- */
-function rankBySearch<T>(
-  entries: readonly T[],
-  slugOf: (entry: T) => string,
-  surface: "faq" | "glossary" | "troubleshooting",
-  query: string,
-  category: string | undefined
-): T[] | null {
-  const matches = searchHelp(query, { surfaces: [surface], category });
-  if (matches.length === 0) return null;
-  const bySlug = new Map(entries.map((e) => [slugOf(e), e]));
-  return matches.flatMap((m) => bySlug.get(m.doc.slug) ?? []);
-}
 
 // ── UI props ────────────────────────────────────────────────────────
 
@@ -215,46 +199,40 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
   // keeps the entries' own order.
   const filteredGlossary = useMemo(() => {
     const category = effectiveGlossaryCategory ?? undefined;
-    const ranked = rankBySearch(
+    return orderBySearch(
       glossaryEntries,
       (e) => contentEntrySlug(e.term),
       "glossary",
       searchQuery,
-      category
-    );
-    return (
-      ranked ??
+      category,
       filterGlossary(glossaryEntries, { query: searchQuery, category })
     );
   }, [glossaryEntries, searchQuery, effectiveGlossaryCategory]);
 
   const filteredFAQ = useMemo(() => {
     const category = effectiveFaqCategory ?? undefined;
-    const ranked = rankBySearch(
+    return orderBySearch(
       faqEntries,
       (e) => contentEntrySlug(e.question),
       "faq",
       searchQuery,
-      category
+      category,
+      filterFAQ(faqEntries, { query: searchQuery, category })
     );
-    return ranked ?? filterFAQ(faqEntries, { query: searchQuery, category });
   }, [faqEntries, searchQuery, effectiveFaqCategory]);
 
-  const filteredTroubleshooting = useMemo(() => {
-    const ranked = rankBySearch(
-      troubleshootingEntries,
-      (e) => contentEntrySlug(e.symptom),
-      "troubleshooting",
-      searchQuery,
-      undefined
-    );
-    if (ranked) return ranked;
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return troubleshootingEntries;
-    return troubleshootingEntries.filter((e) =>
-      [e.symptom, e.cause, e.fix].some((t) => t.toLowerCase().includes(q))
-    );
-  }, [troubleshootingEntries, searchQuery]);
+  const filteredTroubleshooting = useMemo(
+    () =>
+      orderBySearch(
+        troubleshootingEntries,
+        (e) => contentEntrySlug(e.symptom),
+        "troubleshooting",
+        searchQuery,
+        undefined,
+        filterTroubleshooting(troubleshootingEntries, { query: searchQuery })
+      ),
+    [troubleshootingEntries, searchQuery]
+  );
 
   // Scroll to the anchored entry once the tab and list have rendered. An
   // anchor naming an entry that no longer exists finds no ref and is a no-op —

@@ -109,6 +109,23 @@ describe("PlatformHelpTool — ranked help content (#1049)", () => {
     expect(r.candidates).toEqual([]);
   });
 
+  it("returns ids past the third as candidates, so nothing asked for vanishes", async () => {
+    const ids = HELP_CORPUS.slice(0, 5).map((d) => `${d.surface}:${d.slug}`);
+    const r = await exec({ entryIds: ids });
+    expect(r.entries.map((e) => `${e.surface}:${e.slug}`)).toEqual(
+      ids.slice(0, 3)
+    );
+    expect(r.candidates.map((c) => `${c.surface}:${c.slug}`)).toEqual(
+      ids.slice(3)
+    );
+  });
+
+  it("says no entry covers ids that no longer exist, rather than answering something else", async () => {
+    const r = await exec({ entryIds: ["faq:a-question-since-removed"] });
+    expect(r.noMatch).toBe(true);
+    expect(r.entries).toEqual([]);
+  });
+
   it("says no entry covers a question nothing matches, and describes nothing", async () => {
     const r = await exec({ question: "weather in paris" });
     expect(r).toEqual({

@@ -122,12 +122,21 @@ function answer(input: z.infer<typeof InputSchema>): HelpBlockContent {
       return findHelpDocument(surface, slug) ?? [];
     });
     if (docs.length > 0) {
+      // Ids past the third come back as candidates, so none the agent asked
+      // for silently disappears.
       return {
         ...base,
         entries: docs.slice(0, MAX_ENTRIES).map(entryOf),
-        candidates: [],
+        candidates: docs
+          .slice(MAX_ENTRIES, MAX_ENTRIES + MAX_CANDIDATES)
+          .map(candidateOf),
         noMatch: false,
       };
+    }
+    // Ids that no longer exist (content changed): say no entry covers it,
+    // unless there's a question to search with instead.
+    if (!question && !(input.keywords && input.keywords.length > 0)) {
+      return { ...base, entries: [], candidates: [], noMatch: true };
     }
   }
 

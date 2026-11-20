@@ -58,14 +58,17 @@ export const HELP_RANKING = {
 } as const;
 
 /**
- * The lowest score that counts as a match. Below it, a query only brushed
- * against common words in a body. Tuned against the paraphrase and nonsense
- * fixtures (`__tests__/content/fixtures/help-paraphrases.ts`).
+ * The lowest score at which a match on body words alone counts. An entry a
+ * query names in its title or an alias always counts; one it only brushes in
+ * the body ("scores" in a glossary example) needs this much evidence. Tuned
+ * against the paraphrase and nonsense fixtures
+ * (`__tests__/content/fixtures/help-paraphrases.ts`).
  */
-export const HELP_MATCH_FLOOR = 1.5;
+export const HELP_MATCH_FLOOR = 3;
 
 /** Words that carry no topic. Kept short on purpose: every word here is one
- *  that can never be searched for. */
+ *  that can never be searched for. Particles and negation that change a
+ *  phrase's meaning ("set up", "sign out", "no records") stay searchable. */
 export const HELP_STOPWORDS: ReadonlySet<string> = new Set(
   (
     "a an the and or but of to in on at for with by from into about as " +
@@ -73,36 +76,40 @@ export const HELP_STOPWORDS: ReadonlySet<string> = new Set(
     "i me my mine we our us you your he she they them their " +
     "how what which who whom why when where " +
     "do does did doing done can could should would will shall may might must " +
-    "have has had having get got not no yes so if then than too very just also " +
-    "any some all each more most other such only own same up out over again " +
+    "have has had having get got not yes so if then than too very just also " +
+    "any some all each more most other such only own same again " +
     "s t ve ll re d m don doesn didn isn aren wasn weren won can t"
   ).split(" ")
 );
 
 /** Light suffix stemming, so "stations", "importing" and "synced" meet their
- *  base word. Never shortens a word below three letters. */
+ *  base word. A final silent "e" is dropped too, so "create", "created" and
+ *  "creating" all meet at "creat". Never shortens a word below three letters. */
 function stem(word: string): string {
-  const cut = (n: number, add = "") => {
-    const base = word.slice(0, -n) + add;
-    return base.length >= 3 ? base : word;
+  const cut = (w: string, n: number, add = "") => {
+    const base = w.slice(0, -n) + add;
+    return base.length >= 3 ? base : w;
   };
-  if (word.endsWith("ies") && word.length > 4) return cut(3, "y");
-  if (word.endsWith("sses")) return cut(2);
-  if (/(xes|ches|shes|zes)$/.test(word)) return cut(2);
-  if (word.endsWith("ing") && word.length > 5) return cut(3);
-  if (word.endsWith("ed") && word.length > 4) return cut(2);
-  if (word.endsWith("s") && !word.endsWith("ss") && word.length > 3) {
-    return cut(1);
-  }
-  return word;
+  let w = word;
+  if (w.endsWith("ies") && w.length > 4) w = cut(w, 3, "y");
+  else if (w.endsWith("sses")) w = cut(w, 2);
+  else if (/(xes|ches|shes|zes)$/.test(w)) w = cut(w, 2);
+  else if (w.endsWith("ing") && w.length > 5) w = cut(w, 3);
+  else if (w.endsWith("ed") && w.length > 4) w = cut(w, 2);
+  else if (w.endsWith("s") && !w.endsWith("ss") && w.length > 3) w = cut(w, 1);
+  if (w.endsWith("e") && !w.endsWith("ee") && w.length > 3) w = cut(w, 1);
+  return w;
 }
 
-/** The ranker's tokens for a piece of text: lowercase, split on anything
- *  that isn't a letter or digit, stopwords dropped, stemmed. */
+/** The ranker's tokens for a piece of text: accents stripped, lowercase,
+ *  split on anything that isn't a letter or digit (in any script),
+ *  stopwords dropped, stemmed. */
 export function tokenizeHelp(text: string): string[] {
   return text
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter((w) => w.length > 0 && !HELP_STOPWORDS.has(w))
     .map(stem);
 }
@@ -185,6 +192,11 @@ interface Indexed {
   length: number;
   /** The title's distinct tokens, for the whole-title bonus. */
   titleTokens: Set<string>;
+  /** Title and alias tokens: a hit here is a match whatever the score. */
+  headTokens: Set<string>;
+  /** BM25's length normalisation, `k1 (1 - b + b·len/avg)`. Fixed per
+   *  document, so computed once when the index is built. */
+  norm: number;
 }
 
 function indexDocument(doc: HelpDocument): Indexed {
@@ -201,7 +213,17 @@ function indexDocument(doc: HelpDocument): Indexed {
   for (const alias of doc.aliases) add(alias, weights.aliases);
   add(doc.body, weights.body);
   for (const related of doc.related) add(related, weights.related);
-  return { doc, tf, length, titleTokens: new Set(tokenizeHelp(doc.title)) };
+  return {
+    doc,
+    tf,
+    length,
+    titleTokens: new Set(tokenizeHelp(doc.title)),
+    headTokens: new Set([
+      ...tokenizeHelp(doc.title),
+      ...doc.aliases.flatMap(tokenizeHelp),
+    ]),
+    norm: 0,
+  };
 }
 
 interface Index {
@@ -214,6 +236,10 @@ function buildIndex(corpus: readonly HelpDocument[]): Index {
   const docs = corpus.map(indexDocument);
   const avgLength =
     docs.reduce((n, d) => n + d.length, 0) / Math.max(docs.length, 1);
+  const { k1, b } = HELP_RANKING;
+  for (const d of docs) {
+    d.norm = k1 * (1 - b + (b * d.length) / Math.max(avgLength, 1));
+  }
   const df = new Map<string, number>();
   for (const d of docs) {
     for (const token of d.tf.keys()) df.set(token, (df.get(token) ?? 0) + 1);
@@ -240,7 +266,9 @@ const SURFACE_ORDER: Record<HelpSurface, number> = {
 };
 
 /**
- * Rank help entries for a question, best first.
+ * Rank help entries for a question, best first. An entry counts as a match
+ * when a query term hits its title or an alias, or when its score reaches
+ * `floor` on body words alone.
  *
  * The question's tokens and each keyword's tokens form one set of query
  * terms. Each entry scores by BM25 over its weighted fields, plus the summed
@@ -270,7 +298,7 @@ export function searchHelp(
   ]);
   if (terms.size === 0) return [];
 
-  const { k1, b, exactTitleBonus } = HELP_RANKING;
+  const { k1, exactTitleBonus } = HELP_RANKING;
   const floor = opts.floor ?? HELP_MATCH_FLOOR;
   const querySlug = contentEntrySlug(query);
   const index = indexFor(opts.corpus ?? HELP_CORPUS);
@@ -283,8 +311,7 @@ export function searchHelp(
     for (const term of terms) {
       const f = d.tf.get(term);
       if (!f) continue;
-      const norm = k1 * (1 - b + (b * d.length) / index.avgLength);
-      score += index.idf(term) * ((f * (k1 + 1)) / (f + norm));
+      score += index.idf(term) * ((f * (k1 + 1)) / (f + d.norm));
     }
     if (
       score > 0 &&
@@ -294,7 +321,10 @@ export function searchHelp(
       for (const t of d.titleTokens) score += index.idf(t);
     }
     if (score > 0 && querySlug === d.doc.slug) score += exactTitleBonus;
-    if (score > 0 && score >= floor) matches.push({ doc: d.doc, score });
+    const namesIt = [...terms].some((t) => d.headTokens.has(t));
+    if (score > 0 && (namesIt || score >= floor)) {
+      matches.push({ doc: d.doc, score });
+    }
   }
 
   matches.sort(

@@ -118,3 +118,22 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
     ],
   },
 ];
+
+/**
+ * Entries whose symptom, cause, fix or aliases contain the query, case
+ * insensitively. Help's Troubleshooting tab falls back to it while a word is
+ * still being typed (help search ranks whole words), like `filterFAQ` and
+ * `filterGlossary` for the other tabs.
+ */
+export function filterTroubleshooting(
+  entries: readonly TroubleshootingEntry[],
+  opts: { query?: string } = {}
+): TroubleshootingEntry[] {
+  const q = opts.query?.trim().toLowerCase();
+  if (!q) return [...entries];
+  return entries.filter((e) =>
+    [e.symptom, e.cause, e.fix, ...(e.aliases ?? [])].some((t) =>
+      t.toLowerCase().includes(q)
+    )
+  );
+}

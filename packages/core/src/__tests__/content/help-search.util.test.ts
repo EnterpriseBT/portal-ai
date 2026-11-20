@@ -33,7 +33,7 @@ describe("tokenizeHelp (#1049)", () => {
   });
   it("drops stopwords", () => {
     expect(tokenizeHelp("How do I create a station?")).toEqual([
-      "create",
+      "creat",
       "station",
     ]);
   });
@@ -45,6 +45,29 @@ describe("tokenizeHelp (#1049)", () => {
       "query",
       "box",
     ]);
+  });
+  it("meets a word's inflections at one token, silent e included", () => {
+    for (const group of [
+      ["create", "created", "creating", "creates"],
+      ["share", "shared", "sharing"],
+      ["invite", "invited", "inviting"],
+      ["price", "pricing"],
+    ]) {
+      expect(new Set(group.flatMap(tokenizeHelp)).size).toBe(1);
+    }
+  });
+  it("strips accents and keeps words in any script", () => {
+    expect(tokenizeHelp("Café connexión")).toEqual(
+      tokenizeHelp("cafe connexion")
+    );
+    expect(tokenizeHelp("Qu'est-ce qu'une station?")).toContain("station");
+    // A non-Latin word stays one token (normalised the same way on both
+    // sides of the search, so its exact form doesn't matter).
+    expect(tokenizeHelp("データ")).toHaveLength(1);
+  });
+  it("keeps the particles and negation that change a phrase's meaning", () => {
+    expect(tokenizeHelp("set up")).toEqual(["set", "up"]);
+    expect(tokenizeHelp("no records")).toEqual(["no", "record"]);
   });
   it("returns nothing for an empty or stopword-only string", () => {
     expect(tokenizeHelp("")).toEqual([]);
@@ -133,7 +156,17 @@ describe("searchHelp (#1049)", () => {
   });
 
   it("drops matches below the floor", () => {
-    expect(searchHelp("spreadsheet", { corpus, floor: 100 })).toEqual([]);
+    // "invoices" is only in Billing's body.
+    expect(searchHelp("invoices", { corpus, floor: 0 })[0]?.doc.title).toBe(
+      "Billing"
+    );
+    expect(searchHelp("invoices", { corpus, floor: 100 })).toEqual([]);
+  });
+
+  it("counts a title or alias hit whatever the floor", () => {
+    expect(
+      searchHelp("spreadsheet", { corpus, floor: 100 }).map((m) => m.doc.title)
+    ).toEqual(expect.arrayContaining(["Connecting a spreadsheet", "Imports"]));
   });
 
   it("puts the entry whose title is the query first, though other titles share its terms", () => {

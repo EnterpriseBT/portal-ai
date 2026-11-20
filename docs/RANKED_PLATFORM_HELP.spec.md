@@ -8,6 +8,17 @@ This spec pins the contract for #1049:
 
 Discovery: `docs/RANKED_PLATFORM_HELP.discovery.md`. Issue: #1049.
 
+## Amendment — code review
+
+- **Tokenizing:**
+  - accents are stripped (NFD), and words split on any letter or digit in any script;
+  - a final silent "e" is dropped after stemming (create, created and creating all meet at "creat");
+  - "up", "out", "over" and "no" are no longer stopwords.
+- **What counts as a match:** a query term that hits an entry's title or an alias always counts. A body-only match needs `HELP_MATCH_FLOOR`, now 3, so one rare body word ("scores") doesn't match. BM25's per-document length normalisation is computed once when the index is built.
+- **`entryIds`:** ids past the third come back as candidates. Ids that don't resolve, with no question, give `noMatch: true`.
+- **The Help page:** ranked entries first, then every other substring match (`orderBySearch`, `apps/web/src/utils/help-search-order.util.ts`), so nothing the page listed before is lost. Troubleshooting falls back to `filterTroubleshooting` (core, aliases included).
+- **The help block:** a region named `Help: <question>` (or its first entry's title), an outlined `Paper`, and typography variants instead of ad hoc `sx`. The padding and the body's `pre-line` remain, as the FAQ accordions have them.
+
 ## Amendment — slice 4
 
 - **No Swagger change.** The enum at `swagger.config.ts:2185` is the **pinned result** type, and help blocks aren't pinnable. Swagger documents no message-block enum, so there's nothing to add.

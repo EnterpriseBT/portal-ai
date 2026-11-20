@@ -86,9 +86,32 @@ describe("HelpBlockUI (#1049)", () => {
     );
   });
 
-  it("names the block, so the help it shows reads as one unit", () => {
-    render(<HelpBlockUI content={content} linkComponent={Anchor} />);
-    expect(screen.getByRole("region", { name: "Help" })).toBeInTheDocument();
+  it("names each block after its question, so two in one conversation differ", () => {
+    render(
+      <>
+        <HelpBlockUI content={content} linkComponent={Anchor} />
+        <HelpBlockUI content={noMatch} linkComponent={Anchor} />
+      </>
+    );
+    expect(
+      screen.getByRole("region", {
+        name: "Help: How do I bring in a spreadsheet?",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Help: weather in paris" })
+    ).toBeInTheDocument();
+  });
+
+  it("names a bare call's block after its first entry", () => {
+    render(
+      <HelpBlockUI content={{ ...content, query: "" }} linkComponent={Anchor} />
+    );
+    expect(
+      screen.getByRole("region", {
+        name: "Help: How do I connect my first data source?",
+      })
+    ).toBeInTheDocument();
   });
 
   it("says no entry covers a question nothing matched, with a way into Help", () => {

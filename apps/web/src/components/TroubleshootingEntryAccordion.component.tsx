@@ -50,28 +50,18 @@ export const TroubleshootingEntryAccordionUI: React.FC<
         aria-controls={`${id}-content`}
         expandIcon={<ExpandMoreIcon />}
       >
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          {entry.symptom}
-        </Typography>
+        <Typography variant="subtitle2">{entry.symptom}</Typography>
       </AccordionSummary>
       <AccordionDetails>
         <Stack spacing={1.5}>
           <Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", fontWeight: 600 }}
-            >
+            <Typography variant="caption" color="text.secondary" component="p">
               Why it happens
             </Typography>
             <Typography variant="body2">{entry.cause}</Typography>
           </Box>
           <Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", fontWeight: 600 }}
-            >
+            <Typography variant="caption" color="text.secondary" component="p">
               What to do
             </Typography>
             <Typography variant="body2">{entry.fix}</Typography>
@@ -82,7 +72,7 @@ export const TroubleshootingEntryAccordionUI: React.FC<
               <Typography
                 variant="caption"
                 color="text.secondary"
-                sx={{ display: "block", fontWeight: 600 }}
+                component="p"
               >
                 Related
               </Typography>

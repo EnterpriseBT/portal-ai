@@ -1,6 +1,9 @@
 import { describe, it, expect } from "@jest/globals";
 
-import { TROUBLESHOOTING_ENTRIES } from "../../content/troubleshooting.util";
+import {
+  TROUBLESHOOTING_ENTRIES,
+  filterTroubleshooting,
+} from "../../content/troubleshooting.util";
 import { FAQ_ENTRIES } from "../../content/faq.util";
 import {
   GLOSSARY_ENTRIES,
@@ -33,5 +36,18 @@ describe("TROUBLESHOOTING_ENTRIES (#1049)", () => {
         expect((r.surface === "faq" ? faq : glossary).has(r.title)).toBe(true);
       }
     }
+  });
+});
+
+describe("filterTroubleshooting (#1049)", () => {
+  it("matches the symptom, cause, fix and aliases, as typed so far", () => {
+    expect(
+      filterTroubleshooting(TROUBLESHOOTING_ENTRIES, { query: "forbidd" }).map(
+        (e) => e.symptom
+      )
+    ).toEqual(["It says \u201cYou don\u2019t have permission to \u2026\u201d"]);
+    expect(filterTroubleshooting(TROUBLESHOOTING_ENTRIES, {})).toHaveLength(
+      TROUBLESHOOTING_ENTRIES.length
+    );
   });
 });
