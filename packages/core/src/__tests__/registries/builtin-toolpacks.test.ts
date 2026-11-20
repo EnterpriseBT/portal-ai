@@ -28,8 +28,8 @@ function distinctSpecsByName(
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly eleven packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(11);
+  it("registers exactly twelve packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(12);
   });
 
   // Case 2
@@ -47,6 +47,8 @@ describe("BUILTIN_TOOLPACKS", () => {
       "gis",
       // #1050: platform help, attached explicitly.
       "help",
+      // #847: the member roster and invitations.
+      "member_management",
     ];
     const actual = BUILTIN_TOOLPACKS.map((p) => p.slug).sort();
     expect(actual).toEqual([...expected].sort());
@@ -428,6 +430,59 @@ describe("part tool descriptions (#829)", () => {
     expect(description("connector_entity_update")).not.toContain(
       "connector instance"
     );
+  });
+});
+
+describe("member_management pack (#847)", () => {
+  const pack = BUILTIN_TOOLPACK_BY_SLUG.member_management;
+
+  it("carries the roster, role assignment, invitation and seat tools", () => {
+    expect(pack.name).toBe("Members");
+    expect(pack.tools.map((t) => t.name)).toEqual([
+      "member_invite",
+      "member_list",
+      "member_set_roles",
+      "invitation_list",
+      "invitation_show",
+      "invitation_revoke",
+      "member_remove",
+      "seat_usage",
+    ]);
+  });
+
+  it("shares member_list and member_set_roles with rbac_management as the same definitions", () => {
+    for (const name of ["member_list", "member_set_roles"]) {
+      const mine = pack.tools.find((t) => t.name === name);
+      const rbac = BUILTIN_TOOLPACK_BY_SLUG.rbac_management.tools.find(
+        (t) => t.name === name
+      );
+      expect(mine).toBeDefined();
+      expect(mine).toBe(rbac);
+    }
+  });
+
+  it("is control-plane and free: no entity writes, locks or authorization descriptor", () => {
+    for (const tool of pack.tools) {
+      expect(tool.capability.writes).toEqual([]);
+      expect(tool.capability.locks).toEqual([]);
+      expect(tool.capability.costHint).toBe("free");
+      expect(TOOL_AUTHORIZATION[tool.name]).toBeUndefined();
+    }
+  });
+
+  it("shows invitations as invitation blocks, never a link", () => {
+    const kind = (n: string) =>
+      pack.tools.find((t) => t.name === n)!.capability.resultKind;
+    expect(kind("member_invite")).toBe("invitation");
+    expect(kind("invitation_show")).toBe("invitation");
+    for (const n of [
+      "invitation_list",
+      "invitation_revoke",
+      "member_remove",
+      "seat_usage",
+    ]) {
+      expect(kind(n)).toBe("scalar");
+    }
   });
 });
 

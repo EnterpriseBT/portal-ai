@@ -212,6 +212,85 @@ describe("SeatService Integration Tests", () => {
     ).toHaveLength(1);
   });
 
+  // ── getPendingInvitation (#847) ─────────────────────────────────────
+
+  it("getPendingInvitation returns a pending invitation without its token", async () => {
+    await setSeatCap(null);
+    const inv = await SeatService.invite(
+      owner,
+      { email: "a@x.com", role: "member" },
+      AUDIT
+    );
+    const got = await SeatService.getPendingInvitation(owner, inv.id);
+    expect(got).toMatchObject({
+      id: inv.id,
+      email: "a@x.com",
+      role: "member",
+      status: "pending",
+    });
+    expect(got.inviteUrl).toBeUndefined();
+    expect(got).not.toHaveProperty("tokenHash");
+  });
+
+  it("getPendingInvitation 404s a revoked invitation and another org's", async () => {
+    await setSeatCap(null);
+    const inv = await SeatService.invite(
+      owner,
+      { email: "a@x.com", role: "member" },
+      AUDIT
+    );
+    await SeatService.revoke(owner, inv.id, AUDIT);
+    await expect(
+      SeatService.getPendingInvitation(owner, inv.id)
+    ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
+
+    const live = await SeatService.invite(
+      owner,
+      { email: "b@x.com", role: "member" },
+      AUDIT
+    );
+    // An owner of another org, who can invite there, can't read this org's.
+    const u2 = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(u2 as never);
+    const org2 = createOrganization(u2.id);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(org2 as never);
+    await seedRbacForOrg(asDrizzle(), org2.id);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(org2.id, u2.id, { role: "owner" }) as never
+      );
+    const otherOrg: PermissionContext = {
+      userId: u2.id,
+      organizationId: org2.id,
+      roles: ["owner"],
+    };
+    await expect(
+      SeatService.getPendingInvitation(otherOrg, live.id)
+    ).rejects.toMatchObject({ code: ApiCode.INVITATION_NOT_FOUND });
+  });
+
+  it("getPendingInvitation needs member.invite", async () => {
+    await setSeatCap(null);
+    const inv = await SeatService.invite(
+      owner,
+      { email: "a@x.com", role: "member" },
+      AUDIT
+    );
+    const member: PermissionContext = {
+      userId: "u-member",
+      organizationId: orgId,
+      roles: ["member"],
+    };
+    await expect(
+      SeatService.getPendingInvitation(member, inv.id)
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
   // ── resend ──────────────────────────────────────────────────────────
 
   it("resend rotates the token (old link no longer valid) and re-audits", async () => {

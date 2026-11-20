@@ -258,6 +258,7 @@ const ALL_PACK_SLUGS = [
   "view_management",
   "gis",
   "help",
+  "member_management",
 ];
 
 /** A TierPolicy with the given entitlements. Allocations are unlimited so
@@ -965,6 +966,63 @@ describe("buildAnalyticsTools()", () => {
     );
   });
 
+  // -----------------------------------------------------------------------
+  // Pack: member_management (#847)
+  // -----------------------------------------------------------------------
+
+  const MEMBER_TOOLS = [
+    "member_list",
+    "member_set_roles",
+    "member_invite",
+    "invitation_list",
+    "invitation_show",
+    "invitation_revoke",
+    "member_remove",
+    "seat_usage",
+  ];
+
+  it("registers the member_management tools, with member_list and member_set_roles, on their own (#847)", async () => {
+    setupStationMocks(["member_management"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    for (const name of MEMBER_TOOLS) expect(tools[name]).toBeDefined();
+    // Group tools stay rbac_management's (custom-RBAC entitlement).
+    expect(tools.member_set_groups).toBeUndefined();
+  });
+
+  it.each([
+    [["member_management"]],
+    [["rbac_management", "member_management"]],
+    [["rbac_management", "member_management", "view_management"]],
+  ])(
+    "builds member_list and member_set_roles once for %j (#847)",
+    async (packs) => {
+      setupStationMocks(packs);
+
+      const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+      for (const name of ["member_list", "member_set_roles"]) {
+        expect(Object.keys(tools).filter((n) => n === name)).toHaveLength(1);
+      }
+    }
+  );
+
+  it("still builds member_set_roles for rbac_management alone (#847)", async () => {
+    setupStationMocks(["rbac_management"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.member_set_roles).toBeDefined();
+    expect(tools.member_invite).toBeUndefined();
+  });
+
+  it("lists every member_management tool in BUILTIN_TOOL_NAMES (#847)", () => {
+    for (const name of MEMBER_TOOLS) {
+      expect(BUILTIN_TOOL_NAMES.has(name)).toBe(true);
+    }
+  });
+
   it("registers no view_management tools when the pack isn't enabled", async () => {
     setupStationMocks(["data_query"]);
 
@@ -1049,6 +1107,7 @@ describe("buildAnalyticsTools()", () => {
       "web_search",
       "entity_management",
       "gis",
+      "member_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
       {
@@ -1136,6 +1195,7 @@ describe("buildAnalyticsTools()", () => {
       "web_search",
       "entity_management",
       "gis",
+      "member_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
       {
@@ -1812,6 +1872,7 @@ describe("built-in tool registry consistency (#115)", () => {
       "financial",
       "web_search",
       "entity_management",
+      "member_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
       {

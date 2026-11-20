@@ -254,6 +254,8 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   view_management:
     "creating and sharing curated views and attaching them to stations",
   help: "answering questions about how Portals works, with links into Help",
+  member_management:
+    "inviting and removing members, invitations and seat usage",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -679,6 +681,68 @@ export const PACK_PROMPT_SECTIONS: Record<
     },
   },
 
+  // #847: the roster half of Settings → Members.
+  member_management: {
+    capability: "manage the organization's members and invitations",
+    requestShapes: ["invite someone", "remove a member"],
+    blocks: ["invitations"],
+    interpretiveTools: [],
+    markers: [
+      "manage the organization's members and invitations",
+      "## Members",
+      "member_invite",
+    ],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Members");
+      lines.push("");
+      lines.push(
+        "You can invite people, show, list and revoke pending invitations, " +
+          "remove members, set members' roles and check seat usage with the " +
+          "member_management tools. They act on the user's own authority: " +
+          "what they can't do in Settings → Members you can't do here. A " +
+          "refusal names the permission it needs; relay it as is and do not " +
+          "retry."
+      );
+      lines.push("");
+      lines.push(
+        "**Resolve a person first.** Before removing someone or setting their " +
+          "roles, find their `userId` with `member_list`. Never invent an id."
+      );
+      lines.push("");
+      lines.push(
+        "**Setting roles replaces them.** `member_set_roles` replaces the " +
+          "member's whole role set with what you pass: read their current " +
+          "`roleSlugs` from `member_list` and send the complete intended set, " +
+          "not just the addition. System roles are `owner`, `admin` and " +
+          "`member`; a member keeps at least one."
+      );
+      lines.push("");
+      lines.push(
+        "**Never handle an invite link.** No email is sent: an invitation " +
+          "reaches the invitee only when the user shares its link. " +
+          "`member_invite` and `invitation_show` show the user an invitation " +
+          "block, and the user (not the invitee) gets the link to share from " +
+          "its button. So say the invitation is ready and that they can get " +
+          "the link to share from the block. Never say, before or after acting, " +
+          "that you send, email or deliver an invitation: you can't. " +
+          "Never write, ask for or guess a link, and don't restate the block. " +
+          "The invitation blocks are your whole answer: your turn ends once " +
+          "they're shown, so do anything else the message asks first."
+      );
+      lines.push("");
+      lines.push(
+        "On `INVITATION_ALREADY_PENDING`, don't invite again: find the " +
+          "invitation with `invitation_list` and show it with " +
+          "`invitation_show`. On `SEAT_LIMIT_EXCEEDED`, say the seats are full " +
+          "(with `seat_usage`'s numbers) and that a plan with more seats is " +
+          "under Settings → Billing."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
+
   view_management: {
     capability: "manage curated views",
     requestShapes: ["a curated view change"],
@@ -936,7 +1000,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // the caller can't read, worded once in @portalai/core/content.
   const gaps = describeStationAttachmentGaps(stationContext.attachments);
   // #848: a station with no pack that works on entity data (the provisioned
-  // Administrate station has the access and Help packs) is complete without views
+  // Administrate station has the access, Members and Help packs) is complete without views
   // or connectors. Naming them as missing made the agent open its answers with
   // "no data attached" and suggest attaching some.
   // #1045: three states, not two. When packs that work on data are attached

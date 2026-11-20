@@ -839,7 +839,7 @@ describe("BillingService.listBillingTiers (#241)", () => {
           }),
           // #1050: every tier's policy carries the always-entitled packs.
           entitlements: {
-            builtinToolpacks: ["data_query", "help"],
+            builtinToolpacks: ["data_query", "help", "member_management"],
             customToolpacks: true,
           },
           overage: "hard-deny",

@@ -216,6 +216,16 @@ describe("provisioned stations in a portal session — integration (#848)", () =
     }
   });
 
+  it("Administrate carries the Members pack, active on a tier whose list lacks it (#847)", async () => {
+    await useTier(["rbac_management"]);
+    const packs = await EntitlementService.resolveStationPacks(
+      administrateId,
+      orgId
+    );
+    expect(packs.effective).toContain("member_management");
+    expect(packs.unentitled).not.toContain("member_management");
+  });
+
   it("a member on Administrate gets a typed refusal from an access tool", async () => {
     await useTier(["rbac_management"]);
     const { call } = await sessionTools(administrateId, memberId);

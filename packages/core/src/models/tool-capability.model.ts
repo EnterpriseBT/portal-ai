@@ -85,6 +85,7 @@ export const ResultKindSchema = z.enum([
   "mutation-result",
   "progress",
   "help", // verbatim help entries, built-in platform_help only (#1049)
+  "invitation", // an invitation without its link, built-in member tools only (#847)
 ]);
 export type ResultKind = z.infer<typeof ResultKindSchema>;
 
@@ -234,12 +235,13 @@ export const ToolCapabilitySchema = z
       cap.resultKind !== "scalar" &&
       cap.resultKind !== "mutation-result" &&
       cap.resultKind !== "progress" &&
-      cap.resultKind !== "help"
+      cap.resultKind !== "help" &&
+      cap.resultKind !== "invitation"
     ) {
       ctx.addIssue({
         code: "custom",
         message:
-          "production.kind 'value' can only render as resultKind 'scalar'/'mutation-result'/'progress'/'help'",
+          "production.kind 'value' can only render as resultKind 'scalar'/'mutation-result'/'progress'/'help'/'invitation'",
       });
     }
   });
@@ -296,6 +298,9 @@ export function customToolCapabilityError(
   }
   if (cap.resultKind === "help") {
     return "custom tools cannot declare resultKind 'help' (only the built-in help tool quotes help content)";
+  }
+  if (cap.resultKind === "invitation") {
+    return "custom tools cannot declare resultKind 'invitation' (only the built-in member tools show invitations)";
   }
   if (!opts.allowedConsumptionModes.includes(cap.consumption.mode)) {
     return `custom tools cannot declare consumption mode '${cap.consumption.mode}' yet (allowed: ${opts.allowedConsumptionModes.join(", ")})`;

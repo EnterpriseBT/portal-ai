@@ -108,6 +108,13 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   grant_share: "Sharing access",
   grant_revoke: "Revoking access",
   grant_list: "Listing shares",
+  // member_management (#847)
+  member_invite: "Inviting a member",
+  invitation_list: "Listing invitations",
+  invitation_show: "Showing the invitation",
+  invitation_revoke: "Revoking the invitation",
+  member_remove: "Removing the member",
+  seat_usage: "Checking seats",
   // view_management (#645)
   curated_view_list: "Listing views",
   curated_view_get: "Reading the view",

@@ -251,6 +251,11 @@ describe("PortalBlockTypeSchema", () => {
     expect(PortalBlockTypeSchema.safeParse("help").success).toBe(true);
     expect(PINNABLE_BLOCK_TYPES.has("help" as never)).toBe(false);
   });
+
+  it('should accept "invitation" as a valid block type, not pinnable (#847)', () => {
+    expect(PortalBlockTypeSchema.safeParse("invitation").success).toBe(true);
+    expect(PINNABLE_BLOCK_TYPES.has("invitation" as never)).toBe(false);
+  });
 });
 
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────

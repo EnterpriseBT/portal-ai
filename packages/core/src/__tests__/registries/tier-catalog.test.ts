@@ -57,6 +57,7 @@ describe("TIER_CATALOG (#218)", () => {
         "rbac_management",
         "view_management",
         "help",
+        "member_management",
       ],
       customToolpacks: false,
       // #241: the free default has no card CTA.
@@ -88,6 +89,7 @@ describe("TIER_CATALOG (#218)", () => {
         "rbac_management",
         "view_management",
         "help",
+        "member_management",
       ],
       customToolpacks: false,
       cta: "subscribe",

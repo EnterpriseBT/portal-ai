@@ -48,6 +48,9 @@ export const invitations = {
         `/api/organization/invitations/${encodeURIComponent(v.id)}/resend`,
       method: "POST",
       body: () => undefined,
+      // #847: the portal's invitation block resends too; a refusal means the
+      // invitation (or the caller's access) changed, so refetch the list.
+      onPermissionDenied: { invalidate: () => [queryKeys.invitations.root] },
     }),
 
   /** Accept an invitation by token (any authed user). Variables ARE the body. */

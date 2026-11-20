@@ -74,6 +74,8 @@ export function streamingBlockFor(
     return { type: "mutation-result", content: result };
   // #1049: platform_help's verbatim help entries.
   if (type === "help") return { type: "help", content: result };
+  // #847: an invitation, without its link.
+  if (type === "invitation") return { type: "invitation", content: result };
   return null;
 }
 

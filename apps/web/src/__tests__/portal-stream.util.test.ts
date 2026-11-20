@@ -22,6 +22,21 @@ describe("streamingBlockFor (#269)", () => {
     });
   });
 
+  it("maps a type:invitation result to an invitation block (#847)", () => {
+    const invitation = {
+      type: "invitation",
+      invitationId: "inv-1",
+      email: "alice@example.com",
+      role: "member",
+      status: "pending",
+      expiresAt: 1_800_000_000_000,
+    };
+    expect(streamingBlockFor("member_invite", invitation)).toEqual({
+      type: "invitation",
+      content: invitation,
+    });
+  });
+
   it("maps a type:d3 result to a d3 block", () => {
     const block = streamingBlockFor("visualize_d3", {
       type: "d3",

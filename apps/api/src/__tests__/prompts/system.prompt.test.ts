@@ -1946,7 +1946,7 @@ describe("buildSystemPrompt — Help (#367, #1050)", () => {
     expect(help).toMatch(/no text before or after it/i);
     expect(help).toMatch(/even when you call it several times/i);
     expect(help).not.toMatch(/at most one short sentence/i);
-    // The turn ends on the help blocks (`endsOnHelpBlocks`), so a data
+    // The turn ends on the help blocks (`endsOnSelfContainedBlocks`), so a data
     // question in the same message must come first.
     expect(help).toMatch(/call `platform_help` last/);
     expect(help).toMatch(/never restate, summarize or extend/i);
@@ -2124,5 +2124,61 @@ describe("buildSystemPrompt — a custom pack the plan excludes (#1045)", () => 
     expect(usable).toContain(
       "_No views or connectors are attached to this station."
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Members section (#847)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Members (#847)", () => {
+  const withMembers = () =>
+    buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["member_management"] })
+    );
+  const section = (prompt: string) =>
+    prompt.slice(prompt.indexOf("## Members"));
+
+  it("renders ## Members only when the pack is on the station", () => {
+    expect(withMembers()).toContain("## Members");
+    expect(
+      buildSystemPrompt(makeContext({ effectiveToolPacks: ["data_query"] }))
+    ).not.toContain("## Members");
+  });
+
+  it("keeps the agent away from invite links", () => {
+    const members = section(withMembers());
+    expect(members).toMatch(/never write, ask for or guess a link/i);
+    // #847 smoke walk: the agent said the invitation was "sent" and that the
+    // invitee uses the button. Nothing is emailed; the button is the user's.
+    expect(members).toMatch(/No email is sent/);
+    expect(members).toMatch(/the user \(not the invitee\) gets the link/);
+    // #847 adversarial walk: "I'll send the invitations" before acting.
+    expect(members).toMatch(
+      /Never say, before or after acting,\s+that you send, email or deliver an invitation/
+    );
+    // The turn ends on invitation blocks (`endsOnSelfContainedBlocks`).
+    expect(members).toMatch(/invitation blocks are your whole answer/);
+    expect(members).toContain("`invitation_show`");
+  });
+
+  it("shows a pending invitation instead of inviting again, and resolves people first", () => {
+    const members = section(withMembers());
+    expect(members).toContain("INVITATION_ALREADY_PENDING");
+    expect(members).toMatch(/don't invite again/i);
+    expect(members).toMatch(/`member_list`/);
+  });
+
+  it("names the pack elsewhere without claiming the roles Access & Roles also sets", () => {
+    // member_set_roles is shared, so roles stay Access & Roles' line too.
+    expect(PACK_ELSEWHERE.member_management).toMatch(/invit/);
+    expect(PACK_ELSEWHERE.member_management).not.toMatch(/role/);
+    expect(PACK_ELSEWHERE.rbac_management).toMatch(/member assignments/);
+  });
+
+  it("says member_set_roles replaces the whole set, read from member_list (code review)", () => {
+    const members = section(withMembers());
+    expect(members).toMatch(/replaces the\s+member's whole role set/);
+    expect(members).toMatch(/`roleSlugs` from `member_list`/);
   });
 });

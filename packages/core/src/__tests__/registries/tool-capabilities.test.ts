@@ -127,6 +127,13 @@ describe("costHint pin (#184)", () => {
     member_list: "free",
     member_set_roles: "free",
     member_set_groups: "free",
+    // member_management (#847): roster admin is never metered.
+    member_invite: "free",
+    invitation_list: "free",
+    invitation_show: "free",
+    invitation_revoke: "free",
+    member_remove: "free",
+    seat_usage: "free",
     grant_share: "free",
     grant_revoke: "free",
     grant_list: "free",
@@ -241,8 +248,9 @@ describe("platform_help capability", () => {
 });
 
 describe("ALWAYS_ENTITLED_PACKS (#1050)", () => {
-  it("is exactly the help pack", () => {
-    expect([...ALWAYS_ENTITLED_PACKS]).toEqual(["help"]);
+  it("is the help pack and the members pack (#847)", () => {
+    // #847: member management is decided by permissions, not by plan.
+    expect([...ALWAYS_ENTITLED_PACKS]).toEqual(["help", "member_management"]);
   });
 
   it("holds only free tools, so entitling every tier costs nothing", () => {

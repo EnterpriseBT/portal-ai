@@ -18,7 +18,10 @@ import type {
   DoneEvent,
   PinnedBlockEntry,
 } from "@portalai/core/contracts";
-import { HelpBlockContentSchema } from "@portalai/core/contracts";
+import {
+  HelpBlockContentSchema,
+  InvitationBlockContentSchema,
+} from "@portalai/core/contracts";
 import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
@@ -133,14 +136,28 @@ interface StreamContext {
 }
 
 /**
- * #1049: a help block is the whole answer to a product question. A step whose
- * tool calls were all `platform_help`, each returning a valid help block, ends
- * the turn, so the model gets no further step in which to restate the entries
- * around the blocks (the adversarial walk saw it quote all three back, despite
- * the prompt). A step that also called another tool, or whose help call failed
- * (the model should retry), carries on as usual.
+ * Tools whose result is a self-contained display block, and the schema that
+ * block must parse as. The block is the whole answer: the help entries
+ * (#1049) and an invitation with its own "Get invite link" button (#847).
  */
-export function endsOnHelpBlocks({
+const SELF_CONTAINED_BLOCK_TOOLS: Record<
+  string,
+  { safeParse: (value: unknown) => { success: boolean } }
+> = {
+  platform_help: HelpBlockContentSchema,
+  member_invite: InvitationBlockContentSchema,
+  invitation_show: InvitationBlockContentSchema,
+};
+
+/**
+ * A step whose tool calls all produced self-contained blocks ends the turn,
+ * so the model gets no further step in which to restate them. Walks saw it
+ * quote help entries back (#1049) and list the invitations it had just shown
+ * (#847), despite the prompt. A step that also called another tool, or whose
+ * call failed (a refusal, which the model should relay, or bad input it
+ * should retry), carries on as usual.
+ */
+export function endsOnSelfContainedBlocks({
   steps,
 }: {
   steps: ReadonlyArray<{
@@ -154,8 +171,8 @@ export function endsOnHelpBlocks({
     last.toolResults.length === last.toolCalls.length &&
     last.toolResults.every(
       (r) =>
-        r.toolName === "platform_help" &&
-        HelpBlockContentSchema.safeParse(r.output).success
+        SELF_CONTAINED_BLOCK_TOOLS[r.toolName]?.safeParse(r.output).success ===
+        true
     )
   );
 }
@@ -430,6 +447,19 @@ export function resolveDisplayBlock(
     if (!parsed.success) return null;
     return {
       block: { type: "help", content: parsed.data },
+      sseResult: parsed.data,
+    };
+  }
+
+  // Invitation (#847). member_invite / invitation_show return an invitation
+  // without its link; the block's button gets a fresh link in the browser.
+  // The schema is strict, so a result carrying a link (or a relayed
+  // { error, code }) makes no block.
+  if (resultKind === "invitation") {
+    const parsed = InvitationBlockContentSchema.safeParse(toolResult);
+    if (!parsed.success) return null;
+    return {
+      block: { type: "invitation", content: parsed.data },
       sseResult: parsed.data,
     };
   }
@@ -932,7 +962,7 @@ export class PortalService {
       system: systemPrompt,
       messages,
       tools: analyticsTools,
-      stopWhen: [stepCountIs(10), endsOnHelpBlocks],
+      stopWhen: [stepCountIs(10), endsOnSelfContainedBlocks],
       maxRetries: 3,
     });
 

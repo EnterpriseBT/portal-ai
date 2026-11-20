@@ -70,7 +70,12 @@ describe("TierService.tierPolicyFromRow", () => {
   it("maps the entitlement columns into policy.entitlements, adding the always-entitled packs (#1050)", () => {
     const p = TierService.tierPolicyFromRow(standardRow as never);
     expect(p.entitlements).toEqual({
-      builtinToolpacks: ["data_query", "web_search", "help"],
+      builtinToolpacks: [
+        "data_query",
+        "web_search",
+        "help",
+        "member_management",
+      ],
       customToolpacks: true,
     });
 
@@ -82,7 +87,7 @@ describe("TierService.tierPolicyFromRow", () => {
       customToolpacks: false,
     } as never);
     expect(restrictive.entitlements).toEqual({
-      builtinToolpacks: ["help"],
+      builtinToolpacks: ["help", "member_management"],
       customToolpacks: false,
     });
   });
@@ -92,7 +97,11 @@ describe("TierService.tierPolicyFromRow", () => {
       ...standardRow,
       builtinToolpacks: ["help", "data_query"],
     } as never);
-    expect(p.entitlements.builtinToolpacks).toEqual(["help", "data_query"]);
+    expect(p.entitlements.builtinToolpacks).toEqual([
+      "help",
+      "data_query",
+      "member_management",
+    ]);
   });
 });
 
@@ -119,7 +128,12 @@ describe("TierService.resolveTier", () => {
 
     expect(mockFindBySlug).toHaveBeenCalledTimes(1);
     expect(first.entitlements).toEqual({
-      builtinToolpacks: ["data_query", "web_search", "help"],
+      builtinToolpacks: [
+        "data_query",
+        "web_search",
+        "help",
+        "member_management",
+      ],
       customToolpacks: true,
     });
     expect(second.entitlements).toEqual(first.entitlements);

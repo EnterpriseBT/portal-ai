@@ -18,7 +18,10 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
-import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
+import {
+  ALWAYS_ENTITLED_PACKS,
+  BuiltinToolpackSlugSchema,
+} from "@portalai/core/registries";
 
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -160,7 +163,9 @@ describe("Tier entitlements schema integration (#214 slice 1)", () => {
     // #1050: the always-entitled packs are never "unlisted" — every tier
     // carries them at runtime whatever its stored row says.
     expect(unlisted.sort()).toEqual(
-      ALL_SLUGS.filter((s) => s !== "web_search" && s !== "help").sort()
+      ALL_SLUGS.filter(
+        (s) => s !== "web_search" && !ALWAYS_ENTITLED_PACKS.includes(s)
+      ).sort()
     );
 
     // seedTiers itself must not throw in that state (it warns).

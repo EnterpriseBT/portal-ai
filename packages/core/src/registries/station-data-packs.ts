@@ -26,6 +26,7 @@ export const PACK_USES_STATION_DATA: Record<BuiltinToolpackSlug, boolean> = {
   // Control-plane and off-station work.
   rbac_management: false,
   view_management: false,
+  member_management: false,
   web_search: false,
   // #1050: answers about the product, not the station's data.
   help: false,
