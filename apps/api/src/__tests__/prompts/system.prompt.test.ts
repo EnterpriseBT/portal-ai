@@ -6,6 +6,7 @@ import {
   type StationContext,
   PACK_ELSEWHERE,
 } from "../../prompts/system.prompt.js";
+import { PROVISIONED_STATIONS } from "../../constants/provisioned-stations.constants.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -941,6 +942,22 @@ describe("buildSystemPrompt — response style", () => {
           effectiveToolPacks: ["data_query", "help"],
         });
         expect(withHelp).not.toContain("are the Help pack's");
+      });
+
+      // #1044: the provisioned stations carry Help, so the stations a new
+      // user starts on answer product questions and are never told to
+      // attach the pack they already have.
+      it("every provisioned station gets the Help section and no attach-Help sentence (#1044)", () => {
+        for (const station of PROVISIONED_STATIONS) {
+          const prompt = buildSystemPrompt(
+            makeContext({
+              effectiveToolPacks: [...station.builtinSlugs],
+              otherPlanToolPacks: [],
+            })
+          );
+          expect(prompt).toContain("## Help");
+          expect(prompt).not.toContain("are the Help pack's");
+        }
       });
 
       it("names the Help pack when the plan has it and this station doesn't (#1050)", () => {

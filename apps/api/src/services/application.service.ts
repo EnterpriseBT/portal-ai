@@ -877,7 +877,8 @@ export class ApplicationService {
    * RBAC system roles and policies, a Sandbox connector instance, and the
    * {@link PROVISIONED_STATIONS} (#848): Administrate, the default, with the
    * access tools and no data; and Playground, with the Sandbox and the packs
-   * to build, share and query entities and views.
+   * to build, share and query entities and views. Both also carry the Help
+   * pack (#1044).
    *
    * Extracted from provisioning (#295) because `ResetService` re-runs it
    * after its cascade — a reset org must be indistinguishable from a fresh

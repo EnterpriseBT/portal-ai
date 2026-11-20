@@ -348,7 +348,7 @@ export class DemoSeedService {
   }
 
   /**
-   * Enable all eight built-in toolpacks plus the demo custom webhook toolpack
+   * Enable every built-in toolpack (Help included, #1050) plus the demo custom webhook toolpack
    * (#510) on the demo station. The custom pack is registered from the
    * configured `DEMO_TOOLPACK_URL`. A failed registration (#911: a refused
    * signature, an unreachable endpoint) **fails the seed** (#1035): every demo

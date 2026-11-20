@@ -451,6 +451,10 @@ describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
     expect(definition).toMatch(/attach only what that work needs/);
     expect(definition).toMatch(/Administrate, the default/);
     expect(definition).toMatch(/Playground, with the Sandbox connector/);
+    // #1044: both answer product questions.
+    expect(definition).toMatch(
+      /Both also start with the Help pack, so you can ask how Portals works on either\./
+    );
   });
 
   it("keeps the scoping practice single-sourced on Station", () => {
