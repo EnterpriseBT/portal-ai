@@ -724,8 +724,11 @@ export const PACK_PROMPT_SECTIONS: Record<
           "`member_invite` and `invitation_show` show the user an invitation " +
           "block, and the user (not the invitee) gets the link to share from " +
           "its button. So say the invitation is ready and that they can get " +
-          "the link to share from the block; never say it was sent or emailed. " +
-          "Never write, ask for or guess a link, and don't restate the block."
+          "the link to share from the block. Never say, before or after acting, " +
+          "that you send, email or deliver an invitation: you can't. " +
+          "Never write, ask for or guess a link, and don't restate the block. " +
+          "The invitation blocks are your whole answer: your turn ends once " +
+          "they're shown, so do anything else the message asks first."
       );
       lines.push("");
       lines.push(

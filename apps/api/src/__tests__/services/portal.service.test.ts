@@ -207,7 +207,7 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService, resolveDisplayBlock, endsOnHelpBlocks } =
+const { PortalService, resolveDisplayBlock, endsOnSelfContainedBlocks } =
   await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -2487,10 +2487,10 @@ describe("resolveDisplayBlock → invitation (#847)", () => {
   });
 });
 
-// endsOnHelpBlocks — a help block is the whole answer (#1049)
+// endsOnSelfContainedBlocks — a help block is the whole answer (#1049)
 // ---------------------------------------------------------------------------
 
-describe("endsOnHelpBlocks (#1049)", () => {
+describe("endsOnSelfContainedBlocks (#1049)", () => {
   const HELP = {
     type: "help",
     query: "what is a portal",
@@ -2508,7 +2508,7 @@ describe("endsOnHelpBlocks (#1049)", () => {
   it("ends the turn after a step whose calls were all platform_help help blocks", () => {
     // The adversarial walk: three help blocks, then a step quoting them back.
     expect(
-      endsOnHelpBlocks({
+      endsOnSelfContainedBlocks({
         steps: [step([help, help, help], [help, help, help])],
       })
     ).toBe(true);
@@ -2516,7 +2516,7 @@ describe("endsOnHelpBlocks (#1049)", () => {
 
   it("carries on when the step also called another tool", () => {
     expect(
-      endsOnHelpBlocks({
+      endsOnSelfContainedBlocks({
         steps: [
           step(
             [help, { toolName: "sql_query" }],
@@ -2529,9 +2529,11 @@ describe("endsOnHelpBlocks (#1049)", () => {
 
   it("carries on when a help call failed, so the model can retry", () => {
     // Invalid input is a tool error: no result for the call.
-    expect(endsOnHelpBlocks({ steps: [step([help], [])] })).toBe(false);
+    expect(endsOnSelfContainedBlocks({ steps: [step([help], [])] })).toBe(
+      false
+    );
     expect(
-      endsOnHelpBlocks({
+      endsOnSelfContainedBlocks({
         steps: [
           step([help], [{ toolName: "platform_help", output: { error: "x" } }]),
         ],
@@ -2540,13 +2542,50 @@ describe("endsOnHelpBlocks (#1049)", () => {
   });
 
   it("carries on after a text-only or empty step", () => {
-    expect(endsOnHelpBlocks({ steps: [] })).toBe(false);
-    expect(endsOnHelpBlocks({ steps: [step([], [])] })).toBe(false);
+    expect(endsOnSelfContainedBlocks({ steps: [] })).toBe(false);
+    expect(endsOnSelfContainedBlocks({ steps: [step([], [])] })).toBe(false);
+  });
+
+  it("ends the turn on invitation blocks too, alone or with help blocks (#847)", () => {
+    const invitation = {
+      toolName: "member_invite",
+      output: {
+        type: "invitation",
+        invitationId: "inv-1",
+        email: "a@example.com",
+        role: "member",
+        status: "pending",
+        expiresAt: 1,
+      },
+    };
+    const shown = { ...invitation, toolName: "invitation_show" };
+    expect(
+      endsOnSelfContainedBlocks({
+        steps: [step([invitation, invitation], [invitation, invitation])],
+      })
+    ).toBe(true);
+    expect(
+      endsOnSelfContainedBlocks({
+        steps: [step([shown, help], [shown, help])],
+      })
+    ).toBe(true);
+  });
+
+  it("carries on after a refused invite, so the model relays it (#847)", () => {
+    const refused = {
+      toolName: "member_invite",
+      output: { error: "seats full", code: "SEAT_LIMIT_EXCEEDED" },
+    };
+    expect(
+      endsOnSelfContainedBlocks({
+        steps: [step([refused, refused], [refused, refused])],
+      })
+    ).toBe(false);
   });
 
   it("looks only at the latest step", () => {
     expect(
-      endsOnHelpBlocks({
+      endsOnSelfContainedBlocks({
         steps: [
           step([help], [help]),
           step(

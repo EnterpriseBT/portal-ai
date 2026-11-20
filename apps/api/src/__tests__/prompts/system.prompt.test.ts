@@ -1946,7 +1946,7 @@ describe("buildSystemPrompt — Help (#367, #1050)", () => {
     expect(help).toMatch(/no text before or after it/i);
     expect(help).toMatch(/even when you call it several times/i);
     expect(help).not.toMatch(/at most one short sentence/i);
-    // The turn ends on the help blocks (`endsOnHelpBlocks`), so a data
+    // The turn ends on the help blocks (`endsOnSelfContainedBlocks`), so a data
     // question in the same message must come first.
     expect(help).toMatch(/call `platform_help` last/);
     expect(help).toMatch(/never restate, summarize or extend/i);
@@ -2153,7 +2153,12 @@ describe("buildSystemPrompt — Members (#847)", () => {
     // invitee uses the button. Nothing is emailed; the button is the user's.
     expect(members).toMatch(/No email is sent/);
     expect(members).toMatch(/the user \(not the invitee\) gets the link/);
-    expect(members).toMatch(/never say it was sent or emailed/);
+    // #847 adversarial walk: "I'll send the invitations" before acting.
+    expect(members).toMatch(
+      /Never say, before or after acting,\s+that you send, email or deliver an invitation/
+    );
+    // The turn ends on invitation blocks (`endsOnSelfContainedBlocks`).
+    expect(members).toMatch(/invitation blocks are your whole answer/);
     expect(members).toContain("`invitation_show`");
   });
 
