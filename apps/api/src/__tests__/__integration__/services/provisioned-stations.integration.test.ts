@@ -196,7 +196,24 @@ describe("provisioned stations in a portal session — integration (#848)", () =
       orgId
     );
     expect(packs.unentitled).toContain("view_management");
-    expect(packs.effective.sort()).toEqual(["data_query", "entity_management"]);
+    // Help is always entitled (#1050), so it stays effective even here.
+    expect(packs.effective.sort()).toEqual([
+      "data_query",
+      "entity_management",
+      "help",
+    ]);
+  });
+
+  it("both stations carry the Help pack, active on a tier whose list lacks it (#1044)", async () => {
+    await useTier(["rbac_management", "data_query"]);
+    for (const stationId of [administrateId, playgroundId]) {
+      const packs = await EntitlementService.resolveStationPacks(
+        stationId,
+        orgId
+      );
+      expect(packs.effective).toContain("help");
+      expect(packs.unentitled).not.toContain("help");
+    }
   });
 
   it("a member on Administrate gets a typed refusal from an access tool", async () => {

@@ -47,7 +47,16 @@ describe("PROVISIONED_STATIONS (#848)", () => {
       (s) => s.name === "Administrate"
     )!;
     expect(administrate.description).toBe(
-      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here."
+      "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works."
+    );
+  });
+
+  it("Playground's description says what it's for, and that product questions work there (#1044)", () => {
+    const playground = PROVISIONED_STATIONS.find(
+      (s) => s.name === "Playground"
+    )!;
+    expect(playground.description).toBe(
+      "Build and share entities and views with the assistant, attach views to this or other stations, and query the data in the same session. You can also ask how Portals works."
     );
   });
 
@@ -62,13 +71,18 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     ).toEqual([
       {
         name: "Administrate",
-        builtinSlugs: ["rbac_management"],
+        builtinSlugs: ["rbac_management", "help"],
         attachSandbox: false,
         isDefault: true,
       },
       {
         name: "Playground",
-        builtinSlugs: ["data_query", "entity_management", "view_management"],
+        builtinSlugs: [
+          "data_query",
+          "entity_management",
+          "view_management",
+          "help",
+        ],
         attachSandbox: true,
         isDefault: false,
       },
