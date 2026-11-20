@@ -2,7 +2,8 @@
  * Pure functions behind the sharded test suites: the integration suite
  * (#857) and the web unit suite (#1091). The CLI and self-test are in
  * `test-shards.mjs`; everything here is side-effect-free so the self-test
- * drives it directly, and it imports nothing, so a Jest sequencer can load it.
+ * drives it directly. It imports only Node built-ins, so CI's plan and
+ * summary jobs run it without `npm ci`, and a Jest sequencer can load it.
  *
  * Each suite's specifics live in `SUITES`; every function that depends on
  * them takes the suite first.
@@ -13,6 +14,9 @@
  * packing re-runs every shard instead of restoring a cached "pass" for a
  * shard whose files have moved.
  */
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 /** How many recent runs a refresh samples. Per-file times are noisy run to
  *  run (a heavy file measured 21–46s across runs of one commit), so each
@@ -54,7 +58,6 @@ export function isWebUnitTestPath(relative) {
  *   packageDir: string,
  *   isTestPath: (relative: string) => boolean,
  *   durationsFile: string,
- *   durationsRequired: boolean,
  *   budgetSeconds: number,
  *   minShards: number,
  *   maxShards: number,
@@ -74,7 +77,6 @@ export function isWebUnitTestPath(relative) {
  * - `title`: the required check's name (annotations, step summary).
  * - `packageDir`: report paths are made relative to it.
  * - `budgetSeconds`: recorded file-seconds per shard; N = ⌈total ÷ this⌉.
- * - `durationsRequired`: whether a missing durations file fails the lint.
  * - `shardVar` / `turboFile` / `turboTask`: the "i/N" env var and the turbo
  *   task that must hash it (lint:ci-cache rule 6).
  * - `skippable`: the suite's workflow has a docs-only `changes` job (#663).
@@ -88,7 +90,6 @@ export const SUITES = {
     packageDir: "apps/api",
     isTestPath: isIntegrationTestPath,
     durationsFile: "apps/api/src/__tests__/__integration__/durations.json",
-    durationsRequired: true,
     // 150s leaves room for runner variance: identically sized shards
     // measured up to ~30% apart, and a 210s budget put one run at 6m17s
     // (#857). Each shard runs its files serially (--maxWorkers=1).
@@ -119,7 +120,6 @@ export const SUITES = {
     packageDir: "apps/web",
     isTestPath: isWebUnitTestPath,
     durationsFile: "apps/web/src/__tests__/durations.json",
-    durationsRequired: true,
     // File-seconds, not wall time: each web shard runs Jest's default 3
     // workers on a 4-core runner, so 300s of recorded file time is about
     // 100-110s of Jest wall time. The suite measured ~850 file-seconds on CI
@@ -200,7 +200,9 @@ const runFingerprint = (reports) =>
     .sort()
     .join("|");
 
-const medianOf = (values) => {
+/** The median of `values`, or `empty` when there are none. */
+const median = (values, empty) => {
+  if (values.length === 0) return empty;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
@@ -236,7 +238,7 @@ export function mergeRuns(suite, runs, existingFiles) {
   return Object.fromEntries(
     Object.keys(samples)
       .sort()
-      .map((f) => [f, round1(medianOf(samples[f]))])
+      .map((f) => [f, round1(median(samples[f], 0))])
   );
 }
 
@@ -278,16 +280,25 @@ export function ceilingViolations(suite, durations) {
 
 /**
  * How many shards to run: enough that each gets about the suite's
- * `budgetSeconds` of recorded Jest time, clamped to `[minShards, maxShards]`,
- * or `fallbackShards` when nothing is recorded. `capped` means the suite has
+ * `budgetSeconds` of Jest time, clamped to `[minShards, maxShards]`, or
+ * `fallbackShards` when nothing is recorded. `capped` means the suite has
  * outgrown the cap: shards now run over budget (see the suite's `capAdvice`).
+ *
+ * The total counts the test files the checkout has, weighed the way
+ * `assignShards` weighs them: a recorded file at its duration, an
+ * unrecorded one at the median of the recorded. So tests added since the
+ * last refresh still raise N, and entries for deleted files don't.
+ * Without `files`, every recorded entry counts.
  * @param {Suite} suite
  * @param {Record<string, number>} durations
+ * @param {string[]} [files] the suite's test files in the checkout
  * @returns {{count: number, matrix: {index: number[]}, totalSeconds: number, capped: boolean}}
  */
-export function planShards(suite, durations) {
+export function planShards(suite, durations, files = Object.keys(durations)) {
+  const recorded = files.map((f) => durations[f]).filter((s) => Number.isFinite(s));
+  const unrecordedWeight = median(recorded, 0);
   const totalSeconds = round1(
-    Object.values(durations).reduce((n, s) => n + (Number.isFinite(s) ? s : 0), 0)
+    files.reduce((n, f) => n + (Number.isFinite(durations[f]) ? durations[f] : unrecordedWeight), 0)
   );
   const wanted = Math.ceil(totalSeconds / suite.budgetSeconds);
   const count =
@@ -415,13 +426,6 @@ export function summaryVerdict(suite, input) {
   return { ok: errors.length === 0, skipped: false, errors, warnings, table };
 }
 
-const median = (values) => {
-  if (values.length === 0) return 1;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-};
-
 /**
  * Longest-processing-time bin packing, shared by both suites' Jest
  * sequencers. Pure and deterministic: files are placed heaviest first (ties
@@ -437,7 +441,8 @@ const median = (values) => {
  */
 export function assignShards(files, durations, shardCount) {
   const fallback = median(
-    Object.values(durations).filter((v) => Number.isFinite(v))
+    Object.values(durations).filter((v) => Number.isFinite(v)),
+    1
   );
   const weight = (f) =>
     Number.isFinite(durations[f]) ? durations[f] : fallback;
@@ -456,4 +461,37 @@ export function assignShards(files, durations, shardCount) {
     loads[lightest] += weight(file);
   }
   return shards;
+}
+
+/**
+ * A Jest test sequencer that balances `--shard=i/N` by recorded duration
+ * instead of Jest's default path-hash split, for a suite whose durations
+ * file sits at `durationsPath` (relative to the package's rootDir). Both
+ * packages' sequencers are this class, so the two suites can't partition
+ * differently. Jest calls `shard()` only when `--shard` is passed.
+ *
+ * The durations are read with `parseDurations`, as the planner reads them: a
+ * missing file splits by count (every file weighs the same, still a
+ * partition), and a malformed one throws rather than quietly unbalancing.
+ *
+ * @param {new (...args: any[]) => any} BaseSequencer `@jest/test-sequencer`'s class
+ * @param {string} durationsPath
+ */
+export function durationSequencer(BaseSequencer, durationsPath) {
+  const readDurations = (rootDir) => {
+    const file = path.join(rootDir, durationsPath);
+    return existsSync(file) ? parseDurations(readFileSync(file, "utf8")) : {};
+  };
+  return class DurationSequencer extends BaseSequencer {
+    /** Jest's shard hook. `shardIndex` is 1-based. */
+    shard(tests, { shardIndex, shardCount }) {
+      if (tests.length === 0) return tests;
+      const rootDir = tests[0].context.config.rootDir;
+      const relative = (t) => path.relative(rootDir, t.path).split(path.sep).join("/");
+      const mine = new Set(
+        assignShards(tests.map(relative), readDurations(rootDir), shardCount)[shardIndex - 1]
+      );
+      return tests.filter((t) => mine.has(relative(t)));
+    }
+  };
 }

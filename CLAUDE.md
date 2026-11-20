@@ -68,7 +68,8 @@ Two suites run as **N shards behind one required check**: the integration suite 
 - **Durations.**
   - Each suite's file drives both N and the split: `apps/api/src/__tests__/__integration__/durations.json` and `apps/web/src/__tests__/durations.json`.
   - Each file's entry is its **median over the last 5 runs** (`SAMPLE_RUNS`), not one run's time: a heavy file measured 21–46s across runs of one commit, and a single-run sample left one shard ~60% slower than the rest. Turbo-cached repeats count once, and a new file uses the samples it has (the median of the known ones until then).
-  - The split is each package's Jest sequencer (`jest.integration.sequencer.mjs`, `jest.unit.sequencer.mjs`), which calls the lib's shared `assignShards`: longest-first bin packing, used only when `--shard` is passed.
+  - The split is each package's Jest sequencer (`jest.integration.sequencer.mjs`, `jest.unit.sequencer.mjs`), both the lib's shared `durationSequencer` over `assignShards`: longest-first bin packing, used only when `--shard` is passed.
+  - N counts every test file in the checkout, with an unrecorded one at the median, so tests added between refreshes still raise it.
 - **The shard reaches Jest and turbo** as `INTEGRATION_SHARD` / `WEB_UNIT_SHARD` = `i/N`.
   - Each package's script (`test:integration` / `test:unit`) appends `--shard` plus a JSON report only when it's set, so a local run is unchanged.
   - The task that runs it hashes the var and caches the report as an output: `turbo.json`'s `test:integration`, and `apps/web/turbo.json`'s `test:unit`.

@@ -16,6 +16,19 @@ Discovery: `docs/WEB_UNIT_SHARDS.discovery.md`. Issue: #1091.
   - The `planShards(web)` cases change accordingly: 853 → 3, 1,200 → 4, 1,800 → the cap, 2,000 → capped.
   - The drift check now compares against 300 × 1.25.
 
+## Amendment — code review
+
+- **`planShards(suite, durations, files?)` counts the checkout's test files:**
+  - a recorded file at its duration, and an unrecorded one at the median of the recorded, as `assignShards` weighs them;
+  - entries for deleted files are ignored.
+
+  Both plan jobs' sparse checkouts therefore carry the package's `src`. Before this, tests added between refreshes didn't raise N.
+- **`durationSequencer(BaseSequencer, durationsPath)` in the lib is both suites' sequencer.** It reads with `parseDurations`: a missing file splits by count, and a malformed one throws.
+- **`durationsRequired` is removed** (it was `true` for both suites by slice 5). This supersedes the slice-2 amendment.
+- **Two smaller changes:**
+  - Each sharded script deletes its report before running, so an unsharded run can't cache a stale one.
+  - `@jest/test-sequencer` is declared in `apps/web` and `apps/api`.
+
 ## Key decisions (flag for review)
 
 1. **One lib, two suites.**

@@ -75,7 +75,7 @@ const load = (shards, durations, fallback = 0) =>
   shards.map((s) => s.reduce((n, f) => n + (durations[f] ?? fallback), 0));
 
 const SUITE_FIELDS = [
-  "key", "title", "packageDir", "isTestPath", "durationsFile", "durationsRequired", "budgetSeconds",
+  "key", "title", "packageDir", "isTestPath", "durationsFile", "budgetSeconds",
   "minShards", "maxShards", "fallbackShards", "fileCeilingSeconds", "ceilingAllowlist", "shardVar",
   "turboFile", "turboTask", "reportFile", "artifactPrefix", "workflowFile", "driftIssueTitle",
   "skippable", "capAdvice",
@@ -404,6 +404,27 @@ const CASES = [
       },
     ];
   })(),
+  {
+    name: "planShards: unrecorded test files in the checkout count at the median",
+    // 4 recorded files of 100s (median 100) + 2 new ones = 600s at 150 → 4,
+    // where the recorded entries alone (400s) would plan 3.
+    run: () => {
+      const durations = { a: 100, b: 100, c: 100, d: 100 };
+      return planShards(INTEGRATION, durations, ["a", "b", "c", "d", "new1", "new2"]).count === 4 &&
+        planShards(INTEGRATION, durations).count === 3;
+    },
+  },
+  {
+    name: "planShards: an entry for a file the checkout no longer has doesn't count",
+    run: () => {
+      const plan = planShards(INTEGRATION, { a: 100, gone: 5000 }, ["a"]);
+      return plan.totalSeconds === 100 && plan.count === INTEGRATION.minShards;
+    },
+  },
+  {
+    name: "planShards: test files but nothing recorded → the fallback",
+    run: () => planShards(INTEGRATION, {}, ["a", "b"]).count === INTEGRATION.fallbackShards,
+  },
   ...[
     [{}, 3, false, "no recorded durations → the fallback"],
     [{ a: 400 }, 2, false, "a small suite → MIN"],
@@ -626,11 +647,7 @@ const argValue = (flag) => {
 };
 
 function checkDurations(suite) {
-  const durations = readDurations(suite, { allowMissing: !suite.durationsRequired });
-  if (durations === null) {
-    console.log(`${suite.key} durations: ${suite.durationsFile} not recorded yet; the planner uses the fallback`);
-    return true;
-  }
+  const durations = readDurations(suite, { allowMissing: false });
   const over = ceilingViolations(suite, durations);
   if (over.length) {
     for (const { file, seconds } of over) {
@@ -691,7 +708,9 @@ function updateDurations(suite) {
 
 function plan(suite) {
   // Missing means nothing recorded yet (the fallback count); malformed throws.
-  const result = planShards(suite, readDurations(suite, { allowMissing: true }) ?? {});
+  // The test files in the checkout count too, so tests added since the last
+  // refresh raise N (the plan job's sparse checkout carries the package's src).
+  const result = planShards(suite, readDurations(suite, { allowMissing: true }) ?? {}, testFiles(suite));
   setOutput("count", String(result.count));
   setOutput("matrix", JSON.stringify(result.matrix));
   setOutput("capped", String(result.capped));

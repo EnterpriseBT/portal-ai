@@ -161,9 +161,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # src, not just the durations file: tests added since the last
+          # refresh count toward N too.
           sparse-checkout: |
             scripts
-            apps/web/src/__tests__/durations.json
+            apps/web/src
           sparse-checkout-cone-mode: false
 
       - name: Plan the web shards
