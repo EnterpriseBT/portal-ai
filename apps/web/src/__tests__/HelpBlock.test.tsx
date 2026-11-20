@@ -114,6 +114,16 @@ describe("HelpBlockUI (#1049)", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows related entries as link chips, not a bulleted list", () => {
+    render(<HelpBlockUI content={content} linkComponent={Anchor} />);
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    const related = screen.getByTestId("help-block-related");
+    expect(
+      within(related).getByRole("link", { name: "Connector Instance" })
+    ).toBeInTheDocument();
+  });
+
   it("says no entry covers a question nothing matched, with a way into Help", () => {
     render(<HelpBlockUI content={noMatch} linkComponent={Anchor} />);
     expect(screen.getByText("No help entry covers this.")).toBeInTheDocument();

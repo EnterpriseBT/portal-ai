@@ -1,6 +1,8 @@
 import React from "react";
 
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Stack, Typography } from "@portalai/core/ui";
+import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
 import MuiLink from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 
@@ -29,8 +31,11 @@ const SURFACE_LABEL: Record<
  * own words sit outside this block. A question nothing matched shows that no
  * entry covers it, and a way into Help.
  *
- * Each block is a region named after its question (or, for a bare call, its
- * first entry), so several in one conversation are told apart.
+ * Each entry leads with a small surface chip and its title, then the body and
+ * an arrow link; entries are separated by dividers, and related entries are
+ * link chips rather than a list. Each block is a region named after its
+ * question (or, for a bare call, its first entry), so several in one
+ * conversation are told apart.
  */
 export const HelpBlockUI: React.FC<HelpBlockUIProps> = ({
   content,
@@ -46,7 +51,7 @@ export const HelpBlockUI: React.FC<HelpBlockUIProps> = ({
       data-testid="help-block"
       sx={{ p: 2 }}
     >
-      <Stack spacing={2}>
+      <Stack spacing={2} divider={<Divider flexItem />}>
         {content.noMatch ? (
           <Stack spacing={0.5}>
             <Typography variant="body2">No help entry covers this.</Typography>
@@ -55,27 +60,32 @@ export const HelpBlockUI: React.FC<HelpBlockUIProps> = ({
               href={content.helpUrl}
               variant="body2"
             >
-              Browse Help
+              Browse Help <span aria-hidden="true">→</span>
             </MuiLink>
           </Stack>
         ) : (
           content.entries.map((entry) => (
             <Stack
               key={`${entry.surface}:${entry.slug}`}
-              spacing={0.5}
+              spacing={1}
               data-testid={`help-block-entry-${entry.surface}-${entry.slug}`}
             >
-              <Typography variant="caption" color="text.secondary">
-                {SURFACE_LABEL[entry.surface]}
-              </Typography>
-              <Typography variant="subtitle2" component="p">
-                {entry.title}
-              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip
+                  label={SURFACE_LABEL[entry.surface]}
+                  size="small"
+                  variant="outlined"
+                />
+                <Typography variant="subtitle2" component="p">
+                  {entry.title}
+                </Typography>
+              </Stack>
               {/* pre-line keeps the entry's own line breaks, as the Help
                   page's accordions do. */}
               <Typography
                 variant="body2"
                 component="p"
+                color="text.secondary"
                 data-testid="help-block-body"
                 sx={{ whiteSpace: "pre-line" }}
               >
@@ -87,31 +97,31 @@ export const HelpBlockUI: React.FC<HelpBlockUIProps> = ({
                 variant="body2"
                 aria-label={`Open “${entry.title}” in Help`}
               >
-                Open in Help
+                Open in Help <span aria-hidden="true">→</span>
               </MuiLink>
             </Stack>
           ))
         )}
 
         {content.candidates.length > 0 && (
-          <Box>
+          <Stack spacing={1} data-testid="help-block-related">
             <Typography variant="caption" color="text.secondary" component="p">
               Related
             </Typography>
-            <Stack component="ul" spacing={0.25}>
+            <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1}>
               {content.candidates.map((c) => (
-                <li key={`${c.surface}:${c.slug}`}>
-                  <MuiLink
-                    component={linkComponent}
-                    href={c.url}
-                    variant="body2"
-                  >
-                    {c.title}
-                  </MuiLink>
-                </li>
+                <Chip
+                  key={`${c.surface}:${c.slug}`}
+                  label={c.title}
+                  size="small"
+                  variant="outlined"
+                  clickable
+                  component={linkComponent}
+                  href={c.url}
+                />
               ))}
             </Stack>
-          </Box>
+          </Stack>
         )}
       </Stack>
     </Paper>
