@@ -912,6 +912,37 @@ function promptSafeText(value: string | null, max = 120): string {
     .trim();
 }
 
+/** #801's longest limit on user-authored text (a description). */
+const CONTEXT_TEXT_MAX = 2000;
+
+/**
+ * The station context with every string value passed through
+ * {@link promptSafeText} (#1106), for `buildSystemPrompt` to render from.
+ * Names other users author (a station, an entity or column label, a
+ * spreadsheet header, a group, a connector, a custom pack's description)
+ * reach every member's turns, so none may start a line (a fake section),
+ * open a code span or hide text. Cleaning the whole context at the
+ * builder's entry covers each field, new ones included, without wrapping
+ * every interpolation. Valid keys, slugs, ids and timezones contain nothing
+ * it strips, so they come out identical; object keys (ids) and non-string
+ * values are kept. Returns a copy; the input isn't mutated.
+ */
+export function promptSafeContext(context: StationContext): StationContext {
+  const clean = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      return promptSafeText(value, CONTEXT_TEXT_MAX);
+    }
+    if (Array.isArray(value)) return value.map(clean);
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([k, v]) => [k, clean(v)])
+      );
+    }
+    return value;
+  };
+  return clean(context) as StationContext;
+}
+
 /** RFC 5321's limit on an address. */
 const EMAIL_MAX = 254;
 
@@ -960,7 +991,10 @@ function callerSection(caller: CallerIdentity): string[] {
  * Build the Claude system prompt from station name, entity schemas, and
  * entity group relationship metadata.
  */
-export function buildSystemPrompt(stationContext: StationContext): string {
+export function buildSystemPrompt(rawContext: StationContext): string {
+  // #1106: every user-authored string is cleaned once, here, so no
+  // interpolation below can carry a newline, control character or backtick.
+  const stationContext = promptSafeContext(rawContext);
   // #284: every capability claim below is assembled from the EFFECTIVE packs.
   // Hardcoding the list is what let a standard-tier agent announce charting
   // and forecasting it had no tools for.

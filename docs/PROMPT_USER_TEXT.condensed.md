@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#1106](https://github.com/EnterpriseBT/portal-ai/issues/1106) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
-**Why.** `buildSystemPrompt` interpolates names other users author with no cleaning: the station name in the opening line (`apps/api/src/prompts/system.prompt.ts:972`) and entity keys and labels in the roster (`:1175`), among others. A member who can rename a station can put a newline and a fake `## Who You're Talking To` section into every other user's turns on it. It grants no permissions, since every call is authorized against the turn's user, but it steers the agent in sessions that aren't the author's. #1100 cleaned only the caller's own name and email (`promptSafeText`). This applies that cleaning to all user-authored text in the context. `apps/api` only.
+**Why.** `buildSystemPrompt` interpolates names other users author with no cleaning: the station name in the opening line, entity keys and labels in the roster, and custom pack names, descriptions and tool names (`apps/api/src/prompts/system.prompt.ts`). Connector, entity-group and column names are in the context but render only as counts today. A member who can rename a station can put a newline and a fake `## Who You're Talking To` section into every other user's turns on it. It grants no permissions, since every call is authorized against the turn's user, but it steers the agent in sessions that aren't the author's. #1100 cleaned only the caller's own name and email (`promptSafeText`). This applies that cleaning to all user-authored text in the context. `apps/api` only.
 
 ## Current shape
 
