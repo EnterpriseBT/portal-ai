@@ -213,6 +213,7 @@ const {
   endsOnSelfContainedBlocks,
   narrationStepPrep,
   renderedBlockReminder,
+  NEXT_TOOL_REMINDER,
 } = await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -2803,8 +2804,9 @@ describe("narrationStepPrep (#1102)", () => {
         },
       ],
     });
-  const reminder = (r: { system?: string }) =>
-    r.system?.slice(`${SYSTEM}\n\n`.length);
+  const withReminders = (...parts: string[]) => ({
+    system: [SYSTEM, ...parts].join("\n\n"),
+  });
   const TABLE: Result = {
     toolName: "sql_query",
     output: { rows: [{ id: 1 }] },
@@ -2862,18 +2864,27 @@ describe("narrationStepPrep (#1102)", () => {
         },
       },
     ],
-  ])("reminds the step after %s, naming the tool", (_label, result) => {
-    const r = after([result as Result]);
-    expect(r.system?.startsWith(`${SYSTEM}\n\n`)).toBe(true);
-    expect(reminder(r)).toBe(
-      renderedBlockReminder([(result as Result).toolName], false)
-    );
-  });
+  ])(
+    "after %s: the block reminder naming the tool, then the next-tool reminder",
+    (_label, result) => {
+      expect(after([result as Result])).toEqual(
+        withReminders(
+          renderedBlockReminder([(result as Result).toolName], false),
+          NEXT_TOOL_REMINDER
+        )
+      );
+    }
+  );
 
   it("names only the rendered tools in a step that also ran a scalar tool", () => {
     const r = after([TABLE, SCALAR]);
-    expect(reminder(r)).toBe(renderedBlockReminder(["sql_query"], true));
-    expect(reminder(r)).not.toContain("`cluster`");
+    expect(r).toEqual(
+      withReminders(
+        renderedBlockReminder(["sql_query"], true),
+        NEXT_TOOL_REMINDER
+      )
+    );
+    expect(r.system).not.toContain("`cluster`");
   });
 
   it("leaves a failed call in the same step to be relayed", () => {
@@ -2882,25 +2893,36 @@ describe("narrationStepPrep (#1102)", () => {
       [TABLE],
       [{ toolName: "sql_query" }, { toolName: "geocode" }]
     );
-    expect(reminder(r)).toBe(renderedBlockReminder(["sql_query"], true));
-    expect(reminder(r)).toMatch(/including any that failed/);
+    expect(r).toEqual(
+      withReminders(
+        renderedBlockReminder(["sql_query"], true),
+        NEXT_TOOL_REMINDER
+      )
+    );
+    expect(r.system).toMatch(/including any that failed/);
   });
 
-  it("leaves a step after only a scalar result alone, so it can be explained", () => {
-    expect(after([SCALAR])).toEqual({});
+  // The #1102 smoke walk: "Let me peek at the data…" after a scalar result,
+  // and a preamble after a failed lookup, where no block had rendered.
+  it("gives only the next-tool reminder after a scalar result", () => {
+    expect(after([SCALAR])).toEqual(withReminders(NEXT_TOOL_REMINDER));
   });
 
-  it("leaves a step whose only call failed alone, so the failure is relayed", () => {
-    expect(after([], [{ toolName: "sql_query" }])).toEqual({});
+  it("gives only the next-tool reminder after a step whose only call failed", () => {
+    expect(after([], [{ toolName: "sql_query" }])).toEqual(
+      withReminders(NEXT_TOOL_REMINDER)
+    );
+  });
+
+  it("tolerates a non-object tool output (no block, still a tool step)", () => {
+    expect(after([{ toolName: "sql_query", output: "oops" }])).toEqual(
+      withReminders(NEXT_TOOL_REMINDER)
+    );
   });
 
   it("leaves the first step and a step after a text-only step alone", () => {
     expect(prep({ steps: [] })).toEqual({});
     expect(prep({ steps: [{ toolCalls: [], toolResults: [] }] })).toEqual({});
-  });
-
-  it("tolerates a non-object tool output", () => {
-    expect(after([{ toolName: "sql_query", output: "oops" }])).toEqual({});
   });
 });
 
@@ -2914,9 +2936,10 @@ describe("renderedBlockReminder (#1102)", () => {
     expect(text).toMatch(
       /If it answers the user's question, give that answer in one sentence/
     );
-    expect(text).toMatch(/call the next tool with no text before it/);
     expect(text).not.toMatch(/above/);
     expect(text).not.toMatch(/explain or relay/);
+    // The next-tool rule is NEXT_TOOL_REMINDER's, said once.
+    expect(text).not.toMatch(/next tool/);
   });
 
   it("names several tools once each", () => {
@@ -2930,6 +2953,18 @@ describe("renderedBlockReminder (#1102)", () => {
   it("scopes itself when the step ran other tools", () => {
     expect(renderedBlockReminder(["sql_query"], true)).toMatch(
       /This covers only those results: explain or relay your other tool results from that step as usual, including any that failed\./
+    );
+  });
+});
+
+describe("NEXT_TOOL_REMINDER (#1102)", () => {
+  it("puts no text before another tool call and keeps explanation for the reply", () => {
+    expect(NEXT_TOOL_REMINDER).toMatch(
+      /If you call another tool, call it with no text before it/
+    );
+    expect(NEXT_TOOL_REMINDER).toMatch(/"Let me…", "Now…"/);
+    expect(NEXT_TOOL_REMINDER).toMatch(
+      /Keep any explanation for your reply after your last tool call/
     );
   });
 });

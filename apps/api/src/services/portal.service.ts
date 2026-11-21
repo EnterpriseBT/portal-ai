@@ -200,8 +200,7 @@ export function renderedBlockReminder(
     `${subject} already on screen as a block. Don't list or restate the ` +
     "block's rows or contents. If it answers the user's question, give " +
     "that answer in one sentence; otherwise reply with nothing, or with one " +
-    "sentence the block doesn't show. If more work is needed, call the next " +
-    "tool with no text before it." +
+    "sentence the block doesn't show." +
     (stepHadOtherCalls
       ? " This covers only those results: explain or relay your other tool " +
         "results from that step as usual, including any that failed."
@@ -210,12 +209,26 @@ export function renderedBlockReminder(
 }
 
 /**
+ * The reminder added to every step after a step that called tools (#1102).
+ * The smoke walk saw preambles between calls ("Let me peek at the data…",
+ * "Now charting them:") after scalar results and rendered blocks alike, with
+ * Response Style in the prompt; this repeats the rule at each step where a
+ * next call can come. Explanation isn't forbidden, only moved after the last
+ * call.
+ */
+export const NEXT_TOOL_REMINDER =
+  "If you call another tool, call it with no text before it: no " +
+  '"Let me…", "Now…" or note of what you found so far. Keep any ' +
+  "explanation for your reply after your last tool call.";
+
+/**
  * The `prepareStep` for a portal turn (#1102): when results of the previous
  * step rendered display blocks (built-in or a custom tool's payload, both
  * via `resolveDisplayBlock`), that step's system prompt gains
  * {@link renderedBlockReminder} naming those tools. The turn carries on, so
- * a table can still be charted; a step whose results rendered nothing (a
- * scalar result, a failed call) gets no reminder.
+ * a table can still be charted. Every step after a step that called tools
+ * also gets {@link NEXT_TOOL_REMINDER}, whether or not anything rendered.
+ * The first step, and a step after a text-only step, get nothing.
  */
 export function narrationStepPrep(system: string) {
   return ({
@@ -227,7 +240,9 @@ export function narrationStepPrep(system: string) {
     }>;
   }): { system?: string } => {
     const last = steps[steps.length - 1];
-    if (!last) return {};
+    // A failed call has no result, so count calls, not results.
+    const calls = last?.toolCalls?.length ?? last?.toolResults.length ?? 0;
+    if (!last || calls === 0) return {};
     // Arrays included: resolveDisplayBlock renders a bare row array as a
     // table, exactly as handleToolResult passes it.
     const rendered = last.toolResults
@@ -241,12 +256,12 @@ export function narrationStepPrep(system: string) {
           ) !== null
       )
       .map((r) => r.toolName);
-    if (rendered.length === 0) return {};
-    // A failed call has no result, so count calls, not results.
-    const calls = last.toolCalls?.length ?? last.toolResults.length;
-    return {
-      system: `${system}\n\n${renderedBlockReminder(rendered, calls > rendered.length)}`,
-    };
+    const reminders =
+      rendered.length > 0
+        ? [renderedBlockReminder(rendered, calls > rendered.length)]
+        : [];
+    reminders.push(NEXT_TOOL_REMINDER);
+    return { system: [system, ...reminders].join("\n\n") };
   };
 }
 
