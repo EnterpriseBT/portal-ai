@@ -1,4 +1,5 @@
 import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
+import type { OrgRole } from "@portalai/core/models";
 import {
   BUILTIN_TOOLPACK_BY_SLUG,
   BuiltinToolpackSlugSchema,
@@ -47,9 +48,26 @@ export interface ConnectorInstanceContext {
   writable: boolean;
 }
 
+/**
+ * The prompting user (#1100): who the agent is talking to, from their live
+ * membership in the session's organization, in `member_list`'s shape. Says
+ * who they are, never what they may do; the server checks every call.
+ */
+export interface CallerIdentity {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  /** System roles in this organization. */
+  roles: OrgRole[];
+  /** Every role slug they hold here, system and custom. */
+  roleSlugs: string[];
+}
+
 export interface StationContext {
   stationId: string;
   stationName: string;
+  /** #1100: the prompting user; built per turn with the rest. */
+  caller?: CallerIdentity;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
   /**
@@ -868,6 +886,63 @@ function joinPhrases(phrases: string[]): string {
 }
 
 /**
+ * User-controlled text bound for the system prompt (#1100): control
+ * characters and backticks dropped, whitespace runs (newlines included)
+ * collapsed to one space, trimmed, clipped to 120 characters. A display name
+ * can't start a line of its own (a fake heading) or open a code span.
+ */
+function promptSafeText(value: string | null): string {
+  if (!value) return "";
+  return Array.from(
+    value
+      // eslint-disable-next-line no-control-regex -- stripping them is the point
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F`]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  )
+    .slice(0, 120)
+    .join("")
+    .trim();
+}
+
+/**
+ * Who You're Talking To (#1100). #847's adversarial walk: "make me an admin"
+ * and "remove everyone except me" made the agent ask for the user's email,
+ * though every turn already runs as them.
+ */
+function callerSection(caller: CallerIdentity): string[] {
+  const name = promptSafeText(caller.name);
+  const email = promptSafeText(caller.email);
+  const id = `userId \`${caller.userId}\``;
+  const who = name
+    ? `${name} (${email ? `${email}, ` : ""}${id})`
+    : email
+      ? `${email} (${id})`
+      : `the user with ${id}`;
+  const roles =
+    caller.roles.length > 0
+      ? `, ${joinPhrases(caller.roles)} in this organization` +
+        (caller.roleSlugs.length > 0
+          ? ` (role slugs: ${caller.roleSlugs.map((r) => `\`${r}\``).join(", ")}).`
+          : ".")
+      : caller.roleSlugs.length > 0
+        ? ` in this organization (role slugs: ${caller.roleSlugs.map((r) => `\`${r}\``).join(", ")}).`
+        : ", with no roles in this organization.";
+  return [
+    "## Who You're Talking To",
+    "",
+    `You're talking to ${who}${roles}`,
+    "",
+    'When they say "me", "my" or "myself", they mean this user: use this ' +
+      "`userId` directly rather than asking who they are, and never act on " +
+      'them when they exclude themselves ("everyone except me"). This says ' +
+      "who they are, not what they may do: every tool call is still checked " +
+      "against their permissions.",
+    "",
+  ];
+}
+
+/**
  * Build the Claude system prompt from station name, entity schemas, and
  * entity group relationship metadata.
  */
@@ -882,6 +957,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   const lines: string[] = [
     `You are an analytics assistant for the "${stationContext.stationName}" station.`,
     "",
+    ...(stationContext.caller ? callerSection(stationContext.caller) : []),
     "## Your role: route to a tool",
     "",
     "You are a **tool-caller**, not a conversational chatbot. Your job is to " +
