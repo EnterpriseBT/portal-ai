@@ -897,6 +897,15 @@ const PROMPT_UNSAFE_CHARS =
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF`]/g;
 
 /**
+ * True when `promptSafeText` would change a string that fits its cap: an
+ * unsafe character, whitespace other than a single space, a run of spaces,
+ * or a leading or trailing space. Not global, so `test` keeps no state.
+ */
+const NEEDS_CLEANING = new RegExp(
+  `${PROMPT_UNSAFE_CHARS.source}|[^\\S ]| {2}|^ | $`
+);
+
+/**
  * User-controlled text bound for the system prompt (#1100): unsafe
  * characters dropped, whitespace runs (newlines included) collapsed to one
  * space, trimmed, clipped to `max` characters. A display name can't start a
@@ -904,6 +913,10 @@ const PROMPT_UNSAFE_CHARS =
  */
 function promptSafeText(value: string | null, max = 120): string {
   if (!value) return "";
+  // Fast path (#1106): most text is already clean, and every string in the
+  // context passes through here on every turn. A string that fits in `max`
+  // UTF-16 units fits in `max` code points, so it needs no clip either.
+  if (value.length <= max && !NEEDS_CLEANING.test(value)) return value;
   return Array.from(
     value.replace(PROMPT_UNSAFE_CHARS, "").replace(/\s+/g, " ").trim()
   )
@@ -912,8 +925,20 @@ function promptSafeText(value: string | null, max = 120): string {
     .trim();
 }
 
-/** #801's longest limit on user-authored text (a description). */
-const CONTEXT_TEXT_MAX = 2000;
+/** #801's limits on user-authored text, by the field that holds it. */
+const NAME_TEXT_MAX = 120;
+const DESCRIPTION_TEXT_MAX = 2000;
+
+/** The cap for a string in the context, by its field name (an array's
+ *  elements take the array's). Stored rows can predate #801, so a name is
+ *  held to a name's limit here too. An email is never clipped: the caller
+ *  section leaves out one past RFC 5321's limit instead. */
+const contextTextMax = (field: string | undefined): number =>
+  field === "description"
+    ? DESCRIPTION_TEXT_MAX
+    : field === "email"
+      ? Infinity
+      : NAME_TEXT_MAX;
 
 /**
  * The station context with every string value passed through
@@ -921,21 +946,22 @@ const CONTEXT_TEXT_MAX = 2000;
  * Names other users author (a station, an entity or column label, a
  * spreadsheet header, a group, a connector, a custom pack's description)
  * reach every member's turns, so none may start a line (a fake section),
- * open a code span or hide text. Cleaning the whole context at the
+ * open a code span or hide text. Each is capped by its field (see
+ * `contextTextMax`). Cleaning the whole context at the
  * builder's entry covers each field, new ones included, without wrapping
  * every interpolation. Valid keys, slugs, ids and timezones contain nothing
  * it strips, so they come out identical; object keys (ids) and non-string
  * values are kept. Returns a copy; the input isn't mutated.
  */
 export function promptSafeContext(context: StationContext): StationContext {
-  const clean = (value: unknown): unknown => {
+  const clean = (value: unknown, field?: string): unknown => {
     if (typeof value === "string") {
-      return promptSafeText(value, CONTEXT_TEXT_MAX);
+      return promptSafeText(value, contextTextMax(field));
     }
-    if (Array.isArray(value)) return value.map(clean);
+    if (Array.isArray(value)) return value.map((v) => clean(v, field));
     if (value !== null && typeof value === "object") {
       return Object.fromEntries(
-        Object.entries(value).map(([k, v]) => [k, clean(v)])
+        Object.entries(value).map(([k, v]) => [k, clean(v, k)])
       );
     }
     return value;
@@ -1003,7 +1029,10 @@ export function buildSystemPrompt(rawContext: StationContext): string {
   const requestShapes = joinPhrases(sections.flatMap((s) => s.requestShapes));
 
   const lines: string[] = [
-    `You are an analytics assistant for the "${stationContext.stationName}" station.`,
+    // #1106: a name that cleans to nothing reads as "this station".
+    stationContext.stationName
+      ? `You are an analytics assistant for the "${stationContext.stationName}" station.`
+      : "You are an analytics assistant for this station.",
     "",
     ...(stationContext.caller ? callerSection(stationContext.caller) : []),
     "## Your role: route to a tool",
@@ -1206,7 +1235,11 @@ export function buildSystemPrompt(rawContext: StationContext): string {
   } else {
     lines.push("Entities on this station:");
     for (const entity of stationContext.entities) {
-      lines.push(`- \`${entity.key}\` — ${entity.label}`);
+      lines.push(
+        entity.label
+          ? `- \`${entity.key}\` — ${entity.label}`
+          : `- \`${entity.key}\``
+      );
     }
     lines.push("");
     lines.push(

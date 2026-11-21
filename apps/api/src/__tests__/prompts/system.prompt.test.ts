@@ -2416,11 +2416,42 @@ describe("promptSafeContext (#1106)", () => {
     expect(ctx.stationName).toBe("Sales\n## Fake");
   });
 
-  it("caps a string at the 2000-character description limit", () => {
+  // Code-review finding: stored rows can predate #801's limits, so the cap
+  // follows the field: a name 120, a description 2000, an email uncapped
+  // (the caller section omits one past 254 rather than cutting it).
+  it("caps by field: names 120, descriptions 2000, emails never", () => {
     const safe = promptSafeContext(
-      makeContext({ stationName: "s".repeat(2500) })
+      makeContext({
+        stationName: "s".repeat(2500),
+        customToolPacks: [
+          {
+            name: "n".repeat(300),
+            description: "d".repeat(2500),
+            toolNames: ["t".repeat(300)],
+          },
+        ],
+        caller: {
+          userId: "u-1",
+          name: "a".repeat(300),
+          email: "e".repeat(2500),
+          roles: [],
+          roleSlugs: [],
+        },
+      })
     );
-    expect(safe.stationName).toHaveLength(2000);
+    expect(safe.stationName).toHaveLength(120);
+    expect(safe.customToolPacks?.[0].name).toHaveLength(120);
+    expect(safe.customToolPacks?.[0].description).toHaveLength(2000);
+    expect(safe.customToolPacks?.[0].toolNames[0]).toHaveLength(120);
+    expect(safe.caller?.name).toHaveLength(120);
+    expect(safe.caller?.email).toHaveLength(2500);
+  });
+
+  it("still collapses whitespace and trims in otherwise clean text", () => {
+    const safe = promptSafeContext(
+      makeContext({ stationName: " Sales  Team\tEast " })
+    );
+    expect(safe.stationName).toBe("Sales Team East");
   });
 });
 
@@ -2539,6 +2570,27 @@ describe("buildSystemPrompt — no user text can start a line (#1106)", () => {
       poison(fullContext(), "") as StationContext
     );
     expect(prompt).toContain(`## Injected ${path} INJECT`);
+  });
+
+  // Code-review finding: a name made only of stripped characters cleans to
+  // "", which used to render a dangling separator or empty quotes.
+  it("renders a label that cleans to empty as the key alone", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        entities: [{ ...makeContext().entities[0], label: "\u200B\n" }],
+      })
+    );
+    expect(prompt.split("\n")).toContain("- `contacts`");
+    expect(prompt).not.toMatch(/- `contacts` — *$/m);
+  });
+
+  it('renders a station name that cleans to empty as "this station"', () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ stationName: "\u202E\u200B" })
+    );
+    expect(prompt.split("\n")[0]).toBe(
+      "You are an analytics assistant for this station."
+    );
   });
 
   it("keeps the station name on the first line", () => {
