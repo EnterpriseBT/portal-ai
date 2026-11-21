@@ -209,15 +209,17 @@ export function renderedBlockReminder(
 }
 
 /**
- * The reminder added to every step after a step that called tools (#1102).
- * The smoke walk saw preambles between calls ("Let me peek at the data…",
- * "Now charting them:") after scalar results and rendered blocks alike, with
- * Response Style in the prompt; this repeats the rule at each step where a
- * next call can come. Explanation isn't forbidden, only moved after the last
- * call.
+ * The reminder added to every step of a turn (#1102). The smoke walk saw
+ * preambles between calls ("Let me peek at the data…", "Now charting
+ * them:") after scalar results and rendered blocks alike, and in a turn's
+ * first step ("Let me look up both the pending invitations…"), with
+ * Response Style in the prompt; this repeats the rule at the end of the
+ * system prompt on every step. Explanation isn't forbidden, only moved after
+ * the last call, and a step with no tool call (a clarifying question) is
+ * untouched by it.
  */
 export const NEXT_TOOL_REMINDER =
-  "If you call another tool, call it with no text before it: no " +
+  "When you call a tool, call it with no text before it: no " +
   '"Let me…", "Now…" or note of what you found so far. Keep any ' +
   "explanation for your reply after your last tool call.";
 
@@ -226,9 +228,8 @@ export const NEXT_TOOL_REMINDER =
  * step rendered display blocks (built-in or a custom tool's payload, both
  * via `resolveDisplayBlock`), that step's system prompt gains
  * {@link renderedBlockReminder} naming those tools. The turn carries on, so
- * a table can still be charted. Every step after a step that called tools
- * also gets {@link NEXT_TOOL_REMINDER}, whether or not anything rendered.
- * The first step, and a step after a text-only step, get nothing.
+ * a table can still be charted. Every step, the first included, gets
+ * {@link NEXT_TOOL_REMINDER}.
  */
 export function narrationStepPrep(system: string) {
   return ({
@@ -240,9 +241,9 @@ export function narrationStepPrep(system: string) {
     }>;
   }): { system?: string } => {
     const last = steps[steps.length - 1];
+    if (!last) return { system: `${system}\n\n${NEXT_TOOL_REMINDER}` };
     // A failed call has no result, so count calls, not results.
-    const calls = last?.toolCalls?.length ?? last?.toolResults.length ?? 0;
-    if (!last || calls === 0) return {};
+    const calls = last.toolCalls?.length ?? last.toolResults.length;
     // Arrays included: resolveDisplayBlock renders a bare row array as a
     // table, exactly as handleToolResult passes it.
     const rendered = last.toolResults

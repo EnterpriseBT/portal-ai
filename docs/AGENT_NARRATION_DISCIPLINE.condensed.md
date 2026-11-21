@@ -51,9 +51,9 @@ The Good/Bad example stays.
 - says to answer the user's question in one sentence when the block holds the answer ("Q3 revenue was $1.24M."), and otherwise to write nothing or one sentence the block doesn't show;
 - when the step also ran other tools, scopes itself to the rendered results, so the others (a scalar result, a failed call) are still explained or relayed.
 
-**After every step that called tools**, whether or not anything rendered, it also appends `NEXT_TOOL_REMINDER`: call any further tool with no text before it ("Let me…", "Now…" or a note of what was found), and keep explanation for the reply after the last call. The smoke walk showed preambles between calls after scalar results and blocks alike, so the block reminder alone wasn't enough.
+**On every step, the first included,** it also appends `NEXT_TOOL_REMINDER`: call any tool with no text before it ("Let me…", "Now…" or a note of what was found), and keep explanation for the reply after the last call. The smoke walk showed preambles between calls after scalar results and blocks alike, and in a turn's first step. A step with no tool call (a clarifying question) is unaffected.
 
-**The first step, and a step after a text-only step,** get nothing.
+**Accepted residual (smoke, 2026-11-21):** in multi-call turns the model still sometimes writes a sentence between calls despite both reminders. Removing that reliably would take runtime text filtering, which is out of scope.
 
 Keying on the produced block covers custom tools. The turn continues, so chaining (query → chart) still works. Nothing is cached on this call, so the per-step system change costs nothing extra.
 
@@ -69,7 +69,7 @@ Keying on the produced block covers custom tools. The turn continues, so chainin
 **Slice 2: `prepareStep`.**
 - **Files:** `portal.service.ts`.
 - **Tests:**
-  - `apps/api/src/__tests__/services/portal.service.test.ts` drives `narrationStepPrep` directly. The reminder fires after a data-table, bare row array, d3, geo, mutation or custom `type:"data-table"` result, naming that tool. In a step that also ran a scalar tool or had a failed call, it names only the rendered tools and scopes itself. After only a scalar result, a failed-only step or a non-object output, only `NEXT_TOOL_REMINDER` is added. Nothing is added on step 0 or after a text-only step. `renderedBlockReminder` and `NEXT_TOOL_REMINDER` wording are pinned separately.
+  - `apps/api/src/__tests__/services/portal.service.test.ts` drives `narrationStepPrep` directly. The reminder fires after a data-table, bare row array, d3, geo, mutation or custom `type:"data-table"` result, naming that tool. In a step that also ran a scalar tool or had a failed call, it names only the rendered tools and scopes itself. After only a scalar result, a failed-only step or a non-object output, on step 0, or after a text-only step, only `NEXT_TOOL_REMINDER` is added. `renderedBlockReminder` and `NEXT_TOOL_REMINDER` wording are pinned separately.
   - A `MockLanguageModelV3` test, in the style of `portal-tool-error.contract.test.ts`, asserts the second call's system prompt carries the reminder and the first's doesn't. It's deterministic and uses no tokens.
 
 `npm run test:unit` (api), `type-check`, `lint`.

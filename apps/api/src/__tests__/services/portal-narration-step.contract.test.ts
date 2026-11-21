@@ -86,7 +86,7 @@ describe("narrationStepPrep through streamText (#1102)", () => {
     const systems = await systemsFor("sql_query", { rows: [{ id: 1 }] });
     expect(systems).toHaveLength(2);
     expect(systems[0]).not.toContain("already on screen");
-    expect(systems[0]).not.toContain(NEXT_TOOL_REMINDER);
+    expect(systems[0]).toContain(NEXT_TOOL_REMINDER);
     expect(systems[1]).toContain(renderedBlockReminder(["sql_query"], false));
     expect(systems[1]).toContain(NEXT_TOOL_REMINDER);
     expect(systems[1]).toContain("base prompt");

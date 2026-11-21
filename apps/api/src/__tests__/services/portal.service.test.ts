@@ -2920,9 +2920,13 @@ describe("narrationStepPrep (#1102)", () => {
     );
   });
 
-  it("leaves the first step and a step after a text-only step alone", () => {
-    expect(prep({ steps: [] })).toEqual({});
-    expect(prep({ steps: [{ toolCalls: [], toolResults: [] }] })).toEqual({});
+  // The #1102 rerun: "Let me look up both the pending invitations…" came in
+  // the turn's first step, so the reminder applies from step 0.
+  it("gives the first step, and a step after text only, the next-tool reminder", () => {
+    expect(prep({ steps: [] })).toEqual(withReminders(NEXT_TOOL_REMINDER));
+    expect(prep({ steps: [{ toolCalls: [], toolResults: [] }] })).toEqual(
+      withReminders(NEXT_TOOL_REMINDER)
+    );
   });
 });
 
@@ -2960,7 +2964,7 @@ describe("renderedBlockReminder (#1102)", () => {
 describe("NEXT_TOOL_REMINDER (#1102)", () => {
   it("puts no text before another tool call and keeps explanation for the reply", () => {
     expect(NEXT_TOOL_REMINDER).toMatch(
-      /If you call another tool, call it with no text before it/
+      /When you call a tool, call it with no text before it/
     );
     expect(NEXT_TOOL_REMINDER).toMatch(/"Let me…", "Now…"/);
     expect(NEXT_TOOL_REMINDER).toMatch(
