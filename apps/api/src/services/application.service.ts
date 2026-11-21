@@ -71,13 +71,24 @@ function backOffInviteRecheck(userId: string, now: number): void {
 
 export class ApplicationService {
   static async getCurrentOrganization(userId: string) {
-    const [orgUser] = await db
-      .select()
+    const [row] = await db
+      .select({
+        organizationUser: organizationUsers,
+        organization: organizations,
+      })
       .from(organizationUsers)
+      // Inner join on a live org: a membership left live under a tombstoned
+      // org (an operator delete before #1088) must not win the pick, or the
+      // user resolves to no org while their other orgs are fine.
+      .innerJoin(
+        organizations,
+        eq(organizationUsers.organizationId, organizations.id)
+      )
       .where(
         and(
           eq(organizationUsers.userId, userId),
-          isNull(organizationUsers.deleted)
+          isNull(organizationUsers.deleted),
+          isNull(organizations.deleted)
         )
       )
       // NULLS LAST: Postgres sorts NULLS FIRST under DESC, so a membership
@@ -87,15 +98,7 @@ export class ApplicationService {
       .orderBy(sql`${organizationUsers.lastLogin} DESC NULLS LAST`)
       .limit(1);
 
-    if (!orgUser) {
-      return null;
-    }
-
-    const organization = await DbService.repository.organizations.findById(
-      orgUser.organizationId
-    );
-
-    return organization ? { organization, organizationUser: orgUser } : null;
+    return row ?? null;
   }
 
   /**
