@@ -170,6 +170,8 @@ describe("Portal Router", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.payload.portalId).toBeTruthy();
       expect(res.body.payload.stationContext).toBeDefined();
+      // #1100: the caller's identity is for the prompt, not the response.
+      expect(res.body.payload.stationContext).not.toHaveProperty("caller");
     });
 
     it("returns 404 when station does not exist", async () => {

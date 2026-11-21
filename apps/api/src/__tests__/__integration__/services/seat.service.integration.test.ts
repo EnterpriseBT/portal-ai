@@ -19,6 +19,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, and, like } from "drizzle-orm";
 import postgres from "postgres";
 
+import {
+  GroupModelFactory,
+  RoleModelFactory,
+  UserGroupModelFactory,
+  UserRoleModelFactory,
+} from "@portalai/core/models";
+
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { SeatService } from "../../../services/seat.service.js";
@@ -485,6 +492,90 @@ describe("SeatService Integration Tests", () => {
     expect(
       (invitations[0] as Record<string, unknown>).tokenHash
     ).toBeUndefined();
+  });
+
+  // ── getMember (#1100) ───────────────────────────────────────────────
+
+  it("getMember returns the caller in listMembers' shape, without groups", async () => {
+    const group = new GroupModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        name: `G ${generateId().slice(0, 6)}`,
+        description: null,
+      })
+      .parse();
+    await asDrizzle()
+      .insert(schema.groups)
+      .values(group as never);
+    await asDrizzle()
+      .insert(schema.userGroup)
+      .values(
+        new UserGroupModelFactory()
+          .create("system")
+          .update({ userId: ownerId, organizationId: orgId, groupId: group.id })
+          .parse() as never
+      );
+    const [listed] = await SeatService.listMembers(owner);
+    expect(listed.groupIds).toEqual([group.id]);
+    const member = await SeatService.getMember(orgId, ownerId);
+    // The portal prompt doesn't use groups, so getMember skips that query.
+    expect(member).toEqual({ ...listed, groupIds: [] });
+    expect(member?.roles).toEqual(["owner"]);
+  });
+
+  it("getMember includes an assigned custom role's slug", async () => {
+    const role = new RoleModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        name: `Analyst ${generateId().slice(0, 6)}`,
+        slug: `analyst-${generateId().slice(0, 6)}`,
+        kind: "custom",
+      })
+      .parse();
+    await asDrizzle()
+      .insert(schema.roles)
+      .values(role as never);
+    await asDrizzle()
+      .insert(schema.userRole)
+      .values(
+        new UserRoleModelFactory()
+          .create("system")
+          .update({ userId: ownerId, organizationId: orgId, roleId: role.id })
+          .parse() as never
+      );
+    const member = await SeatService.getMember(orgId, ownerId);
+    expect(member?.roleSlugs).toContain(role.slug);
+  });
+
+  it("getMember is null for a user of another organization", async () => {
+    const other = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(other as never);
+    const otherOrg = createOrganization(other.id);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(otherOrg as never);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(otherOrg.id, other.id, {
+          role: "owner",
+        }) as never
+      );
+    expect(await SeatService.getMember(orgId, other.id)).toBeNull();
+    // And this org's owner isn't a member there.
+    expect(await SeatService.getMember(otherOrg.id, ownerId)).toBeNull();
+  });
+
+  it("getMember is null for a removed member", async () => {
+    await asDrizzle()
+      .update(schema.organizationUsers)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.organizationUsers.userId, ownerId));
+    expect(await SeatService.getMember(orgId, ownerId)).toBeNull();
   });
 
   // ── seat usage (#585) ───────────────────────────────────────────────

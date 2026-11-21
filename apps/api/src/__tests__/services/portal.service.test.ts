@@ -162,6 +162,20 @@ jest.unstable_mockModule(
   })
 );
 
+// #1100: the turn's caller, named in the system prompt.
+const mockGetMember = jest.fn<() => Promise<unknown>>().mockResolvedValue({
+  userId: "user-001",
+  email: "ada@example.com",
+  name: "Ada Lovelace",
+  roles: ["owner"],
+  roleSlugs: ["owner"],
+  groupIds: [],
+  joinedAt: 1,
+});
+jest.unstable_mockModule("../../services/seat.service.js", () => ({
+  SeatService: { getMember: mockGetMember },
+}));
+
 // buildAnalyticsTools
 const mockBuildAnalyticsTools =
   jest.fn<() => Promise<Record<string, unknown>>>();
@@ -624,6 +638,62 @@ describe("PortalService", () => {
         ORG_ID,
         "user-001"
       );
+    });
+
+    // ── #1100: the caller's identity ──────────────────────────────────
+
+    const contextFor = async (userId: string) => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+      mockResolveGrantedViewColumns.mockResolvedValueOnce({
+        set: { canPerformAny: () => false },
+        views: [],
+      });
+      return buildStationContext({
+        station: { id: STATION_ID, name: "S" },
+        organizationId: ORG_ID,
+        userId,
+      });
+    };
+
+    it("#1100: names the turn's caller from their membership in this org", async () => {
+      const ctx = await contextFor("user-001");
+      expect(mockGetMember).toHaveBeenCalledWith(ORG_ID, "user-001");
+      expect(ctx.caller).toEqual({
+        userId: "user-001",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        roles: ["owner"],
+        roleSlugs: ["owner"],
+      });
+    });
+
+    it("#1100: falls back to the userId alone when the lookup fails", async () => {
+      mockGetMember.mockRejectedValueOnce(new Error("pool exhausted"));
+      const ctx = await contextFor("user-500");
+      expect(ctx.caller).toEqual({
+        userId: "user-500",
+        name: null,
+        email: null,
+        roles: [],
+        roleSlugs: [],
+      });
+    });
+
+    it("#1100: falls back to the userId alone when no membership is found", async () => {
+      mockGetMember.mockResolvedValueOnce(null);
+      const ctx = await contextFor("user-404");
+      expect(ctx.caller).toEqual({
+        userId: "user-404",
+        name: null,
+        email: null,
+        roles: [],
+        roleSlugs: [],
+      });
     });
 
     // ── #599: view-scoping (the OQ2 roster leak fix) ──────────────────

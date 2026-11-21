@@ -32,6 +32,7 @@ import type { EntitySchema } from "./analytics.service.js";
 import { scopeEntityGroupsToEntities } from "../utils/entity-group-scope.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { StationAttachmentService } from "./station-attachment.service.js";
+import { SeatService } from "./seat.service.js";
 import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
@@ -52,7 +53,10 @@ import { getRedisClient } from "../utils/redis.util.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorInstancesRepo } from "../db/repositories/connector-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
-import type { ConnectorInstanceContext } from "../prompts/system.prompt.js";
+import type {
+  CallerIdentity,
+  ConnectorInstanceContext,
+} from "../prompts/system.prompt.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -1497,6 +1501,33 @@ export async function buildStationContext(args: {
 }): Promise<StationContext> {
   const { station, organizationId, userId } = args;
 
+  // #1100: who the agent is talking to, from the same request identity that
+  // authorizes the turn, scoped to this organization. Started now, since it
+  // depends on nothing below. A missing membership (proven upstream) or a
+  // failed lookup degrades to the id alone; it never fails a turn.
+  const callerPromise: Promise<CallerIdentity> = SeatService.getMember(
+    organizationId,
+    userId
+  )
+    .catch((error: unknown) => {
+      logger.warn(
+        { organizationId, userId, error },
+        "Caller lookup failed; the prompt names the userId only"
+      );
+      return null;
+    })
+    .then((member) =>
+      member
+        ? {
+            userId,
+            name: member.name,
+            email: member.email,
+            roles: member.roles,
+            roleSlugs: member.roleSlugs,
+          }
+        : { userId, name: null, email: null, roles: [], roleSlugs: [] }
+    );
+
   // The station's packs — built-in and custom — from the one derivation that
   // reads both columns of the join table (#306).
   //
@@ -1574,6 +1605,7 @@ export async function buildStationContext(args: {
   return {
     stationId: station.id,
     stationName: station.name,
+    caller: await callerPromise,
     organizationTimezone,
     entities,
     // #648: scope the entity-group section to the same granted views as the
