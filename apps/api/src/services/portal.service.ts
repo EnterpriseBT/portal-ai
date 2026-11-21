@@ -178,6 +178,95 @@ export function endsOnSelfContainedBlocks({
 }
 
 /**
+ * The reminder added to the system prompt for the step after a result that
+ * rendered a block (#1102). Walks saw the agent list the invitations or rows
+ * it had just shown; Response Style alone didn't hold, so the rule is
+ * repeated at the one step where a recap happens. It names the tools whose
+ * results rendered (the system prompt sits before the messages, so "the
+ * result above" would point nowhere), keeps the answer to a question the
+ * block holds ("Q3 revenue was $1.24M."), and, when the step ran other
+ * tools, leaves their results to be explained or relayed as usual.
+ */
+export function renderedBlockReminder(
+  renderedTools: readonly string[],
+  stepHadOtherCalls: boolean
+): string {
+  const names = [...new Set(renderedTools)].map((t) => `\`${t}\``);
+  const subject =
+    names.length === 1
+      ? `The result of ${names[0]} is`
+      : `The results of ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are`;
+  return (
+    `${subject} already on screen as a block. Don't list or restate the ` +
+    "block's rows or contents. If it answers the user's question, give " +
+    "that answer in one sentence; otherwise reply with nothing, or with one " +
+    "sentence the block doesn't show." +
+    (stepHadOtherCalls
+      ? " This covers only those results: explain or relay your other tool " +
+        "results from that step as usual, including any that failed."
+      : "")
+  );
+}
+
+/**
+ * The reminder added to every step of a turn (#1102). The smoke walk saw
+ * preambles between calls ("Let me peek at the data…", "Now charting
+ * them:") after scalar results and rendered blocks alike, and in a turn's
+ * first step ("Let me look up both the pending invitations…"), with
+ * Response Style in the prompt; this repeats the rule at the end of the
+ * system prompt on every step. Explanation isn't forbidden, only moved after
+ * the last call, and a step with no tool call (a clarifying question) is
+ * untouched by it.
+ */
+export const NEXT_TOOL_REMINDER =
+  "When you call a tool, call it with no text before it: no " +
+  '"Let me…", "Now…" or note of what you found so far. Keep any ' +
+  "explanation for your reply after your last tool call.";
+
+/**
+ * The `prepareStep` for a portal turn (#1102): when results of the previous
+ * step rendered display blocks (built-in or a custom tool's payload, both
+ * via `resolveDisplayBlock`), that step's system prompt gains
+ * {@link renderedBlockReminder} naming those tools. The turn carries on, so
+ * a table can still be charted. Every step, the first included, gets
+ * {@link NEXT_TOOL_REMINDER}.
+ */
+export function narrationStepPrep(system: string) {
+  return ({
+    steps,
+  }: {
+    steps: ReadonlyArray<{
+      toolCalls?: ReadonlyArray<{ toolName: string }>;
+      toolResults: ReadonlyArray<{ toolName: string; output: unknown }>;
+    }>;
+  }): { system?: string } => {
+    const last = steps[steps.length - 1];
+    if (!last) return { system: `${system}\n\n${NEXT_TOOL_REMINDER}` };
+    // A failed call has no result, so count calls, not results.
+    const calls = last.toolCalls?.length ?? last.toolResults.length;
+    // Arrays included: resolveDisplayBlock renders a bare row array as a
+    // table, exactly as handleToolResult passes it.
+    const rendered = last.toolResults
+      .filter(
+        (r) =>
+          r.output !== null &&
+          typeof r.output === "object" &&
+          resolveDisplayBlock(
+            r.toolName,
+            r.output as Record<string, unknown>
+          ) !== null
+      )
+      .map((r) => r.toolName);
+    const reminders =
+      rendered.length > 0
+        ? [renderedBlockReminder(rendered, calls > rendered.length)]
+        : [];
+    reminders.push(NEXT_TOOL_REMINDER);
+    return { system: [system, ...reminders].join("\n\n") };
+  };
+}
+
+/**
  * A tool call's input as an object, whatever the stream produced (#1049).
  * When the model emits invalid JSON for a tool's input, the SDK hands back
  * the raw text; stored and later replayed as a string, it makes the model API
@@ -963,6 +1052,7 @@ export class PortalService {
       messages,
       tools: analyticsTools,
       stopWhen: [stepCountIs(10), endsOnSelfContainedBlocks],
+      prepareStep: narrationStepPrep(systemPrompt),
       maxRetries: 3,
     });
 

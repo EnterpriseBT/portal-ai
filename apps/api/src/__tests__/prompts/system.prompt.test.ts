@@ -2153,9 +2153,14 @@ describe("buildSystemPrompt — Members (#847)", () => {
     // invitee uses the button. Nothing is emailed; the button is the user's.
     expect(members).toMatch(/No email is sent/);
     expect(members).toMatch(/the user \(not the invitee\) gets the link/);
-    // #847 adversarial walk: "I'll send the invitations" before acting.
+    // #847 adversarial walk: "I'll send the invitations" before acting. The
+    // result says an invitation was created, which reads easily as "sent", so
+    // Members keeps this beside #1102's general tool-call rule.
     expect(members).toMatch(
       /Never say, before or after acting,\s+that you send, email or deliver an invitation/
+    );
+    expect(withMembers()).toMatch(
+      /Describe what you did only from your tool calls/
     );
     // The turn ends on invitation blocks (`endsOnSelfContainedBlocks`).
     expect(members).toMatch(/invitation blocks are your whole answer/);
@@ -2180,5 +2185,48 @@ describe("buildSystemPrompt — Members (#847)", () => {
     const members = section(withMembers());
     expect(members).toMatch(/replaces the\s+member's whole role set/);
     expect(members).toMatch(/`roleSlugs` from `member_list`/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Response Style wording (#1102)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Response Style wording (#1102)", () => {
+  const style = () => {
+    const prompt = buildSystemPrompt(makeContext());
+    return prompt.slice(prompt.indexOf("## Response Style"));
+  };
+
+  it("makes the tool call the first output of a turn that needs one", () => {
+    expect(style()).toMatch(/the tool call is the first thing you output/i);
+    expect(style()).toMatch(/"Let me…", "I'll…" or "First, …"/);
+  });
+
+  it("rests every claim of what happened on a tool call's input and result", () => {
+    for (const effectiveToolPacks of [
+      [],
+      ["data_query"],
+      ["member_management"],
+    ] as StationContext["effectiveToolPacks"][]) {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
+      const section = prompt.slice(prompt.indexOf("## Response Style"));
+      expect(section).toMatch(
+        /Describe what you did only from your tool calls: what you passed in\s+and what the result says happened/
+      );
+      expect(section).toMatch(
+        /Don't say or imply that anything\s+happened, or will happen, beyond what a result reports/
+      );
+    }
+  });
+
+  it("allows nothing or one sentence after a block, never a list", () => {
+    expect(style()).toMatch(
+      /When it answers the\s+user's question, give that answer in one sentence/
+    );
+    expect(style()).toMatch(
+      /either nothing or one sentence the block\s+doesn't show/
+    );
+    expect(style()).toMatch(/never a list or a restatement/i);
   });
 });
