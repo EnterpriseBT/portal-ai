@@ -33,6 +33,40 @@ describe("InviteCreateRequestSchema", () => {
         .success
     ).toBe(false);
   });
+
+  // #1101: RFC 5321 caps an address at 254 characters (#801's rule).
+  it("accepts a 254-character email", () => {
+    // Every domain label within RFC 1035's 63, so only the total is at issue.
+    const email =
+      "a".repeat(64) +
+      "@" +
+      ["b".repeat(63), "c".repeat(63), "d".repeat(57)].join(".") +
+      ".com";
+    expect(email).toHaveLength(254);
+    expect(
+      InviteCreateRequestSchema.safeParse({ email, role: "member" }).success
+    ).toBe(true);
+  });
+
+  it("rejects an email over 254 characters, reporting its length first", () => {
+    const r = InviteCreateRequestSchema.safeParse({
+      email: "a".repeat(288) + "@example.com",
+      role: "member",
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]).toMatchObject({
+      path: ["email"],
+      message: "Email must be 254 characters or fewer",
+    });
+  });
+
+  it("trims surrounding whitespace", () => {
+    const r = InviteCreateRequestSchema.safeParse({
+      email: "  a@b.com ",
+      role: "member",
+    });
+    expect(r.success && r.data.email).toBe("a@b.com");
+  });
 });
 
 describe("AcceptInvitationRequestSchema", () => {

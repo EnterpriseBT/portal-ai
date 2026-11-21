@@ -18,6 +18,8 @@ export const NAME_MAX_LENGTH = 120;
 export const DESCRIPTION_MAX_LENGTH = 2000;
 /** Keys that become `c_<key>` Postgres identifiers: 63 − "c_" − "_NN". */
 export const KEY_MAX_LENGTH = 58;
+/** An email address: RFC 5321's 256-octet path, less its angle brackets. */
+export const EMAIL_MAX_LENGTH = 254;
 /** Postgres's identifier limit (NAMEDATALEN − 1), in bytes. */
 export const PG_IDENTIFIER_MAX_BYTES = 63;
 
@@ -42,6 +44,16 @@ export const descriptionField = (field = "Description") =>
 /** At most `KEY_MAX_LENGTH`. Callers compose their pattern after it. */
 export const keyField = (field = "Key") =>
   z.string().max(KEY_MAX_LENGTH, tooLongMessage(field, KEY_MAX_LENGTH));
+
+/** Trimmed, at most `EMAIL_MAX_LENGTH`, a valid address. The length check
+ *  runs first, so an over-long address reports its length (a route's message
+ *  names the first issue), not that it is malformed (#1101). */
+export const emailField = (field = "Email") =>
+  z
+    .string()
+    .trim()
+    .max(EMAIL_MAX_LENGTH, tooLongMessage(field, EMAIL_MAX_LENGTH))
+    .email("Enter a valid email address");
 
 /** For a name we generate ourselves (a provider account label, a file name):
  *  clip it rather than reject a connection the user can't fix. The result,
