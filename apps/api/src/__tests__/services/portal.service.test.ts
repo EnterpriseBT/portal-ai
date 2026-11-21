@@ -207,8 +207,13 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService, resolveDisplayBlock, endsOnSelfContainedBlocks } =
-  await import("../../services/portal.service.js");
+const {
+  PortalService,
+  resolveDisplayBlock,
+  endsOnSelfContainedBlocks,
+  narrationStepPrep,
+  RENDERED_BLOCK_REMINDER,
+} = await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ---------------------------------------------------------------------------
@@ -2777,5 +2782,79 @@ describe("PortalService.replayTurn (#504)", () => {
     expect((sse.send as any).mock.calls).toEqual([
       ["done", { type: "done", portalId: PORTAL, messageId: "msg-asst-10" }],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// narrationStepPrep — no recap after a rendered block (#1102)
+// ---------------------------------------------------------------------------
+
+describe("narrationStepPrep (#1102)", () => {
+  const SYSTEM = "base prompt";
+  const prep = narrationStepPrep(SYSTEM);
+  const after = (toolResults: { toolName: string; output: unknown }[]) =>
+    prep({
+      steps: [
+        {
+          toolResults,
+        },
+      ],
+    });
+  const reminded = { system: `${SYSTEM}\n\n${RENDERED_BLOCK_REMINDER}` };
+
+  it("reminds the step after a built-in result that rendered a block", () => {
+    expect(
+      after([{ toolName: "sql_query", output: { rows: [{ id: 1 }] } }])
+    ).toEqual(reminded);
+  });
+
+  it("reminds after a custom tool whose payload renders a data table", () => {
+    expect(
+      after([
+        {
+          toolName: "crm_accounts",
+          output: { type: "data-table", columns: ["id"], rows: [{ id: 1 }] },
+        },
+      ])
+    ).toEqual(reminded);
+  });
+
+  it("reminds when any one of the step's results rendered", () => {
+    expect(
+      after([
+        { toolName: "cluster", output: { clusters: [] } },
+        { toolName: "sql_query", output: { rows: [{ id: 1 }] } },
+      ])
+    ).toEqual(reminded);
+  });
+
+  it("leaves a step after a scalar result alone, so it can be explained", () => {
+    expect(after([{ toolName: "cluster", output: { clusters: [] } }])).toEqual(
+      {}
+    );
+  });
+
+  it("leaves a step after a failed call alone, so the failure is relayed", () => {
+    expect(
+      prep({
+        steps: [{ toolResults: [] }],
+      })
+    ).toEqual({});
+  });
+
+  it("leaves the first step and a step after a text-only step alone", () => {
+    expect(prep({ steps: [] })).toEqual({});
+    expect(prep({ steps: [{ toolResults: [] }] })).toEqual({});
+  });
+
+  it("tolerates a non-object tool output", () => {
+    expect(after([{ toolName: "sql_query", output: "oops" }])).toEqual({});
+  });
+
+  it("says the block is on screen and allows nothing, one sentence, or the next tool", () => {
+    expect(RENDERED_BLOCK_REMINDER).toMatch(/already on screen/);
+    expect(RENDERED_BLOCK_REMINDER).toMatch(/Don't restate or list it/);
+    expect(RENDERED_BLOCK_REMINDER).toMatch(/one sentence/);
+    expect(RENDERED_BLOCK_REMINDER).toMatch(/next tool with no text before it/);
   });
 });

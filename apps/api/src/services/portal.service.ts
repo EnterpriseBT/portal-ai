@@ -178,6 +178,48 @@ export function endsOnSelfContainedBlocks({
 }
 
 /**
+ * The reminder added to the system prompt for the step after a result that
+ * rendered a block (#1102). Walks saw the agent list the invitations or rows
+ * it had just shown; Response Style alone didn't hold, so the rule is
+ * repeated at the one step where a recap happens.
+ */
+export const RENDERED_BLOCK_REMINDER =
+  "The result above is already on screen as a block. Don't restate or list " +
+  "it. Reply with nothing, or with one sentence it doesn't show, or call " +
+  "the next tool with no text before it.";
+
+/**
+ * The `prepareStep` for a portal turn (#1102): when any result of the
+ * previous step rendered a display block (built-in or a custom tool's
+ * payload, both via `resolveDisplayBlock`), that step's system prompt gains
+ * {@link RENDERED_BLOCK_REMINDER}. The turn carries on, so a table can still
+ * be charted; a scalar result or a failed call gets no reminder, since it
+ * needs explaining or relaying.
+ */
+export function narrationStepPrep(system: string) {
+  return ({
+    steps,
+  }: {
+    steps: ReadonlyArray<{
+      toolResults: ReadonlyArray<{ toolName: string; output: unknown }>;
+    }>;
+  }): { system?: string } => {
+    const last = steps[steps.length - 1];
+    const rendered = (last?.toolResults ?? []).some(
+      (r) =>
+        r.output !== null &&
+        typeof r.output === "object" &&
+        !Array.isArray(r.output) &&
+        resolveDisplayBlock(r.toolName, r.output as Record<string, unknown>) !==
+          null
+    );
+    return rendered
+      ? { system: `${system}\n\n${RENDERED_BLOCK_REMINDER}` }
+      : {};
+  };
+}
+
+/**
  * A tool call's input as an object, whatever the stream produced (#1049).
  * When the model emits invalid JSON for a tool's input, the SDK hands back
  * the raw text; stored and later replayed as a string, it makes the model API
@@ -963,6 +1005,7 @@ export class PortalService {
       messages,
       tools: analyticsTools,
       stopWhen: [stepCountIs(10), endsOnSelfContainedBlocks],
+      prepareStep: narrationStepPrep(systemPrompt),
       maxRetries: 3,
     });
 
