@@ -176,6 +176,30 @@ export class SeatService {
     // rule: invite/remove/role changes stay capability-gated on their own
     // routes). `getApplicationMetadata` already proved the caller belongs to
     // `caller.organizationId`, which is the boundary here.
+    return SeatService.loadMembers(caller.organizationId);
+  }
+
+  /**
+   * One member of an organization, in exactly `listMembers`' shape (#1100),
+   * or null when the user isn't a live member of it. For the portal turn's
+   * own caller: the system prompt names who the agent is talking to. No
+   * permission check, since a turn's caller always reads their own record;
+   * don't expose it as a lookup of other users.
+   */
+  static async getMember(
+    organizationId: string,
+    userId: string
+  ): Promise<Member | null> {
+    const [member] = await SeatService.loadMembers(organizationId, [userId]);
+    return member ?? null;
+  }
+
+  /** Members of `organizationId` (all, or only `onlyUserIds`): membership
+   *  joined to user, with system roles, every role slug and group ids. */
+  private static async loadMembers(
+    organizationId: string,
+    onlyUserIds?: string[]
+  ): Promise<Member[]> {
     const rows = await (db as typeof db)
       .select({
         userId: organizationUsers.userId,
@@ -188,7 +212,10 @@ export class SeatService {
       .innerJoin(users, eq(users.id, organizationUsers.userId))
       .where(
         and(
-          eq(organizationUsers.organizationId, caller.organizationId),
+          eq(organizationUsers.organizationId, organizationId),
+          onlyUserIds
+            ? inArray(organizationUsers.userId, onlyUserIds)
+            : undefined,
           // Raw join, so guard soft-deletes on both sides explicitly.
           isNull(organizationUsers.deleted),
           isNull(users.deleted)
@@ -211,7 +238,7 @@ export class SeatService {
           .innerJoin(roles, eq(userRole.roleId, roles.id))
           .where(
             and(
-              eq(userRole.organizationId, caller.organizationId),
+              eq(userRole.organizationId, organizationId),
               inArray(userRole.userId, userIds),
               isNull(userRole.deleted),
               isNull(roles.deleted)
@@ -238,7 +265,7 @@ export class SeatService {
           .from(userGroup)
           .where(
             and(
-              eq(userGroup.organizationId, caller.organizationId),
+              eq(userGroup.organizationId, organizationId),
               inArray(userGroup.userId, userIds),
               isNull(userGroup.deleted)
             )

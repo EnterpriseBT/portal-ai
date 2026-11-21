@@ -37,6 +37,7 @@ import {
   seedRbacForOrg,
 } from "../utils/application.util.js";
 import { atLeast, eventually } from "../utils/eventually.util.js";
+import { RoleModelFactory, UserRoleModelFactory } from "@portalai/core/models";
 
 const AUDIT = { sourceIp: "203.0.113.4", userAgent: "jest" };
 
@@ -485,6 +486,69 @@ describe("SeatService Integration Tests", () => {
     expect(
       (invitations[0] as Record<string, unknown>).tokenHash
     ).toBeUndefined();
+  });
+
+  // ── getMember (#1100) ───────────────────────────────────────────────
+
+  it("getMember returns the caller in listMembers' shape", async () => {
+    const [listed] = await SeatService.listMembers(owner);
+    const member = await SeatService.getMember(orgId, ownerId);
+    expect(member).toEqual(listed);
+    expect(member?.roles).toEqual(["owner"]);
+  });
+
+  it("getMember includes an assigned custom role's slug", async () => {
+    const role = new RoleModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        name: `Analyst ${generateId().slice(0, 6)}`,
+        slug: `analyst-${generateId().slice(0, 6)}`,
+        kind: "custom",
+      })
+      .parse();
+    await asDrizzle()
+      .insert(schema.roles)
+      .values(role as never);
+    await asDrizzle()
+      .insert(schema.userRole)
+      .values(
+        new UserRoleModelFactory()
+          .create("system")
+          .update({ userId: ownerId, organizationId: orgId, roleId: role.id })
+          .parse() as never
+      );
+    const member = await SeatService.getMember(orgId, ownerId);
+    expect(member?.roleSlugs).toContain(role.slug);
+  });
+
+  it("getMember is null for a user of another organization", async () => {
+    const other = createUser(`auth0|${generateId()}`);
+    await asDrizzle()
+      .insert(schema.users)
+      .values(other as never);
+    const otherOrg = createOrganization(other.id);
+    await asDrizzle()
+      .insert(schema.organizations)
+      .values(otherOrg as never);
+    await asDrizzle()
+      .insert(schema.organizationUsers)
+      .values(
+        createOrganizationUser(otherOrg.id, other.id, {
+          role: "owner",
+        }) as never
+      );
+    expect(await SeatService.getMember(orgId, other.id)).toBeNull();
+    // And this org's owner isn't a member there.
+    expect(await SeatService.getMember(otherOrg.id, ownerId)).toBeNull();
+  });
+
+  it("getMember is null for a removed member", async () => {
+    await asDrizzle()
+      .update(schema.organizationUsers)
+      .set({ deleted: Date.now(), deletedBy: "SYSTEM_TEST" } as never)
+      .where(eq(schema.organizationUsers.userId, ownerId));
+    expect(await SeatService.getMember(orgId, ownerId)).toBeNull();
   });
 
   // ── seat usage (#585) ───────────────────────────────────────────────
