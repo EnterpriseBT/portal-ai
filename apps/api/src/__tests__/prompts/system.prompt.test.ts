@@ -2153,11 +2153,12 @@ describe("buildSystemPrompt — Members (#847)", () => {
     // invitee uses the button. Nothing is emailed; the button is the user's.
     expect(members).toMatch(/No email is sent/);
     expect(members).toMatch(/the user \(not the invitee\) gets the link/);
-    // #847 adversarial walk: "I'll send the invitations" before acting. Since
-    // #1102 the general rule in Response Style covers it: a claim rests on a
-    // tool call's input and result.
-    const ownSection = members.slice(0, members.indexOf("\n## ", 1));
-    expect(ownSection).not.toMatch(/Never say, before or after acting/);
+    // #847 adversarial walk: "I'll send the invitations" before acting. The
+    // result says an invitation was created, which reads easily as "sent", so
+    // Members keeps this beside #1102's general tool-call rule.
+    expect(members).toMatch(
+      /Never say, before or after acting,\s+that you send, email or deliver an invitation/
+    );
     expect(withMembers()).toMatch(
       /Describe what you did only from your tool calls/
     );
@@ -2213,13 +2214,18 @@ describe("buildSystemPrompt — Response Style wording (#1102)", () => {
       expect(section).toMatch(
         /Describe what you did only from your tool calls: what you passed in\s+and what the result says happened/
       );
-      expect(section).toMatch(/don't say or imply that it did or will/);
+      expect(section).toMatch(
+        /Don't say or imply that anything\s+happened, or will happen, beyond what a result reports/
+      );
     }
   });
 
   it("allows nothing or one sentence after a block, never a list", () => {
     expect(style()).toMatch(
-      /either nothing or one sentence the block doesn't show/
+      /When it answers the\s+user's question, give that answer in one sentence/
+    );
+    expect(style()).toMatch(
+      /either nothing or one sentence the block\s+doesn't show/
     );
     expect(style()).toMatch(/never a list or a restatement/i);
   });

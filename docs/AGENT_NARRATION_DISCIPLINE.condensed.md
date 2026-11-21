@@ -26,11 +26,11 @@ Runtime text filtering and a live eval were considered and dropped, being heavie
 
 ## Decision 1 — claims rest on the tool calls
 
-One new Response Style bullet: the agent describes what it did only from its tool calls, meaning what it passed in and what the result says happened. If no tool call's result shows something happened, it doesn't say or imply that it did or will, and doesn't describe an effect beyond what the result reports. (Offering work its tools can do stays governed by the existing "Don't offer work none of your tools can do".)
+One new Response Style bullet: the agent describes what it did only from its tool calls, meaning what it passed in and what the result says happened, and doesn't say or imply that anything happened, or will happen, beyond what a result reports. (Offering work its tools can do stays governed by the existing "Don't offer work none of your tools can do".)
 
 This applies equally to built-in and custom tools. It needs no per-station list of changing tools, which could drift from what the write gate or geocoding key actually built. It also makes no blanket "nothing leaves the session" claim, which a custom tool could make false.
 
-The Members paragraph keeps its factual "no email is sent" and invite-link instructions. Its "never say you send, email or deliver" sentence is removed, since the general rule now covers it.
+The Members paragraph keeps its "no email is sent" and invite-link instructions, and its "never say you send, email or deliver an invitation" sentence. `member_invite`'s result says an invitation was created, which reads easily as "sent", so that tool-specific line stays beside the general rule.
 
 ## Decision 2 — sharper Response Style
 
@@ -41,26 +41,34 @@ The Good/Bad example stays.
 
 ## Decision 3 — a `prepareStep` reminder after a rendered block
 
-`narrationStepPrep(system)` (exported from `portal.service.ts`) returns the `prepareStep` passed to `streamText`:
-- **When it fires:** the previous step had a tool result for which `resolveDisplayBlock` is non-null.
-- **What it returns:** `{ system: system + "\n\n" + RENDERED_BLOCK_REMINDER }`, where the reminder reads: "The result above is already on screen as a block. Don't restate or list it. Reply with nothing, or one sentence it doesn't show, or call the next tool with no text before it."
-- **Otherwise:** it returns `{}`.
+`narrationStepPrep(system)` (exported from `portal.service.ts`) returns the `prepareStep` passed to `streamText`.
+
+**When it fires:** the previous step had results for which `resolveDisplayBlock` is non-null. That includes a bare row array, which renders as a table.
+
+**What it returns:** `{ system: system + "\n\n" + renderedBlockReminder(tools, stepHadOtherCalls) }`. The reminder:
+- names the tools whose results rendered, since "the result above" would point nowhere from the system prompt;
+- says not to list or restate the block's rows or contents;
+- says to answer the user's question in one sentence when the block holds the answer ("Q3 revenue was $1.24M."), and otherwise to write nothing or one sentence the block doesn't show;
+- says to call the next tool with no text before it;
+- when the step also ran other tools, scopes itself to the rendered results, so the others (a scalar result, a failed call) are still explained or relayed.
+
+**Otherwise** it returns `{}`.
 
 Keying on the produced block covers custom tools. The turn continues, so chaining (query → chart) still works. Nothing is cached on this call, so the per-step system change costs nothing extra.
 
 ## Plan — 2 slices
 
 **Slice 1: prompt.**
-- **Files:** `system.prompt.ts` (Response Style wording, the Members sentence removed).
+- **Files:** `system.prompt.ts` (Response Style wording).
 - **Tests:** `apps/api/src/__tests__/prompts/system.prompt.test.ts`:
   - the tool-call rule is present under Response Style for every pack combination;
   - the new preamble/post-amble wording is present;
-  - Members no longer carries its own never-claim sentence.
+  - Members keeps its never-claim sentence beside the general rule.
 
 **Slice 2: `prepareStep`.**
 - **Files:** `portal.service.ts`.
 - **Tests:**
-  - `apps/api/src/__tests__/services/portal.service.test.ts` drives `narrationStepPrep` directly. The reminder fires after a data-table, d3, geo, mutation or custom `type:"data-table"` result. It doesn't fire after a scalar result, a tool error, on step 0, or when the step had no tools.
+  - `apps/api/src/__tests__/services/portal.service.test.ts` drives `narrationStepPrep` directly. The reminder fires after a data-table, bare row array, d3, geo, mutation or custom `type:"data-table"` result, naming that tool. In a step that also ran a scalar tool or had a failed call, it names only the rendered tools and scopes itself. It doesn't fire after only a scalar result, a failed-only step, on step 0, or when the step had no tools. `renderedBlockReminder`'s wording is pinned separately.
   - A `MockLanguageModelV3` test, in the style of `portal-tool-error.contract.test.ts`, asserts the second call's system prompt carries the reminder and the first's doesn't. It's deterministic and uses no tokens.
 
 `npm run test:unit` (api), `type-check`, `lint`.

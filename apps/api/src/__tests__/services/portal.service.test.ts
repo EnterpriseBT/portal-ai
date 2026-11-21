@@ -212,7 +212,7 @@ const {
   resolveDisplayBlock,
   endsOnSelfContainedBlocks,
   narrationStepPrep,
-  RENDERED_BLOCK_REMINDER,
+  renderedBlockReminder,
 } = await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -2792,69 +2792,144 @@ describe("PortalService.replayTurn (#504)", () => {
 describe("narrationStepPrep (#1102)", () => {
   const SYSTEM = "base prompt";
   const prep = narrationStepPrep(SYSTEM);
-  const after = (toolResults: { toolName: string; output: unknown }[]) =>
+  type Result = { toolName: string; output: unknown };
+  const after = (toolResults: Result[], toolCalls?: { toolName: string }[]) =>
     prep({
       steps: [
         {
+          toolCalls:
+            toolCalls ?? toolResults.map((r) => ({ toolName: r.toolName })),
           toolResults,
         },
       ],
     });
-  const reminded = { system: `${SYSTEM}\n\n${RENDERED_BLOCK_REMINDER}` };
+  const reminder = (r: { system?: string }) =>
+    r.system?.slice(`${SYSTEM}\n\n`.length);
+  const TABLE: Result = {
+    toolName: "sql_query",
+    output: { rows: [{ id: 1 }] },
+  };
+  const SCALAR: Result = { toolName: "cluster", output: { clusters: [] } };
 
-  it("reminds the step after a built-in result that rendered a block", () => {
-    expect(
-      after([{ toolName: "sql_query", output: { rows: [{ id: 1 }] } }])
-    ).toEqual(reminded);
-  });
-
-  it("reminds after a custom tool whose payload renders a data table", () => {
-    expect(
-      after([
-        {
-          toolName: "crm_accounts",
-          output: { type: "data-table", columns: ["id"], rows: [{ id: 1 }] },
+  it.each([
+    ["a built-in table", TABLE],
+    ["a bare row array", { toolName: "sql_query", output: [{ id: 1 }] }],
+    [
+      "a custom tool's data-table payload",
+      {
+        toolName: "crm_accounts",
+        output: { type: "data-table", columns: ["id"], rows: [{ id: 1 }] },
+      },
+    ],
+    [
+      "a chart",
+      {
+        toolName: "visualize_d3",
+        output: {
+          type: "d3",
+          program: "api.d3.select(api.container);",
+          rows: [{ x: 1 }],
         },
-      ])
-    ).toEqual(reminded);
-  });
-
-  it("reminds when any one of the step's results rendered", () => {
-    expect(
-      after([
-        { toolName: "cluster", output: { clusters: [] } },
-        { toolName: "sql_query", output: { rows: [{ id: 1 }] } },
-      ])
-    ).toEqual(reminded);
-  });
-
-  it("leaves a step after a scalar result alone, so it can be explained", () => {
-    expect(after([{ toolName: "cluster", output: { clusters: [] } }])).toEqual(
-      {}
+      },
+    ],
+    [
+      "a map",
+      {
+        toolName: "visualize_map",
+        output: {
+          type: "geo",
+          spec: {
+            layers: [
+              {
+                kind: "points",
+                source: { latColumn: "lat", lngColumn: "lng" },
+              },
+            ],
+          },
+          rows: [{ lat: 1, lng: 2 }],
+        },
+      },
+    ],
+    [
+      "a mutation result",
+      {
+        toolName: "entity_record_create",
+        output: {
+          success: true,
+          operation: "created",
+          entity: "record",
+          items: [{ entityId: "r-1", summary: { sourceId: "abc" } }],
+        },
+      },
+    ],
+  ])("reminds the step after %s, naming the tool", (_label, result) => {
+    const r = after([result as Result]);
+    expect(r.system?.startsWith(`${SYSTEM}\n\n`)).toBe(true);
+    expect(reminder(r)).toBe(
+      renderedBlockReminder([(result as Result).toolName], false)
     );
   });
 
-  it("leaves a step after a failed call alone, so the failure is relayed", () => {
-    expect(
-      prep({
-        steps: [{ toolResults: [] }],
-      })
-    ).toEqual({});
+  it("names only the rendered tools in a step that also ran a scalar tool", () => {
+    const r = after([TABLE, SCALAR]);
+    expect(reminder(r)).toBe(renderedBlockReminder(["sql_query"], true));
+    expect(reminder(r)).not.toContain("`cluster`");
+  });
+
+  it("leaves a failed call in the same step to be relayed", () => {
+    // The failed call has no result; the step made two calls.
+    const r = after(
+      [TABLE],
+      [{ toolName: "sql_query" }, { toolName: "geocode" }]
+    );
+    expect(reminder(r)).toBe(renderedBlockReminder(["sql_query"], true));
+    expect(reminder(r)).toMatch(/including any that failed/);
+  });
+
+  it("leaves a step after only a scalar result alone, so it can be explained", () => {
+    expect(after([SCALAR])).toEqual({});
+  });
+
+  it("leaves a step whose only call failed alone, so the failure is relayed", () => {
+    expect(after([], [{ toolName: "sql_query" }])).toEqual({});
   });
 
   it("leaves the first step and a step after a text-only step alone", () => {
     expect(prep({ steps: [] })).toEqual({});
-    expect(prep({ steps: [{ toolResults: [] }] })).toEqual({});
+    expect(prep({ steps: [{ toolCalls: [], toolResults: [] }] })).toEqual({});
   });
 
   it("tolerates a non-object tool output", () => {
     expect(after([{ toolName: "sql_query", output: "oops" }])).toEqual({});
   });
+});
 
-  it("says the block is on screen and allows nothing, one sentence, or the next tool", () => {
-    expect(RENDERED_BLOCK_REMINDER).toMatch(/already on screen/);
-    expect(RENDERED_BLOCK_REMINDER).toMatch(/Don't restate or list it/);
-    expect(RENDERED_BLOCK_REMINDER).toMatch(/one sentence/);
-    expect(RENDERED_BLOCK_REMINDER).toMatch(/next tool with no text before it/);
+describe("renderedBlockReminder (#1102)", () => {
+  it("names the tool and keeps the answer to a question the block holds", () => {
+    const text = renderedBlockReminder(["sql_query"], false);
+    expect(text).toMatch(
+      /^The result of `sql_query` is already on screen as a block\./
+    );
+    expect(text).toMatch(/Don't list or restate the block's rows or contents/);
+    expect(text).toMatch(
+      /If it answers the user's question, give that answer in one sentence/
+    );
+    expect(text).toMatch(/call the next tool with no text before it/);
+    expect(text).not.toMatch(/above/);
+    expect(text).not.toMatch(/explain or relay/);
+  });
+
+  it("names several tools once each", () => {
+    expect(
+      renderedBlockReminder(["sql_query", "visualize_d3", "sql_query"], false)
+    ).toMatch(
+      /^The results of `sql_query` and `visualize_d3` are already on screen/
+    );
+  });
+
+  it("scopes itself when the step ran other tools", () => {
+    expect(renderedBlockReminder(["sql_query"], true)).toMatch(
+      /This covers only those results: explain or relay your other tool results from that step as usual, including any that failed\./
+    );
   });
 });

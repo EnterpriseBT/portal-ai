@@ -181,41 +181,72 @@ export function endsOnSelfContainedBlocks({
  * The reminder added to the system prompt for the step after a result that
  * rendered a block (#1102). Walks saw the agent list the invitations or rows
  * it had just shown; Response Style alone didn't hold, so the rule is
- * repeated at the one step where a recap happens.
+ * repeated at the one step where a recap happens. It names the tools whose
+ * results rendered (the system prompt sits before the messages, so "the
+ * result above" would point nowhere), keeps the answer to a question the
+ * block holds ("Q3 revenue was $1.24M."), and, when the step ran other
+ * tools, leaves their results to be explained or relayed as usual.
  */
-export const RENDERED_BLOCK_REMINDER =
-  "The result above is already on screen as a block. Don't restate or list " +
-  "it. Reply with nothing, or with one sentence it doesn't show, or call " +
-  "the next tool with no text before it.";
+export function renderedBlockReminder(
+  renderedTools: readonly string[],
+  stepHadOtherCalls: boolean
+): string {
+  const names = [...new Set(renderedTools)].map((t) => `\`${t}\``);
+  const subject =
+    names.length === 1
+      ? `The result of ${names[0]} is`
+      : `The results of ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are`;
+  return (
+    `${subject} already on screen as a block. Don't list or restate the ` +
+    "block's rows or contents. If it answers the user's question, give " +
+    "that answer in one sentence; otherwise reply with nothing, or with one " +
+    "sentence the block doesn't show. If more work is needed, call the next " +
+    "tool with no text before it." +
+    (stepHadOtherCalls
+      ? " This covers only those results: explain or relay your other tool " +
+        "results from that step as usual, including any that failed."
+      : "")
+  );
+}
 
 /**
- * The `prepareStep` for a portal turn (#1102): when any result of the
- * previous step rendered a display block (built-in or a custom tool's
- * payload, both via `resolveDisplayBlock`), that step's system prompt gains
- * {@link RENDERED_BLOCK_REMINDER}. The turn carries on, so a table can still
- * be charted; a scalar result or a failed call gets no reminder, since it
- * needs explaining or relaying.
+ * The `prepareStep` for a portal turn (#1102): when results of the previous
+ * step rendered display blocks (built-in or a custom tool's payload, both
+ * via `resolveDisplayBlock`), that step's system prompt gains
+ * {@link renderedBlockReminder} naming those tools. The turn carries on, so
+ * a table can still be charted; a step whose results rendered nothing (a
+ * scalar result, a failed call) gets no reminder.
  */
 export function narrationStepPrep(system: string) {
   return ({
     steps,
   }: {
     steps: ReadonlyArray<{
+      toolCalls?: ReadonlyArray<{ toolName: string }>;
       toolResults: ReadonlyArray<{ toolName: string; output: unknown }>;
     }>;
   }): { system?: string } => {
     const last = steps[steps.length - 1];
-    const rendered = (last?.toolResults ?? []).some(
-      (r) =>
-        r.output !== null &&
-        typeof r.output === "object" &&
-        !Array.isArray(r.output) &&
-        resolveDisplayBlock(r.toolName, r.output as Record<string, unknown>) !==
-          null
-    );
-    return rendered
-      ? { system: `${system}\n\n${RENDERED_BLOCK_REMINDER}` }
-      : {};
+    if (!last) return {};
+    // Arrays included: resolveDisplayBlock renders a bare row array as a
+    // table, exactly as handleToolResult passes it.
+    const rendered = last.toolResults
+      .filter(
+        (r) =>
+          r.output !== null &&
+          typeof r.output === "object" &&
+          resolveDisplayBlock(
+            r.toolName,
+            r.output as Record<string, unknown>
+          ) !== null
+      )
+      .map((r) => r.toolName);
+    if (rendered.length === 0) return {};
+    // A failed call has no result, so count calls, not results.
+    const calls = last.toolCalls?.length ?? last.toolResults.length;
+    return {
+      system: `${system}\n\n${renderedBlockReminder(rendered, calls > rendered.length)}`,
+    };
   };
 }
 

@@ -724,7 +724,8 @@ export const PACK_PROMPT_SECTIONS: Record<
           "`member_invite` and `invitation_show` show the user an invitation " +
           "block, and the user (not the invitee) gets the link to share from " +
           "its button. So say the invitation is ready and that they can get " +
-          "the link to share from the block. " +
+          "the link to share from the block. Never say, before or after acting, " +
+          "that you send, email or deliver an invitation: you can't. " +
           "Never write, ask for or guess a link, and don't restate the block. " +
           "The invitation blocks are your whole answer: your turn ends once " +
           "they're shown, so do anything else the message asks first."
@@ -1489,9 +1490,11 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   );
   lines.push(
     "- Skip post-ambles. After a tool returns a data table, chart, map, or " +
-      "mutation result, the block is already on screen: write either nothing " +
-      "or one sentence the block doesn't show on its own (a trend direction, " +
-      "a caveat about the data, a recommended next step). Never a list or a " +
+      "mutation result, the block is already on screen. When it answers the " +
+      "user's question, give that answer in one sentence (the number, the " +
+      "name); otherwise write either nothing or one sentence the block " +
+      "doesn't show on its own (a trend direction, a caveat about the data, " +
+      "a recommended next step). Never a list or a " +
       'restatement of its contents, and no "Summary:" or "Key takeaways:" ' +
       "recap at the end of a turn."
   );
@@ -1500,9 +1503,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // calls, so a claim must rest on one.
   lines.push(
     "- Describe what you did only from your tool calls: what you passed in " +
-      "and what the result says happened. If no tool call's result shows " +
-      "something happened, don't say or imply that it did or will, and don't " +
-      "describe an effect beyond what the result reports."
+      "and what the result says happened. Don't say or imply that anything " +
+      "happened, or will happen, beyond what a result reports."
   );
   lines.push(
     '- Answer the question, not the meta-question. If the user asks "what ' +

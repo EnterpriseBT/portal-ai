@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import {
   narrationStepPrep,
-  RENDERED_BLOCK_REMINDER,
+  renderedBlockReminder,
 } from "../../services/portal.service.js";
 
 const usage = {
@@ -84,14 +84,14 @@ describe("narrationStepPrep through streamText (#1102)", () => {
   it("adds the reminder to the call after a rendered block, not before", async () => {
     const systems = await systemsFor("sql_query", { rows: [{ id: 1 }] });
     expect(systems).toHaveLength(2);
-    expect(systems[0]).not.toContain(RENDERED_BLOCK_REMINDER);
-    expect(systems[1]).toContain(RENDERED_BLOCK_REMINDER);
+    expect(systems[0]).not.toContain("already on screen");
+    expect(systems[1]).toContain(renderedBlockReminder(["sql_query"], false));
     expect(systems[1]).toContain("base prompt");
   });
 
   it("leaves the call after a scalar result unchanged", async () => {
     const systems = await systemsFor("cluster", { clusters: [] });
     expect(systems).toHaveLength(2);
-    expect(systems[1]).not.toContain(RENDERED_BLOCK_REMINDER);
+    expect(systems[1]).not.toContain("already on screen");
   });
 });
