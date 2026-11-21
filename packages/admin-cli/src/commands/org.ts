@@ -6,7 +6,6 @@
 
 import {
   npmSpawner,
-  runApiScript,
   type EnvironmentDefinition,
   type WorkspaceSpawner,
 } from "@portalai/cli-env";
@@ -17,7 +16,7 @@ import { OrganizationUpdateRequestSchema } from "@portalai/core/contracts";
 
 import { AdminConflictError, AdminInvalidInputError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
-import { lastJsonLine } from "./provision.js";
+import { runOrgDeletion } from "./org-deletion.js";
 
 export function orgList(
   def: EnvironmentDefinition,
@@ -147,11 +146,11 @@ export async function orgSetTier(
 }
 
 /**
- * #1088: the app's full organization deletion (#197) through
- * `db:org:delete`, as `demo delete` does for demo orgs (#1035). The org's
- * content is hard-deleted and the org and its memberships tombstoned, so no
- * member keeps it as their current org. It used to tombstone the org row
- * alone. Destructive: refused on prod.
+ * #1088: the app's full organization deletion (#197), as `demo delete` runs
+ * it for demo orgs (#1035): in the env's API task on an AWS env, a spawn on
+ * local (see org-deletion.ts). The org's content is hard-deleted and the org
+ * and its memberships tombstoned, so no member keeps it as their current
+ * org. It used to tombstone the org row alone. Destructive: refused on prod.
  */
 export async function orgDelete(
   def: EnvironmentDefinition,
@@ -163,13 +162,7 @@ export async function orgDelete(
   // Checked here so a missing org keeps its exit code (8); the script
   // re-checks, since it can be run directly.
   await withStore(def, (s) => s.getOrg(id));
-  const stdout = await runApiScript(
-    def,
-    "db:org:delete",
-    ["--org", id, "--actor", operator],
-    spawner
-  );
-  const result = lastJsonLine(stdout);
+  const result = await runOrgDeletion(def, "org-delete", id, operator, spawner);
   await audit(def, operator, "org delete", { orgId: id });
   return result;
 }

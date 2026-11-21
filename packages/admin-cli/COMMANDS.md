@@ -29,7 +29,9 @@ Session = an active `portalai login` device-flow session for the env. Every muta
 
 Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
 
-Spawned app scripts (`org create`, `org delete`, `org reset`, `seed org`, `demo create`, `demo delete`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
+Spawned app scripts (`org create`, `org reset`, `seed org`, `demo create`, and `org delete` / `demo delete` on `--env local`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
+
+**`org delete` and `demo delete` run in the env's API task on app-dev/prod** (#1088). The deletion also cancels queued jobs in the env's Redis, deletes its S3 uploads and cancels its Stripe subscription, and a local spawn would take all three from the operator's own `apps/api/.env`. So on an AWS env the command starts an ECS one-off of the API task (`node dist/db/<org|demo>-delete.js --org <id> --actor <you>`, the same mechanism as `portalops db seed`) and waits for it. It needs `ecs:RunTask` + `iam:PassRole` on the API task and `logs:GetLogEvents` on its log group, which `portalops` operators already hold. A refusal comes back as exit 7 carrying the script's own lines from CloudWatch; `--env local` spawns as above.
 
 ---
 
@@ -62,7 +64,7 @@ Mutation. Tier slug must exist live → else 8. Audits old→new; the app sees i
 `--json`: `{ "id", "tier", "previousTier" }`
 
 ### `portalai org delete <id> --env <env> --yes [--json]`
-**Destructive** (never prod). Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:org:delete`, attributed to you (#1088): the org's content (records, `er__` wide tables, connectors, stations, uploads) is hard-deleted, its queued jobs are cancelled, and the org row and **every membership** are tombstoned, so no member keeps it as their current org. A missing or already-deleted org → 8 before anything runs. An org with an **active** job is refused by the script (exit 7, naming the job); wait for it or cancel it, then re-run.
+**Destructive** (never prod). Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:org:delete`, attributed to you (#1088), in the env's API task on app-dev (see above): the org's content (records, `er__` wide tables, connectors, stations) is hard-deleted, its uploads are removed from the env's bucket, its queued jobs are cancelled, its Stripe subscription is cancelled, and the org row and **every membership** are tombstoned, so no member keeps it as their current org. A missing or already-deleted org → 8 before anything runs. An org with an **active** job is refused (exit 7, the message listing each running job's type, id and status); wait for it or cancel it, then re-run.
 `--json`: `{ "id", "deleted": true }`
 
 ### `portalai org reset <id> --env <env> --yes [--json]`
@@ -105,11 +107,11 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
 `--json`: `{ "organizationId", "stationId", "tier", "rows", "entities", "toolpacks": { "builtins", "custom" }, "views", "durationMs" }`
 
 ### `portalai demo delete <id> --env <env> --yes [--confirm-prod] [--json]`
-**Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:demo:delete`, attributed to you:
+**Mutation** (#1035), so it runs on prod with `--yes --confirm-prod`, unlike `org delete`. Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:demo:delete`, attributed to you, in the env's API task on app-dev/prod (#1088, see above):
 - **Removed:** the org's content is hard-deleted (records, `er__` wide tables, connectors, stations, packs, portals).
 - **Tombstoned:** the org row and **its memberships**, so no member keeps a deleted org as their current one.
 - **Kept:** usage and ledger rows.
-- **Jobs:** queued jobs are cancelled. An active one refuses the delete (exit 7, `ENTITY_LOCKED_BY_JOB`); retry when it finishes.
+- **Jobs:** queued jobs are cancelled. An active one refuses the delete (exit 7, listing each running job); retry when it finishes.
 
 It only acts on an org `demo create` marked, checked before anything runs:
 - any other live org → `ADMIN_CONFLICT` (exit 9), unchanged;

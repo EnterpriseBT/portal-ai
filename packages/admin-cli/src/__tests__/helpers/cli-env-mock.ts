@@ -111,6 +111,14 @@ export const mocks = {
   getToken: jest.fn<(env: string) => Promise<string>>(),
   login: jest.fn<(env: string, io?: unknown) => Promise<void>>(),
   logout: jest.fn<(env: string) => Promise<void>>(),
+  // #1088: org/demo delete run in the env's API task on an AWS env.
+  runApiTask:
+    jest.fn<
+      (
+        def: unknown,
+        spec: { command: string[]; label: string; localHint: string }
+      ) => Promise<{ taskArn: string; exitCode: number }>
+    >(),
 };
 
 export function resetCliEnvMocks(): void {

@@ -16,7 +16,8 @@
  * `--yes --confirm-prod` on prod. `demo delete` only removes an org
  * `demo create` marked (`organizations.is_demo`), which is why it can be a
  * mutation on prod while `org delete` stays refused there. It runs the app's
- * full organization deletion (#197) through `db:demo:delete`: the org's
+ * full organization deletion (#197) through `db:demo:delete`, in the env's
+ * API task on an AWS env (#1088, see org-deletion.ts): the org's
  * content is hard-deleted and the org and its memberships tombstoned, so a
  * finished demo leaves no data behind (code review, #1035).
  *
@@ -42,6 +43,7 @@ import { DemoOrganizationCreateInputSchema } from "@portalai/core/contracts";
 
 import { AdminConflictError, AdminInvalidInputError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
+import { runOrgDeletion } from "./org-deletion.js";
 import { lastJsonLine } from "./provision.js";
 
 export const DEMO_DEFAULT_TIER = "enterprise";
@@ -176,13 +178,13 @@ export async function demoDelete(
       `Organization ${id} is not a demo org — demo delete only removes orgs made by demo create`
     );
   }
-  const stdout = await runApiScript(
+  const result = await runOrgDeletion(
     def,
-    "db:demo:delete",
-    ["--org", id, "--actor", operator],
+    "demo-delete",
+    id,
+    operator,
     spawner
   );
-  const result = lastJsonLine(stdout);
   await audit(def, operator, "demo delete", { orgId: id });
   return result;
 }
