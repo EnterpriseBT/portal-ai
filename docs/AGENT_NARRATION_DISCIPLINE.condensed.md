@@ -8,7 +8,7 @@
 - **Recaps:** restating a block already on screen.
 
 There are two levers:
-- **The prompt.** Tell the agent what its tools can change, generated from each toolpack's declared capabilities, so the boundary can't drift from the tools. Sharpen the preamble and recap rules.
+- **The prompt.** Every claim about what happened rests on a tool call's input and result. Sharpen the preamble and recap rules.
 - **Agent configuration.** A `prepareStep` reminder at the exact step where recaps happen: the one after a block renders.
 
 Runtime text filtering and a live eval were considered and dropped, being heavier than the problem and costing tokens.
@@ -23,17 +23,14 @@ Runtime text filtering and a live eval were considered and dropped, being heavie
 | `## Response Style` | `apps/api/src/prompts/system.prompt.ts:1472-1550` | Last section; preamble/post-amble bullets and a Good/Bad example |
 | "Don't offer work none of your tools can do" | `system.prompt.ts:1463` | Scoped to missing packs |
 | Members: "No email is sent…" | `system.prompt.ts:722-731` | Hand-written, Members-only boundary |
-| Tool capabilities | `packages/core/src/registries/tool-capabilities.ts:78` `ALL_TOOL_CAPABILITIES` | Each tool declares `computeShape` (`mutate` = changes something) and `writes` |
-| Custom packs in the prompt | `system.prompt.ts:1252` (`customToolPacks`: name, description, `toolNames`) | Capabilities are not in the prompt context |
 
-## Decision 1 — a generated "What Your Actions Do" section
+## Decision 1 — claims rest on the tool calls
 
-A new section placed just before `## Response Style`, built from `stationContext.effectiveToolPacks`.
-- **Changing tools:** the session's built-in tools with `computeShape === "mutate"` or a non-empty `writes`, listed by name. Each change happened only if its tool returned success, and the agent says what the result says, nothing more. If there are none, the section instead says nothing the agent does here changes data.
-- **A fixed boundary line**, the same for every station: nothing leaves this session. The agent can't send, email, message or notify anyone, schedule anything, set a reminder, or remember anything after the session. It never says it did, will or can, nor implies it ("once it arrives", "check your inbox").
-- **When custom packs exist:** an organization-provided tool may do more. The agent describes only what its result reports.
+One new Response Style bullet: the agent describes what it did only from its tool calls, meaning what it passed in and what the result says happened. If no tool call's result shows something happened, it doesn't say it did, will or can, and doesn't imply an effect beyond what the result reports.
 
-The Members paragraph keeps its invite-link instructions, but its "never say you send, email or deliver" sentence moves into the boundary line, so the rule has one source.
+This applies equally to built-in and custom tools. It needs no per-station list of changing tools, which could drift from what the write gate or geocoding key actually built. It also makes no blanket "nothing leaves the session" claim, which a custom tool could make false.
+
+The Members paragraph keeps its factual "no email is sent" and invite-link instructions. Its "never say you send, email or deliver" sentence is removed, since the general rule now covers it.
 
 ## Decision 2 — sharper Response Style
 
@@ -54,15 +51,11 @@ Keying on the produced block covers custom tools. The turn continues, so chainin
 ## Plan — 2 slices
 
 **Slice 1: prompt.**
-- **Files:** `system.prompt.ts` (new section builder, Response Style wording, Members sentence moved).
+- **Files:** `system.prompt.ts` (Response Style wording, the Members sentence removed).
 - **Tests:** `apps/api/src/__tests__/prompts/system.prompt.test.ts`:
-  - the section lists exactly the station's changing tools (`member_invite`, `entity_record_update` …), excluding read-only and pure ones;
-  - the "nothing changes data" variant appears for a station without changing tools;
-  - the boundary line appears for every pack combination;
-  - the custom-pack sentence appears only with custom packs;
-  - the section sits before Response Style;
+  - the tool-call rule is present under Response Style for every pack combination;
   - the new preamble/post-amble wording is present;
-  - Members no longer duplicates the boundary sentence.
+  - Members no longer carries its own never-claim sentence.
 
 **Slice 2: `prepareStep`.**
 - **Files:** `portal.service.ts`.
