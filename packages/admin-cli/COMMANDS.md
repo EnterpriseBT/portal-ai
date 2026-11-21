@@ -29,7 +29,7 @@ Session = an active `portalai login` device-flow session for the env. Every muta
 
 Local config (`--env local`): `DATABASE_URL` (DB ops) and `AUTH0_*` (`login`) are read from this package's own `.env` (`packages/admin-cli/.env`, git-ignored, auto-loaded for local only — #632; copy from `.env.example`) or from the shell (an export wins). app-dev/prod ignore the file and resolve from AWS.
 
-Spawned app scripts (`org create`, `org reset`, `seed org`, `demo create`, `demo delete`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
+Spawned app scripts (`org create`, `org delete`, `org reset`, `seed org`, `demo create`, `demo delete`) run against the target env with its `DATABASE_URL` injected and, for app-dev/prod, its `ENCRYPTION_KEY` (Secrets Manager) and `SYSTEM_ID` (SSM `system-id`). The system id is what platform rows carry as `createdBy`; before #952 a script took the operator's local `SYSTEM`, which left prod's Demo org unreadable through `created_by_system`. `demo create` also passes the env's `DEMO_TOOLPACK_URL` (SSM) and `DEMO_TOOLPACK_SIGNING_SECRETS` (Secrets Manager), #1035. A failed read stops the command before anything runs.
 
 ---
 
@@ -62,7 +62,7 @@ Mutation. Tier slug must exist live → else 8. Audits old→new; the app sees i
 `--json`: `{ "id", "tier", "previousTier" }`
 
 ### `portalai org delete <id> --env <env> --yes [--json]`
-**Destructive** (never prod). Soft-delete only — hard deletion does not exist in this CLI.
+**Destructive** (never prod). Runs the app's **full organization deletion** (#197, the same one an owner gets from Settings) through `db:org:delete`, attributed to you (#1088): the org's content (records, `er__` wide tables, connectors, stations, uploads) is hard-deleted, its queued jobs are cancelled, and the org row and **every membership** are tombstoned, so no member keeps it as their current org. A missing or already-deleted org → 8 before anything runs. An org with an **active** job is refused by the script (exit 7, naming the job); wait for it or cancel it, then re-run.
 `--json`: `{ "id", "deleted": true }`
 
 ### `portalai org reset <id> --env <env> --yes [--json]`

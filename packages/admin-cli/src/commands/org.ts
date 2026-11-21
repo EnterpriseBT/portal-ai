@@ -4,7 +4,12 @@
  * `org reset` are spawn-backed and live in provision.ts (slice 3).
  */
 
-import type { EnvironmentDefinition } from "@portalai/cli-env";
+import {
+  npmSpawner,
+  runApiScript,
+  type EnvironmentDefinition,
+  type WorkspaceSpawner,
+} from "@portalai/cli-env";
 import type { Organization } from "@portalai/core/models";
 
 import type { ListOrgsOptions, OrgPatch } from "../store.js";
@@ -12,6 +17,7 @@ import { OrganizationUpdateRequestSchema } from "@portalai/core/contracts";
 
 import { AdminConflictError, AdminInvalidInputError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
+import { lastJsonLine } from "./provision.js";
 
 export function orgList(
   def: EnvironmentDefinition,
@@ -140,13 +146,30 @@ export async function orgSetTier(
   return result;
 }
 
+/**
+ * #1088: the app's full organization deletion (#197) through
+ * `db:org:delete`, as `demo delete` does for demo orgs (#1035). The org's
+ * content is hard-deleted and the org and its memberships tombstoned, so no
+ * member keeps it as their current org. It used to tombstone the org row
+ * alone. Destructive: refused on prod.
+ */
 export async function orgDelete(
   def: EnvironmentDefinition,
   id: string,
-  flags: MutateFlags
-): Promise<{ id: string; deleted: true }> {
+  flags: MutateFlags,
+  spawner: WorkspaceSpawner = npmSpawner
+): Promise<Record<string, unknown>> {
   const operator = await beginMutation(def, flags, true); // destructive
-  await withStore(def, (s) => s.softDeleteOrg(id, operator));
+  // Checked here so a missing org keeps its exit code (8); the script
+  // re-checks, since it can be run directly.
+  await withStore(def, (s) => s.getOrg(id));
+  const stdout = await runApiScript(
+    def,
+    "db:org:delete",
+    ["--org", id, "--actor", operator],
+    spawner
+  );
+  const result = lastJsonLine(stdout);
   await audit(def, operator, "org delete", { orgId: id });
-  return { id, deleted: true };
+  return result;
 }

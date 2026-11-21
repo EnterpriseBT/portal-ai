@@ -17,7 +17,6 @@ const mockStore = {
   getOrg: jest.fn<() => Promise<unknown>>(),
   updateOrg: jest.fn<() => Promise<unknown>>(),
   setTier: jest.fn<() => Promise<unknown>>(),
-  softDeleteOrg: jest.fn<() => Promise<void>>(),
   isDemoOrg: jest.fn<(id: string) => Promise<boolean>>(),
   getTier: jest.fn<(slug: string) => Promise<{ slug: string }>>(),
   listUsers: jest.fn<() => Promise<unknown[]>>(),
@@ -241,17 +240,90 @@ describe("org update — the Stripe name step", () => {
   });
 });
 
-describe("guard classes + audit hygiene", () => {
-  it("org delete is destructive-class", async () => {
-    mockStore.softDeleteOrg.mockResolvedValue(undefined);
-    await orgDelete(appDev, "o-1", { yes: true });
+describe("org delete — the full deletion (#1088)", () => {
+  const prod = { ...appDev, name: "prod", kind: "production" as const };
+  const calls: Array<{ args: string[]; env: Record<string, string> }> = [];
+  const spawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      calls.push({ args, env });
+      return {
+        code: 0,
+        stdout: `noise\n${JSON.stringify({ id: "o-1", deleted: true })}\n`,
+        stderr: "",
+      };
+    }
+  );
+
+  beforeEach(() => {
+    calls.length = 0;
+    spawner.mockClear();
+  });
+
+  it("is destructive-class, checks the org, then spawns db:org:delete as the operator", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    const out = await orgDelete(appDev, "o-1", { yes: true }, spawner);
+    expect(out).toEqual({ id: "o-1", deleted: true });
     expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
       destructive: true,
       confirmed: true,
       prodConfirmed: false,
     });
+    expect(mockStore.getOrg).toHaveBeenCalledWith("o-1");
+    expect(calls[0].args).toEqual([
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:org:delete",
+      "--",
+      "--org",
+      "o-1",
+      "--actor",
+      SUB,
+    ]);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "org delete",
+        args: { orgId: "o-1" },
+      })
+    );
   });
 
+  it("a missing org is not-found (exit 8) and spawns nothing", async () => {
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.getOrg.mockRejectedValue(new AdminNotFoundError("gone"));
+    await expect(
+      orgDelete(appDev, "o-x", { yes: true }, spawner)
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+    expect(spawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("refused by the guard (prod) touches nothing", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvNotAuthorizedError("destructive ops are blocked on prod");
+    });
+    await expect(
+      orgDelete(prod as never, "o-1", { yes: true, confirmProd: true }, spawner)
+    ).rejects.toThrow(/blocked on prod/);
+    expect(mockStore.getOrg).not.toHaveBeenCalled();
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("a failed deletion is not audited", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    const failing = jest.fn(async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "Revalidation is running on this entity.",
+    }));
+    await expect(
+      orgDelete(appDev, "o-1", { yes: true }, failing)
+    ).rejects.toThrow();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("guard classes + audit hygiene", () => {
   it("org set-tier audits old→new, ids only", async () => {
     mockStore.getOrg.mockResolvedValue({
       id: "o-1",

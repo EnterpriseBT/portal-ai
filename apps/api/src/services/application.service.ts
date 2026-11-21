@@ -602,6 +602,29 @@ export class ApplicationService {
   }
 
   /**
+   * `db:org:delete` seam (#1088): the full organization deletion (#197) for
+   * any live org, as `actor` — what `portalai org delete` runs. Hard-deletes
+   * the org's content and tombstones the org row and its memberships, so no
+   * member keeps it as their current org. A missing or already-deleted org is
+   * a 404; an active job refuses it with 409 ENTITY_LOCKED_BY_JOB.
+   */
+  static async deleteOrganization(
+    organizationId: string,
+    actor: string
+  ): Promise<void> {
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
+    if (!org) {
+      throw new ApiError(
+        404,
+        ApiCode.ORGANIZATION_NOT_FOUND,
+        `Organization ${organizationId} not found`
+      );
+    }
+    await OrganizationDeleteService.deleteOrganization(organizationId, actor);
+  }
+
+  /**
    * `db:demo:delete` seam (#1035): the full organization deletion (#197) for
    * an org `demo create` marked, as `actor`. Hard-deletes the org's content
    * (records, wide tables, connectors, stations, packs…) and tombstones the

@@ -42,6 +42,7 @@
     "db:seed:org": "dotenv -e .env -- tsx src/db/seed-org.ts",
     "db:demo:create": "dotenv -e .env -- tsx src/db/demo-create.ts",
     "db:demo:delete": "dotenv -e .env -- tsx src/db/demo-delete.ts",
+    "db:org:delete": "dotenv -e .env -- tsx src/db/org-delete.ts",
     "fixtures:demo": "tsx src/scripts/generate-demo-fixtures.ts"
   },
   "dependencies": {

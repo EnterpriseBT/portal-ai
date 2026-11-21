@@ -47,7 +47,7 @@ portalai user list --env app-dev --org <orgId>
 portalai org create --name "Acme" --owner-email ben@portalsai.io --env app-dev --yes
 portalai org set-tier <orgId> standard --env app-dev --yes       # visible in the app ≤60s (tier cache)
 portalai member add <orgId> teammate@portalsai.io --env app-dev --yes
-portalai org delete <orgId> --env app-dev --yes                  # soft-delete; hard deletes don't exist here
+portalai org delete <orgId> --env app-dev --yes                  # full deletion, as Settings does (#1088)
 
 # The org switcher the app UI doesn't have yet
 portalai member switch <orgId> you@portalsai.io --env app-dev --yes   # refresh the app → you're in that org

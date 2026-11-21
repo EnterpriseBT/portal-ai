@@ -349,21 +349,6 @@ describe("setTier", () => {
   });
 });
 
-describe("softDeleteOrg", () => {
-  it("stamps deleted/deletedBy; an already-deleted org → 8", async () => {
-    await t.db
-      .insert(organizations)
-      .values([org("Org", { id: "o-1" }) as never]);
-    await store.softDeleteOrg("o-1", "actor-1");
-    await expect(store.getOrg("o-1")).rejects.toBeInstanceOf(
-      AdminNotFoundError
-    );
-    await expect(store.softDeleteOrg("o-1", "actor-1")).rejects.toBeInstanceOf(
-      AdminNotFoundError
-    );
-  });
-});
-
 describe("getTier (#1035)", () => {
   it("returns a live tier; unknown or soft-deleted → 8", async () => {
     await t.db.insert(tiers).values([
@@ -421,7 +406,6 @@ describe("an env not yet migrated to is_demo (#1035 rollout)", () => {
       .values([org("Acme", { id: "o-1" }) as never]);
     await expect(store.listOrgs({})).resolves.toHaveLength(1);
     await expect(store.getOrg("o-1")).resolves.toMatchObject({ id: "o-1" });
-    await store.softDeleteOrg("o-1", "actor-1");
   });
 });
 
