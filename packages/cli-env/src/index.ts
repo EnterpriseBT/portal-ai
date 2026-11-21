@@ -77,3 +77,14 @@ export {
   type SpawnResult,
   type WorkspaceSpawner,
 } from "./spawn.js";
+
+export {
+  runApiTask,
+  apiServiceName,
+  readTaskLog,
+  scriptErrorLines,
+  type ApiTaskResult,
+  type ApiTaskSpec,
+  type TaskLogLocation,
+  type TaskLogReader,
+} from "./ecs-task.js";

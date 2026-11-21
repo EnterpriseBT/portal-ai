@@ -8,25 +8,19 @@
  * like `db upgrade`. The replacement sequence is in COMMANDS.md → jobs.
  */
 
-import {
-  CloudWatchLogsClient,
-  GetLogEventsCommand,
-} from "@aws-sdk/client-cloudwatch-logs";
 import postgres from "postgres";
 
 import {
   assertOperationAllowed,
   recordAudit,
   resolveEnvConnection,
+  readTaskLog,
   runApiScript,
   type EnvironmentDefinition,
+  type TaskLogReader,
 } from "@portalai/cli-env";
 
-import {
-  runRedispatchTask,
-  type RedispatchTaskResult,
-  type TaskLogLocation,
-} from "../ecs.js";
+import { runRedispatchTask, type RedispatchTaskResult } from "../ecs.js";
 import { guardProdConnect, type ConnectOptions } from "./db.js";
 import type { MutateOptions } from "./vars.js";
 
@@ -133,21 +127,6 @@ export function parseRedispatchSummary(text: string): RedispatchSummary | null {
   }
   return null;
 }
-
-export type TaskLogReader = (log: TaskLogLocation) => Promise<string>;
-
-/** The task's stdout, from its CloudWatch stream (the tail is enough). */
-export const readTaskLog: TaskLogReader = async (log) => {
-  const out = await new CloudWatchLogsClient({ region: log.region }).send(
-    new GetLogEventsCommand({
-      logGroupName: log.group,
-      logStreamName: log.stream,
-      startFromHead: false,
-      limit: 200,
-    })
-  );
-  return (out.events ?? []).map((e) => e.message ?? "").join("\n");
-};
 
 /**
  * A mutation (prod: `--yes --confirm-prod`). Idempotent by construction: a row
