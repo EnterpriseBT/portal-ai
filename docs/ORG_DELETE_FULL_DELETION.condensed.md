@@ -47,7 +47,7 @@ The script calls a new `ApplicationService.deleteOrganization(id, actor)`: a 404
 3. Reload the app → you land in A; the org switcher no longer lists B.
 4. In psql: B's `organization_users` rows have `deleted` set; B's connectors, entities and stations are gone; no `er__` tables remain for B's entities.
 5. `npx portalai org delete <B> --env local` again → exit 8, "not found".
-6. Start a long sync in an org, then `org delete` it while the job is `active` → non-zero exit naming the running job; the org is untouched.
+6. Start a long sync in an org, then `org delete` it while the job is `active` → exit 7, the message naming the running job; the org is untouched.
 7. `npx portalai org delete <id> --env prod --yes --confirm-prod` → refused, exit 6.
 
 ## Out of scope
