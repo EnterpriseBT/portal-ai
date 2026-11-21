@@ -672,6 +672,18 @@ describe("PortalService", () => {
       });
     });
 
+    it("#1100: falls back to the userId alone when the lookup fails", async () => {
+      mockGetMember.mockRejectedValueOnce(new Error("pool exhausted"));
+      const ctx = await contextFor("user-500");
+      expect(ctx.caller).toEqual({
+        userId: "user-500",
+        name: null,
+        email: null,
+        roles: [],
+        roleSlugs: [],
+      });
+    });
+
     it("#1100: falls back to the userId alone when no membership is found", async () => {
       mockGetMember.mockResolvedValueOnce(null);
       const ctx = await contextFor("user-404");

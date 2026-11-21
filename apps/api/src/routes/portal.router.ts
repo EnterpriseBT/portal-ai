@@ -156,7 +156,9 @@ portalRouter.post(
             id: result.portalId,
           } as unknown as PortalCreateResponsePayload["portal"],
           portalId: result.portalId,
-          stationContext: result.stationContext,
+          // #1100: the caller's identity is for the prompt; it isn't part
+          // of this response (JSON drops the undefined key).
+          stationContext: { ...result.stationContext, caller: undefined },
         },
         201
       );

@@ -2315,6 +2315,30 @@ describe("buildSystemPrompt — Who You're Talking To (#1100)", () => {
     expect(promptFor(undefined)).not.toContain("## Who You're Talking To");
   });
 
+  it("strips invisible and bidi controls from the name", () => {
+    const text = section(
+      promptFor({
+        ...ADA,
+        name: "Ada\u0085Love\u202Elace\u200B\u2066x\u2069\uFEFF\u009B",
+      })
+    );
+    expect(text).toContain("You're talking to AdaLovelacex (ada@example.com");
+  });
+
+  it("omits an email longer than 254 characters rather than cutting it", () => {
+    const long = "a".repeat(250) + "@example.com";
+    const text = section(promptFor({ ...ADA, email: long }));
+    expect(text).toContain(
+      "You're talking to Ada Lovelace (userId `u-ada`), owner"
+    );
+    expect(text).not.toContain("@example.com");
+    // A long but valid one is kept whole, not clipped to the name's 120.
+    const ok = "b".repeat(200) + "@example.com";
+    expect(section(promptFor({ ...ADA, email: ok }))).toContain(
+      `(${ok}, userId`
+    );
+  });
+
   it("keeps a crafted name or email on one line, without code spans, clipped", () => {
     const text = section(
       promptFor({

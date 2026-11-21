@@ -19,6 +19,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, and, like } from "drizzle-orm";
 import postgres from "postgres";
 
+import {
+  GroupModelFactory,
+  RoleModelFactory,
+  UserGroupModelFactory,
+  UserRoleModelFactory,
+} from "@portalai/core/models";
+
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { SeatService } from "../../../services/seat.service.js";
@@ -37,7 +44,6 @@ import {
   seedRbacForOrg,
 } from "../utils/application.util.js";
 import { atLeast, eventually } from "../utils/eventually.util.js";
-import { RoleModelFactory, UserRoleModelFactory } from "@portalai/core/models";
 
 const AUDIT = { sourceIp: "203.0.113.4", userAgent: "jest" };
 
@@ -490,10 +496,31 @@ describe("SeatService Integration Tests", () => {
 
   // ── getMember (#1100) ───────────────────────────────────────────────
 
-  it("getMember returns the caller in listMembers' shape", async () => {
+  it("getMember returns the caller in listMembers' shape, without groups", async () => {
+    const group = new GroupModelFactory()
+      .create("system")
+      .update({
+        organizationId: orgId,
+        name: `G ${generateId().slice(0, 6)}`,
+        description: null,
+      })
+      .parse();
+    await asDrizzle()
+      .insert(schema.groups)
+      .values(group as never);
+    await asDrizzle()
+      .insert(schema.userGroup)
+      .values(
+        new UserGroupModelFactory()
+          .create("system")
+          .update({ userId: ownerId, organizationId: orgId, groupId: group.id })
+          .parse() as never
+      );
     const [listed] = await SeatService.listMembers(owner);
+    expect(listed.groupIds).toEqual([group.id]);
     const member = await SeatService.getMember(orgId, ownerId);
-    expect(member).toEqual(listed);
+    // The portal prompt doesn't use groups, so getMember skips that query.
+    expect(member).toEqual({ ...listed, groupIds: [] });
     expect(member?.roles).toEqual(["owner"]);
   });
 

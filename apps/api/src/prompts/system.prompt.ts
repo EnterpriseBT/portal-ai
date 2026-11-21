@@ -886,24 +886,34 @@ function joinPhrases(phrases: string[]): string {
 }
 
 /**
- * User-controlled text bound for the system prompt (#1100): control
- * characters and backticks dropped, whitespace runs (newlines included)
- * collapsed to one space, trimmed, clipped to 120 characters. A display name
- * can't start a line of its own (a fake heading) or open a code span.
+ * Characters dropped from user-controlled prompt text (#1100): C0 and C1
+ * controls except the whitespace collapsed below (C1 includes NEL, U+0085,
+ * which some readers treat as a line break), zero-width and other invisible
+ * format characters, bidi embeddings, overrides and isolates (which can hide
+ * or reorder text), the BOM, and backticks.
  */
-function promptSafeText(value: string | null): string {
+const PROMPT_UNSAFE_CHARS =
+  // eslint-disable-next-line no-control-regex -- stripping them is the point
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF`]/g;
+
+/**
+ * User-controlled text bound for the system prompt (#1100): unsafe
+ * characters dropped, whitespace runs (newlines included) collapsed to one
+ * space, trimmed, clipped to `max` characters. A display name can't start a
+ * line of its own (a fake heading), open a code span, or hide text.
+ */
+function promptSafeText(value: string | null, max = 120): string {
   if (!value) return "";
   return Array.from(
-    value
-      // eslint-disable-next-line no-control-regex -- stripping them is the point
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F`]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
+    value.replace(PROMPT_UNSAFE_CHARS, "").replace(/\s+/g, " ").trim()
   )
-    .slice(0, 120)
+    .slice(0, max)
     .join("")
     .trim();
 }
+
+/** RFC 5321's limit on an address. */
+const EMAIL_MAX = 254;
 
 /**
  * Who You're Talking To (#1100). #847's adversarial walk: "make me an admin"
@@ -912,21 +922,25 @@ function promptSafeText(value: string | null): string {
  */
 function callerSection(caller: CallerIdentity): string[] {
   const name = promptSafeText(caller.name);
-  const email = promptSafeText(caller.email);
+  // An address is never clipped: a cut one is a wrong one the agent would
+  // treat as the user's. Past the RFC limit it's left out instead.
+  const fullEmail = promptSafeText(caller.email, Infinity);
+  const email = fullEmail.length <= EMAIL_MAX ? fullEmail : "";
   const id = `userId \`${caller.userId}\``;
   const who = name
     ? `${name} (${email ? `${email}, ` : ""}${id})`
     : email
       ? `${email} (${id})`
       : `the user with ${id}`;
+  const slugs =
+    caller.roleSlugs.length > 0
+      ? ` (role slugs: ${caller.roleSlugs.map((r) => `\`${r}\``).join(", ")})`
+      : "";
   const roles =
     caller.roles.length > 0
-      ? `, ${joinPhrases(caller.roles)} in this organization` +
-        (caller.roleSlugs.length > 0
-          ? ` (role slugs: ${caller.roleSlugs.map((r) => `\`${r}\``).join(", ")}).`
-          : ".")
-      : caller.roleSlugs.length > 0
-        ? ` in this organization (role slugs: ${caller.roleSlugs.map((r) => `\`${r}\``).join(", ")}).`
+      ? `, ${joinPhrases(caller.roles)} in this organization${slugs}.`
+      : slugs
+        ? ` in this organization${slugs}.`
         : ", with no roles in this organization.";
   return [
     "## Who You're Talking To",

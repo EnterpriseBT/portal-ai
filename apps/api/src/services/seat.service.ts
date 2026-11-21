@@ -180,25 +180,31 @@ export class SeatService {
   }
 
   /**
-   * One member of an organization, in exactly `listMembers`' shape (#1100),
-   * or null when the user isn't a live member of it. For the portal turn's
-   * own caller: the system prompt names who the agent is talking to. No
-   * permission check, since a turn's caller always reads their own record;
-   * don't expose it as a lookup of other users.
+   * One member of an organization, in `listMembers`' shape (#1100), or null
+   * when the user isn't a live member of it. For the portal turn's own
+   * caller: the system prompt names who the agent is talking to. `groupIds`
+   * is always empty: the prompt doesn't use groups, so their query is
+   * skipped on this per-turn path. No permission check, since a turn's
+   * caller always reads their own record; don't expose it as a lookup of
+   * other users.
    */
   static async getMember(
     organizationId: string,
     userId: string
   ): Promise<Member | null> {
-    const [member] = await SeatService.loadMembers(organizationId, [userId]);
+    const [member] = await SeatService.loadMembers(organizationId, [userId], {
+      groups: false,
+    });
     return member ?? null;
   }
 
   /** Members of `organizationId` (all, or only `onlyUserIds`): membership
-   *  joined to user, with system roles, every role slug and group ids. */
+   *  joined to user, with system roles, every role slug and (unless
+   *  `groups: false`) group ids. */
   private static async loadMembers(
     organizationId: string,
-    onlyUserIds?: string[]
+    onlyUserIds?: string[],
+    { groups = true }: { groups?: boolean } = {}
   ): Promise<Member[]> {
     const rows = await (db as typeof db)
       .select({
@@ -259,18 +265,19 @@ export class SeatService {
     }
     // #622: batch-load each member's custom-group ids from the user_group join
     // (one query) so the Members tab can offer member-centric group assignment.
-    const groupRows = userIds.length
-      ? await (db as typeof db)
-          .select({ userId: userGroup.userId, groupId: userGroup.groupId })
-          .from(userGroup)
-          .where(
-            and(
-              eq(userGroup.organizationId, organizationId),
-              inArray(userGroup.userId, userIds),
-              isNull(userGroup.deleted)
+    const groupRows =
+      groups && userIds.length
+        ? await (db as typeof db)
+            .select({ userId: userGroup.userId, groupId: userGroup.groupId })
+            .from(userGroup)
+            .where(
+              and(
+                eq(userGroup.organizationId, organizationId),
+                inArray(userGroup.userId, userIds),
+                isNull(userGroup.deleted)
+              )
             )
-          )
-      : [];
+        : [];
     const groupsByUser = new Map<string, string[]>();
     for (const gr of groupRows) {
       const list = groupsByUser.get(gr.userId) ?? [];
