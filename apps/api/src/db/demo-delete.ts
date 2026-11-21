@@ -12,64 +12,27 @@
  * from Settings, so a finished demo leaves no records or wide tables behind
  * and no owner keeps a deleted org as their current one.
  */
-import { pathToFileURL } from "node:url";
-
 import { ApplicationService } from "../services/application.service.js";
-import { closeDatabase } from "./client.js";
-import { parseFlags } from "./script-args.util.js";
+import {
+  processIo,
+  runDeleteScript,
+  runIfMain,
+  type DeleteScriptIo,
+} from "./delete-script.util.js";
 
 const USAGE = "Usage: db:demo:delete -- --org <id> --actor <who>";
 
-export interface DemoDeleteIo {
-  out: (line: string) => void;
-  err: (line: string) => void;
-}
-
-const processIo: DemoDeleteIo = {
-  out: (line) => console.log(line),
-  err: (line) => console.error(line),
-};
-
+export type DemoDeleteIo = DeleteScriptIo;
 export type DemoDeleteStep = typeof ApplicationService.deleteDemoOrganization;
 
 /** Parse, delete, report. Returns the exit code. */
-export async function runDemoDelete(
+export function runDemoDelete(
   argv: string[],
   remove: DemoDeleteStep = (id, actor) =>
     ApplicationService.deleteDemoOrganization(id, actor),
   io: DemoDeleteIo = processIo
 ): Promise<number> {
-  const args = parseFlags(argv, ["org", "actor"]);
-  if (!args.ok) {
-    io.err(`${USAGE} (${args.error})`);
-    return 1;
-  }
-  const { org: orgId, actor } = args.flags;
-  if (!orgId || !actor) {
-    io.err(`${USAGE} (--org and --actor are required)`);
-    return 1;
-  }
-  try {
-    await remove(orgId, actor);
-  } catch (err) {
-    io.err(err instanceof Error ? err.message : String(err));
-    return 1;
-  }
-  io.out(JSON.stringify({ id: orgId, deleted: true }));
-  return 0;
+  return runDeleteScript(argv, USAGE, remove, io);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
-  runDemoDelete(process.argv.slice(2))
-    .catch((err) => {
-      console.error(err instanceof Error ? err.message : String(err));
-      return 1;
-    })
-    .then(async (code) => {
-      await closeDatabase().catch(() => {});
-      process.exit(code);
-    });
-}
+runIfMain(import.meta.url, (argv) => runDemoDelete(argv));

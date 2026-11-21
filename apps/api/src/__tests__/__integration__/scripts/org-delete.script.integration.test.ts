@@ -24,6 +24,8 @@ import { ApplicationService } from "../../../services/application.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
 import { S3Service } from "../../../services/s3.service.js";
+import { ApiError } from "../../../services/http.service.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { teardownOrg } from "../utils/application.util.js";
 import {
   seedPopulatedOrg,
@@ -152,6 +154,36 @@ describe("db:org:delete — runOrgDelete", () => {
 
     expect(code).toBe(1);
     expect(err.join("\n")).toMatch(/not found/);
+  });
+
+  it("a job-lock refusal names each running job on stderr (#1088 review)", async () => {
+    const refuse = async () => {
+      throw new ApiError(
+        409,
+        ApiCode.ENTITY_LOCKED_BY_JOB,
+        "Organization is locked by an in-flight job",
+        {
+          runningJobs: [
+            { id: "j-1", type: "connector_sync", status: "active" },
+            { id: "j-2", type: "revalidation", status: "active" },
+          ],
+        }
+      );
+    };
+
+    const code = await runOrgDelete(
+      ["--org", "o-1", "--actor", "operator-1"],
+      refuse,
+      io
+    );
+
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err).toEqual([
+      "Organization is locked by an in-flight job:",
+      "  connector_sync j-1 (active)",
+      "  revalidation j-2 (active)",
+    ]);
   });
 
   it.each([
