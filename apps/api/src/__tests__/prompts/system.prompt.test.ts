@@ -2213,7 +2213,7 @@ describe("buildSystemPrompt — Response Style wording (#1102)", () => {
       expect(section).toMatch(
         /Describe what you did only from your tool calls: what you passed in\s+and what the result says happened/
       );
-      expect(section).toMatch(/don't say it did, will or can/);
+      expect(section).toMatch(/don't say or imply that it did or will/);
     }
   });
 

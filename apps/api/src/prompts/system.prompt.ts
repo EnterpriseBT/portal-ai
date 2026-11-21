@@ -1501,8 +1501,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   lines.push(
     "- Describe what you did only from your tool calls: what you passed in " +
       "and what the result says happened. If no tool call's result shows " +
-      "something happened, don't say it did, will or can, and don't imply " +
-      "an effect beyond what the result reports."
+      "something happened, don't say or imply that it did or will, and don't " +
+      "describe an effect beyond what the result reports."
   );
   lines.push(
     '- Answer the question, not the meta-question. If the user asks "what ' +

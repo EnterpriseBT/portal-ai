@@ -26,7 +26,7 @@ Runtime text filtering and a live eval were considered and dropped, being heavie
 
 ## Decision 1 — claims rest on the tool calls
 
-One new Response Style bullet: the agent describes what it did only from its tool calls, meaning what it passed in and what the result says happened. If no tool call's result shows something happened, it doesn't say it did, will or can, and doesn't imply an effect beyond what the result reports.
+One new Response Style bullet: the agent describes what it did only from its tool calls, meaning what it passed in and what the result says happened. If no tool call's result shows something happened, it doesn't say or imply that it did or will, and doesn't describe an effect beyond what the result reports. (Offering work its tools can do stays governed by the existing "Don't offer work none of your tools can do".)
 
 This applies equally to built-in and custom tools. It needs no per-station list of changing tools, which could drift from what the write gate or geocoding key actually built. It also makes no blanket "nothing leaves the session" claim, which a custom tool could make false.
 
