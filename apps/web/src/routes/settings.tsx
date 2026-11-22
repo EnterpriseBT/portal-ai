@@ -21,7 +21,7 @@ export const Route = createFileRoute("/settings")({
   }),
 });
 
-export function SettingsRoute() {
+function SettingsRoute() {
   return (
     <Authorized>
       <AuthorizedLayout>

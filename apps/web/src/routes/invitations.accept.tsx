@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 
 import { AcceptInvitationView } from "../views/AcceptInvitation.view";
 import { Authorized } from "../components/Authorized.component";
@@ -17,18 +17,26 @@ import { PublicLayout } from "../layouts/Public.layout";
  * reads the caller's org until the accept has run.
  */
 export const Route = createFileRoute("/invitations/accept")({
-  component: AcceptInvitationRoute,
+  component: AcceptInvitationPage,
   validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === "string" ? search.token : undefined,
+    token: tokenFrom(search),
   }),
 });
 
-function AcceptInvitationRoute() {
-  const { token } = Route.useSearch();
-  return <AcceptInvitationPage token={token} />;
+function tokenFrom(search: Record<string, unknown>): string | undefined {
+  return typeof search.token === "string" ? search.token : undefined;
 }
 
-export function AcceptInvitationPage({ token }: { token?: string }) {
+/**
+ * Private, like every route component (#1109): an exported one stays in the
+ * main bundle. It reads the token from the location rather than the route
+ * match (`Route.useSearch()`), so a test can render `Route.options.component`
+ * without registering the route.
+ */
+function AcceptInvitationPage() {
+  const token = useRouterState({
+    select: (s) => tokenFrom(s.location.search as Record<string, unknown>),
+  });
   return (
     <Authorized>
       <PublicLayout>

@@ -39,16 +39,23 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { AcceptInvitationPage } = await import("../routes/invitations.accept");
+const { Route } = await import("../routes/invitations.accept");
+// The route's own component (#1109: route files export only `Route`). It
+// reads the token from the location, so the test starts at the accept URL.
+const AcceptInvitationPage = Route.options.component!;
 
 describe("AcceptInvitationPage (#881)", () => {
   beforeEach(() => calls.splice(0));
 
   it("never reads the caller's organization before the invitation is accepted", async () => {
-    render(<AcceptInvitationPage token="tok-1" />);
+    render(<AcceptInvitationPage />, {
+      initialPath: "/invitations/accept?token=tok-1",
+    });
 
     expect(await screen.findByText(/portals ai/i)).toBeInTheDocument();
     expect(calls).toContain("invitations.accept");
+    // The token came through the URL (#1109): without one the page says so.
+    expect(screen.queryByText(/missing its token/i)).not.toBeInTheDocument();
     expect(calls).not.toContain("organizations.current");
     expect(calls).not.toContain("organizations.memberships");
   });

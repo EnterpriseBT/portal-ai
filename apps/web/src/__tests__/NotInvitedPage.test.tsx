@@ -38,7 +38,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { NotInvitedPage } = await import("../routes/not-invited");
+const { Route } = await import("../routes/not-invited");
+// The route's own component (#1109: route files export only `Route`).
+const NotInvitedPage = Route.options.component!;
 
 describe("NotInvitedPage (#916)", () => {
   beforeEach(() => calls.splice(0));
