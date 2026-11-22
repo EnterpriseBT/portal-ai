@@ -193,4 +193,52 @@ describe("scriptErrorLines", () => {
     const text = ["{}", "a", "", "b", "c", "d", "e", "f", '{"x":1}'].join("\n");
     expect(scriptErrorLines(text)).toEqual(["b", "c", "d", "e", "f"]);
   });
+
+  // The CloudWatch output of a task whose script was missing from the image
+  // (#1088 adversarial review): the last five lines were only the stack's tail.
+  it("starts a crash's reason at its Error line, not the stack's tail", () => {
+    const text = [
+      "node:internal/modules/cjs/loader:1433",
+      "  throw err;",
+      "  ^",
+      "Error: Cannot find module '/app/dist/db/org-delete.js'",
+      "    at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)",
+      "    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)",
+      "    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)",
+      "    at Function._load (node:internal/modules/cjs/loader:1211:37)",
+      "    at node:internal/main/run_main_module:36:49 {",
+      "  code: 'MODULE_NOT_FOUND',",
+      "  requireStack: []",
+      "}",
+      "Node.js v22.23.5",
+    ].join("\n");
+    expect(scriptErrorLines(text)).toEqual([
+      "Error: Cannot find module '/app/dist/db/org-delete.js'",
+      "at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)",
+      "at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)",
+      "at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)",
+      "at Function._load (node:internal/modules/cjs/loader:1211:37)",
+    ]);
+  });
+
+  it("picks a named error type too (TypeError: …)", () => {
+    const text = ["noise", "TypeError: x is not a function", "    at y"].join(
+      "\n"
+    );
+    expect(scriptErrorLines(text)).toEqual([
+      "TypeError: x is not a function",
+      "at y",
+    ]);
+  });
+
+  it("a script's own refusal (no Error line) keeps its last lines", () => {
+    const text = [
+      "Organization is locked by an in-flight job:",
+      "  connector_sync j-1 (active)",
+    ].join("\n");
+    expect(scriptErrorLines(text)).toEqual([
+      "Organization is locked by an in-flight job:",
+      "connector_sync j-1 (active)",
+    ]);
+  });
 });

@@ -91,13 +91,29 @@ export const apiServiceName = (def: EnvironmentDefinition): string => {
 /**
  * The script's own error lines from a log tail. The app logs pino JSON, one
  * object per line, so a line that isn't JSON is the script talking.
+ *
+ * A crash (an uncaught throw, a missing module) prints `Error: …` followed by
+ * a stack trace, and the last lines would be only the stack's tail. So when
+ * one is present, the reason starts at the last `…Error: ` line (#1088
+ * adversarial review: the tail held `requireStack: []` and dropped
+ * "Cannot find module"). A script's own refusal has no such line and keeps
+ * its last lines.
  */
 export function scriptErrorLines(text: string): string[] {
-  return text
+  const lines = text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("{"))
-    .slice(-FAILURE_LINES);
+    .filter((line) => line.length > 0 && !line.startsWith("{"));
+  let start = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\w*Error\b.*:/.test(lines[i]!)) {
+      start = i;
+      break;
+    }
+  }
+  return start >= 0
+    ? lines.slice(start, start + FAILURE_LINES)
+    : lines.slice(-FAILURE_LINES);
 }
 
 export async function runApiTask(
