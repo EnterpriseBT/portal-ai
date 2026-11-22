@@ -71,3 +71,43 @@ The delete scripts print a refusal's running jobs (type, id, status), not just t
 
 - Reclaiming data of orgs tombstoned by the old `org delete` before this fix: `org delete` refuses them as not found. Slice 1 un-strands their users; a one-off reclaim, if one is wanted, is its own ticket.
 - Allowing `org delete` on prod: it stays destructive-blocked.
+
+## Adversarial
+
+Probes for how the change breaks. Local probes run against your dev stack with `npx portalai` / `psql`; tags: untagged = browser-drivable, `— backend` = CLI/DB, `— manual` = needs a human on app-dev. Make a throwaway org per probe (`npx portalai seed org --name "Adv 1088 <x>" --member-email qa@portalsai.io --env local --yes`) and note a **control org** (e2e-fixture) to check isolation.
+
+**§1 Boundary.**
+- [ ] `npx portalai org delete "" --env local` — expected SAFE: a usage or not-found exit (2/8); nothing deleted, no script run. — backend
+
+**§2 Malformed & injection.**
+- [ ] `npx portalai org delete '$(touch /tmp/pwned-1088); x' --env local`, then `org delete -- --actor --env local` — expected SAFE: exit 8 (not found) before anything spawns; `/tmp/pwned-1088` doesn't exist; the id never reaches a shell. — backend
+- [ ] `npm run --workspace @portalai/api db:org:delete -- --org <throwaway> --actor x --force y` (script run directly with an unknown flag) — expected SAFE: usage error, exit 1, org untouched. — backend
+
+**§3 Concurrency.**
+- [ ] Two `org delete <same throwaway>` started together (`& wait`) — expected SAFE: one exits 0, the other 0 or 8, never a 7; the org ends fully deleted (no live membership, no entity, no `er__` table). — backend
+
+**§4 Auth & guard.**
+- [ ] `npx portalai org delete <id> --env app-dev` without `--yes` — expected SAFE: exit 5, no ECS task started (`aws ecs list-tasks --cluster portalai-dev --desired-status STOPPED` shows nothing new). — backend
+- [ ] `npm run --workspace @portalai/api db:demo:delete -- --org <a non-demo throwaway> --actor x` — expected SAFE: "is not a demo org", exit 1, org untouched; the demo script can't be turned into a general delete. — backend
+
+**§5 Multi-tenant isolation.**
+- [ ] Count the control org's stations, entities, records and live memberships; `org delete` a throwaway; count again — expected SAFE: the control org's counts are unchanged. — backend
+
+**§6 State & lifecycle.**
+- [ ] With the app open on a throwaway org (qa switched to it, entity list showing), `org delete` it from the CLI, then navigate in the **same tab without reloading** — expected SAFE: the app moves to qa's next live org or shows a clean error; no data from the deleted org renders, no 500.
+- [ ] A throwaway with a made-up `stripe_subscription_id` (`update organizations set stripe_subscription_id='sub_fake_1088'`) — expected SAFE: the deletion still completes (exit 0) and logs the Stripe failure as a warning, matching Settings' delete (#197). — backend
+
+**§7 Misuse sequences.**
+- [ ] On app-dev **before** this branch is deployed, `org delete` a throwaway — expected SAFE: exit 7 with the task's own error (`Cannot find module …/org-delete.js`) in the message; the org is untouched. Keep it for smoke step 8. — manual
+- [ ] On app-dev after the deploy, Ctrl-C the CLI while it waits on the task — expected SAFE: the task finishes on its own; a re-run exits 8 (already deleted) or 0, never half-deleted data. — manual
+
+**Findings.**
+
+| Probe | Observed | Severity | Disposition |
+|---|---|---|---|
+| §6 open tab on a deleted org | Until the tab reloads, its header and switcher keep the deleted org (cached `organization/current`) while API calls already serve the fallback org; a click on the deleted org's station gets a clean "Station not found" (404), and a reload lands in the fallback org. No cross-org data. Same as any out-of-band current-org change today (Settings delete in another tab, `member switch`). | low | waived: pre-existing for any out-of-band current-org change; not introduced here |
+| §7 failure tail | The 5-line CloudWatch tail on a crashed task held only Node's stack trailer; the `Error: Cannot find module '/app/dist/db/org-delete.js'` line was cut off. Exit 7 and the CloudWatch pointer were right. | low | fixed-in-PR: the tail starts at the last `…Error:` line (`scriptErrorLines`), checked against this task's real log |
+
+**Sign-off.** - [ ] Every probe walked; findings resolved or waived with reason · - [ ] <date + name> confirmed
+
+Bug template: Section · Probe · Expected (safe) · Got · Repro · Identifiers (org/job ids).
