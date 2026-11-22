@@ -12,22 +12,22 @@
 | Settings route | `apps/web/src/routes/settings.tsx:24` | `export function SettingsRoute()`; no importer |
 | Not-invited route | `apps/web/src/routes/not-invited.tsx:18` | `export function NotInvitedPage()`; imported by `__tests__/NotInvitedPage.test.tsx` |
 | Accept route | `apps/web/src/routes/invitations.accept.tsx:31` | private `AcceptInvitationRoute` reads `Route.useSearch()`, renders the exported `AcceptInvitationPage`; imported by `__tests__/AcceptInvitationPage.test.tsx` |
-| Test router | `apps/web/src/__tests__/test-utils.tsx:38` | root route only, memory history fixed at `/` |
+| Test router | `apps/web/src/__tests__/test-utils.tsx:38` | root route only, memory history fixed at `/`, so `Route.useSearch()` has no match there |
 | Build today | `vite build` | no chunk for index/settings/not-invited; `invitations.accept` chunk is 0.31 kB (the wrapper only) |
 
 ## Decision — private route components; tests render `Route.options.component`
 
 Options: (a) drop the exports and have the tests render the route's own component; (b) move each page composition (`Authorized` + layout + view) into a non-route file the route imports; (c) drop only the three warned exports.
 
-**Decision: (a), for all four files.** (b) adds a file per page with no consumer but a test, and a single-component file holding `Authorized` is wiring, which the Component File Policy doesn't allow alone. (c) leaves the accept page in the main bundle. The not-invited test renders `Route.options.component` directly. The accept route's component reads its token from the location (`useRouterState`), per the Routing section's "read the location, not the match", so it renders off-route; `test-utils`' `render` gains an `initialPath` option so the test can start at `/invitations/accept?token=tok-1`. The component keeps `validateSearch`'s rule (a non-string token is undefined).
+**Decision: (a), for all four files.** (b) adds a file per page with no consumer but a test, and a single-component file holding `Authorized` is wiring, which the Component File Policy doesn't allow alone. (c) leaves the accept page in the main bundle. The not-invited test renders `Route.options.component` directly. The accept page keeps reading its token through `Route.useSearch()`, so its test registers the real route under a root route (as the generated tree does) and renders it at `/invitations/accept?token=tok-1`. *(Code review: reading the token from `useRouterState`'s location instead flipped it to undefined while a navigation away was loading the next route's chunk, flashing the "incomplete link" state after a successful accept.)*
 
-**Guard:** `apps/web/src/__tests__/route-exports.guard.test.ts` fails on any `export` in `src/routes/**` other than `export const Route` and type-only exports (`__root.tsx`'s `RouterContext`). `routeTree.gen.ts` is excluded. A line in CLAUDE.md's Routing section records the rule.
+**Guard:** `apps/web/src/__tests__/route-exports.guard.test.ts` parses each file under `src/routes/` (TypeScript AST) and fails on any export other than a lone `export const Route` and type-only exports (`__root.tsx`'s `RouterContext`). A line in CLAUDE.md's Routing section records the rule.
 
 ## Plan — 1 slice
 
 **Files**
-- Edit: `routes/index.tsx`, `routes/settings.tsx`, `routes/not-invited.tsx` (drop `export`); `routes/invitations.accept.tsx` (one private component reading the location).
-- Edit: `__tests__/test-utils.tsx` (`initialPath`); `__tests__/NotInvitedPage.test.tsx`, `__tests__/AcceptInvitationPage.test.tsx` (render `Route.options.component`).
+- Edit: `routes/index.tsx`, `routes/settings.tsx`, `routes/not-invited.tsx` (drop `export`); `routes/invitations.accept.tsx` (one private component, still on `Route.useSearch()`).
+- Edit: `__tests__/NotInvitedPage.test.tsx` (render `Route.options.component`), `__tests__/AcceptInvitationPage.test.tsx` (register the route under a root and render it at its URL).
 - New: `__tests__/route-exports.guard.test.ts`. Edit: `CLAUDE.md` (Routing).
 
 **Tests:** the guard (red first against today's four files), the two page tests, `npm run test:unit -- --testPathPattern '(route-exports|NotInvitedPage|AcceptInvitationPage)'`; `npm run lint`, `npm run type-check`, `npm run build` in `apps/web`.

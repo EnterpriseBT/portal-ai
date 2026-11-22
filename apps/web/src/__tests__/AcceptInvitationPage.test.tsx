@@ -39,22 +39,42 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
+const { createMemoryHistory, createRootRoute, createRouter, RouterProvider } =
+  await import("@tanstack/react-router");
+const { QueryClient } = await import("@tanstack/react-query");
 const { Route } = await import("../routes/invitations.accept");
-// The route's own component (#1109: route files export only `Route`). It
-// reads the token from the location, so the test starts at the accept URL.
-const AcceptInvitationPage = Route.options.component!;
+
+/**
+ * The real accept route, mounted at its URL (#1109). Route files export only
+ * `Route`, and the page reads its token from its own match
+ * (`Route.useSearch()`), so the test registers the route under a root, as
+ * the generated tree does, rather than rendering the component off-route.
+ */
+function renderAcceptRoute(url: string) {
+  const root = createRootRoute();
+  Route.update({
+    id: "/invitations/accept",
+    path: "/invitations/accept",
+    getParentRoute: () => root,
+  } as never);
+  const router = createRouter({
+    routeTree: root.addChildren([Route]),
+    history: createMemoryHistory({ initialEntries: [url] }),
+    context: { queryClient: new QueryClient() },
+  });
+  return render(<RouterProvider router={router} />);
+}
 
 describe("AcceptInvitationPage (#881)", () => {
   beforeEach(() => calls.splice(0));
 
   it("never reads the caller's organization before the invitation is accepted", async () => {
-    render(<AcceptInvitationPage />, {
-      initialPath: "/invitations/accept?token=tok-1",
-    });
+    renderAcceptRoute("/invitations/accept?token=tok-1");
 
     expect(await screen.findByText(/portals ai/i)).toBeInTheDocument();
     expect(calls).toContain("invitations.accept");
-    // The token came through the URL (#1109): without one the page says so.
+    // The token reached the page through the route (#1109): without one the
+    // page says the link is incomplete.
     expect(screen.queryByText(/missing its token/i)).not.toBeInTheDocument();
     expect(calls).not.toContain("organizations.current");
     expect(calls).not.toContain("organizations.memberships");

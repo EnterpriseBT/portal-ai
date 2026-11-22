@@ -1,4 +1,4 @@
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { AcceptInvitationView } from "../views/AcceptInvitation.view";
 import { Authorized } from "../components/Authorized.component";
@@ -19,24 +19,19 @@ import { PublicLayout } from "../layouts/Public.layout";
 export const Route = createFileRoute("/invitations/accept")({
   component: AcceptInvitationPage,
   validateSearch: (search: Record<string, unknown>) => ({
-    token: tokenFrom(search),
+    token: typeof search.token === "string" ? search.token : undefined,
   }),
 });
 
-function tokenFrom(search: Record<string, unknown>): string | undefined {
-  return typeof search.token === "string" ? search.token : undefined;
-}
-
 /**
  * Private, like every route component (#1109): an exported one stays in the
- * main bundle. It reads the token from the location rather than the route
- * match (`Route.useSearch()`), so a test can render `Route.options.component`
- * without registering the route.
+ * main bundle. The token comes from this route's own match, which holds
+ * steady until the page unmounts; the router's `location` moves to the next
+ * URL as soon as a navigation starts, which would flash the "incomplete
+ * link" state after a successful accept.
  */
 function AcceptInvitationPage() {
-  const token = useRouterState({
-    select: (s) => tokenFrom(s.location.search as Record<string, unknown>),
-  });
+  const { token } = Route.useSearch();
   return (
     <Authorized>
       <PublicLayout>
