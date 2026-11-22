@@ -1,213 +1,62 @@
+/**
+ * portalops' one-offs (#192, #581, #852): each wrapper hands cli-env's
+ * `runApiTask` its built script. The task sequence itself (service config →
+ * task def → run → wait → exit code → log) is tested in cli-env's
+ * ecs-task.test.ts, where it moved in #1088.
+ */
+
 import { jest } from "@jest/globals";
 
 import {
   cliEnvMockModule,
   resetCliEnvMocks,
+  mocks,
   BUILTIN_ENVIRONMENTS,
-  EnvInfraError,
-  EnvNotConfiguredError,
 } from "./helpers/cli-env-mock.js";
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
-
-const ecsSend =
-  jest.fn<
-    (cmd: { constructor: { name: string }; input: unknown }) => Promise<unknown>
-  >();
-const waitMock = jest
-  .fn<() => Promise<unknown>>()
-  .mockResolvedValue({ state: "SUCCESS" });
-jest.unstable_mockModule("@aws-sdk/client-ecs", () => ({
-  ECSClient: class {
-    send = ecsSend;
-  },
-  DescribeServicesCommand: class {
-    constructor(public readonly input: unknown) {}
-  },
-  DescribeTaskDefinitionCommand: class {
-    constructor(public readonly input: unknown) {}
-  },
-  RunTaskCommand: class {
-    constructor(public readonly input: unknown) {}
-  },
-  DescribeTasksCommand: class {
-    constructor(public readonly input: unknown) {}
-  },
-  waitUntilTasksStopped: waitMock,
-}));
 
 const { runSeedTask, runUpgradeTask, runRedispatchTask } =
   await import("../ecs.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
-const local = BUILTIN_ENVIRONMENTS["local"];
-
-const NETWORK = { awsvpcConfiguration: { subnets: ["s-1"] } };
-
-const happyPath = (exitCode: number) => {
-  ecsSend.mockImplementation(async (cmd) => {
-    switch (cmd.constructor.name) {
-      case "DescribeServicesCommand":
-        return {
-          services: [
-            {
-              networkConfiguration: NETWORK,
-              taskDefinition: "portalai-api:42",
-            },
-          ],
-        };
-      case "DescribeTaskDefinitionCommand":
-        return { taskDefinition: { containerDefinitions: [{ name: "api" }] } };
-      case "RunTaskCommand":
-        return { tasks: [{ taskArn: "arn:aws:ecs:task/abc" }] };
-      case "DescribeTasksCommand":
-        return { tasks: [{ containers: [{ exitCode }] }] };
-      default:
-        throw new Error(`unexpected ${cmd.constructor.name}`);
-    }
-  });
-};
+const RESULT = { taskArn: "arn:aws:ecs:task/abc", exitCode: 0 };
 
 beforeEach(() => {
   resetCliEnvMocks();
-  ecsSend.mockReset();
-  waitMock.mockClear();
+  mocks.runApiTask.mockResolvedValue(RESULT);
 });
 
-describe("runSeedTask", () => {
-  it("ports the bash sequence: service config → task def → run-task override → wait → exit code", async () => {
-    happyPath(0);
-    const out = await runSeedTask(appDev);
-    expect(out).toEqual({ taskArn: "arn:aws:ecs:task/abc", exitCode: 0 });
-
-    const calls = ecsSend.mock.calls.map((c) => c[0]);
-    expect(calls[0].constructor.name).toBe("DescribeServicesCommand");
-    expect(calls[0].input).toMatchObject({
-      cluster: "portalai-dev",
-      services: ["portalai-api-dev"],
-    });
-    const runTask = calls.find((c) => c.constructor.name === "RunTaskCommand")!;
-    expect(runTask.input).toMatchObject({
-      cluster: "portalai-dev",
-      taskDefinition: "portalai-api:42",
-      launchType: "FARGATE",
-      networkConfiguration: NETWORK,
-      overrides: {
-        containerOverrides: [
-          { name: "api", command: ["node", "dist/db/seed.js"] },
-        ],
-      },
-    });
-    expect(waitMock).toHaveBeenCalled();
-  });
-
-  it("non-zero container exit → ENV_INFRA_ERROR naming CloudWatch", async () => {
-    happyPath(1);
-    const p = runSeedTask(appDev);
-    await expect(p).rejects.toBeInstanceOf(EnvInfraError);
-    await expect(p).rejects.toThrow(/CloudWatch/);
-  });
-
-  it("local (no AWS) → typed pointer at npm run db:seed", async () => {
-    const p = runSeedTask(local);
-    await expect(p).rejects.toBeInstanceOf(EnvNotConfiguredError);
-    await expect(p).rejects.toThrow(/npm run db:seed/);
-    expect(ecsSend).not.toHaveBeenCalled();
-  });
-});
-
-describe("runUpgradeTask", () => {
-  it("overrides the container command with the built db-upgrade script", async () => {
-    happyPath(0);
-    const out = await runUpgradeTask(appDev);
-    expect(out).toEqual({ taskArn: "arn:aws:ecs:task/abc", exitCode: 0 });
-
-    const runTask = ecsSend.mock.calls
-      .map((c) => c[0])
-      .find((c) => c.constructor.name === "RunTaskCommand")!;
-    expect(runTask.input).toMatchObject({
-      overrides: {
-        containerOverrides: [
-          { name: "api", command: ["node", "dist/scripts/db-upgrade.js"] },
-        ],
-      },
-    });
-  });
-
-  it("non-zero container exit → ENV_INFRA_ERROR naming CloudWatch", async () => {
-    happyPath(1);
-    const p = runUpgradeTask(appDev);
-    await expect(p).rejects.toBeInstanceOf(EnvInfraError);
-    await expect(p).rejects.toThrow(/CloudWatch/);
-  });
-
-  it("local (no AWS) → typed pointer at npm run db:upgrade", async () => {
-    const p = runUpgradeTask(local);
-    await expect(p).rejects.toBeInstanceOf(EnvNotConfiguredError);
-    await expect(p).rejects.toThrow(/npm run db:upgrade/);
-    expect(ecsSend).not.toHaveBeenCalled();
-  });
-});
+const spec = () => mocks.runApiTask.mock.calls[0]![1];
 
 // #852: the runtime image has no npm (#573 removed it), so every one-off runs
 // the built script with node, the same command the package's `:ci` script names.
-describe("runRedispatchTask", () => {
-  const command = () =>
-    (
-      ecsSend.mock.calls
-        .map((c) => c[0])
-        .find((c) => c.constructor.name === "RunTaskCommand")!.input as {
-        overrides: { containerOverrides: Array<{ command: string[] }> };
-      }
-    ).overrides.containerOverrides[0]!.command;
-
-  it("runs the built jobs-redispatch script", async () => {
-    happyPath(0);
-    await runRedispatchTask(appDev, { dryRun: false });
-    expect(command()).toEqual(["node", "dist/scripts/jobs-redispatch.js"]);
+describe("portalops one-offs", () => {
+  it("seed runs the built seed script, with a local hint", async () => {
+    await expect(runSeedTask(appDev)).resolves.toEqual(RESULT);
+    expect(mocks.runApiTask).toHaveBeenCalledWith(appDev, expect.anything());
+    expect(spec().command).toEqual(["node", "dist/db/seed.js"]);
+    expect(spec().label).toBe("Seed");
+    expect(spec().localHint).toMatch(/npm run db:seed/);
   });
 
-  it("passes --dry-run through", async () => {
-    happyPath(0);
+  it("upgrade runs the built db-upgrade script, with a local hint", async () => {
+    await runUpgradeTask(appDev);
+    expect(spec().command).toEqual(["node", "dist/scripts/db-upgrade.js"]);
+    expect(spec().localHint).toMatch(/npm run db:upgrade/);
+  });
+
+  it("redispatch runs the built jobs-redispatch script", async () => {
+    await runRedispatchTask(appDev, { dryRun: false });
+    expect(spec().command).toEqual(["node", "dist/scripts/jobs-redispatch.js"]);
+  });
+
+  it("redispatch passes --dry-run through", async () => {
     await runRedispatchTask(appDev, { dryRun: true });
-    expect(command()).toEqual([
+    expect(spec().command).toEqual([
       "node",
       "dist/scripts/jobs-redispatch.js",
       "--dry-run",
     ]);
-  });
-});
-
-describe("one-off log location (#852 review)", () => {
-  it("returns the task's awslogs stream so its output can be read back", async () => {
-    happyPath(0);
-    const base = ecsSend.getMockImplementation()!;
-    ecsSend.mockImplementation(async (cmd) =>
-      cmd.constructor.name === "DescribeTaskDefinitionCommand"
-        ? {
-            taskDefinition: {
-              containerDefinitions: [
-                {
-                  name: "api",
-                  logConfiguration: {
-                    logDriver: "awslogs",
-                    options: {
-                      "awslogs-group": "/ecs/portalai-api-dev",
-                      "awslogs-region": "us-east-1",
-                      "awslogs-stream-prefix": "api",
-                    },
-                  },
-                },
-              ],
-            },
-          }
-        : base(cmd)
-    );
-    const out = await runRedispatchTask(appDev, { dryRun: false });
-    expect(out.log).toEqual({
-      region: "us-east-1",
-      group: "/ecs/portalai-api-dev",
-      stream: "api/api/abc",
-    });
   });
 });

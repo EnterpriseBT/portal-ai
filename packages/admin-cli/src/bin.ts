@@ -222,7 +222,9 @@ export function buildProgram(): Command {
   common(
     org
       .command("delete")
-      .description("soft-delete an org (destructive; never prod)")
+      .description(
+        "delete an org and its data, as Settings does (destructive; never prod)"
+      )
       .argument("<id>")
   ).action(async (id: string, o: GlobalOpts) =>
     execute(o, (def) => orgDelete(def, id, flags(o)))

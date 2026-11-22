@@ -94,8 +94,6 @@ export interface AdminStore {
     tierSlug: string,
     actor: string
   ): Promise<{ id: string; tier: string; previousTier: string }>;
-  /** Soft-delete a live org (deleted/deletedBy stamps). */
-  softDeleteOrg(id: string, actor: string): Promise<void>;
   /** #1035: whether a live org carries `demo create`'s marker;
    *  absent/soft-deleted → ADMIN_NOT_FOUND. */
   isDemoOrg(id: string): Promise<boolean>;
@@ -323,15 +321,6 @@ export function createAdminStore(
         .set({ tier: tierSlug, updated: Date.now(), updatedBy: actor })
         .where(and(eq(organizations.id, id), isNull(organizations.deleted)));
       return { id, tier: tierSlug, previousTier: current.tier };
-    },
-
-    async softDeleteOrg(id, actor) {
-      const [row] = await db
-        .update(organizations)
-        .set({ deleted: Date.now(), deletedBy: actor })
-        .where(and(eq(organizations.id, id), isNull(organizations.deleted)))
-        .returning({ id: organizations.id });
-      if (!row) throw new AdminNotFoundError(`Organization ${id} not found`);
     },
 
     async isDemoOrg(id) {

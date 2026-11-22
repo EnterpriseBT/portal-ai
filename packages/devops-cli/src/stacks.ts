@@ -16,13 +16,12 @@ import {
 import { DescribeServicesCommand, ECSClient } from "@aws-sdk/client-ecs";
 
 import {
+  apiServiceName,
   clusterName,
   EnvInfraError,
   EnvNotConfiguredError,
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
-
-import { apiServiceName } from "./ecs.js";
 
 // A backend update waits for the ECS service to stabilize; allow an hour.
 const STACK_WAIT_MAX_SECONDS = 3600;

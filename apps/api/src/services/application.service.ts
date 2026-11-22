@@ -71,13 +71,24 @@ function backOffInviteRecheck(userId: string, now: number): void {
 
 export class ApplicationService {
   static async getCurrentOrganization(userId: string) {
-    const [orgUser] = await db
-      .select()
+    const [row] = await db
+      .select({
+        organizationUser: organizationUsers,
+        organization: organizations,
+      })
       .from(organizationUsers)
+      // Inner join on a live org: a membership left live under a tombstoned
+      // org (an operator delete before #1088) must not win the pick, or the
+      // user resolves to no org while their other orgs are fine.
+      .innerJoin(
+        organizations,
+        eq(organizationUsers.organizationId, organizations.id)
+      )
       .where(
         and(
           eq(organizationUsers.userId, userId),
-          isNull(organizationUsers.deleted)
+          isNull(organizationUsers.deleted),
+          isNull(organizations.deleted)
         )
       )
       // NULLS LAST: Postgres sorts NULLS FIRST under DESC, so a membership
@@ -87,15 +98,7 @@ export class ApplicationService {
       .orderBy(sql`${organizationUsers.lastLogin} DESC NULLS LAST`)
       .limit(1);
 
-    if (!orgUser) {
-      return null;
-    }
-
-    const organization = await DbService.repository.organizations.findById(
-      orgUser.organizationId
-    );
-
-    return organization ? { organization, organizationUser: orgUser } : null;
+    return row ?? null;
   }
 
   /**
@@ -596,6 +599,29 @@ export class ApplicationService {
       organizationId,
       SystemUtilities.id.system
     );
+  }
+
+  /**
+   * `db:org:delete` seam (#1088): the full organization deletion (#197) for
+   * any live org, as `actor` — what `portalai org delete` runs. Hard-deletes
+   * the org's content and tombstones the org row and its memberships, so no
+   * member keeps it as their current org. A missing or already-deleted org is
+   * a 404; an active job refuses it with 409 ENTITY_LOCKED_BY_JOB.
+   */
+  static async deleteOrganization(
+    organizationId: string,
+    actor: string
+  ): Promise<void> {
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
+    if (!org) {
+      throw new ApiError(
+        404,
+        ApiCode.ORGANIZATION_NOT_FOUND,
+        `Organization ${organizationId} not found`
+      );
+    }
+    await OrganizationDeleteService.deleteOrganization(organizationId, actor);
   }
 
   /**

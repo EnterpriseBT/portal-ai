@@ -136,6 +136,15 @@ export const mocks = {
       ) => Promise<{ code: number; stdout: string; stderr: string }>
     >(),
   getToken: jest.fn<(env: string) => Promise<string>>(),
+  // #1088: the ECS one-off moved into cli-env; its sequence is tested there.
+  runApiTask:
+    jest.fn<
+      (
+        def: MockEnvDef,
+        spec: { command: string[]; label: string; localHint: string }
+      ) => Promise<unknown>
+    >(),
+  readTaskLog: jest.fn<(log: unknown) => Promise<string>>(),
 };
 
 export function resetCliEnvMocks(): void {
@@ -171,6 +180,8 @@ export function cliEnvMockModule(): Record<string, unknown> {
     bastionExportName: (def: MockEnvDef) =>
       `${requireAws(def).envName}-BastionInstanceId`,
     envBanner: (def: MockEnvDef) => `[env: ${def.name} (${def.kind})]`,
+    apiServiceName: (def: MockEnvDef) =>
+      `portalai-api-${requireAws(def).envName}`,
     // Spawn surface (#295) — mirrored rather than seamed: the CLIs' tests
     // assert the args + DATABASE_URL this builds, so a jest.fn() here would
     // make those assertions vacuous. cli-env's own spawn suite covers the

@@ -6,6 +6,7 @@ import {
   resetCliEnvMocks,
   mocks,
   BUILTIN_ENVIRONMENTS,
+  EnvInfraError,
   EnvNotAuthorizedError,
 } from "./helpers/cli-env-mock.js";
 
@@ -17,7 +18,6 @@ const mockStore = {
   getOrg: jest.fn<() => Promise<unknown>>(),
   updateOrg: jest.fn<() => Promise<unknown>>(),
   setTier: jest.fn<() => Promise<unknown>>(),
-  softDeleteOrg: jest.fn<() => Promise<void>>(),
   isDemoOrg: jest.fn<(id: string) => Promise<boolean>>(),
   getTier: jest.fn<(slug: string) => Promise<{ slug: string }>>(),
   listUsers: jest.fn<() => Promise<unknown[]>>(),
@@ -241,17 +241,132 @@ describe("org update — the Stripe name step", () => {
   });
 });
 
-describe("guard classes + audit hygiene", () => {
-  it("org delete is destructive-class", async () => {
-    mockStore.softDeleteOrg.mockResolvedValue(undefined);
-    await orgDelete(appDev, "o-1", { yes: true });
+describe("org delete — the full deletion (#1088)", () => {
+  const prod = { ...appDev, name: "prod", kind: "production" as const };
+  const calls: Array<{ args: string[]; env: Record<string, string> }> = [];
+  const spawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      calls.push({ args, env });
+      return {
+        code: 0,
+        stdout: `noise\n${JSON.stringify({ id: "o-1", deleted: true })}\n`,
+        stderr: "",
+      };
+    }
+  );
+
+  beforeEach(() => {
+    calls.length = 0;
+    spawner.mockClear();
+    mocks.runApiTask.mockResolvedValue({
+      taskArn: "arn:aws:ecs:task/abc",
+      exitCode: 0,
+    });
+  });
+
+  it("on an AWS env: destructive-class, checks the org, then runs the script in the env's API task as the operator", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    const out = await orgDelete(appDev, "o-1", { yes: true }, spawner);
+    expect(out).toEqual({ id: "o-1", deleted: true });
     expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
       destructive: true,
       confirmed: true,
       prodConfirmed: false,
     });
+    expect(mockStore.getOrg).toHaveBeenCalledWith("o-1");
+    expect(mocks.runApiTask).toHaveBeenCalledWith(
+      appDev,
+      expect.objectContaining({
+        command: [
+          "node",
+          "dist/db/org-delete.js",
+          "--org",
+          "o-1",
+          "--actor",
+          SUB,
+        ],
+        label: "Org delete",
+      })
+    );
+    // Never a local spawn: it would reach the operator's Redis/S3/Stripe.
+    expect(spawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "org delete",
+        args: { orgId: "o-1" },
+      })
+    );
   });
 
+  it("on local: spawns db:org:delete and returns its JSON line", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    const out = await orgDelete(local, "o-1", {}, spawner);
+    expect(out).toEqual({ id: "o-1", deleted: true });
+    expect(mocks.runApiTask).not.toHaveBeenCalled();
+    expect(calls[0].args).toEqual([
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:org:delete",
+      "--",
+      "--org",
+      "o-1",
+      "--actor",
+      expect.any(String),
+    ]);
+  });
+
+  it("a missing org is not-found (exit 8) and runs nothing", async () => {
+    const { AdminNotFoundError } = await import("../errors.js");
+    mockStore.getOrg.mockRejectedValue(new AdminNotFoundError("gone"));
+    await expect(
+      orgDelete(appDev, "o-x", { yes: true }, spawner)
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+    expect(mocks.runApiTask).not.toHaveBeenCalled();
+    expect(spawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("refused by the guard (prod) touches nothing", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvNotAuthorizedError("destructive ops are blocked on prod");
+    });
+    await expect(
+      orgDelete(prod as never, "o-1", { yes: true, confirmProd: true }, spawner)
+    ).rejects.toThrow(/blocked on prod/);
+    expect(mockStore.getOrg).not.toHaveBeenCalled();
+    expect(mocks.runApiTask).not.toHaveBeenCalled();
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("a failed task carries its reason and is not audited", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    mocks.runApiTask.mockRejectedValue(
+      new EnvInfraError(
+        "Org delete task exited with code 1: Organization is locked by an in-flight job:\nconnector_sync j-1 (active)"
+      )
+    );
+    await expect(
+      orgDelete(appDev, "o-1", { yes: true }, spawner)
+    ).rejects.toThrow(/connector_sync j-1/);
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("a failed local spawn is not audited", async () => {
+    mockStore.getOrg.mockResolvedValue({ id: "o-1" });
+    const failing = jest.fn(async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "Organization is locked by an in-flight job:",
+    }));
+    await expect(orgDelete(local, "o-1", {}, failing)).rejects.toThrow(
+      /locked by an in-flight job/
+    );
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("guard classes + audit hygiene", () => {
   it("org set-tier audits old→new, ids only", async () => {
     mockStore.getOrg.mockResolvedValue({
       id: "o-1",
@@ -644,9 +759,13 @@ describe("demo create / demo delete (#1035)", () => {
     }
   );
 
-  it("demo delete checks the marker, then spawns the full deletion as the operator (prod: --yes --confirm-prod)", async () => {
+  it("demo delete checks the marker, then runs the full deletion in the env's API task as the operator (prod: --yes --confirm-prod)", async () => {
     const { demoDelete } = await import("../commands/demo.js");
     mockStore.isDemoOrg.mockResolvedValue(true);
+    mocks.runApiTask.mockResolvedValue({
+      taskArn: "arn:aws:ecs:task/abc",
+      exitCode: 0,
+    });
     const out = await demoDelete(
       prod as never,
       "o-demo",
@@ -659,7 +778,37 @@ describe("demo create / demo delete (#1035)", () => {
       confirmed: true,
       prodConfirmed: true,
     });
-    expect(spawnerCalls[0].args).toEqual([
+    expect(mocks.runApiTask).toHaveBeenCalledWith(
+      prod,
+      expect.objectContaining({
+        command: [
+          "node",
+          "dist/db/demo-delete.js",
+          "--org",
+          "o-demo",
+          "--actor",
+          SUB,
+        ],
+        label: "Demo delete",
+      })
+    );
+    // #1088: never a local spawn on an AWS env (the operator's Redis/S3/Stripe).
+    expect(deleteSpawner).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "demo delete",
+        args: { orgId: "o-demo" },
+      })
+    );
+  });
+
+  it("demo delete on local spawns db:demo:delete", async () => {
+    const { demoDelete } = await import("../commands/demo.js");
+    mockStore.isDemoOrg.mockResolvedValue(true);
+    const out = await demoDelete(local, "o-demo", {}, deleteSpawner);
+    expect(out).toEqual({ id: "o-demo", deleted: true });
+    expect(mocks.runApiTask).not.toHaveBeenCalled();
+    expect(spawnerCalls[0].args.slice(0, 7)).toEqual([
       "run",
       "--workspace",
       "@portalai/api",
@@ -667,15 +816,7 @@ describe("demo create / demo delete (#1035)", () => {
       "--",
       "--org",
       "o-demo",
-      "--actor",
-      SUB,
     ]);
-    expect(mocks.recordAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: "demo delete",
-        args: { orgId: "o-demo" },
-      })
-    );
   });
 
   it("demo delete refuses an org without the marker (exit 9) and spawns nothing", async () => {
@@ -685,6 +826,7 @@ describe("demo create / demo delete (#1035)", () => {
       demoDelete(appDev, "o-c", { yes: true }, deleteSpawner)
     ).rejects.toBeInstanceOf(AdminConflictError);
     expect(deleteSpawner).not.toHaveBeenCalled();
+    expect(mocks.runApiTask).not.toHaveBeenCalled();
     expect(mocks.recordAudit).not.toHaveBeenCalled();
   });
 

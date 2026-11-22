@@ -506,6 +506,63 @@ describe("ApplicationService Integration Tests", () => {
       expect(result!.organization.id).toBe(organization.id); // the real org, not the null one
     });
 
+    it("falls back past a live membership whose org is deleted (#1088)", async () => {
+      // The user's older, live org.
+      const { user, organization } = await seedUserWithOrg({ lastLogin: 1000 });
+
+      // A newer membership in an org tombstoned without its memberships, as
+      // `portalai org delete` did before #1088.
+      const orgsRepo = new Repository(organizations);
+      const orgUsersRepo = new Repository(organizationUsers);
+      const now = Date.now();
+      const deletedOrg = await orgsRepo.create(
+        {
+          id: generateId(),
+          name: "Deleted Org",
+          timezone: "UTC",
+          ownerUserId: user.id,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: now,
+          deletedBy: "SYSTEM_TEST",
+        } as never,
+        db
+      );
+      await orgUsersRepo.create(
+        {
+          id: generateId(),
+          organizationId: deletedOrg.id,
+          userId: user.id,
+          lastLogin: 2000,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).not.toBeNull();
+      expect(result!.organization.id).toBe(organization.id);
+      expect(result!.organizationUser.organizationId).toBe(organization.id);
+    });
+
+    it("returns null when every membership's org is deleted (#1088)", async () => {
+      const { user, organization } = await seedUserWithOrg();
+      const orgsRepo = new Repository(organizations);
+      await orgsRepo.softDelete(organization.id, "SYSTEM_TEST", db);
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).toBeNull();
+    });
+
     it("should ignore soft-deleted organization_users links", async () => {
       const { user } = await seedUserWithOrg();
 
