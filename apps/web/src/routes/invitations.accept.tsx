@@ -17,18 +17,21 @@ import { PublicLayout } from "../layouts/Public.layout";
  * reads the caller's org until the accept has run.
  */
 export const Route = createFileRoute("/invitations/accept")({
-  component: AcceptInvitationRoute,
+  component: AcceptInvitationPage,
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : undefined,
   }),
 });
 
-function AcceptInvitationRoute() {
+/**
+ * Private, like every route component (#1109): an exported one stays in the
+ * main bundle. The token comes from this route's own match, which holds
+ * steady until the page unmounts; the router's `location` moves to the next
+ * URL as soon as a navigation starts, which would flash the "incomplete
+ * link" state after a successful accept.
+ */
+function AcceptInvitationPage() {
   const { token } = Route.useSearch();
-  return <AcceptInvitationPage token={token} />;
-}
-
-export function AcceptInvitationPage({ token }: { token?: string }) {
   return (
     <Authorized>
       <PublicLayout>

@@ -15,7 +15,7 @@ export const Route = createFileRoute("/not-invited")({
   component: NotInvitedPage,
 });
 
-export function NotInvitedPage() {
+function NotInvitedPage() {
   return (
     <Authorized>
       <PublicLayout>

@@ -7,7 +7,7 @@ export const Route = createFileRoute("/")({
   component: DashboardRoute,
 });
 
-export function DashboardRoute() {
+function DashboardRoute() {
   return (
     <Authorized>
       <AuthorizedLayout>
