@@ -558,7 +558,8 @@ connectorInstanceRouter.get(
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
+        DbService.repository.entityTagAssignments.countByTargetIds(
+          "entity",
           entityIds
         ),
         DbService.repository.entityGroupMembers.countByConnectorEntityIds(
@@ -1513,7 +1514,8 @@ connectorInstanceRouter.delete(
                 userId,
                 tx
               ),
-              DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+              DbService.repository.entityTagAssignments.softDeleteByTargets(
+                "entity",
                 entityIds,
                 userId,
                 tx

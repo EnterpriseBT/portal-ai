@@ -1,13 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import {
-  eq,
-  and,
-  or,
-  inArray,
-  isNull,
-  type SQL,
-  type Column,
-} from "drizzle-orm";
+import { eq, and, or, inArray, type SQL, type Column } from "drizzle-orm";
 import { db } from "../db/client.js";
 
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
@@ -33,7 +25,7 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
-import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
+import { connectorEntities } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ParentAccessService } from "../services/parent-access.service.js";
@@ -198,17 +190,10 @@ connectorEntityRouter.get(
         .filter(Boolean);
       if (tagIds?.length) {
         filters.push(
-          inArray(
+          DbService.repository.entityTagAssignments.taggedWithAny(
+            "entity",
             connectorEntities.id,
-            db
-              .selectDistinct({ id: entityTagAssignments.connectorEntityId })
-              .from(entityTagAssignments)
-              .where(
-                and(
-                  inArray(entityTagAssignments.entityTagId, tagIds),
-                  isNull(entityTagAssignments.deleted)
-                )
-              )
+            tagIds
           )
         );
       }
@@ -961,7 +946,8 @@ connectorEntityRouter.get(
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
+        DbService.repository.entityTagAssignments.countByTargetIds(
+          "entity",
           entityIds
         ),
         DbService.repository.entityGroupMembers.countByConnectorEntityIds(

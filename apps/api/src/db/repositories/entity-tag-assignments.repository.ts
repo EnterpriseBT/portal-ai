@@ -2,11 +2,16 @@
 /**
  * Repository for the `entity_tag_assignments` table.
  *
- * Extends the generic {@link Repository} with batch-loading helpers that
- * combine assignment rows with their parent tag details.
+ * Since #1070 an assignment targets one of five object types (entity,
+ * station, pin, connector instance, curated view), each in its own FK column.
+ * Every method takes the target type and resolves that column through
+ * {@link targetColumn}, so a caller never names a column.
  */
 
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+
+import type { TagTarget, TagTargetType } from "@portalai/core/models";
 
 import { entityTagAssignments, entityTags } from "../schema/index.js";
 import { db } from "../client.js";
@@ -17,6 +22,33 @@ import type {
   EntityTagSelect,
 } from "../schema/zod.js";
 
+/** The assignment column holding each target type's id. */
+const TARGET_COLUMNS = {
+  entity: entityTagAssignments.connectorEntityId,
+  station: entityTagAssignments.stationId,
+  pin: entityTagAssignments.portalResultId,
+  connector_instance: entityTagAssignments.connectorInstanceId,
+  curated_view: entityTagAssignments.curatedViewId,
+} as const satisfies Record<TagTargetType, AnyPgColumn>;
+
+/** The assignment insert field holding each target type's id. */
+const TARGET_FIELDS = {
+  entity: "connectorEntityId",
+  station: "stationId",
+  pin: "portalResultId",
+  connector_instance: "connectorInstanceId",
+  curated_view: "curatedViewId",
+} as const satisfies Record<TagTargetType, keyof EntityTagAssignmentInsert>;
+
+type TargetField = (typeof TARGET_FIELDS)[TagTargetType];
+
+export function targetColumn(type: TagTargetType) {
+  return TARGET_COLUMNS[type];
+}
+
+/** A tag as it sits on one object: the tag plus the assignment's id. */
+export type AssignedTagRow = EntityTagSelect & { assignmentId: string };
+
 export class EntityTagAssignmentsRepository extends Repository<
   typeof entityTagAssignments,
   EntityTagAssignmentSelect,
@@ -26,55 +58,43 @@ export class EntityTagAssignmentsRepository extends Repository<
     super(entityTagAssignments);
   }
 
-  /** Count tag assignments across multiple connector entities (soft-delete aware). */
-  async countByConnectorEntityIds(
-    connectorEntityIds: string[],
+  /** Count live assignments across objects of one type. */
+  async countByTargetIds(
+    type: TagTargetType,
+    ids: string[],
     client: DbClient = db
   ): Promise<number> {
-    if (connectorEntityIds.length === 0) return 0;
-    return this.count(
-      inArray(entityTagAssignments.connectorEntityId, connectorEntityIds),
-      client
-    );
+    if (ids.length === 0) return 0;
+    return this.count(inArray(targetColumn(type), ids), client);
   }
 
   /**
-   * Return all non-deleted assignments for a connector entity.
-   * Pass `include: ["entityTag"]` to batch-load parent tag details.
+   * The live tags on one object, each with its assignment id. A tag that has
+   * been deleted is left out.
    */
-  async findByConnectorEntityId(
-    connectorEntityId: string,
-    opts: { include?: string[] } = {},
+  async findByTarget(
+    target: TagTarget,
     client: DbClient = db
-  ): Promise<(EntityTagAssignmentSelect & { tag?: EntityTagSelect })[]> {
-    const assignments = await (client as typeof db)
-      .select()
-      .from(this.table)
+  ): Promise<AssignedTagRow[]> {
+    const rows = await (client as typeof db)
+      .select({ assignmentId: entityTagAssignments.id, tag: entityTags })
+      .from(entityTagAssignments)
+      .innerJoin(
+        entityTags,
+        eq(entityTags.id, entityTagAssignments.entityTagId)
+      )
       .where(
         and(
-          eq(entityTagAssignments.connectorEntityId, connectorEntityId),
-          isNull(entityTagAssignments.deleted)
+          eq(targetColumn(target.type), target.id),
+          isNull(entityTagAssignments.deleted),
+          isNull(entityTags.deleted)
         )
-      );
-
-    if (assignments.length === 0 || !opts.include?.includes("entityTag")) {
-      return assignments as EntityTagAssignmentSelect[];
-    }
-
-    const tagIds = assignments.map((a) => a.entityTagId);
-    const tags = await (client as typeof db)
-      .select()
-      .from(entityTags)
-      .where(and(inArray(entityTags.id, tagIds), isNull(entityTags.deleted)));
-
-    const tagMap = new Map(tags.map((t) => [t.id, t as EntityTagSelect]));
-
-    return assignments
-      .filter((a) => tagMap.has(a.entityTagId))
-      .map((a) => ({
-        ...(a as EntityTagAssignmentSelect),
-        tag: tagMap.get(a.entityTagId)!,
-      }));
+      )
+      .orderBy(entityTags.name, entityTags.id);
+    return rows.map((r) => ({
+      ...(r.tag as EntityTagSelect),
+      assignmentId: r.assignmentId,
+    }));
   }
 
   /** Return all non-deleted assignments for a given tag. */
@@ -94,62 +114,110 @@ export class EntityTagAssignmentsRepository extends Repository<
   }
 
   /**
-   * Batch-load tag details for a set of connector entity IDs.
-   * Returns a Map keyed by connectorEntityId for O(1) assembly in list responses.
+   * The live tags on a page of objects of one type, in one query, keyed by
+   * object id. Objects with no tags are absent from the map.
    */
-  async findByConnectorEntityIds(
+  async findByTargetIds(
+    type: TagTargetType,
     ids: string[],
     client: DbClient = db
   ): Promise<Map<string, EntityTagSelect[]>> {
     if (ids.length === 0) return new Map();
-
-    const assignments = await (client as typeof db)
-      .select()
-      .from(this.table)
+    const column = targetColumn(type);
+    const rows = await (client as typeof db)
+      .select({ targetId: column, tag: entityTags })
+      .from(entityTagAssignments)
+      .innerJoin(
+        entityTags,
+        eq(entityTags.id, entityTagAssignments.entityTagId)
+      )
       .where(
         and(
-          inArray(entityTagAssignments.connectorEntityId, ids),
-          isNull(entityTagAssignments.deleted)
+          inArray(column, ids),
+          isNull(entityTagAssignments.deleted),
+          isNull(entityTags.deleted)
         )
-      );
-
-    if (assignments.length === 0) return new Map();
-
-    const tagIds = [...new Set(assignments.map((a) => a.entityTagId))];
-    const tags = await (client as typeof db)
-      .select()
-      .from(entityTags)
-      .where(and(inArray(entityTags.id, tagIds), isNull(entityTags.deleted)));
-
-    const tagMap = new Map(tags.map((t) => [t.id, t as EntityTagSelect]));
+      )
+      .orderBy(entityTags.name, entityTags.id);
 
     const result = new Map<string, EntityTagSelect[]>();
-    for (const a of assignments) {
-      const tag = tagMap.get(a.entityTagId);
-      if (!tag || !a.connectorEntityId) continue;
-      const list = result.get(a.connectorEntityId) ?? [];
-      list.push(tag);
-      result.set(a.connectorEntityId, list);
+    for (const { targetId, tag } of rows) {
+      if (!targetId) continue;
+      const list = result.get(targetId) ?? [];
+      list.push(tag as EntityTagSelect);
+      result.set(targetId, list);
     }
     return result;
   }
 
   /**
-   * Return an existing non-deleted assignment for a (connectorEntityId, entityTagId) pair,
-   * or undefined if none exists. Used for duplicate detection before create.
+   * Assign a tag to an object unless it already carries it. Race-safe: the
+   * insert yields to the target's partial unique index, so two concurrent
+   * calls make one row and the other reads it back with `created: false`.
    */
-  async findExisting(
-    connectorEntityId: string,
+  async insertIfAbsent(
+    target: TagTarget,
     entityTagId: string,
+    row: Omit<EntityTagAssignmentInsert, TargetField | "entityTagId">,
+    client: DbClient = db
+  ): Promise<{ row: EntityTagAssignmentSelect; created: boolean }> {
+    const column = targetColumn(target.type);
+    const values = {
+      ...row,
+      connectorEntityId: null,
+      stationId: null,
+      portalResultId: null,
+      connectorInstanceId: null,
+      curatedViewId: null,
+      [TARGET_FIELDS[target.type]]: target.id,
+      entityTagId,
+    } as EntityTagAssignmentInsert;
+
+    const [inserted] = await (client as typeof db)
+      .insert(entityTagAssignments)
+      .values(values as any)
+      .onConflictDoNothing({
+        // A partial unique index is only matched when the conflict clause
+        // restates its predicate.
+        target: [column, entityTagAssignments.entityTagId],
+        where: sql`deleted IS NULL`,
+      })
+      .returning();
+    if (inserted) {
+      return { row: inserted as EntityTagAssignmentSelect, created: true };
+    }
+
+    const [existing] = await (client as typeof db)
+      .select()
+      .from(entityTagAssignments)
+      .where(
+        and(
+          eq(column, target.id),
+          eq(entityTagAssignments.entityTagId, entityTagId),
+          isNull(entityTagAssignments.deleted)
+        )
+      )
+      .limit(1);
+    if (!existing) {
+      // The conflicting row was removed between the two statements.
+      throw new Error("Tag assignment conflicted with a row that is gone");
+    }
+    return { row: existing as EntityTagAssignmentSelect, created: false };
+  }
+
+  /** A live assignment, only when it sits on this object. */
+  async findAssignment(
+    target: TagTarget,
+    assignmentId: string,
     client: DbClient = db
   ): Promise<EntityTagAssignmentSelect | undefined> {
     const [row] = await (client as typeof db)
       .select()
-      .from(this.table)
+      .from(entityTagAssignments)
       .where(
         and(
-          eq(entityTagAssignments.connectorEntityId, connectorEntityId),
-          eq(entityTagAssignments.entityTagId, entityTagId),
+          eq(entityTagAssignments.id, assignmentId),
+          eq(targetColumn(target.type), target.id),
           isNull(entityTagAssignments.deleted)
         )
       )
@@ -158,28 +226,53 @@ export class EntityTagAssignmentsRepository extends Repository<
   }
 
   /**
-   * Soft-delete all tag assignments across multiple connector entities.
-   * Returns the number of affected rows.
+   * Soft-delete every live assignment on these objects. Returns the number
+   * of affected rows.
    */
-  async softDeleteByConnectorEntityIds(
-    connectorEntityIds: string[],
+  async softDeleteByTargets(
+    type: TagTargetType,
+    ids: string[],
     deletedBy: string,
     client: DbClient = db
   ): Promise<number> {
-    if (connectorEntityIds.length === 0) return 0;
-    const now = Date.now();
+    if (ids.length === 0) return 0;
     // #423: count from the driver — `RETURNING` here streamed every
     // matched row (with its payload) into Node just to call `.length`.
     const result = await (client as typeof db)
       .update(this.table)
-      .set({ deleted: now, deletedBy } as any)
+      .set({ deleted: Date.now(), deletedBy } as any)
       .where(
         and(
-          inArray(entityTagAssignments.connectorEntityId, connectorEntityIds),
+          inArray(targetColumn(type), ids),
           isNull(entityTagAssignments.deleted)
         )
       );
     return result.count;
+  }
+
+  /**
+   * A list-query predicate: the object (`idCol`) carries at least one of the
+   * tags. An empty tag list matches nothing.
+   */
+  taggedWithAny(
+    type: TagTargetType,
+    idCol: AnyPgColumn,
+    tagIds: string[]
+  ): SQL {
+    if (tagIds.length === 0) return sql`false`;
+    const column = targetColumn(type);
+    return inArray(
+      idCol,
+      db
+        .select({ id: column })
+        .from(entityTagAssignments)
+        .where(
+          and(
+            inArray(entityTagAssignments.entityTagId, tagIds),
+            isNull(entityTagAssignments.deleted)
+          )
+        )
+    );
   }
 }
 

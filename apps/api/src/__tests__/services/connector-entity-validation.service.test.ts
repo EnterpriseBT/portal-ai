@@ -67,7 +67,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         softDeleteByConnectorEntityIds: mockSoftDeleteGroupMembers,
       },
       entityTagAssignments: {
-        softDeleteByConnectorEntityIds: mockSoftDeleteTagAssignments,
+        softDeleteByTargets: mockSoftDeleteTagAssignments,
       },
     },
     transaction: mockTransaction,

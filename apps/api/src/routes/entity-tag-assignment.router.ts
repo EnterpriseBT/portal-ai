@@ -135,38 +135,28 @@ entityTagAssignmentRouter.get(
       // #692: the list had no org or entity check.
       const set = await assertEntityReadable(req, connectorEntityId);
 
-      const enrichedAssignments =
-        await DbService.repository.entityTagAssignments
-          .findByConnectorEntityId(connectorEntityId, {
-            include: ["entityTag"],
-          })
-          .catch((error) => {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(
-              500,
-              ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to list entity tag assignments"
-            );
-          });
+      const assigned = await DbService.repository.entityTagAssignments
+        .findByTarget({ type: "entity", id: connectorEntityId })
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to list entity tag assignments"
+          );
+        });
 
       // Only the tags the caller may read (#630 tag visibility; the same rule
       // POST applies when assigning one, #685).
-      const tags = enrichedAssignments
-        .filter(
-          (a) =>
-            a.tag &&
-            set.can("resource.read", {
-              type: "tag",
-              id: a.tag.id,
-              createdBy: a.tag.createdBy,
-            })
-        )
-        .map((a) => ({
-          ...a.tag!,
-          assignmentId: a.id,
-        }));
+      const tags = assigned.filter((tag) =>
+        set.can("resource.read", {
+          type: "tag",
+          id: tag.id,
+          createdBy: tag.createdBy,
+        })
+      );
 
       return HttpService.success<EntityTagAssignmentListResponsePayload>(res, {
         tags: tags as unknown as EntityTagAssignmentListResponsePayload["tags"],
@@ -303,22 +293,6 @@ entityTagAssignmentRouter.post(
         );
       }
 
-      // Check for duplicate assignment
-      const existing =
-        await DbService.repository.entityTagAssignments.findExisting(
-          connectorEntityId,
-          parsed.data.entityTagId
-        );
-      if (existing) {
-        return next(
-          new ApiError(
-            409,
-            ApiCode.ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS,
-            "This tag is already assigned to this entity"
-          )
-        );
-      }
-
       const factory = new EntityTagAssignmentModelFactory();
       const model = factory.create(userId);
       model.update({
@@ -327,9 +301,15 @@ entityTagAssignmentRouter.post(
         entityTagId: parsed.data.entityTagId,
       });
 
-      const entityTagAssignment =
+      // #1070: race-safe — a second concurrent assign yields to the unique
+      // index and reports `created: false` instead of failing as a 500.
+      const { row: entityTagAssignment, created } =
         await DbService.repository.entityTagAssignments
-          .create(model.parse())
+          .insertIfAbsent(
+            { type: "entity", id: connectorEntityId },
+            parsed.data.entityTagId,
+            model.parse()
+          )
           .catch((error) => {
             if (error instanceof ApiError) throw error;
             throw new ApiError(
@@ -340,6 +320,15 @@ entityTagAssignmentRouter.post(
                 : "Failed to create entity tag assignment"
             );
           });
+      if (!created) {
+        return next(
+          new ApiError(
+            409,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS,
+            "This tag is already assigned to this entity"
+          )
+        );
+      }
 
       logger.info(
         {

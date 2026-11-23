@@ -131,7 +131,8 @@ export class ConnectorEntityValidationService {
             userId,
             tx
           ),
-          DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+          DbService.repository.entityTagAssignments.softDeleteByTargets(
+            "entity",
             entityIds,
             userId,
             tx

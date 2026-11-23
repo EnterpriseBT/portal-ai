@@ -32,6 +32,7 @@ export interface PopulatedOrg {
   memberUserId: string;
   stationId: string;
   portalId: string;
+  portalResultId: string;
   connectorInstanceId: string;
   connectorEntityId: string;
   curatedViewId: string;
@@ -113,8 +114,9 @@ export async function seedPopulatedOrg(
     role: "user",
     blocks: [],
   } as never);
+  const pin = base(now);
   await db.insert(schema.portalResults).values({
-    ...base(now),
+    ...pin,
     organizationId: org.id,
     stationId: station.id,
     portalId: portal.id,
@@ -321,6 +323,7 @@ export async function seedPopulatedOrg(
     memberUserId: member.id,
     stationId: station.id,
     portalId: portal.id,
+    portalResultId: pin.id,
     connectorInstanceId: instance.id,
     connectorEntityId: entity.id,
     curatedViewId,
