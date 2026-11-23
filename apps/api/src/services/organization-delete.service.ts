@@ -173,6 +173,12 @@ export class OrganizationDeleteService {
         .delete(wideTableColumns)
         .where(eq(wideTableColumns.organizationId, organizationId));
 
+      // #1070: a tag assignment can point at a view, station, pin, connector
+      // or entity, all hard-deleted below, so the assignments go first.
+      await tx
+        .delete(entityTagAssignments)
+        .where(eq(entityTagAssignments.organizationId, organizationId));
+
       // #802: curated views hold FKs to field mappings (projection links),
       // stations (attachments) and entities (the view itself), all
       // hard-deleted below — so the view tables go first, children before
@@ -190,9 +196,6 @@ export class OrganizationDeleteService {
       await tx
         .delete(entityGroupMembers)
         .where(eq(entityGroupMembers.organizationId, organizationId));
-      await tx
-        .delete(entityTagAssignments)
-        .where(eq(entityTagAssignments.organizationId, organizationId));
       await tx
         .delete(entityRecords)
         .where(eq(entityRecords.organizationId, organizationId));

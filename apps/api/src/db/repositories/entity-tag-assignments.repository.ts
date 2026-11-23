@@ -126,7 +126,7 @@ export class EntityTagAssignmentsRepository extends Repository<
     const result = new Map<string, EntityTagSelect[]>();
     for (const a of assignments) {
       const tag = tagMap.get(a.entityTagId);
-      if (!tag) continue;
+      if (!tag || !a.connectorEntityId) continue;
       const list = result.get(a.connectorEntityId) ?? [];
       list.push(tag);
       result.set(a.connectorEntityId, list);

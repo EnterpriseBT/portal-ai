@@ -105,6 +105,16 @@ export class ResetService {
         `Deleted ${deletedWideTableColumns.length} wide table columns`
       );
 
+      // #1070: a tag assignment can point at a view, station, pin, connector
+      // or entity, all hard-deleted below, so the assignments go first.
+      const deletedEntityTagAssignments = await tx
+        .delete(entityTagAssignments)
+        .where(eq(entityTagAssignments.organizationId, organizationId))
+        .returning({ id: entityTagAssignments.id });
+      logger.info(
+        `Deleted ${deletedEntityTagAssignments.length} tag assignments`
+      );
+
       // #802: curated views hold FKs to field mappings, stations and
       // entities, all hard-deleted below — clear the view tables first,
       // children before the view, and drop the views' grants so none
@@ -140,14 +150,6 @@ export class ResetService {
         .returning({ id: entityGroupMembers.id });
       logger.info(
         `Deleted ${deletedEntityGroupMembers.length} entity group members`
-      );
-
-      const deletedEntityTagAssignments = await tx
-        .delete(entityTagAssignments)
-        .where(eq(entityTagAssignments.organizationId, organizationId))
-        .returning({ id: entityTagAssignments.id });
-      logger.info(
-        `Deleted ${deletedEntityTagAssignments.length} entity tag assignments`
       );
 
       const deletedEntityRecords = await tx

@@ -42,6 +42,7 @@ export * from "./entity-tag.model.js";
 
 /** Entity tag assignment model schema & type */
 export * from "./entity-tag-assignment.model.js";
+export * from "./tag-target.model.js";
 
 /** RBAC IAM engine: policies, statements, attachments, roles (#598) */
 export * from "./permission.model.js";
