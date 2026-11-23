@@ -35,6 +35,7 @@ import {
   teardownOrg,
   type TenancyFixture,
 } from "../utils/application.util.js";
+import { seedTag, seedTagTargets } from "../utils/tag-targets.util.js";
 
 const OWNER_SUB = "auth0|tag-assign-owner";
 const MEMBER_SUB = "auth0|tag-assign-member";
@@ -60,103 +61,6 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 
 type Db = ReturnType<typeof drizzle>;
-
-/** One object of each type, created by `createdBy` in `orgId`. */
-async function seedTargets(
-  db: Db,
-  orgId: string,
-  createdBy: string
-): Promise<Record<TagTargetType, string>> {
-  const base = () => ({
-    id: generateId(),
-    created: Date.now(),
-    createdBy,
-    updated: null,
-    updatedBy: null,
-    deleted: null,
-    deletedBy: null,
-  });
-  const connDef = {
-    ...base(),
-    slug: `tag-assign-${generateId().slice(0, 8)}`,
-    display: "Test Connector",
-    category: "crm",
-    authType: "oauth2",
-    configSchema: {},
-    capabilityFlags: { sync: true },
-    isActive: true,
-    version: "1.0.0",
-    iconUrl: null,
-  };
-  await db.insert(schema.connectorDefinitions).values(connDef as never);
-  const instance = {
-    ...base(),
-    connectorDefinitionId: connDef.id,
-    organizationId: orgId,
-    name: "Instance",
-    status: "active",
-    config: {},
-    credentials: null,
-  };
-  await db.insert(schema.connectorInstances).values(instance as never);
-  const entity = {
-    ...base(),
-    organizationId: orgId,
-    connectorInstanceId: instance.id,
-    key: `e_${generateId().replace(/-/g, "").slice(0, 8)}`,
-    label: "Entity",
-  };
-  await db.insert(schema.connectorEntities).values(entity as never);
-  const station = { ...base(), organizationId: orgId, name: "Station" };
-  await db.insert(schema.stations).values(station as never);
-  const pin = {
-    ...base(),
-    organizationId: orgId,
-    stationId: station.id,
-    portalId: null,
-    name: "Pin",
-    type: "text",
-    content: {},
-    definerPrincipalType: "user",
-    definerPrincipalId: createdBy,
-  };
-  await db.insert(schema.portalResults).values(pin as never);
-  const view = {
-    ...base(),
-    organizationId: orgId,
-    connectorEntityId: entity.id,
-    key: `v_${generateId().replace(/-/g, "").slice(0, 8)}`,
-    label: "View",
-    description: null,
-    filter: null,
-  };
-  await db.insert(schema.curatedViews).values(view as never);
-  return {
-    entity: entity.id,
-    station: station.id,
-    pin: pin.id,
-    connector_instance: instance.id,
-    curated_view: view.id,
-  };
-}
-
-async function seedTag(db: Db, orgId: string, createdBy: string) {
-  const tag = {
-    id: generateId(),
-    organizationId: orgId,
-    name: `tag-${generateId().slice(0, 8)}`,
-    color: null,
-    description: null,
-    created: Date.now(),
-    createdBy,
-    updated: null,
-    updatedBy: null,
-    deleted: null,
-    deletedBy: null,
-  };
-  await db.insert(schema.entityTags).values(tag as never);
-  return tag.id;
-}
 
 const TYPES: { type: TagTargetType; path: string; notFound: ApiCode }[] = [
   {
@@ -221,9 +125,9 @@ describe.each(TYPES)(
         member: MEMBER_SUB,
         otherOwner: OTHER_SUB,
       });
-      mine = await seedTargets(db, fx.orgId, fx.memberId);
-      mineToo = await seedTargets(db, fx.orgId, fx.memberId);
-      owners = await seedTargets(db, fx.orgId, fx.ownerId);
+      mine = await seedTagTargets(db, fx.orgId, fx.memberId);
+      mineToo = await seedTagTargets(db, fx.orgId, fx.memberId);
+      owners = await seedTagTargets(db, fx.orgId, fx.ownerId);
       tagId = await seedTag(db, fx.orgId, fx.ownerId);
       await allowForUser(db, {
         organizationId: fx.orgId,
@@ -312,7 +216,7 @@ describe.each(TYPES)(
 
     it("answers 404 for another org's object", async () => {
       currentSub = OWNER_SUB;
-      const theirs = await seedTargets(db, fx.otherOrgId, fx.otherOwnerId);
+      const theirs = await seedTagTargets(db, fx.otherOrgId, fx.otherOwnerId);
       const res = await request(app)
         .post(url(theirs[type]))
         .send({ entityTagId: tagId });
@@ -433,7 +337,7 @@ describe("tag assignment under a running job (#1070)", () => {
   });
 
   it("tags a connector and its entity while a sync runs on it", async () => {
-    const targets = await seedTargets(db, fx.orgId, fx.ownerId);
+    const targets = await seedTagTargets(db, fx.orgId, fx.ownerId);
     const tagId = await seedTag(db, fx.orgId, fx.ownerId);
     await db.insert(schema.jobs).values({
       id: generateId(),

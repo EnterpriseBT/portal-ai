@@ -41,6 +41,7 @@ import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "connector-entity" });
 
@@ -184,11 +185,17 @@ connectorEntityRouter.get(
         );
       }
 
-      const tagIds = tagIdsRaw
-        ?.split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-      if (tagIds?.length) {
+      // #599: RBAC-gate raw entity reads — members see only entities they
+      // created (≈none, entities are admin/sync-provisioned); admins (`*`) all.
+      const set = await PermissionService.loadSet(req.application!.metadata);
+      // #1070: entities carrying any of the tags the caller can read; a tag
+      // they can't read narrows nothing.
+      const tagIds = await TagAssignmentService.readableTagIds(
+        set,
+        req.application!.metadata.organizationId,
+        tagIdsRaw
+      );
+      if (tagIds) {
         filters.push(
           DbService.repository.entityTagAssignments.taggedWithAny(
             "entity",
@@ -197,10 +204,6 @@ connectorEntityRouter.get(
           )
         );
       }
-
-      // #599: RBAC-gate raw entity reads — members see only entities they
-      // created (≈none, entities are admin/sync-provisioned); admins (`*`) all.
-      const set = await PermissionService.loadSet(req.application!.metadata);
       const visibility = set.visibilityPredicate("entity", {
         createdByCol: connectorEntities.createdBy,
         idCol: connectorEntities.id,
@@ -258,7 +261,15 @@ connectorEntityRouter.get(
           set,
           req.application!.metadata.organizationId,
           "entity",
-          data as unknown as Array<{ id: string; createdBy: string }>
+          // #1070: only the tags the caller may read.
+          data.map((row) =>
+            "tags" in row && Array.isArray(row.tags)
+              ? {
+                  ...row,
+                  tags: TagAssignmentService.readableTags(set, row.tags),
+                }
+              : row
+          ) as unknown as Array<{ id: string; createdBy: string }>
         )) as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,

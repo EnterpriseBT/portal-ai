@@ -58,8 +58,8 @@ Table extras:
 - **`entity-tag-assignment.contract.ts`:**
   - `EntityTagAssignmentCreateRequestBodySchema` is unchanged (`{entityTagId}`, strict).
   - `AssignedEntityTagSchema` and the list payload `{tags}` are reused by every type.
-  - Add `StationWithTagsSchema`, `PortalResultWithTagsSchema`, `ConnectorInstanceWithTagsSchema` and `CuratedViewWithTagsSchema` (`X.extend({ tags: z.array(EntityTagSchema).optional() })`).
-- **List query schemas** gain `tagIds: z.string().optional()` (comma-separated ids): `StationListRequestQuerySchema` (`station.contract.ts:19`), `PortalResultListRequestQuerySchema` (`portal.contract.ts`), `ConnectorInstanceListRequestQuerySchema` (`connector-instance.contract.ts:72`) and `CuratedViewListRequestQuerySchema` (`curated-view.contract.ts:43`). Each list response's row schema becomes its `…WithTags` variant.
+  - `tag-list.contract.ts` exports `TagListQueryFields` (`tagIds`) and `TaggedRowFields` (`tags: z.array(EntityTagSchema).optional()`), spread into each list's query schema and existing row schema (`StationWithToolpacksSchema`, `PortalResultListItemSchema`, `ConnectorInstanceApiSchema`, `CuratedViewListItemSchema`) rather than four parallel `…WithTags` schemas.
+- **List query schemas** gain `tagIds: z.string().optional()` (comma-separated ids): `StationListRequestQuerySchema` (`station.contract.ts:19`), `PortalResultListRequestQuerySchema` (`portal.contract.ts`), `ConnectorInstanceListRequestQuerySchema` (`connector-instance.contract.ts:72`) and `CuratedViewListRequestQuerySchema` (`curated-view.contract.ts:43`). Each list row gains the optional `tags`.
 - **`entity-tag.contract.ts`:**
   - `EntityTagListRequestQuerySchema` gains `include: z.string().optional()`.
   - `EntityTagWithAssignmentCountSchema` is replaced by `EntityTagWithUsageSchema = EntityTagSchema.extend({ usage: z.record(TagTargetTypeSchema, z.number().int().min(0)) })`. Every key is present, zero included.

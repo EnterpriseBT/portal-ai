@@ -58,6 +58,8 @@ curatedViewRouter.use(
  *       - { in: query, name: search, schema: { type: string } }
  *       - { in: query, name: connectorEntityId, schema: { type: string } }
  *       - { in: query, name: stationId, schema: { type: string } }
+ *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations; `tags` attaches each row's readable tags (#1070)." }
  *     responses:
  *       200:
  *         description: Paginated curated views

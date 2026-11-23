@@ -11,6 +11,7 @@ import {
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
 import { ResolvedColumnSchema } from "./entity-record.contract.js";
+import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
 
 // ── Enriched ──────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export const CuratedViewListRequestQuerySchema =
     connectorEntityId: z.string().optional(),
     /** Restrict to the curated views attached to this station (#599). */
     stationId: z.string().optional(),
+    ...TagListQueryFields,
   });
 
 export type CuratedViewListRequestQuery = z.infer<
@@ -60,6 +62,7 @@ export type CuratedViewListRequestQuery = z.infer<
 export const CuratedViewListItemSchema = CuratedViewSchema.extend({
   entity: z.object({ key: z.string(), label: z.string() }).nullable(),
   ...CuratedViewReaderFlags,
+  ...TaggedRowFields,
 });
 
 export type CuratedViewListItem = z.infer<typeof CuratedViewListItemSchema>;

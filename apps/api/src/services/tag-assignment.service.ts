@@ -14,6 +14,8 @@
  * job lock (the route map records `locks: none`).
  */
 
+import { inArray } from "drizzle-orm";
+
 import {
   EntityTagAssignmentModelFactory,
   TAG_TARGET_PERMISSION_TYPE,
@@ -24,6 +26,7 @@ import {
 import type { AssignedEntityTag } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { entityTags } from "../db/schema/index.js";
 import type { EntityTagSelect } from "../db/schema/zod.js";
 import { createLogger } from "../utils/logger.util.js";
 import { DbService } from "./db.service.js";
@@ -201,6 +204,59 @@ export class TagAssignmentService {
         );
       });
     logger.info({ target, assignmentId }, "Tag assignment removed");
+  }
+
+  /**
+   * A list's `tagIds` filter, narrowed to tags the caller may read in their
+   * org. `undefined` means no filter; an empty array means the filter names
+   * no tag the caller can see, so the list matches nothing (a hidden tag
+   * never narrows a list, which would reveal where it sits).
+   */
+  static async readableTagIds(
+    set: PermissionSet,
+    organizationId: string,
+    raw: string | undefined
+  ): Promise<string[] | undefined> {
+    if (raw === undefined) return undefined;
+    const ids = [
+      ...new Set(
+        raw
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (ids.length === 0) return undefined;
+    const tags = await DbService.repository.entityTags.findMany(
+      inArray(entityTags.id, ids)
+    );
+    return tags
+      .filter((tag) =>
+        ObjectAccessService.readableInOrg(set, organizationId, "tag", tag)
+      )
+      .map((tag) => tag.id);
+  }
+
+  /**
+   * The readable tags on a page of objects of one type, keyed by object id,
+   * in one query. Every id is present (an untagged object maps to `[]`).
+   */
+  static async tagsForTargets(
+    set: PermissionSet,
+    type: TagTargetType,
+    ids: string[]
+  ): Promise<Map<string, EntityTagSelect[]>> {
+    const byTarget =
+      await DbService.repository.entityTagAssignments.findByTargetIds(
+        type,
+        ids
+      );
+    return new Map(
+      ids.map((id) => [
+        id,
+        TagAssignmentService.readableTags(set, byTarget.get(id) ?? []),
+      ])
+    );
   }
 
   /** Only the tags the caller may read (#630 tag visibility). */

@@ -34,6 +34,7 @@ import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
 import { createTagAssignmentRouter } from "./tag-assignment.router.js";
+import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "portal-results" });
 
@@ -430,6 +431,8 @@ portalResultsRouter.get(
  *         schema:
  *           type: string
  *         description: Filter results by portal ID
+ *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations: `portal` names each pin's source portal; `tags` attaches each pin's readable tags (#1070)." }
  *     responses:
  *       200:
  *         description: Portal results retrieved successfully
@@ -472,8 +475,16 @@ portalResultsRouter.get(
       );
     }
     try {
-      const { limit, offset, sortOrder, search, stationId, portalId, include } =
-        parsedQuery.data;
+      const {
+        limit,
+        offset,
+        sortOrder,
+        search,
+        stationId,
+        portalId,
+        include,
+        tagIds: tagIdsRaw,
+      } = parsedQuery.data;
       const ctx = req.application!.metadata;
       const { organizationId } = ctx;
 
@@ -495,6 +506,21 @@ portalResultsRouter.get(
         idCol: portalResults.id,
       });
       if (visibility) filters.push(visibility);
+      // #1070: pins carrying any of the tags the caller can read.
+      const tagIds = await TagAssignmentService.readableTagIds(
+        set,
+        organizationId,
+        tagIdsRaw
+      );
+      if (tagIds) {
+        filters.push(
+          DbService.repository.entityTagAssignments.taggedWithAny(
+            "pin",
+            portalResults.id,
+            tagIds
+          )
+        );
+      }
       const where = and(...filters);
 
       const include_ = include
@@ -521,12 +547,23 @@ portalResultsRouter.get(
       // #640: each pin names its definer, so a sharee knows whose access it
       // shows.
       const definers = await PinDefinerService.describeMany(data, ctx.userId);
+      const tagsByPin = include_?.includes("tags")
+        ? await TagAssignmentService.tagsForTargets(
+            set,
+            "pin",
+            data.map((row) => row.id)
+          )
+        : null;
       return HttpService.success<PortalResultListResponsePayload>(res, {
         // #688: each pin with the caller's capabilities on it.
         portalResults: ObjectCapabilitiesService.attach(
           set,
           "pin",
-          data.map((row) => ({ ...row, ...definers.get(row.id)! }))
+          data.map((row) => ({
+            ...row,
+            ...definers.get(row.id)!,
+            ...(tagsByPin && { tags: tagsByPin.get(row.id) ?? [] }),
+          }))
         ) as unknown as PortalResultListResponsePayload["portalResults"],
         total,
         limit,

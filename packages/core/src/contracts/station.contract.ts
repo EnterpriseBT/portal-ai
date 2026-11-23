@@ -13,6 +13,7 @@ import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
+import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
 
 // ── List ──────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ export const StationListRequestQuerySchema =
     sortBy: z.enum(["name", "created"]).optional().default("created"),
     search: z.string().optional(),
     include: z.string().optional(),
+    ...TagListQueryFields,
   });
 
 export type StationListRequestQuery = z.infer<
@@ -50,6 +52,7 @@ export const StationWithToolpacksSchema = StationSchema.extend({
    * A custom ref whose pack no longer exists has no item.
    */
   toolpacks: z.array(AttachedToolpackSchema).optional(),
+  ...TaggedRowFields,
 });
 
 export type StationWithToolpacks = z.infer<typeof StationWithToolpacksSchema>;

@@ -50,6 +50,7 @@ import { CuratedViewFilterSqlService } from "./curated-view-filter-sql.service.j
 import { resolveColumns } from "../utils/resolve-columns.util.js";
 import { unwrapPgError } from "../utils/pg-error.util.js";
 import { ilikeContains } from "../utils/filter-sql.util.js";
+import { TagAssignmentService } from "./tag-assignment.service.js";
 
 const logger = createLogger({ module: "curated-view-service" });
 
@@ -436,6 +437,8 @@ export class CuratedViewService {
       search,
       connectorEntityId,
       stationId,
+      include,
+      tagIds: tagIdsRaw,
     } = query;
     const { organizationId } = ctx;
     const set = await PermissionService.loadSet(ctx);
@@ -473,6 +476,21 @@ export class CuratedViewService {
       idCol: curatedViews.id,
     });
     if (visibility) filters.push(visibility);
+    // #1070: views carrying any of the tags the caller can read.
+    const tagIds = await TagAssignmentService.readableTagIds(
+      set,
+      organizationId,
+      tagIdsRaw
+    );
+    if (tagIds) {
+      filters.push(
+        DbService.repository.entityTagAssignments.taggedWithAny(
+          "curated_view",
+          curatedViews.id,
+          tagIds
+        )
+      );
+    }
 
     const where = and(...filters);
     const column = SORTABLE_COLUMNS[sortBy];
@@ -499,9 +517,23 @@ export class CuratedViewService {
       await DbService.repository.curatedViewFieldMappings.findProjectedViewIds(
         data.map((v) => v.id)
       );
-    const scoped = data.map((v) =>
-      CuratedViewPayloadService.scopeRow(set, v, projectedIds.has(v.id))
+    const includes = new Set(
+      include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? []
     );
+    const tagsByView = includes.has("tags")
+      ? await TagAssignmentService.tagsForTargets(
+          set,
+          "curated_view",
+          data.map((v) => v.id)
+        )
+      : null;
+    const scoped = data.map((v) => ({
+      ...CuratedViewPayloadService.scopeRow(set, v, projectedIds.has(v.id)),
+      ...(tagsByView && { tags: tagsByView.get(v.id) ?? [] }),
+    }));
 
     return {
       curatedViews: ObjectCapabilitiesService.attach(

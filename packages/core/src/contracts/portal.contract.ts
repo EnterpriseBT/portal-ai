@@ -16,6 +16,7 @@ import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
+import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
 
 // ── List ──────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ export type PinDefinerFields = z.infer<typeof PinDefinerFieldsSchema>;
 /** A pin as the list returns it: `portalName` is present with include=portal. */
 export const PortalResultListItemSchema = PortalResultSchema.extend({
   portalName: z.string().nullable().optional(),
+  ...TaggedRowFields,
 }).extend(PinDefinerFieldsSchema.shape);
 export type PortalResultListItem = z.infer<typeof PortalResultListItemSchema>;
 
@@ -199,6 +201,7 @@ export const PortalResultListRequestQuerySchema =
   PortalListRequestQuerySchema.extend({
     sortBy: z.enum(["created"]).optional().default("created"),
     portalId: z.string().optional(),
+    ...TagListQueryFields,
   });
 
 export type PortalResultListRequestQuery = z.infer<

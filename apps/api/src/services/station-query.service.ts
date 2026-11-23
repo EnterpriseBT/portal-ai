@@ -18,8 +18,9 @@ import type { PermissionContext } from "./permission.service.js";
 import { ObjectCapabilitiesService } from "./object-capabilities.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import { StationToolpackNamesService } from "./station-toolpack-names.service.js";
+import { TagAssignmentService } from "./tag-assignment.service.js";
 import { stations } from "../db/schema/index.js";
-import type { StationSelect } from "../db/schema/zod.js";
+import type { EntityTagSelect, StationSelect } from "../db/schema/zod.js";
 import { ilikeContains } from "../utils/filter-sql.util.js";
 
 export interface StationListOptions {
@@ -28,6 +29,10 @@ export interface StationListOptions {
   offset: number;
   sortBy: "name" | "created";
   sortOrder: "asc" | "desc";
+  /** #1070: comma-separated tag ids; stations carrying any of them. */
+  tagIds?: string;
+  /** #1070: attach each station's readable tags. */
+  includeTags?: boolean;
 }
 
 export type StationListRow = StationSelect & {
@@ -36,6 +41,7 @@ export type StationListRow = StationSelect & {
   /** #1063: the same packs with their names, in the same order. */
   toolpacks: AttachedToolpack[];
   capabilities: ObjectCapabilities | ShareableObjectCapabilities;
+  tags?: EntityTagSelect[];
 };
 
 export class StationQueryService {
@@ -66,6 +72,20 @@ export class StationQueryService {
       idCol: stations.id,
     });
     if (visibility) filters.push(visibility);
+    const tagIds = await TagAssignmentService.readableTagIds(
+      set,
+      ctx.organizationId,
+      opts.tagIds
+    );
+    if (tagIds) {
+      filters.push(
+        DbService.repository.entityTagAssignments.taggedWithAny(
+          "station",
+          stations.id,
+          tagIds
+        )
+      );
+    }
     const where = and(...filters);
 
     const column = sortBy === "name" ? stations.name : stations.created;
@@ -98,6 +118,13 @@ export class StationQueryService {
       arr.push(ref);
       toolpacksByStationId.set(row.stationId, arr);
     }
+    const tagsByStationId = opts.includeTags
+      ? await TagAssignmentService.tagsForTargets(
+          set,
+          "station",
+          data.map((s) => s.id)
+        )
+      : null;
     // #1063: one name lookup for the page.
     const namedByStationId = await StationToolpackNamesService.forStations(
       ctx.organizationId,
@@ -114,6 +141,7 @@ export class StationQueryService {
           ...s,
           enabledToolpacks: toolpacksByStationId.get(s.id) ?? [],
           toolpacks: namedByStationId.get(s.id) ?? [],
+          ...(tagsByStationId && { tags: tagsByStationId.get(s.id) ?? [] }),
         }))
       ),
       total,
