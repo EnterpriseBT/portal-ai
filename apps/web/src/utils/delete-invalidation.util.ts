@@ -18,6 +18,9 @@ export function connectorInstanceDeleteKeys(): QueryKey[] {
     queryKeys.fieldMappings.root,
     queryKeys.stations.root,
     queryKeys.curatedViews.root,
+    // #1070: the deleted objects' tags, and the Tags page's usage counts.
+    queryKeys.tagAssignments.root,
+    queryKeys.entityTags.root,
   ];
 }
 
@@ -34,6 +37,9 @@ export function connectorEntityDeleteKeys(): QueryKey[] {
     queryKeys.entityGroups.root,
     queryKeys.stations.root,
     queryKeys.curatedViews.root,
+    // #1070: the deleted objects' tags, and the Tags page's usage counts.
+    queryKeys.tagAssignments.root,
+    queryKeys.entityTags.root,
   ];
 }
 
@@ -57,5 +63,8 @@ export function stationDeleteKeys(): QueryKey[] {
     queryKeys.portalResults.root,
     queryKeys.connectorInstances.root,
     queryKeys.organizations.root,
+    // #1070: the deleted objects' tags, and the Tags page's usage counts.
+    queryKeys.tagAssignments.root,
+    queryKeys.entityTags.root,
   ];
 }

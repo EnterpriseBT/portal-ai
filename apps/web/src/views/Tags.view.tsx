@@ -35,6 +35,7 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
+import { tagCatalogChangeKeys } from "../utils/tag-invalidation.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -189,8 +190,9 @@ export const TagsView: React.FC = () => {
   const handleFormSubmit = useCallback(
     (body: EntityTagCreateRequestBody | EntityTagUpdateRequestBody) => {
       if (editingTag) {
+        // #1070: a rename or recolour shows on every tagged object.
         updateMutation.mutate(body as EntityTagUpdateRequestBody, {
-          invalidate: [queryKeys.entityTags.root],
+          invalidate: tagCatalogChangeKeys(),
           onSuccess: handleFormClose,
         });
       } else {
@@ -215,8 +217,9 @@ export const TagsView: React.FC = () => {
   }, []);
 
   const handleDeleteConfirm = useCallback(() => {
+    // #1070: a deleted tag comes off every object.
     deleteMutation.mutate(undefined, {
-      invalidate: [queryKeys.entityTags.root],
+      invalidate: tagCatalogChangeKeys(),
       onSuccess: handleDeleteClose,
     });
   }, [deleteMutation, handleDeleteClose]);

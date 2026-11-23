@@ -75,6 +75,22 @@ describe("stationDeleteKeys", () => {
   });
 });
 
+// #1070: a deleted object's tags go with it, and the Tags page counts it.
+describe.each([
+  ["connectorInstanceDeleteKeys", connectorInstanceDeleteKeys],
+  ["connectorEntityDeleteKeys", connectorEntityDeleteKeys],
+  ["stationDeleteKeys", stationDeleteKeys],
+])("%s (#1070)", (_name, keys) => {
+  it("refreshes tag assignments and tag usage", () => {
+    expect(keys()).toEqual(
+      expect.arrayContaining([
+        queryKeys.tagAssignments.root,
+        queryKeys.entityTags.root,
+      ])
+    );
+  });
+});
+
 describe("delete calls invalidate through the shared keys", () => {
   it.each([
     ["views/Connector.view.tsx", "connectorInstanceDeleteKeys"],

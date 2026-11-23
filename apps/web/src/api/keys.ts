@@ -1,3 +1,4 @@
+import type { TagTargetType } from "@portalai/core/models";
 import type { AuditLogListRequestQuery } from "@portalai/core/contracts";
 import type { ColumnDefinitionListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
@@ -185,14 +186,11 @@ export const queryKeys = {
     records: (id: string, params?: CuratedViewRecordsRequestQuery) =>
       [...queryKeys.curatedViews.root, "records", id, params] as const,
   },
-  entityTagAssignments: {
-    root: ["entityTagAssignments"] as const,
-    listByEntity: (connectorEntityId: string) =>
-      [
-        ...queryKeys.entityTagAssignments.root,
-        "listByEntity",
-        connectorEntityId,
-      ] as const,
+  tagAssignments: {
+    root: ["tagAssignments"] as const,
+    /** #1070: the tags on one object of any taggable type. */
+    listByTarget: (type: TagTargetType, id: string) =>
+      [...queryKeys.tagAssignments.root, type, id] as const,
   },
   jobs: {
     root: ["jobs"] as const,
