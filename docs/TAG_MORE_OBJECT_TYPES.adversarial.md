@@ -92,7 +92,8 @@ Probes with no tag can be walked in a browser. Probes tagged `— backend` are `
 
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk; empty when every probe held)_ | | | |
+| §3 same tag from two tabs | Server held (201 + 409, one row), but the 409 tab toasted "already assigned" and kept showing no chip | low | fixed-in-PR: 6ddf17bb (a 409 refetches the object's tags), re-walked |
+| §7 rename while another tab is filtered | Results stay correct (the filter is by id); the other tab shows the old name until it refetches | low | waived: app-wide cross-tab cache staleness, not specific to tags; the renaming tab refreshes every list |
 
 ## Sign-off
 
