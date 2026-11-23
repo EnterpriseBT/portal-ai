@@ -285,3 +285,564 @@ export function createTagAssignmentRouter(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  */
+
+/**
+ * @openapi
+ * /api/stations/{stationId}/tags:
+ *   get:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: List the tags on a station
+ *     description: Only tags the caller may read. The station must be readable (404 otherwise).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: stationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The station's id
+ *     responses:
+ *       200:
+ *         description: The station's tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentListResponsePayload'
+ *       404:
+ *         description: The station doesn't exist or the caller can't read it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *   post:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Put a tag on a station
+ *     description: Needs write on the station; the tag must be readable in the org.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: stationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The station's id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EntityTagAssignmentCreateRequestBody'
+ *     responses:
+ *       201:
+ *         description: Tag assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentCreateResponsePayload'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the station but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The station or the tag doesn't exist or isn't readable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: The station already carries this tag
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ * /api/stations/{stationId}/tags/{assignmentId}:
+ *   delete:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Take a tag off a station
+ *     description: Needs write on the station; the assignment must be on it.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: stationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The station's id
+ *       - in: path
+ *         name: assignmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The tag assignment's id
+ *     responses:
+ *       200:
+ *         description: Tag removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TagAssignmentDeleteResponsePayload'
+ *       403:
+ *         description: The caller can read the station but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The station or the assignment doesn't exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+/**
+ * @openapi
+ * /api/portal-results/{portalResultId}/tags:
+ *   get:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: List the tags on a pinned result
+ *     description: Only tags the caller may read. The pinned result must be readable (404 otherwise).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: portalResultId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The pinned result's id
+ *     responses:
+ *       200:
+ *         description: The pinned result's tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentListResponsePayload'
+ *       404:
+ *         description: The pinned result doesn't exist or the caller can't read it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *   post:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Put a tag on a pinned result
+ *     description: Needs write on the pinned result; the tag must be readable in the org.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: portalResultId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The pinned result's id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EntityTagAssignmentCreateRequestBody'
+ *     responses:
+ *       201:
+ *         description: Tag assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentCreateResponsePayload'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the pinned result but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The pinned result or the tag doesn't exist or isn't readable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: The pinned result already carries this tag
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ * /api/portal-results/{portalResultId}/tags/{assignmentId}:
+ *   delete:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Take a tag off a pinned result
+ *     description: Needs write on the pinned result; the assignment must be on it.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: portalResultId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The pinned result's id
+ *       - in: path
+ *         name: assignmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The tag assignment's id
+ *     responses:
+ *       200:
+ *         description: Tag removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TagAssignmentDeleteResponsePayload'
+ *       403:
+ *         description: The caller can read the pinned result but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The pinned result or the assignment doesn't exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+/**
+ * @openapi
+ * /api/connector-instances/{connectorInstanceId}/tags:
+ *   get:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: List the tags on a connector instance
+ *     description: Only tags the caller may read. The connector instance must be readable (404 otherwise).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorInstanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The connector instance's id
+ *     responses:
+ *       200:
+ *         description: The connector instance's tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentListResponsePayload'
+ *       404:
+ *         description: The connector instance doesn't exist or the caller can't read it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *   post:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Put a tag on a connector instance
+ *     description: Needs write on the connector instance; the tag must be readable in the org.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorInstanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The connector instance's id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EntityTagAssignmentCreateRequestBody'
+ *     responses:
+ *       201:
+ *         description: Tag assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentCreateResponsePayload'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the connector instance but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The connector instance or the tag doesn't exist or isn't readable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: The connector instance already carries this tag
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ * /api/connector-instances/{connectorInstanceId}/tags/{assignmentId}:
+ *   delete:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Take a tag off a connector instance
+ *     description: Needs write on the connector instance; the assignment must be on it.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorInstanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The connector instance's id
+ *       - in: path
+ *         name: assignmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The tag assignment's id
+ *     responses:
+ *       200:
+ *         description: Tag removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TagAssignmentDeleteResponsePayload'
+ *       403:
+ *         description: The caller can read the connector instance but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The connector instance or the assignment doesn't exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+/**
+ * @openapi
+ * /api/curated-views/{curatedViewId}/tags:
+ *   get:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: List the tags on a curated view
+ *     description: Only tags the caller may read. The curated view must be readable (404 otherwise).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: curatedViewId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The curated view's id
+ *     responses:
+ *       200:
+ *         description: The curated view's tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentListResponsePayload'
+ *       404:
+ *         description: The curated view doesn't exist or the caller can't read it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *   post:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Put a tag on a curated view
+ *     description: Needs write on the curated view; the tag must be readable in the org.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: curatedViewId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The curated view's id
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EntityTagAssignmentCreateRequestBody'
+ *     responses:
+ *       201:
+ *         description: Tag assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/EntityTagAssignmentCreateResponsePayload'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller can read the curated view but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The curated view or the tag doesn't exist or isn't readable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: The curated view already carries this tag
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ * /api/curated-views/{curatedViewId}/tags/{assignmentId}:
+ *   delete:
+ *     tags:
+ *       - Tag Assignments
+ *     summary: Take a tag off a curated view
+ *     description: Needs write on the curated view; the assignment must be on it.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: curatedViewId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The curated view's id
+ *       - in: path
+ *         name: assignmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The tag assignment's id
+ *     responses:
+ *       200:
+ *         description: Tag removed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TagAssignmentDeleteResponsePayload'
+ *       403:
+ *         description: The caller can read the curated view but not change it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: The curated view or the assignment doesn't exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */

@@ -35,10 +35,17 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 const logger = createLogger({ module: "station" });
 
 export const stationRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+stationRouter.use(
+  "/:stationId/tags",
+  createTagAssignmentRouter("station", "stationId")
+);
 
 /**
  * #848: "no description" is stored as null. An empty or whitespace-only one

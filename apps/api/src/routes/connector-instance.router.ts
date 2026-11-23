@@ -58,10 +58,17 @@ import { JsonataSuggestError } from "../adapters/rest-api/jsonata-suggest.types.
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
 export const connectorInstanceRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+connectorInstanceRouter.use(
+  "/:connectorInstanceId/tags",
+  createTagAssignmentRouter("connector_instance", "connectorInstanceId")
+);
 
 /** Map of sortable field names to their Drizzle columns. */
 // #756: keyed by the schema's `sortBy` enum, so every value the schema

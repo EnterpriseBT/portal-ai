@@ -33,10 +33,17 @@ import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 const logger = createLogger({ module: "portal-results" });
 
 export const portalResultsRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+portalResultsRouter.use(
+  "/:portalResultId/tags",
+  createTagAssignmentRouter("pin", "portalResultId")
+);
 
 /**
  * Per-org rate limit shared by every widget/pin re-execution (one budget

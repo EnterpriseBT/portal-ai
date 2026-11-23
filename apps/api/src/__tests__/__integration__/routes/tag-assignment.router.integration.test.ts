@@ -164,6 +164,22 @@ const TYPES: { type: TagTargetType; path: string; notFound: ApiCode }[] = [
     path: "connector-entities",
     notFound: ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
   },
+  { type: "station", path: "stations", notFound: ApiCode.STATION_NOT_FOUND },
+  {
+    type: "pin",
+    path: "portal-results",
+    notFound: ApiCode.PORTAL_RESULT_NOT_FOUND,
+  },
+  {
+    type: "connector_instance",
+    path: "connector-instances",
+    notFound: ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+  },
+  {
+    type: "curated_view",
+    path: "curated-views",
+    notFound: ApiCode.CURATED_VIEW_NOT_FOUND,
+  },
 ];
 
 describe.each(TYPES)(
@@ -388,3 +404,62 @@ describe.each(TYPES)(
     });
   }
 );
+
+/**
+ * #1070: tagging is metadata, not entity data, so a running job doesn't
+ * block it, the same rule entity tagging already followed.
+ */
+describe("tag assignment under a running job (#1070)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: Db;
+  let fx!: TenancyFixture;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+    fx = await seedTenancyFixture(db, {
+      owner: OWNER_SUB,
+      member: MEMBER_SUB,
+      otherOwner: OTHER_SUB,
+    });
+    currentSub = OWNER_SUB;
+  });
+
+  afterEach(async () => {
+    await teardownOrg(db);
+    await connection.end();
+  });
+
+  it("tags a connector and its entity while a sync runs on it", async () => {
+    const targets = await seedTargets(db, fx.orgId, fx.ownerId);
+    const tagId = await seedTag(db, fx.orgId, fx.ownerId);
+    await db.insert(schema.jobs).values({
+      id: generateId(),
+      created: Date.now(),
+      createdBy: fx.ownerId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: fx.orgId,
+      type: "connector_sync",
+      status: "active",
+      progress: 10,
+      metadata: { connectorInstanceId: targets.connector_instance },
+      attempts: 1,
+      maxAttempts: 3,
+      lockScopes: [`instance:${targets.connector_instance}`],
+    } as never);
+
+    const onInstance = await request(app)
+      .post(`/api/connector-instances/${targets.connector_instance}/tags`)
+      .send({ entityTagId: tagId });
+    expect(onInstance.status).toBe(201);
+    const onEntity = await request(app)
+      .post(`/api/connector-entities/${targets.entity}/tags`)
+      .send({ entityTagId: tagId });
+    expect(onEntity.status).toBe(201);
+  });
+});

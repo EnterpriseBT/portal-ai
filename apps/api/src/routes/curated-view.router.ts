@@ -32,8 +32,15 @@ import { CuratedViewService } from "../services/curated-view.service.js";
 import { CuratedViewFilterSqlService } from "../services/curated-view-filter-sql.service.js";
 
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 export const curatedViewRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+curatedViewRouter.use(
+  "/:curatedViewId/tags",
+  createTagAssignmentRouter("curated_view", "curatedViewId")
+);
 
 /**
  * @openapi

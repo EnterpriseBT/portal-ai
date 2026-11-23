@@ -923,4 +923,61 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     by: "Policy/Role/GroupService gate (customRbac entitlement + member.role.assign) + org-scoped load; policyIds via RbacPolicyRefsService (#681)",
     locks: { none: "RBAC; no job reads or writes it" },
   },
+  // #1070: tag assignments on stations, pins, connectors and views.
+  "GET /api/stations/{stationId}/tags": {
+    kind: "authorized",
+    by: "station in org + readable, else 404; only tags the caller may read (#1070)",
+  },
+  "POST /api/stations/{stationId}/tags": {
+    kind: "authorized",
+    by: "station in org + readable, else 404; write station, else 403; tag readable in org, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "DELETE /api/stations/{stationId}/tags/{assignmentId}": {
+    kind: "authorized",
+    by: "station in org + readable, else 404; write station, else 403; assignment on the station, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "GET /api/portal-results/{portalResultId}/tags": {
+    kind: "authorized",
+    by: "pin in org + readable, else 404; only tags the caller may read (#1070)",
+  },
+  "POST /api/portal-results/{portalResultId}/tags": {
+    kind: "authorized",
+    by: "pin in org + readable, else 404; write pin, else 403; tag readable in org, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "DELETE /api/portal-results/{portalResultId}/tags/{assignmentId}": {
+    kind: "authorized",
+    by: "pin in org + readable, else 404; write pin, else 403; assignment on the pin, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "GET /api/connector-instances/{connectorInstanceId}/tags": {
+    kind: "authorized",
+    by: "connector instance in org + readable, else 404; only tags the caller may read (#1070)",
+  },
+  "POST /api/connector-instances/{connectorInstanceId}/tags": {
+    kind: "authorized",
+    by: "connector instance in org + readable, else 404; write connector instance, else 403; tag readable in org, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "DELETE /api/connector-instances/{connectorInstanceId}/tags/{assignmentId}": {
+    kind: "authorized",
+    by: "connector instance in org + readable, else 404; write connector instance, else 403; assignment on the connector instance, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "GET /api/curated-views/{curatedViewId}/tags": {
+    kind: "authorized",
+    by: "curated view in org + readable, else 404; only tags the caller may read (#1070)",
+  },
+  "POST /api/curated-views/{curatedViewId}/tags": {
+    kind: "authorized",
+    by: "curated view in org + readable, else 404; write curated view, else 403; tag readable in org, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
+  "DELETE /api/curated-views/{curatedViewId}/tags/{assignmentId}": {
+    kind: "authorized",
+    by: "curated view in org + readable, else 404; write curated view, else 403; assignment on the curated view, else 404 (#1070)",
+    locks: { none: "tag assignments; no job reads or writes them" },
+  },
 };
