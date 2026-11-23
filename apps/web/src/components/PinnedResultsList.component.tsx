@@ -5,6 +5,7 @@ import {
   Box,
   CardList,
   DetailCard,
+  MetadataList,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -96,8 +97,18 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
             Data as {result.definer.displayName} sees it
           </Typography>
         )}
-        <TagChipListUI tags={result.tags} />
       </Stack>
+      {/* #1070: labelled like the other cards' Tags row. */}
+      <MetadataList
+        items={[
+          {
+            label: "Tags",
+            value: <TagChipListUI tags={result.tags} />,
+            variant: "chip",
+            hidden: !result.tags?.length,
+          },
+        ]}
+      />
     </DetailCard>
   );
 };

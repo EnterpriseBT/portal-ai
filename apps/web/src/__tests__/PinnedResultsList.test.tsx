@@ -95,6 +95,13 @@ describe("PinnedResultCardUI", () => {
       />
     );
     expect(screen.getByText("Finance")).toBeInTheDocument();
+    // Smoke walk (#1070): labelled like the other cards' Tags row.
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+  });
+
+  it("shows no Tags row for an untagged pin", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} />);
+    expect(screen.queryByText("Tags")).toBeNull();
   });
 
   it("should render result name and relative timestamp", () => {
