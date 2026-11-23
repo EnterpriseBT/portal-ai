@@ -9,7 +9,7 @@
 import type { PermissionSet } from "./permission-set.js";
 import type { PermissionResourceType } from "@portalai/core/models";
 
-interface OwnedRow {
+export interface OwnedRow {
   id: string;
   organizationId: string;
   createdBy: string;

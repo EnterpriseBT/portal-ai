@@ -110,7 +110,7 @@ class TagAssignmentService {
 |---|---|---|
 | `GET /` | 200 `{tags}` | 404 target |
 | `POST /` body `{entityTagId}` | 201 `{entityTagAssignment}` | 400 `ENTITY_TAG_ASSIGNMENT_INVALID_PAYLOAD`, 404 target/tag, 403, 409 `ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS` when `created: false` |
-| `DELETE /:assignmentId` | 204 | 404 target/assignment, 403 |
+| `DELETE /:assignmentId` | 200 `{id}` (the entity route's existing contract) | 404 target/assignment, 403 |
 
 It's mounted at `/connector-entities/:targetId/tags` (replacing the current mount, same URL), `/stations/:targetId/tags`, `/portal-results/:targetId/tags`, `/connector-instances/:targetId/tags` and `/curated-views/:targetId/tags`.
 
@@ -220,7 +220,7 @@ Run per package: `npm run test:unit` / `npm run test:integration` (with `--testP
   - a foreign-org target gets 404;
   - a foreign-org tag gets 404;
   - an unreadable tag gets 404;
-  - DELETE 204;
+  - DELETE 200;
   - DELETE of an assignment on another target gets 404;
   - a strict body rejects unknown keys.
   ≈ 12 × 5 = 60.

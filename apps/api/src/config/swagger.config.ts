@@ -122,6 +122,9 @@ import {
   CuratedViewFilterSqlSuggestRequestBodySchema,
   CuratedViewFilterSqlSuggestResponsePayloadSchema,
   ResolvedColumnSchema,
+  EntityTagAssignmentCreateRequestBodySchema,
+  EntityTagAssignmentCreateResponsePayloadSchema,
+  EntityTagAssignmentListResponsePayloadSchema,
 } from "@portalai/core/contracts";
 import {
   EntityRecordListItemSchema,
@@ -315,6 +318,24 @@ const domainModelSchemas: Record<string, unknown> = {
     EntityTagAssignmentSchema,
     JSON_SCHEMA_OPTS
   ),
+  // #1070: the tag assignment routes, one shape for every taggable type.
+  EntityTagAssignmentCreateRequestBody: z.toJSONSchema(
+    EntityTagAssignmentCreateRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityTagAssignmentCreateResponsePayload: z.toJSONSchema(
+    EntityTagAssignmentCreateResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityTagAssignmentListResponsePayload: z.toJSONSchema(
+    EntityTagAssignmentListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  TagAssignmentDeleteResponsePayload: {
+    type: "object",
+    required: ["id"],
+    properties: { id: { type: "string" } },
+  },
   Organization: z.toJSONSchema(OrganizationSchema, JSON_SCHEMA_OPTS),
 };
 

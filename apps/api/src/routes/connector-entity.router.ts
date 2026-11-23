@@ -37,7 +37,7 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
-import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
@@ -49,10 +49,10 @@ export const connectorEntityRouter = Router();
 // Nest the entity records router under /:connectorEntityId/records
 connectorEntityRouter.use("/:connectorEntityId/records", entityRecordRouter);
 
-// Nest the entity tag assignments router under /:connectorEntityId/tags
+// Nest the tag assignment routes under /:connectorEntityId/tags (#1070)
 connectorEntityRouter.use(
   "/:connectorEntityId/tags",
-  entityTagAssignmentRouter
+  createTagAssignmentRouter("entity", "connectorEntityId")
 );
 
 /** Map of sortable field names to their Drizzle columns. */
