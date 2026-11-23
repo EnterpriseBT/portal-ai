@@ -1,10 +1,12 @@
 import { useCallback } from "react";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import type { AssignedEntityTag } from "@portalai/core/contracts";
 import type { TagTarget } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
 
-import { sdk } from "../api/sdk";
+import { queryKeys, sdk } from "../api/sdk";
 import { tagAssignmentKeys } from "./tag-invalidation.util";
 import { useCapabilities } from "./use-capabilities.util";
 
@@ -25,21 +27,34 @@ export interface TagAssignmentsHandle {
  */
 export function useTagAssignments(target: TagTarget): TagAssignmentsHandle {
   const list = sdk.tagAssignments.list(target);
-  const { mutate: assign } = sdk.tagAssignments.assign(target);
+  const queryClient = useQueryClient();
+  const { mutateAsync: assign } = sdk.tagAssignments.assign(target);
   const { mutate: unassign } = sdk.tagAssignments.unassign(target);
   const { onSearch } = sdk.entityTags.search();
   const { canOnResource, capabilitiesKnown } = useCapabilities();
 
   const onAssign = useCallback(
-    (entityTagId: string) =>
+    (entityTagId: string) => {
       assign(
         { entityTagId },
         {
           invalidate: tagAssignmentKeys(target.type),
           toast: { error: "Couldn't add the tag." },
         }
-      ),
-    [assign, target.type]
+      ).catch((error: { code?: string }) => {
+        // Adversarial walk (#1070): another tab or person added it first.
+        // The toast says so; refetch so this page shows the tag it has.
+        if (error?.code === "ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS") {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.tagAssignments.listByTarget(
+              target.type,
+              target.id
+            ),
+          });
+        }
+      });
+    },
+    [assign, queryClient, target.type, target.id]
   );
 
   const onUnassign = useCallback(
