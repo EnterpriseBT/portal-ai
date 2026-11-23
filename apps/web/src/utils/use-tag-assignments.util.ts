@@ -6,7 +6,8 @@ import type { AssignedEntityTag } from "@portalai/core/contracts";
 import type { TagTarget } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
 
-import { queryKeys, sdk } from "../api/sdk";
+import { queryKeys } from "../api/keys";
+import { sdk } from "../api/sdk";
 import { tagAssignmentKeys } from "./tag-invalidation.util";
 import { useCapabilities } from "./use-capabilities.util";
 
