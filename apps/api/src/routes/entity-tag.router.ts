@@ -25,6 +25,7 @@ import { ObjectCapabilitiesService } from "../services/object-capabilities.servi
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "entity-tag" });
 
@@ -64,6 +65,7 @@ const SORTABLE_COLUMNS: Record<EntityTagListRequestQuery["sortBy"], Column> = {
  *           enum: [name, created]
  *           default: created
  *         description: Field to sort by
+ *       - { in: query, name: include, required: false, schema: { type: string }, description: "`usage` adds each tag's per-type counts (entity, station, pin, connector_instance, curated_view), over the objects the caller can read (#1070)." }
  *     responses:
  *       200:
  *         description: Paginated list of entity tags
@@ -106,7 +108,8 @@ entityTagRouter.get(
       );
     }
     try {
-      const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
+      const { limit, offset, sortBy, sortOrder, search, include } =
+        parsedQuery.data;
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(entityTags.organizationId, organizationId)];
@@ -148,12 +151,28 @@ entityTagRouter.get(
         );
       });
 
+      // #1070: with include=usage, each tag's per-type counts over the
+      // objects the caller can read.
+      const wantsUsage = (include ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .includes("usage");
+      const usage = wantsUsage
+        ? await TagAssignmentService.usageByTag(
+            set,
+            organizationId,
+            data.map((tag) => tag.id)
+          )
+        : null;
+
       return HttpService.success<EntityTagListResponsePayload>(res, {
         // #688: each row with the caller's capabilities.
         entityTags: ObjectCapabilitiesService.attach(
           set,
           "tag",
-          data
+          usage
+            ? data.map((tag) => ({ ...tag, usage: usage.get(tag.id) }))
+            : data
         ) as unknown as EntityTagListResponsePayload["entityTags"],
         total,
         limit,

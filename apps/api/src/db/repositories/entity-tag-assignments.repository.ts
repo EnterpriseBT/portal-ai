@@ -8,12 +8,20 @@
  * {@link targetColumn}, so a caller never names a column.
  */
 
-import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import type { TagTarget, TagTargetType } from "@portalai/core/models";
 
-import { entityTagAssignments, entityTags } from "../schema/index.js";
+import {
+  connectorEntities,
+  connectorInstances,
+  curatedViews,
+  entityTagAssignments,
+  entityTags,
+  portalResults,
+  stations,
+} from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type {
@@ -45,6 +53,15 @@ type TargetField = (typeof TARGET_FIELDS)[TagTargetType];
 export function targetColumn(type: TagTargetType) {
   return TARGET_COLUMNS[type];
 }
+
+/** The table each target type's objects live in. */
+export const TARGET_TABLES = {
+  entity: connectorEntities,
+  station: stations,
+  pin: portalResults,
+  connector_instance: connectorInstances,
+  curated_view: curatedViews,
+} as const;
 
 /** A tag as it sits on one object: the tag plus the assignment's id. */
 export type AssignedTagRow = EntityTagSelect & { assignmentId: string };
@@ -248,6 +265,37 @@ export class EntityTagAssignmentsRepository extends Repository<
         )
       );
     return result.count;
+  }
+
+  /**
+   * How many live objects of one type carry each tag, keyed by tag id. A
+   * tag on no counted object is absent. `visible` narrows the objects
+   * counted (the caller's read predicate on the type's table).
+   */
+  async countObjectsByTag(
+    type: TagTargetType,
+    tagIds: string[],
+    organizationId: string,
+    visible: SQL | undefined,
+    client: DbClient = db
+  ): Promise<Map<string, number>> {
+    if (tagIds.length === 0) return new Map();
+    const table = TARGET_TABLES[type];
+    const rows = await (client as typeof db)
+      .select({ tagId: entityTagAssignments.entityTagId, n: count() })
+      .from(entityTagAssignments)
+      .innerJoin(table, eq(table.id, targetColumn(type)))
+      .where(
+        and(
+          inArray(entityTagAssignments.entityTagId, tagIds),
+          eq(entityTagAssignments.organizationId, organizationId),
+          isNull(entityTagAssignments.deleted),
+          isNull(table.deleted),
+          visible
+        )
+      )
+      .groupBy(entityTagAssignments.entityTagId);
+    return new Map(rows.map((r) => [r.tagId, Number(r.n)]));
   }
 
   /**

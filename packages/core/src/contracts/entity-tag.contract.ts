@@ -5,16 +5,39 @@ import { descriptionField, nameField } from "./text-limits.contract.js";
 import { withCapabilities } from "./capabilities.contract.js";
 
 import { EntityTagSchema } from "../models/entity-tag.model.js";
+import { TagTargetTypeSchema } from "../models/tag-target.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
+
+// ── Usage (#1070) ─────────────────────────────────────────────────────
+
+/**
+ * How many objects of each type carry a tag, counting only objects the
+ * caller can read. Every type is present, zero included.
+ */
+export const TagUsageSchema = z.record(
+  TagTargetTypeSchema,
+  z.number().int().min(0)
+);
+
+export type TagUsage = z.infer<typeof TagUsageSchema>;
+
+/** A tag list row: the tag, plus its usage with `include=usage`. */
+export const EntityTagWithUsageSchema = EntityTagSchema.extend({
+  usage: TagUsageSchema.optional(),
+});
+
+export type EntityTagWithUsage = z.infer<typeof EntityTagWithUsageSchema>;
 
 // ── List ──────────────────────────────────────────────────────────────
 
 export const EntityTagListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
     sortBy: z.enum(["name", "created"]).optional().default("created"),
+    /** #1070: `usage` adds each tag's per-type counts. */
+    include: z.string().optional(),
   });
 
 export type EntityTagListRequestQuery = z.infer<
@@ -24,21 +47,11 @@ export type EntityTagListRequestQuery = z.infer<
 export const EntityTagListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
     /** #688: each row with the caller's capabilities. */
-    entityTags: z.array(withCapabilities(EntityTagSchema)),
+    entityTags: z.array(withCapabilities(EntityTagWithUsageSchema)),
   });
 
 export type EntityTagListResponsePayload = z.infer<
   typeof EntityTagListResponsePayloadSchema
->;
-
-// ── Enriched schema (tag + assignment count) ──────────────────────────
-
-export const EntityTagWithAssignmentCountSchema = EntityTagSchema.extend({
-  assignmentCount: z.number().int().min(0),
-});
-
-export type EntityTagWithAssignmentCount = z.infer<
-  typeof EntityTagWithAssignmentCountSchema
 >;
 
 // ── Get ───────────────────────────────────────────────────────────────

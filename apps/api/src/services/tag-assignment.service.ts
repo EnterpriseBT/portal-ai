@@ -19,13 +19,15 @@ import { inArray } from "drizzle-orm";
 import {
   EntityTagAssignmentModelFactory,
   TAG_TARGET_PERMISSION_TYPE,
+  TAG_TARGET_TYPES,
   type EntityTagAssignment,
   type TagTarget,
   type TagTargetType,
 } from "@portalai/core/models";
-import type { AssignedEntityTag } from "@portalai/core/contracts";
+import type { AssignedEntityTag, TagUsage } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { TARGET_TABLES } from "../db/repositories/entity-tag-assignments.repository.js";
 import { entityTags } from "../db/schema/index.js";
 import type { EntityTagSelect } from "../db/schema/zod.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -257,6 +259,45 @@ export class TagAssignmentService {
         TagAssignmentService.readableTags(set, byTarget.get(id) ?? []),
       ])
     );
+  }
+
+  /**
+   * Per-type usage for a page of tags: how many objects of each type carry
+   * each tag, counting only objects the caller can read (a count over the
+   * rest would reveal they exist). One grouped query per type.
+   */
+  static async usageByTag(
+    set: PermissionSet,
+    organizationId: string,
+    tagIds: string[]
+  ): Promise<Map<string, TagUsage>> {
+    const usage = new Map<string, TagUsage>(
+      tagIds.map((id) => [
+        id,
+        Object.fromEntries(TAG_TARGET_TYPES.map((t) => [t, 0])) as TagUsage,
+      ])
+    );
+    if (tagIds.length === 0) return usage;
+    await Promise.all(
+      TAG_TARGET_TYPES.map(async (type) => {
+        const table = TARGET_TABLES[type];
+        const counts =
+          await DbService.repository.entityTagAssignments.countObjectsByTag(
+            type,
+            tagIds,
+            organizationId,
+            set.visibilityPredicate(TAG_TARGET_PERMISSION_TYPE[type], {
+              createdByCol: table.createdBy,
+              idCol: table.id,
+            })
+          );
+        for (const [tagId, n] of counts) {
+          const row = usage.get(tagId);
+          if (row) row[type] = n;
+        }
+      })
+    );
+    return usage;
   }
 
   /** Only the tags the caller may read (#630 tag visibility). */
