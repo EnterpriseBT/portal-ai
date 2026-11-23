@@ -27,6 +27,8 @@ import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
 import type { PortalStreamTurn } from "../utils/portal-stream.util";
 import { changedStationAttachments } from "../utils/station-attachment-tools.util";
+import { changedTags } from "../utils/tag-tools.util";
+import { tagCatalogChangeKeys } from "../utils/tag-invalidation.util";
 import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
@@ -422,6 +424,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     (turn: PortalStreamTurn) => {
       if (changedStationAttachments(turn.toolNames)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+      }
+      // #1071: a turn that changed tags refreshes the Tags page, every
+      // object's tags and every taggable list, as a rename in the UI does.
+      if (changedTags(turn.toolNames)) {
+        for (const queryKey of tagCatalogChangeKeys()) {
+          queryClient.invalidateQueries({ queryKey });
+        }
       }
     },
     [queryClient]

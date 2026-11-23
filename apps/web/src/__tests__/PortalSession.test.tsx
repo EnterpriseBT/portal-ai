@@ -669,6 +669,76 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     }
   );
 
+  // #1071: the Tags page and every taggable list read tags through
+  // react-query; a turn that changed tags refreshes them.
+  it.each([
+    ["tag_assign", true],
+    ["tag_delete", true],
+    ["tag_list", false],
+  ])("a turn that ran %s refreshes tags: %s", async (toolName, refreshes) => {
+    mockGetPortal.mockReturnValue({
+      ...makeQueryResult([]),
+      refetch: jest.fn(async () => ({})),
+    });
+    mockSendMessage.mockResolvedValue(undefined);
+    const queryClient = new QueryClient();
+    const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+    const { tagCatalogChangeKeys } =
+      await import("../utils/tag-invalidation.util");
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />, { queryClient });
+
+    fireEvent.change(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER), {
+      target: { value: "Tag these as Finance" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    const stream = await waitFor(() => {
+      const es = MockEventSource.findByUrl("/stream");
+      expect(es).toBeDefined();
+      return es!;
+    });
+    await act(async () => {
+      stream.__emit("tool_call", {
+        type: "tool_call",
+        toolCallId: "tc-1",
+        toolName,
+      });
+      stream.__emit("tool_call_end", {
+        type: "tool_call_end",
+        toolCallId: "tc-1",
+        toolName,
+      });
+      stream.__emit("done", { type: "done", messageId: "m-1" });
+    });
+
+    const invalidated = (key: unknown) =>
+      invalidate.mock.calls.some(
+        ([filters]) =>
+          JSON.stringify(
+            (filters as { queryKey?: unknown } | undefined)?.queryKey
+          ) === JSON.stringify(key)
+      );
+    if (refreshes) {
+      await waitFor(() => {
+        for (const key of tagCatalogChangeKeys()) {
+          expect(invalidated(key)).toBe(true);
+        }
+      });
+    } else {
+      await waitFor(() => {
+        expect(invalidate).toHaveBeenCalledWith({
+          queryKey: ["organizations", "usage"],
+        });
+      });
+      for (const key of tagCatalogChangeKeys()) {
+        expect(invalidated(key)).toBe(false);
+      }
+    }
+  });
+
   it("loads history on mount — messages from query appear", async () => {
     const messages = [
       makeMessage({
