@@ -18,6 +18,7 @@
 import { z } from "zod";
 
 import type { BulkDispatchMetadata } from "../models/organization-toolpack.model.js";
+import { TAG_TARGET_TYPES } from "../models/tag-target.model.js";
 import type {
   ToolCapability,
   ResultKind,
@@ -46,6 +47,8 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "help",
   // #847: the member roster and invitations, on every plan.
   "member_management",
+  // #1071: the tag catalog and tag assignments, on every plan.
+  "tag_management",
 ]);
 
 export type BuiltinToolpackSlug = z.infer<typeof BuiltinToolpackSlugSchema>;
@@ -1741,6 +1744,101 @@ const VIEW_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   ],
 };
 
+// ── Tags (#1071) ──────────────────────────────────────────────────────
+
+/** One taggable object, named by its type and id. */
+const tagTargetField = (description: string) => ({
+  type: "object",
+  description,
+  properties: {
+    type: enumField(
+      [...TAG_TARGET_TYPES],
+      "The object's type: entity, station, pin (a pinned result), connector_instance or curated_view"
+    ),
+    id: stringField("The object's id"),
+  },
+  required: ["type", "id"],
+});
+
+const TAG_MANAGEMENT_PACK: BuiltinToolpackSpec = {
+  slug: "tag_management",
+  name: "Tags",
+  description:
+    "Manage tags in a session: list, create, edit and delete tags, and add or remove them on entities, stations, pinned results, connectors and views. Changes follow the caller's own permissions on each tag and object.",
+  iconSlug: "LocalOffer",
+  tools: [
+    {
+      name: "tag_list",
+      description:
+        "Lists the tags the user can read, sorted by name, each with its id, name, color and description. With a target, lists the tags on that one object instead, each with its assignmentId. Use this to find a tag's id before adding, removing, editing or deleting it.",
+      parameterSchema: objectSchema({
+        search: stringField(
+          "Match tags whose name or description contains this text"
+        ),
+        target: tagTargetField(
+          "List the tags on this object instead of the catalog"
+        ),
+        limit: integerField("Page size, 1-100 (default 25)"),
+        offset: integerField("Rows to skip (default 0)"),
+      }),
+      examples: [
+        {
+          title: "Find a tag before applying it",
+          input: { search: "finance" },
+          output: {
+            tags: [
+              {
+                id: "tag_123",
+                name: "Finance",
+                color: "#2563EB",
+                description: null,
+                sourcePortalId: null,
+              },
+            ],
+            total: 1,
+          },
+        },
+      ],
+    },
+    {
+      name: "tag_create",
+      description:
+        "Creates a tag: a name unique in the organization, and optionally a color (hex, e.g. #2563EB) and a description. Create one only when the user asks for a new tag. The user must be allowed to create tags.",
+      parameterSchema: objectSchema(
+        {
+          name: stringField("The tag's name, unique in the organization"),
+          color: stringField("A hex color such as #2563EB"),
+          description: stringField("What the tag is for"),
+        },
+        ["name"]
+      ),
+    },
+    {
+      name: "tag_update",
+      description:
+        "Changes a tag's name, color or description (at least one). The user must be allowed to edit that tag.",
+      parameterSchema: objectSchema(
+        {
+          tagId: stringField("Id of the tag, from tag_list"),
+          name: stringField("A new name, unique in the organization"),
+          color: stringField("A new hex color such as #2563EB"),
+          description: stringField("A new description"),
+        },
+        ["tagId"]
+      ),
+    },
+    {
+      name: "tag_delete",
+      description:
+        "Deletes a tag and removes it from every object that carries it. The result counts, per object type, the objects it came off that the user can read. The user must be allowed to delete that tag.",
+      parameterSchema: objectSchema(
+        { tagId: stringField("Id of the tag, from tag_list") },
+        ["tagId"]
+      ),
+    },
+  ],
+};
+
 /**
  * Member management pack (#847): the roster half of Settings → Members, for
  * the agent. Every tool wraps the `SeatService` method the Settings routes
@@ -2254,6 +2352,12 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   curated_view_attach: rbacWrite(),
   curated_view_detach: rbacWrite(),
   station_list: rbacRead(),
+  // tag_management (#1071) — control-plane over tags, self-gated by
+  // EntityTagService / TagAssignmentService with the routes' own checks.
+  tag_list: rbacRead(),
+  tag_create: rbacWrite(),
+  tag_update: rbacWrite(),
+  tag_delete: rbacWrite(),
 };
 
 /**
@@ -2447,6 +2551,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     GIS_PACK,
     HELP_PACK,
     MEMBER_MANAGEMENT_PACK,
+    TAG_MANAGEMENT_PACK,
   ].map(attachCapabilities)
 );
 

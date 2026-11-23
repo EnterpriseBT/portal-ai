@@ -274,6 +274,8 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   help: "answering questions about how Portals works, with links into Help",
   member_management:
     "inviting and removing members, invitations and seat usage",
+  tag_management:
+    "creating, editing and deleting tags and adding or removing them on objects",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -835,6 +837,43 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push(
         "Deleting a view detaches it from every station and removes its " +
           "shares; report the counts in the result."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
+  // #1071: the tag catalog and tag assignments.
+  tag_management: {
+    capability: "manage and apply tags",
+    requestShapes: ["a tag change"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["manage and apply tags", "## Tags Notes"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Tags Notes");
+      lines.push("");
+      lines.push(
+        "You can list, create, edit and delete tags with the tag_management " +
+          "tools. They act on the user's own authority: a change they cannot " +
+          "make on the Tags page you cannot make here. " +
+          "`TOOL_PERMISSION_DENIED` means they lack that permission; " +
+          "`TOOL_TARGET_NOT_FOUND` means the tag (or object) doesn't exist " +
+          "for them. Relay either plainly and do not retry."
+      );
+      lines.push("");
+      lines.push(
+        "**Look a tag up before you act on it.** Find its id with " +
+          "`tag_list` (`search` matches the name). Never invent a tag id. " +
+          "If several tags match the name the user gave, ask which one. " +
+          "Create a tag only when the user asks for a new one; a name that " +
+          "matches no tag is a question for the user, not a reason to " +
+          "create it."
+      );
+      lines.push("");
+      lines.push(
+        "Deleting a tag removes it from every object that carries it; " +
+          "report the counts in the result."
       );
       lines.push("");
       return lines;

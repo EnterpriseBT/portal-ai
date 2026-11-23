@@ -138,6 +138,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "help",
         // #847: always entitled; listed so the catalog says so.
         "member_management",
+        // #1071: always entitled too.
+        "tag_management",
       ],
       customToolpacks: false,
       customRbac: false,
@@ -181,6 +183,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
         "help",
         // #847: always entitled; listed so the catalog says so.
         "member_management",
+        // #1071: always entitled too.
+        "tag_management",
       ],
       customToolpacks: false,
       customRbac: false,

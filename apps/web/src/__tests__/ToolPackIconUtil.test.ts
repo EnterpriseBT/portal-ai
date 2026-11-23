@@ -1,4 +1,5 @@
 import GroupAddOutlined from "@mui/icons-material/GroupAddOutlined";
+import LocalOfferOutlined from "@mui/icons-material/LocalOfferOutlined";
 import AdminPanelSettingsOutlined from "@mui/icons-material/AdminPanelSettingsOutlined";
 import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
@@ -31,6 +32,8 @@ describe("ToolPackIconUtil.getIcon", () => {
     expect(ToolPackIconUtil.getIcon("member_management")).toBe(
       GroupAddOutlined
     );
+    // #1071: the Tags pack.
+    expect(ToolPackIconUtil.getIcon("tag_management")).toBe(LocalOfferOutlined);
   });
 
   it("falls back to the Extension icon for unknown / custom packs", () => {

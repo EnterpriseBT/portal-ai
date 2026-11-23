@@ -58,6 +58,7 @@ describe("TIER_CATALOG (#218)", () => {
         "view_management",
         "help",
         "member_management",
+        "tag_management",
       ],
       customToolpacks: false,
       // #241: the free default has no card CTA.
@@ -90,6 +91,7 @@ describe("TIER_CATALOG (#218)", () => {
         "view_management",
         "help",
         "member_management",
+        "tag_management",
       ],
       customToolpacks: false,
       cta: "subscribe",

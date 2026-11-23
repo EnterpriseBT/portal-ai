@@ -154,12 +154,12 @@ describe("Toolpacks Router", () => {
 
   describe("GET /api/toolpacks", () => {
     // Case 36
-    it("returns the twelve built-in toolpacks", async () => {
+    it("returns the thirteen built-in toolpacks", async () => {
       const res = await request(app).get("/api/toolpacks");
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.payload.toolpacks).toHaveLength(12);
-      expect(res.body.payload.total).toBe(12);
+      expect(res.body.payload.toolpacks).toHaveLength(13);
+      expect(res.body.payload.total).toBe(13);
       const slugs = (res.body.payload.toolpacks as { slug: string }[]).map(
         (t) => t.slug
       );
@@ -174,6 +174,7 @@ describe("Toolpacks Router", () => {
           "rbac_management",
           "regression",
           "statistics",
+          "tag_management",
           "view_management",
           "visualize",
           "web_search",
@@ -785,7 +786,7 @@ describe("Toolpacks Router", () => {
 
       const res = await request(app).get("/api/toolpacks");
       expect(res.status).toBe(200);
-      expect(res.body.payload.total).toBe(13); // 12 built-ins + 1 custom
+      expect(res.body.payload.total).toBe(14); // 13 built-ins + 1 custom
       const kinds = (res.body.payload.toolpacks as { kind: string }[]).map(
         (t) => t.kind
       );

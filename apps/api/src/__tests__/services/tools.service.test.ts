@@ -259,6 +259,7 @@ const ALL_PACK_SLUGS = [
   "gis",
   "help",
   "member_management",
+  "tag_management",
 ];
 
 /** A TierPolicy with the given entitlements. Allocations are unlimited so
@@ -1029,6 +1030,47 @@ describe("buildAnalyticsTools()", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     for (const name of VIEW_TOOLS) expect(tools[name]).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // Pack: tag_management (#1071)
+  // -----------------------------------------------------------------------
+
+  const TAG_TOOLS = ["tag_list", "tag_create", "tag_update", "tag_delete"];
+
+  it("registers the tag_management tools on a read-only station (#1071)", async () => {
+    // Tags are org metadata, not entity data, so a station whose connectors
+    // permit no writes still gets them, as for view_management.
+    setupStationMocks(["tag_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: false },
+      },
+    ]);
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+
+    for (const name of TAG_TOOLS) expect(tools[name]).toBeDefined();
+  });
+
+  it("registers no tag_management tools when the pack isn't enabled (#1071)", async () => {
+    setupStationMocks(["data_query", "view_management"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    for (const name of TAG_TOOLS) expect(tools[name]).toBeUndefined();
+  });
+
+  it("lists every tag_management tool in BUILTIN_TOOL_NAMES (#1071)", () => {
+    for (const name of TAG_TOOLS) {
+      expect(BUILTIN_TOOL_NAMES.has(name)).toBe(true);
+    }
   });
 
   // -----------------------------------------------------------------------

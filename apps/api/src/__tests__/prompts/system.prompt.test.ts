@@ -2605,3 +2605,31 @@ describe("buildSystemPrompt — no user text can start a line (#1106)", () => {
     );
   });
 });
+
+describe("buildSystemPrompt — tag notes (#1071)", () => {
+  const prompt = (packs: StationContext["effectiveToolPacks"]) =>
+    buildSystemPrompt(makeContext({ effectiveToolPacks: packs }));
+
+  it("renders the Tags notes only with the pack", () => {
+    expect(prompt(["tag_management"])).toContain("## Tags Notes");
+    expect(prompt(["view_management"])).not.toContain("## Tags Notes");
+  });
+
+  it("explains both refusal codes and says not to retry", () => {
+    const p = prompt(["tag_management"]);
+    expect(p).toContain("`TOOL_PERMISSION_DENIED`");
+    expect(p).toContain("`TOOL_TARGET_NOT_FOUND`");
+    expect(p).toContain("do not retry");
+  });
+
+  it("resolves a tag with tag_list and creates one only on request", () => {
+    const p = prompt(["tag_management"]);
+    expect(p).toContain("`tag_list`");
+    expect(p).toContain("Never invent a tag id");
+    expect(p).toContain("Create a tag only when the user asks for a new one");
+  });
+
+  it("names what the pack does for other stations", () => {
+    expect(PACK_ELSEWHERE.tag_management).toContain("tags");
+  });
+});
