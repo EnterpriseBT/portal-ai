@@ -272,6 +272,11 @@ Run `npm run test:unit` / `npm run test:integration` from each package, using `-
 3. **Tags are row-locked for writes.** An assign share-locks the tag; a delete update-locks it. A delete waits for assigns in flight, and an assign after it finds the tag gone.
 4. **`removedFrom` is opt-in** (`EntityTagService.delete(ctx, id, { countRemoved })`, which only `tag_delete` passes) and counted inside the delete's transaction, under the tag lock.
 
+## Revisions after the smoke walk
+
+5. **The pack finds its own object ids: `tag_target_list({ type, search?, limit?, offset? })`** → `{ targets: { type, id, name }[], total }`, the objects of one taggable type the caller can read (org-scoped, the type's read visibility; `search` on the name, and on the key for views and entities), sorted by name. `rbacRead()`, free. Without it the agent on Administrate, which has no data and no other lookup tools, could tag nothing, and no tool anywhere listed pinned results.
+6. The prompt says `tag_list` / `tag_target_list` return only what the user can read: an empty result means none they can see.
+
 ## Next step
 
 `docs/TAGS_TOOLPACK.plan.md` sequences this as about eight TDD slices on this branch:

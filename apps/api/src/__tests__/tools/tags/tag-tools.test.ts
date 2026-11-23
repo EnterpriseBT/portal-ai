@@ -23,8 +23,9 @@ jest.unstable_mockModule("../../../services/entity-tag.service.js", () => ({
 }));
 
 const listOnTarget = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const listTargets = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule("../../../services/tag-assignment.service.js", () => ({
-  TagAssignmentService: { list: listOnTarget },
+  TagAssignmentService: { list: listOnTarget, listTargets },
 }));
 
 const { runTagTool } = await import("../../../tools/tags/tag-tool.util.js");
@@ -35,6 +36,8 @@ const { TagUpdateTool } =
   await import("../../../tools/tags/tag-update.tool.js");
 const { TagDeleteTool } =
   await import("../../../tools/tags/tag-delete.tool.js");
+const { TagTargetListTool } =
+  await import("../../../tools/tags/tag-target-list.tool.js");
 
 const ctx: PermissionContext = {
   userId: "u-1",
@@ -62,7 +65,9 @@ const TAG = {
 };
 
 beforeEach(() => {
-  for (const fn of [list, create, update, del, listOnTarget]) fn.mockReset();
+  for (const fn of [list, create, update, del, listOnTarget, listTargets]) {
+    fn.mockReset();
+  }
 });
 
 describe("runTagTool (#1071)", () => {
@@ -298,5 +303,35 @@ describe("tag_delete", () => {
         message: "Entity tag not found",
       },
     });
+  });
+});
+
+describe("tag_target_list (smoke walk)", () => {
+  it("lists one type's readable objects with a default page", async () => {
+    const page = {
+      targets: [{ type: "pin", id: "pin-1", name: "Smoke tag pin" }],
+      total: 1,
+    };
+    listTargets.mockResolvedValue(page);
+    const r = await exec(new TagTargetListTool().build(ctx), {
+      type: "pin",
+      search: "smoke",
+    });
+
+    expect(listTargets).toHaveBeenCalledWith(ctx, "pin", {
+      search: "smoke",
+      limit: 25,
+      offset: 0,
+    });
+    expect(r).toEqual(page);
+  });
+
+  it("needs a type, and only a taggable one", () => {
+    const schema = new TagTargetListTool().schema;
+    expect(schema.safeParse({}).success).toBe(false);
+    expect(schema.safeParse({ type: "record" }).success).toBe(false);
+    expect(schema.safeParse({ type: "station", limit: 101 }).success).toBe(
+      false
+    );
   });
 });

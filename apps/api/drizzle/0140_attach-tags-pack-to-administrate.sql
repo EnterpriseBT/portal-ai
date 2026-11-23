@@ -3,9 +3,12 @@
 -- (PROVISIONED_STATIONS); nothing re-runs provisioning for an org that
 -- already exists, so this carries existing orgs across (#316/#581).
 --
--- Administrate is the system-created station carrying rbac_management: no
--- other station is provisioned with that pack (Playground and the demo
--- org's stations aren't), so a rename doesn't hide it. member_management is
+-- Administrate is the system-created station carrying rbac_management, so a
+-- rename doesn't hide it. Playground and the demo org's stations don't carry
+-- that pack. An org provisioned before #848 has no Administrate; its
+-- system-created default station ("My Station") carried every pack,
+-- rbac_management included, so it gets Tags too, beside the access tools it
+-- already has. member_management is
 -- deliberately not part of the match: #847 added it to provisioning without
 -- a backfill, so an org provisioned between #848 and #847 has an
 -- Administrate without it. A station a user built isn't system-created and

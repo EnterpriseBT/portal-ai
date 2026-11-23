@@ -8,7 +8,17 @@
  * {@link targetColumn}, so a caller never names a column.
  */
 
-import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import {
@@ -27,6 +37,7 @@ import {
   stations,
 } from "../schema/index.js";
 import { db } from "../client.js";
+import { ilikeContains } from "../../utils/filter-sql.util.js";
 import { Repository, type DbClient } from "./base.repository.js";
 import type {
   EntityTagAssignmentSelect,
@@ -309,6 +320,51 @@ export class EntityTagAssignmentsRepository extends Repository<
       )
       .groupBy(entityTagAssignments.entityTagId);
     return new Map(rows.map((r) => [r.tagId, Number(r.n)]));
+  }
+
+  /**
+   * #1071: one page of an org's live objects of one taggable type, filtered
+   * by `visible` (the caller's read predicate for the type) and optionally
+   * by `search` on the name (and, for views and entities, the key). Sorted by
+   * name, then id. For the agent's `tag_target_list`.
+   */
+  async findTargets(
+    type: TagTargetType,
+    organizationId: string,
+    visible: SQL | undefined,
+    opts: { search?: string; limit: number; offset: number },
+    client: DbClient = db
+  ): Promise<{ rows: { id: string; name: string }[]; total: number }> {
+    const table = TARGET_TABLES[type];
+    const name: AnyPgColumn = "label" in table ? table.label : table.name;
+    const key: AnyPgColumn | undefined = "key" in table ? table.key : undefined;
+    const where = and(
+      eq(table.organizationId, organizationId),
+      isNull(table.deleted),
+      visible,
+      opts.search
+        ? key
+          ? or(
+              ilikeContains(name, opts.search),
+              ilikeContains(key, opts.search)
+            )
+          : ilikeContains(name, opts.search)
+        : undefined
+    );
+    const [rows, [{ n }]] = await Promise.all([
+      (client as typeof db)
+        .select({ id: table.id, name })
+        .from(table)
+        .where(where)
+        .orderBy(asc(name), asc(table.id))
+        .limit(opts.limit)
+        .offset(opts.offset),
+      (client as typeof db).select({ n: count() }).from(table).where(where),
+    ]);
+    return {
+      rows: rows as { id: string; name: string }[],
+      total: Number(n),
+    };
   }
 
   /**

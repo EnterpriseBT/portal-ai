@@ -859,7 +859,9 @@ export const PACK_PROMPT_SECTIONS: Record<
           "make on the Tags page you cannot make here. " +
           "`TOOL_PERMISSION_DENIED` means they lack that permission; " +
           "`TOOL_TARGET_NOT_FOUND` means the tag (or object) doesn't exist " +
-          "for them. Relay either plainly and do not retry."
+          "for them. Relay either plainly and do not retry. `tag_list` and " +
+          "`tag_target_list` return only what the user can read: an empty " +
+          "result means none they can see, not that none exist."
       );
       lines.push("");
       lines.push(
@@ -877,10 +879,10 @@ export const PACK_PROMPT_SECTIONS: Record<
         "`tag_assign` and `tag_unassign` take `tagIds` and `targets`, each " +
           "target a { type, id } where type is entity, station, pin (a " +
           "pinned result), connector_instance or curated_view. Objects of " +
-          "different types can go in one call. Take each id from a tool " +
-          "result or this station's context. Never guess an object id; if " +
-          "you don't have it, look it up with the tool for that object " +
-          "first, or ask."
+          "different types can go in one call. Find each object's id with " +
+          "`tag_target_list` (its `type`, and `search` on the name), or take " +
+          "it from an earlier tool result. Never guess an object id. If " +
+          "several objects match the name the user gave, ask which one."
       );
       lines.push("");
       lines.push(

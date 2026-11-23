@@ -299,6 +299,36 @@ export class TagAssignmentService {
   }
 
   /**
+   * #1071: the objects of one taggable type the caller can read, by name, so
+   * the agent's tag tools have ids to act on (the agent's `tag_target_list`).
+   * The same read rule every tag path applies to a target: in the caller's
+   * org and readable to them. Writability isn't filtered: tagging re-checks
+   * write per object and refuses a read-only one.
+   */
+  static async listTargets(
+    ctx: PermissionContext,
+    type: TagTargetType,
+    opts: { search?: string; limit: number; offset: number }
+  ): Promise<{
+    targets: { type: TagTargetType; id: string; name: string }[];
+    total: number;
+  }> {
+    const set = await PermissionService.loadSet(ctx);
+    const table = TARGET_TABLES[type];
+    const { rows, total } =
+      await DbService.repository.entityTagAssignments.findTargets(
+        type,
+        ctx.organizationId,
+        set.visibilityPredicate(type, {
+          createdByCol: table.createdBy,
+          idCol: table.id,
+        }),
+        opts
+      );
+    return { targets: rows.map((r) => ({ type, ...r })), total };
+  }
+
+  /**
    * #1071: put every tag on every object, all or nothing (the agent's
    * `tag_assign`). The caller's permissions load once; every object and tag
    * is checked (the same checks as one assign) before anything is written,

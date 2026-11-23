@@ -43,7 +43,7 @@ Run **§Preflight** once. After it, each section is independent. Steps with no t
 
 ## §3 — Applying and removing tags through the agent (owner, on Administrate)
 
-- [ ] Prompt: **"Put Q4 Rev on the Smoke Sales station, the Smoke tag pin, the File Upload — CSV connector, the smoke_ne view and the ent-a entity."** The agent finds the ids, then makes one `tag_assign` call with five targets of five types. It reports each as assigned.
+- [ ] Prompt: **"Put Q4 Rev on the Smoke Sales station, the Smoke tag pin, the File Upload — CSV connector, the smoke_ne view and the ent-a entity."** The agent finds each id with `tag_target_list` (one call per type), then makes one `tag_assign` call with five targets of five types. It reports each as assigned.
 - [ ] Without reloading, each object's page shows the **Q4 Rev** chip, and its list filtered by **Q4 Rev** shows it: Stations, Pinned results, Connectors, Views and Entities.
 - [ ] Prompt: **"Tag Smoke Sales with Q4 Rev and Finance Ops."** It reports Q4 Rev as **already assigned** and Finance Ops as assigned (or already assigned), with no error.
 - [ ] Prompt: **"Remove Smoke Unused from the smoke_ne view."** It reports **not assigned**, with no error, and nothing changes.

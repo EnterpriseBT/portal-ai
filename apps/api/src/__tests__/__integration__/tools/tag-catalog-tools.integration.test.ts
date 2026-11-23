@@ -208,6 +208,57 @@ describe("tag_management catalog tools — integration (#1071)", () => {
     expect(hidden.error?.code).toBe(ApiCode.TOOL_TARGET_NOT_FOUND);
   });
 
+  // ── tag_target_list (smoke walk) ──────────────────────────────────────
+
+  it.each(TAG_TARGET_TYPES)(
+    "lists the %s objects the user can read, never another org's",
+    async (type) => {
+      await seedTagTargets(d, fx.orgId, fx.ownerId, "Alpha");
+      await seedTagTargets(d, fx.orgId, fx.ownerId, "Beta");
+      await seedTagTargets(d, fx.otherOrgId, fx.otherOwnerId, "Alpha");
+
+      const r = await asOwner("tag_target_list", { type, search: "alpha" });
+
+      expect(r.total).toBe(1);
+      expect(r.targets).toEqual([
+        { type, id: expect.any(String), name: "Alpha" },
+      ]);
+    }
+  );
+
+  it("lists only what a member can read", async () => {
+    const mine = await seedTagTargets(d, fx.orgId, fx.memberId, "Mine");
+    await seedTagTargets(d, fx.orgId, fx.ownerId, "Owners");
+
+    const r = await asMember("tag_target_list", { type: "station" });
+
+    const names = (r.targets as { id: string; name: string }[]).map(
+      (t) => t.name
+    );
+    expect(names).toContain("Mine");
+    expect(names).not.toContain("Owners");
+    expect(
+      (r.targets as { id: string }[]).some((t) => t.id === mine.station)
+    ).toBe(true);
+  });
+
+  it("finds a view by its key as well as its label", async () => {
+    const objects = await seedTagTargets(d, fx.orgId, fx.ownerId, "Revenue");
+    const [view] = await d
+      .select()
+      .from(schema.curatedViews)
+      .where(eq(schema.curatedViews.id, objects.curated_view));
+
+    const r = await asOwner("tag_target_list", {
+      type: "curated_view",
+      search: view.key,
+    });
+
+    expect((r.targets as { id: string }[]).map((t) => t.id)).toEqual([
+      objects.curated_view,
+    ]);
+  });
+
   // ── tag_create ───────────────────────────────────────────────────────
 
   it("creates a tag that records this session", async () => {

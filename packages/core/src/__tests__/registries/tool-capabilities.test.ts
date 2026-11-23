@@ -139,6 +139,7 @@ describe("costHint pin (#184)", () => {
     grant_list: "free",
     // tag_management (#1071): tag admin is never metered.
     tag_list: "free",
+    tag_target_list: "free",
     tag_create: "free",
     tag_update: "free",
     tag_delete: "free",

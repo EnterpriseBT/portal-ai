@@ -1815,6 +1815,35 @@ const TAG_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       ],
     },
     {
+      name: "tag_target_list",
+      description:
+        "Lists objects of one type the user can read, sorted by name, each with its type, id and name: entities, stations, pins (pinned results), connector_instances (connectors) or curated_views. Use it to find an object's id before adding or removing tags on it. search matches the name (for views and entities, the label or key).",
+      parameterSchema: objectSchema(
+        {
+          type: enumField(
+            [...TAG_TARGET_TYPES],
+            "The object type: entity, station, pin (a pinned result), connector_instance or curated_view"
+          ),
+          search: stringField(
+            "Match objects whose name contains this text (for views and entities, the label or key)"
+          ),
+          limit: integerField("Page size, 1-100 (default 25)"),
+          offset: integerField("Rows to skip (default 0)"),
+        },
+        ["type"]
+      ),
+      examples: [
+        {
+          title: "Find a view to tag",
+          input: { type: "curated_view", search: "revenue" },
+          output: {
+            targets: [{ type: "curated_view", id: "cv_1", name: "Q4 revenue" }],
+            total: 1,
+          },
+        },
+      ],
+    },
+    {
       name: "tag_create",
       description:
         "Creates a tag: a name unique in the organization, and optionally a color (hex, e.g. #2563EB) and a description. Create one only when the user asks for a new tag. The user must be allowed to create tags.",
@@ -2410,6 +2439,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // tag_management (#1071) — control-plane over tags, self-gated by
   // EntityTagService / TagAssignmentService with the routes' own checks.
   tag_list: rbacRead(),
+  // Smoke walk: the pack's own way to find object ids.
+  tag_target_list: rbacRead(),
   tag_create: rbacWrite(),
   tag_update: rbacWrite(),
   tag_delete: rbacWrite(),

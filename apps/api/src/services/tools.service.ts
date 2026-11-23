@@ -118,6 +118,7 @@ import {
 } from "../tools/rbac/invitation.tool.js";
 import { CuratedViewListTool } from "../tools/curated-views/curated-view-list.tool.js";
 import { TagListTool } from "../tools/tags/tag-list.tool.js";
+import { TagTargetListTool } from "../tools/tags/tag-target-list.tool.js";
 import { TagCreateTool } from "../tools/tags/tag-create.tool.js";
 import { TagUpdateTool } from "../tools/tags/tag-update.tool.js";
 import { TagDeleteTool } from "../tools/tags/tag-delete.tool.js";
@@ -309,6 +310,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "station_list",
   // tag_management (#1071)
   "tag_list",
+  "tag_target_list",
   "tag_create",
   "tag_update",
   "tag_delete",
@@ -1008,6 +1010,7 @@ export class ToolService {
     // and tags take no job lock (the routes declare `locks: none`).
     if (enabledPacks.has("tag_management")) {
       tools.tag_list = new TagListTool().build(permissionContext);
+      tools.tag_target_list = new TagTargetListTool().build(permissionContext);
       tools.tag_create = new TagCreateTool().build(
         permissionContext,
         portalId ?? null

@@ -62,6 +62,7 @@ describe("BUILTIN_TOOLPACKS", () => {
     expect(tags.name).toBe("Tags");
     expect(tags.tools.map((t) => t.name)).toEqual([
       "tag_list",
+      "tag_target_list",
       "tag_create",
       "tag_update",
       "tag_delete",

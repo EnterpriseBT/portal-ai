@@ -2638,8 +2638,19 @@ describe("buildSystemPrompt — tag notes (#1071)", () => {
     expect(p).toContain("`tag_unassign`");
     expect(p).toContain("{ type, id }");
     expect(p).toContain("Never guess an object id");
+    // Smoke walk: the pack finds its own object ids.
+    expect(p).toContain("`tag_target_list`");
+    expect(p).toContain("If several objects match the name the user gave");
     expect(p).toContain("`already_assigned`");
     expect(p).toContain("nothing was changed");
+  });
+
+  // Smoke walk: an empty list read as "no tags exist" to a member who
+  // could read none.
+  it("says an empty list means none the user can see", () => {
+    expect(prompt(["tag_management"])).toContain(
+      "an empty result means none they can see, not that none exist"
+    );
   });
 
   it("names what the pack does for other stations", () => {
