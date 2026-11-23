@@ -32,6 +32,7 @@ import { toServerError } from "../utils/api.util";
 import { pinDataRefusal, type PinDataRefusal } from "../utils/pin-data.util";
 import { useToast } from "../utils/toast.context";
 import type { PortalResultPayload } from "../api/portal-results.api";
+import { TagsSection } from "../components/TagsSection.component";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -107,6 +108,8 @@ export interface PinnedResultDetailUIProps {
   /** The server's wording for the refusal, which knows whether the viewer is
    *  the definer. Falls back to the built-in notice. */
   dataRefusalMessage?: string | null;
+  /** #1070: the pin's Tags section, rendered under its header. */
+  tagsSection?: React.ReactNode;
 }
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
@@ -124,6 +127,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   definerName = null,
   dataRefusal = null,
   dataRefusalMessage = null,
+  tagsSection,
 }) => {
   const contentBlock = toContentBlock(result);
   const refusal = dataRefusal ? REFUSAL_NOTICES[dataRefusal] : null;
@@ -222,6 +226,8 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             ]}
           />
         </PageHeader>
+
+        {tagsSection}
 
         <PageSection variant="outlined" data-testid="result-content">
           {refusal ? (
@@ -390,6 +396,12 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               definerName={definerName}
               dataRefusal={dataRefusal}
               dataRefusalMessage={pinData.error?.message ?? null}
+              tagsSection={
+                <TagsSection
+                  target={{ type: "pin", id: portalResult.id }}
+                  canWrite={capabilities?.write ?? false}
+                />
+              }
             />
             {renameOpen && (
               <RenamePinnedResultDialog

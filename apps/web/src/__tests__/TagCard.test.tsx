@@ -27,6 +27,36 @@ const makeTag = (
 });
 
 describe("TagCardUI", () => {
+  // #1070: where the tag is used, from the list's include=usage.
+  it("shows where the tag is used", () => {
+    render(
+      <TagCardUI
+        tag={{
+          ...makeTag(),
+          usage: {
+            entity: 3,
+            station: 0,
+            pin: 0,
+            connector_instance: 1,
+            curated_view: 0,
+          },
+        }}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId("tag-usage")).toHaveTextContent(
+      "3 entities · 1 connector"
+    );
+  });
+
+  it("leaves out the usage line when the list didn't ask for it", () => {
+    render(
+      <TagCardUI tag={makeTag()} onEdit={jest.fn()} onDelete={jest.fn()} />
+    );
+    expect(screen.queryByTestId("tag-usage")).toBeNull();
+  });
+
   it("should render tag name", () => {
     render(
       <TagCardUI tag={makeTag()} onEdit={jest.fn()} onDelete={jest.fn()} />

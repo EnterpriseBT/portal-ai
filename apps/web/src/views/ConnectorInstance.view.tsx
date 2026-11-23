@@ -59,6 +59,7 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
+import { TagsSection } from "../components/TagsSection.component";
 
 const STATUS_COLOR: Record<
   string,
@@ -542,6 +543,13 @@ export const ConnectorInstanceView = ({
                       ]}
                     />
                   </PageHeader>
+
+                  {/* #1070: the connector's tags. Tagging is metadata, so a
+                      running sync or import doesn't pause it. */}
+                  <TagsSection
+                    target={{ type: "connector_instance", id: ci.id }}
+                    canWrite={ci.capabilities.write}
+                  />
 
                   {/* Section 2: Entities List */}
                   <PageSection

@@ -19,6 +19,7 @@ import { upperFirst } from "lodash-es";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { RouterLink } from "./RouterLink.component";
+import { TagChipListUI } from "./TagChipList.component";
 
 export interface ConnectorInstanceDataListProps {
   query: ConnectorInstanceListRequestQuery;
@@ -162,6 +163,12 @@ export const ConnectorInstanceCardUI = ({
             label: "Error",
             value: ci.lastErrorMessage ?? "",
             hidden: !(ci.status === "error" && ci.lastErrorMessage),
+          },
+          {
+            label: "Tags",
+            value: <TagChipListUI tags={ci.tags} />,
+            variant: "chip",
+            hidden: !ci.tags?.length,
           },
         ]}
       />

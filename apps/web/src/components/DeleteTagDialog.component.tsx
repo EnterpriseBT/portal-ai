@@ -66,9 +66,8 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
         Are you sure you want to delete the tag <strong>{tag?.name}</strong>?
       </Typography>
       <Typography variant="body2" color="warning.main">
-        All entity tag assignments that reference this tag will be removed. Any
-        entities currently tagged with &quot;{tag?.name}&quot; will have this
-        tag detached.
+        &quot;{tag?.name}&quot; will be removed from every entity, station,
+        pinned result, connector and view it&apos;s on.
       </Typography>
       <FormAlert serverError={serverError ?? null} />
     </Stack>

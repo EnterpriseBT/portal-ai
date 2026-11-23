@@ -21,6 +21,8 @@ export type PortalResultsListParams = {
   limit?: number;
   offset?: number;
   include?: string;
+  /** #1070: comma-separated tag ids; pins carrying any of them. */
+  tagIds?: string;
 };
 
 /** #688: the list and GET are typed by the core contracts; each pin carries

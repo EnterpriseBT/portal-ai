@@ -26,6 +26,7 @@ import type {
   PortalResultsListPayload,
   PortalResultsListParams,
 } from "../api/portal-results.api";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 // ── Data fetcher ────────────────────────────────────────────────────
 
@@ -51,11 +52,13 @@ export const PinnedResultsListView: React.FC = () => {
   const queryClient = useQueryClient();
   const toast = useToast();
   const removeMutation = sdk.portalResults.remove();
+  const tagFilter = useTagFilter();
 
   const pagination = usePagination({
     sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: "created",
     defaultSortOrder: "desc",
+    filters: [tagFilter],
   });
 
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
@@ -90,7 +93,12 @@ export const PinnedResultsListView: React.FC = () => {
       <Stack spacing={2}>
         <PaginationToolbar {...pagination.toolbarProps} />
         <PinnedResultsDataList
-          query={pagination.queryParams as PortalResultsListParams}
+          query={
+            {
+              ...pagination.queryParams,
+              include: "tags",
+            } as PortalResultsListParams
+          }
         >
           {(response) => (
             <SyncTotal

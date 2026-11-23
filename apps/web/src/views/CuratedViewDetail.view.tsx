@@ -40,6 +40,7 @@ import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { freshData } from "../utils/query-result.util";
+import { TagsSection } from "../components/TagsSection.component";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
@@ -63,6 +64,8 @@ export interface CuratedViewDetailUIProps {
   onEdit: () => void;
   onDelete: () => void;
   onNavigate: (href: string) => void;
+  /** #1070: the view's Tags section, rendered under its details. */
+  tagsSection?: React.ReactNode;
 }
 
 export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
@@ -78,6 +81,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onEdit,
   onDelete,
   onNavigate,
+  tagsSection,
 }) => {
   // #688: what this caller may do to this view.
   const editGate = decideActionGate({ allowed: view.capabilities.write });
@@ -195,6 +199,8 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
             },
           ]}
         />
+
+        {tagsSection}
 
         <PageSection title="Records" icon={<Icon name={IconName.Layers} />}>
           {paginationToolbar}
@@ -327,6 +333,12 @@ export const CuratedViewDetail: React.FC = () => {
         onEdit={() => setEditOpen(true)}
         onDelete={() => setDeleteOpen(true)}
         onNavigate={(href) => navigate({ to: href })}
+        tagsSection={
+          <TagsSection
+            target={{ type: "curated_view", id: view.id }}
+            canWrite={view.capabilities.write}
+          />
+        }
       />
       <CuratedViewEditorDialog
         // #688: only the write-gated Edit button opens it. `open` isn't gated on

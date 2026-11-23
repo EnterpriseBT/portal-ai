@@ -105,7 +105,12 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
 
         <Box>
           <EntityTagDataList
-            query={pagination.queryParams as EntityTagListRequestQuery}
+            query={
+              {
+                ...pagination.queryParams,
+                include: "usage",
+              } as EntityTagListRequestQuery
+            }
           >
             {(listResult) => (
               <SyncTotal

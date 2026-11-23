@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { ObjectCapabilities } from "@portalai/core/contracts";
+import type { ObjectCapabilities, TagUsage } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
 import { Box, DetailCard, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
@@ -8,10 +8,11 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 import { decideActionGate } from "../utils/action-gate.util";
+import { formatTagUsage } from "../utils/tag-usage.util";
 
 export interface TagCardUIProps {
   /** A list row, with the caller's `capabilities` on it (#689). */
-  tag: EntityTag & { capabilities: ObjectCapabilities };
+  tag: EntityTag & { capabilities: ObjectCapabilities; usage?: TagUsage };
   onEdit: (tag: EntityTag) => void;
   onDelete: (tag: EntityTag) => void;
   /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
@@ -63,6 +64,16 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
       {tag.description && (
         <Typography variant="body2" color="text.secondary" noWrap>
           {tag.description}
+        </Typography>
+      )}
+      {/* #1070: where the tag is used, over what the caller can read. */}
+      {tag.usage && (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          data-testid="tag-usage"
+        >
+          {formatTagUsage(tag.usage)}
         </Typography>
       )}
     </DetailCard>

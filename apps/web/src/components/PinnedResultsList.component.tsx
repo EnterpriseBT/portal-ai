@@ -22,6 +22,7 @@ import { RouterLink } from "./RouterLink.component";
 import { sdk } from "../api/sdk";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
 import { decideActionGate } from "../utils/action-gate.util";
+import { TagChipListUI } from "./TagChipList.component";
 
 /** A pin list row, with the caller's capabilities on it (#688). */
 type PinnedResultRow = PortalResultListResponsePayload["portalResults"][number];
@@ -95,6 +96,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
             Data as {result.definer.displayName} sees it
           </Typography>
         )}
+        <TagChipListUI tags={result.tags} />
       </Stack>
     </DetailCard>
   );

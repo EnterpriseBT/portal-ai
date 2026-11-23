@@ -107,6 +107,17 @@ const baseProps = {
 };
 
 describe("CuratedViewDetailUI", () => {
+  // #1070: the container fills the Tags slot; the UI places it.
+  it("renders the tags section it's given", () => {
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        tagsSection={<div data-testid="tags-section" />}
+      />
+    );
+    expect(screen.getByTestId("tags-section")).toBeInTheDocument();
+  });
+
   it("#645: marks a view created in a portal session", () => {
     render(
       <CuratedViewDetailUI

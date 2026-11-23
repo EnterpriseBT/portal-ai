@@ -28,6 +28,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -43,6 +44,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onDelete,
 }) => {
   const navigate = useNavigate();
+  const tagFilter = useTagFilter();
 
   const pagination = usePagination({
     sortFields: [
@@ -51,6 +53,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
     ],
     defaultSortBy: "name",
     defaultSortOrder: "asc",
+    filters: [tagFilter],
   });
 
   return (
@@ -81,7 +84,12 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 
         <Box>
           <StationListConnected
-            query={pagination.queryParams as StationListRequestQuery}
+            query={
+              {
+                ...pagination.queryParams,
+                include: "tags",
+              } as StationListRequestQuery
+            }
             setTotal={pagination.setTotal}
             onSetDefault={onSetDefault}
             onDelete={onDelete}
