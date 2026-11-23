@@ -30,7 +30,7 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
   {
     symptom: "I can't add or remove a tag",
     cause:
-      "Changing an object's tags is a change to that object, so it needs permission to edit the object. Picking a tag also needs permission to view tags.",
+      "Changing an object's tags is a change to that object, so it needs permission to edit the object. Picking a tag also needs permission to view tags. The assistant's Tags tools follow the same rules.",
     fix: "Ask for edit access to the entity, station, pinned result, connector or view, and for view access to tags. Without view access to tags, an object's tags don't show at all.",
     related: [
       { surface: "faq", title: "How do tags work?" },

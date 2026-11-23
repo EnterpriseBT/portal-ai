@@ -69,7 +69,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What is a Station and why do I need one?",
     answer:
-      "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions. Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members and access, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works.",
+      "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions. Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members, access and tags, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: [
       "Station",
@@ -82,7 +82,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      "From a station set up for your data, click \"Open Portal\" to open a chat session. Type your question — the assistant will use the station's tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization's default station, Administrate, is for managing members and access and has no data: use Playground or a station of your own.",
+      "From a station set up for your data, click \"Open Portal\" to open a chat session. Type your question — the assistant will use the station's tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization's default station, Administrate, is for managing members, access and tags and has no data: use Playground or a station of your own.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -220,7 +220,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do tags work?",
     answer:
-      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page, then add or remove a tag from an object's page, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on.",
+      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page, then add or remove a tag from an object's page, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on. In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: [
       "Tag",
@@ -282,7 +282,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What are tool packs?",
     answer:
-      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, members (invitations, removals, roles and seats), curated views, visualization, GIS (maps and geocoding), and Help (answers questions about how Portals works). Your plan decides which ones are available; every plan includes Help and Members. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station. Turn on only the packs a station's work needs.",
+      "Tool packs are bundles of capabilities you enable on a station — data query, statistics, regression, financial analysis, web search, entity management, access & roles, members (invitations, removals, roles and seats), curated views, tags (create, edit, delete and apply tags), visualization, GIS (maps and geocoding), and Help (answers questions about how Portals works). Your plan decides which ones are available; every plan includes Help, Members and Tags. The packs you turn on determine what kinds of work the assistant can do during portal sessions on that station. Turn on only the packs a station's work needs.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Tool Pack", "Station", "Portal"],
   },
@@ -356,7 +356,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Why are the assistant's answers vague or missing my data?",
     answer:
-      "First check the station is set up for data. A new organization's default station, Administrate, manages members and access and has no data by design: open Playground or another data station rather than attaching data to it. Otherwise it is almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a view attached and shared with you (with the Curated Views tool pack, the assistant can attach one for you), or a connector instance, and that its entities have records. A view you can't read shows on the station with a lock. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
+      "First check the station is set up for data. A new organization's default station, Administrate, manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it. Otherwise it is almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a view attached and shared with you (with the Curated Views tool pack, the assistant can attach one for you), or a connector instance, and that its entities have records. A view you can't read shows on the station with a lock. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: [
       "Portal",

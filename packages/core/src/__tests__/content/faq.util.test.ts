@@ -368,7 +368,7 @@ describe("FAQ describes station scoping (#848)", () => {
   it("the station explainer states the practice and names both provisioned stations", () => {
     const a = answer("What is a Station and why do I need one?");
     expect(a).toContain(
-      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members and access, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works."
+      "Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members, access and tags, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works."
     );
   });
 
@@ -376,7 +376,9 @@ describe("FAQ describes station scoping (#848)", () => {
   it("the tool-pack answer lists the Members pack on every plan", () => {
     const a = answer("What are tool packs?");
     expect(a).toMatch(/members \(invitations, removals, roles and seats\)/);
-    expect(a).toMatch(/every plan includes Help and Members/);
+    expect(a).toMatch(/every plan includes Help, Members and Tags/);
+    // #1071
+    expect(a).toMatch(/tags \(create, edit, delete and apply tags\)/);
   });
 
   // The default station of a new organization has no data by design, so the
@@ -386,7 +388,7 @@ describe("FAQ describes station scoping (#848)", () => {
     const a = answer("How do I start asking questions about my data?");
     expect(a).toMatch(/^From a station set up for your data/);
     expect(a).toContain(
-      "A new organization's default station, Administrate, is for managing members and access and has no data: use Playground or a station of your own."
+      "A new organization's default station, Administrate, is for managing members, access and tags and has no data: use Playground or a station of your own."
     );
   });
 
@@ -395,7 +397,7 @@ describe("FAQ describes station scoping (#848)", () => {
       "Why are the assistant's answers vague or missing my data?"
     );
     expect(a).toMatch(
-      /^First check the station is set up for data\. A new organization's default station, Administrate, manages members and access and has no data by design: open Playground or another data station rather than attaching data to it\./
+      /^First check the station is set up for data\. A new organization's default station, Administrate, manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it\./
     );
     // The rest of the diagnosis is unchanged.
     expect(a).toMatch(/view attached and shared with you/i);
@@ -489,5 +491,17 @@ describe("entries the empty lists link to", () => {
   it("says a view can be shared, for a reader who can't create one", () => {
     const entry = FAQ_ENTRIES.find((e) => e.question === "What is a view?");
     expect(entry?.answer).toMatch(/shared/);
+  });
+});
+
+// #1071: the assistant manages and applies tags with the Tags pack.
+describe("FAQ describes the Tags pack (#1071)", () => {
+  it("the tags answer says the assistant can do the same, with the same permissions", () => {
+    const a = FAQ_ENTRIES.find(
+      (e) => e.question === "How do tags work?"
+    )!.answer;
+    expect(a).toContain(
+      "In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions."
+    );
   });
 });
