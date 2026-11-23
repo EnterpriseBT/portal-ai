@@ -1760,6 +1760,20 @@ const tagTargetField = (description: string) => ({
   required: ["type", "id"],
 });
 
+/** `tag_assign` / `tag_unassign`: tags by id, objects by type and id. */
+const tagAssignmentSchema = () =>
+  objectSchema(
+    {
+      tagIds: stringArrayField("Ids of the tags, from tag_list (1-10)"),
+      targets: {
+        type: "array",
+        description: "The objects, each { type, id } (1-50)",
+        items: tagTargetField("One object"),
+      },
+    },
+    ["tagIds", "targets"]
+  );
+
 const TAG_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   slug: "tag_management",
   name: "Tags",
@@ -1835,6 +1849,47 @@ const TAG_MANAGEMENT_PACK: BuiltinToolpackSpec = {
         { tagId: stringField("Id of the tag, from tag_list") },
         ["tagId"]
       ),
+    },
+    {
+      name: "tag_assign",
+      description:
+        "Adds tags to objects: tagIds (from tag_list) and targets, each { type, id } with type entity, station, pin, connector_instance or curated_view. Objects of different types can go in one call (up to 10 tags and 50 objects). Every object and tag is checked first; if the user can't edit any one object, nothing is applied. Each pair reports assigned or already_assigned.",
+      parameterSchema: tagAssignmentSchema(),
+      examples: [
+        {
+          title: "Tag an entity and a view in one call",
+          input: {
+            tagIds: ["tag_123"],
+            targets: [
+              { type: "entity", id: "ent_1" },
+              { type: "curated_view", id: "cv_1" },
+            ],
+          },
+          output: {
+            success: true,
+            results: [
+              {
+                type: "entity",
+                id: "ent_1",
+                tagId: "tag_123",
+                status: "assigned",
+              },
+              {
+                type: "curated_view",
+                id: "cv_1",
+                tagId: "tag_123",
+                status: "already_assigned",
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      name: "tag_unassign",
+      description:
+        "Removes tags from objects: tagIds (from tag_list) and targets, each { type, id } with type entity, station, pin, connector_instance or curated_view. Objects of different types can go in one call (up to 10 tags and 50 objects). Every object and tag is checked first; if the user can't edit any one object, nothing is removed. Each pair reports removed or not_assigned.",
+      parameterSchema: tagAssignmentSchema(),
     },
   ],
 };
@@ -2358,6 +2413,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   tag_create: rbacWrite(),
   tag_update: rbacWrite(),
   tag_delete: rbacWrite(),
+  tag_assign: rbacWrite(),
+  tag_unassign: rbacWrite(),
 };
 
 /**

@@ -121,6 +121,8 @@ import { TagListTool } from "../tools/tags/tag-list.tool.js";
 import { TagCreateTool } from "../tools/tags/tag-create.tool.js";
 import { TagUpdateTool } from "../tools/tags/tag-update.tool.js";
 import { TagDeleteTool } from "../tools/tags/tag-delete.tool.js";
+import { TagAssignTool } from "../tools/tags/tag-assign.tool.js";
+import { TagUnassignTool } from "../tools/tags/tag-unassign.tool.js";
 import { CuratedViewEntityListTool } from "../tools/curated-views/curated-view-entity-list.tool.js";
 import { CuratedViewGetTool } from "../tools/curated-views/curated-view-get.tool.js";
 import { CuratedViewCreateTool } from "../tools/curated-views/curated-view-create.tool.js";
@@ -310,6 +312,8 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "tag_create",
   "tag_update",
   "tag_delete",
+  "tag_assign",
+  "tag_unassign",
 ]);
 
 export class ToolService {
@@ -1010,6 +1014,8 @@ export class ToolService {
       );
       tools.tag_update = new TagUpdateTool().build(permissionContext);
       tools.tag_delete = new TagDeleteTool().build(permissionContext);
+      tools.tag_assign = new TagAssignTool().build(permissionContext);
+      tools.tag_unassign = new TagUnassignTool().build(permissionContext);
     }
 
     // -------------------------------------------------------------------

@@ -854,8 +854,8 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("## Tags Notes");
       lines.push("");
       lines.push(
-        "You can list, create, edit and delete tags with the tag_management " +
-          "tools. They act on the user's own authority: a change they cannot " +
+        "You can list, create, edit and delete tags, and add or remove them " +
+          "on objects, with the tag_management tools. They act on the user's own authority: a change they cannot " +
           "make on the Tags page you cannot make here. " +
           "`TOOL_PERMISSION_DENIED` means they lack that permission; " +
           "`TOOL_TARGET_NOT_FOUND` means the tag (or object) doesn't exist " +
@@ -869,6 +869,23 @@ export const PACK_PROMPT_SECTIONS: Record<
           "Create a tag only when the user asks for a new one; a name that " +
           "matches no tag is a question for the user, not a reason to " +
           "create it."
+      );
+      lines.push("");
+      lines.push(
+        "`tag_assign` and `tag_unassign` take `tagIds` and `targets`, each " +
+          "target a { type, id } where type is entity, station, pin (a " +
+          "pinned result), connector_instance or curated_view. Objects of " +
+          "different types can go in one call. Take each id from a tool " +
+          "result or this station's context. Never guess an object id; if " +
+          "you don't have it, look it up with the tool for that object " +
+          "first, or ask."
+      );
+      lines.push("");
+      lines.push(
+        "Each pair in the result has a status: `assigned` or " +
+          "`already_assigned`, `removed` or `not_assigned`. Report what " +
+          "changed and what already was. If the call is refused, nothing " +
+          "was changed: say which object or tag it names, and stop."
       );
       lines.push("");
       lines.push(

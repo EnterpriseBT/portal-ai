@@ -1036,7 +1036,14 @@ describe("buildAnalyticsTools()", () => {
   // Pack: tag_management (#1071)
   // -----------------------------------------------------------------------
 
-  const TAG_TOOLS = ["tag_list", "tag_create", "tag_update", "tag_delete"];
+  const TAG_TOOLS = [
+    "tag_list",
+    "tag_create",
+    "tag_update",
+    "tag_delete",
+    "tag_assign",
+    "tag_unassign",
+  ];
 
   it("registers the tag_management tools on a read-only station (#1071)", async () => {
     // Tags are org metadata, not entity data, so a station whose connectors

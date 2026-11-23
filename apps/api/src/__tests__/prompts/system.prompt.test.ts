@@ -2629,6 +2629,16 @@ describe("buildSystemPrompt — tag notes (#1071)", () => {
     expect(p).toContain("Create a tag only when the user asks for a new one");
   });
 
+  it("says how to name objects and report each pair's status", () => {
+    const p = prompt(["tag_management"]);
+    expect(p).toContain("`tag_assign`");
+    expect(p).toContain("`tag_unassign`");
+    expect(p).toContain("{ type, id }");
+    expect(p).toContain("Never guess an object id");
+    expect(p).toContain("`already_assigned`");
+    expect(p).toContain("nothing was changed");
+  });
+
   it("names what the pack does for other stations", () => {
     expect(PACK_ELSEWHERE.tag_management).toContain("tags");
   });

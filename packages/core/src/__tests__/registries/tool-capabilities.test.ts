@@ -142,6 +142,8 @@ describe("costHint pin (#184)", () => {
     tag_create: "free",
     tag_update: "free",
     tag_delete: "free",
+    tag_assign: "free",
+    tag_unassign: "free",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",

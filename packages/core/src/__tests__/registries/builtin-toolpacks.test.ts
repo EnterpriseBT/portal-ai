@@ -57,17 +57,17 @@ describe("BUILTIN_TOOLPACKS", () => {
   });
 
   // #1071: the Tags pack carries the catalog tools.
-  it("gives the Tags pack its catalog tools", () => {
+  it("gives the Tags pack its catalog and assignment tools", () => {
     const tags = BUILTIN_TOOLPACK_BY_SLUG.tag_management;
     expect(tags.name).toBe("Tags");
-    expect(tags.tools.map((t) => t.name)).toEqual(
-      expect.arrayContaining([
-        "tag_list",
-        "tag_create",
-        "tag_update",
-        "tag_delete",
-      ])
-    );
+    expect(tags.tools.map((t) => t.name)).toEqual([
+      "tag_list",
+      "tag_create",
+      "tag_update",
+      "tag_delete",
+      "tag_assign",
+      "tag_unassign",
+    ]);
   });
 
   // Case 3

@@ -132,6 +132,8 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   tag_create: "Creating the tag",
   tag_update: "Updating the tag",
   tag_delete: "Deleting the tag",
+  tag_assign: "Adding tags",
+  tag_unassign: "Removing tags",
 };
 
 /** Truncate to the ceiling, marking the cut so it doesn't read as the name. */
