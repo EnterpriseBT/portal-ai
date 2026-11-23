@@ -1237,7 +1237,8 @@ stationRouter.delete(
           "station",
           [id],
           userId,
-          tx
+          tx,
+          deletedAt
         );
 
         await DbService.repository.stations.softDelete(

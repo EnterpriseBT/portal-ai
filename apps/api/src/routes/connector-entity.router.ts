@@ -957,10 +957,10 @@ connectorEntityRouter.get(
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-        DbService.repository.entityTagAssignments.countByTargetIds(
-          "entity",
-          entityIds
-        ),
+        // #1070: the entity's and its views' tags.
+        TagAssignmentService.countRemovedByDelete(existing.organizationId, {
+          entityIds,
+        }),
         DbService.repository.entityGroupMembers.countByConnectorEntityIds(
           entityIds
         ),

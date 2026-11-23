@@ -13,7 +13,7 @@ export const TAG_TARGET_TYPES = [
   "pin",
   "connector_instance",
   "curated_view",
-] as const;
+] as const satisfies readonly PermissionResourceType[];
 
 export const TagTargetTypeSchema = z.enum(TAG_TARGET_TYPES);
 export type TagTargetType = z.infer<typeof TagTargetTypeSchema>;
@@ -24,15 +24,3 @@ export const TagTargetSchema = z.object({
   id: z.string(),
 });
 export type TagTarget = z.infer<typeof TagTargetSchema>;
-
-/** The permission resource type checked for each target type. */
-export const TAG_TARGET_PERMISSION_TYPE: Record<
-  TagTargetType,
-  PermissionResourceType
-> = {
-  entity: "entity",
-  station: "station",
-  pin: "pin",
-  connector_instance: "connector_instance",
-  curated_view: "curated_view",
-};

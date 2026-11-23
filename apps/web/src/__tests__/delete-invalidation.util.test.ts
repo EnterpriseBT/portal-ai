@@ -17,6 +17,8 @@ import {
   connectorInstanceDeleteKeys,
   connectorEntityDeleteKeys,
   stationDeleteKeys,
+  pinDeleteKeys,
+  curatedViewDeleteKeys,
 } from "../utils/delete-invalidation.util";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +82,8 @@ describe.each([
   ["connectorInstanceDeleteKeys", connectorInstanceDeleteKeys],
   ["connectorEntityDeleteKeys", connectorEntityDeleteKeys],
   ["stationDeleteKeys", stationDeleteKeys],
+  ["pinDeleteKeys", pinDeleteKeys],
+  ["curatedViewDeleteKeys", curatedViewDeleteKeys],
 ])("%s (#1070)", (_name, keys) => {
   it("refreshes tag assignments and tag usage", () => {
     expect(keys()).toEqual(

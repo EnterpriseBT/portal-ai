@@ -33,6 +33,7 @@ import { pinDataRefusal, type PinDataRefusal } from "../utils/pin-data.util";
 import { useToast } from "../utils/toast.context";
 import type { PortalResultPayload } from "../api/portal-results.api";
 import { TagsSection } from "../components/TagsSection.component";
+import { pinDeleteKeys } from "../utils/delete-invalidation.util";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -304,7 +305,9 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
       return;
     }
     setDeleteOpen(false);
-    queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+    for (const queryKey of pinDeleteKeys()) {
+      queryClient.invalidateQueries({ queryKey });
+    }
     navigate({ to: "/portal-results" });
   }, [removeMutation, portalResultId, queryClient, navigate]);
 
@@ -319,9 +322,9 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     async function attempt(): Promise<void> {
       try {
         await removeMutation.mutateAsync({ id: portalResultId });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
+        for (const queryKey of pinDeleteKeys()) {
+          queryClient.invalidateQueries({ queryKey });
+        }
         navigate({ to: "/portal-results" });
       } catch {
         // Nothing to attach a FormAlert to once the confirm dialog closes, so

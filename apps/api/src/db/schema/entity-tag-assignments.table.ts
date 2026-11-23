@@ -17,6 +17,10 @@ import { stations } from "./stations.table.js";
  * column and exactly one is set (`entity_tag_assignments_one_target`). The
  * `entity_` name predates the other types and is kept so the migration stays
  * expand-only (a rename would break tasks still running the old code).
+ *
+ * The four new target FKs cascade: a hard delete of the object (a failed
+ * draft commit's rollback, org delete) takes its tags with it instead of
+ * failing on them. Soft deletes sweep tags in their own transaction.
  */
 export const entityTagAssignments = pgTable(
   "entity_tag_assignments",
@@ -28,12 +32,20 @@ export const entityTagAssignments = pgTable(
     connectorEntityId: text("connector_entity_id").references(
       () => connectorEntities.id
     ),
-    stationId: text("station_id").references(() => stations.id),
-    portalResultId: text("portal_result_id").references(() => portalResults.id),
-    connectorInstanceId: text("connector_instance_id").references(
-      () => connectorInstances.id
+    stationId: text("station_id").references(() => stations.id, {
+      onDelete: "cascade",
+    }),
+    portalResultId: text("portal_result_id").references(
+      () => portalResults.id,
+      { onDelete: "cascade" }
     ),
-    curatedViewId: text("curated_view_id").references(() => curatedViews.id),
+    connectorInstanceId: text("connector_instance_id").references(
+      () => connectorInstances.id,
+      { onDelete: "cascade" }
+    ),
+    curatedViewId: text("curated_view_id").references(() => curatedViews.id, {
+      onDelete: "cascade",
+    }),
     entityTagId: text("entity_tag_id")
       .notNull()
       .references(() => entityTags.id),

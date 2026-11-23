@@ -3,10 +3,7 @@ import {
   EntityTagAssignmentSchema,
   TAG_TARGET_COLUMNS,
 } from "../../models/entity-tag-assignment.model.js";
-import {
-  TAG_TARGET_PERMISSION_TYPE,
-  TagTargetTypeSchema,
-} from "../../models/tag-target.model.js";
+import { TagTargetTypeSchema } from "../../models/tag-target.model.js";
 import { PERMISSION_RESOURCE_TYPES } from "../../models/permission.model.js";
 
 const base = {
@@ -63,9 +60,8 @@ describe("tag targets (#1070)", () => {
   it("maps every target type to a column and a permission resource type", () => {
     for (const type of TagTargetTypeSchema.options) {
       expect(TAG_TARGET_COLUMNS[type]).toBeDefined();
-      expect(PERMISSION_RESOURCE_TYPES).toContain(
-        TAG_TARGET_PERMISSION_TYPE[type]
-      );
+      // Each target type is checked as the permission type of its own name.
+      expect(PERMISSION_RESOURCE_TYPES).toContain(type);
     }
   });
 });

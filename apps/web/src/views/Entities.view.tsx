@@ -40,6 +40,7 @@ import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { TagChipListUI } from "../components/TagChipList.component";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
@@ -112,8 +113,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
     onSearch: searchConnectorInstances,
     labelMap: connectorInstanceLabelMap,
   } = sdk.connectorInstances.search();
-  const { onSearch: searchTags, labelMap: tagLabelMap } =
-    sdk.entityTags.search();
+  const tagFilter = useTagFilter();
 
   const pagination = usePagination({
     sortFields: [
@@ -131,13 +131,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
         onSearch: searchConnectorInstances,
         labelMap: connectorInstanceLabelMap,
       },
-      {
-        type: "multi-select",
-        field: "tagIds",
-        label: "Tags",
-        onSearch: searchTags,
-        labelMap: tagLabelMap,
-      },
+      tagFilter,
     ],
   });
 

@@ -35,6 +35,15 @@ export function tagTargetRootKey(type: TagTargetType) {
   }
 }
 
+/**
+ * The list queries of each taggable type: their rows carry tags. Narrower
+ * than the root, which also holds a pin's live data and a view's records,
+ * neither of which a tag changes.
+ */
+export function tagTargetListKey(type: TagTargetType) {
+  return [...tagTargetRootKey(type), "list"] as const;
+}
+
 const tagsUrl = ({ type, id }: TagTarget) =>
   `/api/${TAG_TARGET_PATH[type]}/${encodeURIComponent(id)}/tags`;
 

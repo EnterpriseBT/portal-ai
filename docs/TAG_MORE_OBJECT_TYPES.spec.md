@@ -188,7 +188,7 @@ Tag delete (`entity-tag.router.ts:656-700`) is unchanged: it already soft-delete
 
 `npm run db:generate -- --name tag-assignment-targets` produces the SQL, the journal and the snapshot, committed together.
 
-- **Contents:** `ALTER COLUMN connector_entity_id DROP NOT NULL`, four `ADD COLUMN … REFERENCES`, `ADD CONSTRAINT … CHECK (num_nonnulls(…) = 1)`, four `CREATE UNIQUE INDEX … WHERE deleted IS NULL`, and one `CREATE INDEX entity_tag_assignments_tag_idx`.
+- **Contents:** `ALTER COLUMN connector_entity_id DROP NOT NULL`, four `ADD COLUMN … REFERENCES … ON DELETE CASCADE` (a hard delete of a tagged object, such as a failed draft commit's rollback, takes its tags instead of failing on them), `ADD CONSTRAINT … CHECK (num_nonnulls(…) = 1)`, four `CREATE UNIQUE INDEX … WHERE deleted IS NULL`, and one `CREATE INDEX entity_tag_assignments_tag_idx`.
 - **Why it's safe:** existing rows all have `connector_entity_id`, so the CHECK validates in place. The migration is additive only and carries no `destructive-ok`.
 
 ## Seed

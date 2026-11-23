@@ -11,7 +11,11 @@
 import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
-import type { TagTarget, TagTargetType } from "@portalai/core/models";
+import {
+  TAG_TARGET_COLUMNS,
+  type TagTarget,
+  type TagTargetType,
+} from "@portalai/core/models";
 
 import {
   connectorEntities,
@@ -39,16 +43,7 @@ const TARGET_COLUMNS = {
   curated_view: entityTagAssignments.curatedViewId,
 } as const satisfies Record<TagTargetType, AnyPgColumn>;
 
-/** The assignment insert field holding each target type's id. */
-const TARGET_FIELDS = {
-  entity: "connectorEntityId",
-  station: "stationId",
-  pin: "portalResultId",
-  connector_instance: "connectorInstanceId",
-  curated_view: "curatedViewId",
-} as const satisfies Record<TagTargetType, keyof EntityTagAssignmentInsert>;
-
-type TargetField = (typeof TARGET_FIELDS)[TagTargetType];
+type TargetField = (typeof TAG_TARGET_COLUMNS)[TagTargetType];
 
 export function targetColumn(type: TagTargetType) {
   return TARGET_COLUMNS[type];
@@ -186,7 +181,7 @@ export class EntityTagAssignmentsRepository extends Repository<
       portalResultId: null,
       connectorInstanceId: null,
       curatedViewId: null,
-      [TARGET_FIELDS[target.type]]: target.id,
+      [TAG_TARGET_COLUMNS[target.type]]: target.id,
       entityTagId,
     } as EntityTagAssignmentInsert;
 
@@ -222,6 +217,22 @@ export class EntityTagAssignmentsRepository extends Repository<
     return { row: existing as EntityTagAssignmentSelect, created: false };
   }
 
+  /**
+   * Share-lock the object's row while it's live, for the length of the
+   * caller's transaction. A concurrent delete (an UPDATE or DELETE of that
+   * row) waits for it, or it waits for the delete and then sees the row
+   * gone. Returns false when the object is deleted or missing.
+   */
+  async lockLiveTarget(target: TagTarget, client: DbClient): Promise<boolean> {
+    const table = TARGET_TABLES[target.type];
+    const [row] = await (client as typeof db)
+      .select({ id: table.id })
+      .from(table)
+      .where(and(eq(table.id, target.id), isNull(table.deleted)))
+      .for("share");
+    return !!row;
+  }
+
   /** A live assignment, only when it sits on this object. */
   async findAssignment(
     target: TagTarget,
@@ -250,14 +261,16 @@ export class EntityTagAssignmentsRepository extends Repository<
     type: TagTargetType,
     ids: string[],
     deletedBy: string,
-    client: DbClient = db
+    client: DbClient = db,
+    /** The delete's shared stamp, so its rows tombstone together (#1064). */
+    deletedAt: number = Date.now()
   ): Promise<number> {
     if (ids.length === 0) return 0;
     // #423: count from the driver — `RETURNING` here streamed every
     // matched row (with its payload) into Node just to call `.length`.
     const result = await (client as typeof db)
       .update(this.table)
-      .set({ deleted: Date.now(), deletedBy } as any)
+      .set({ deleted: deletedAt, deletedBy } as any)
       .where(
         and(
           inArray(targetColumn(type), ids),

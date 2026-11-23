@@ -868,15 +868,19 @@ portalResultsRouter.delete(
           )
       );
 
-      // #1070: the pin's tags go with it, in one transaction.
+      // #1070: the pin's tags go with it, in one transaction. The pin's row
+      // is written first: that waits out an assign holding it, so the sweep
+      // then sees the assignment it committed.
       await DbService.transaction(async (tx) => {
+        const deletedAt = Date.now();
+        await DbService.repository.portalResults.softDelete(id, userId, tx);
         await DbService.repository.entityTagAssignments.softDeleteByTargets(
           "pin",
           [id],
           userId,
-          tx
+          tx,
+          deletedAt
         );
-        await DbService.repository.portalResults.softDelete(id, userId, tx);
       });
       logger.info({ id }, "Portal result soft-deleted");
 

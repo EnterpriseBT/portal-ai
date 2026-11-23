@@ -68,3 +68,29 @@ export function stationDeleteKeys(): QueryKey[] {
     queryKeys.entityTags.root,
   ];
 }
+
+/**
+ * What a successful pin delete (or unpin) makes stale (#1070): the pins,
+ * and the pin's tags, which the delete removes, with the Tags page's usage
+ * counts. After `await mutateAsync`, invalidate each key.
+ */
+export function pinDeleteKeys(): QueryKey[] {
+  return [
+    queryKeys.portalResults.root,
+    queryKeys.tagAssignments.root,
+    queryKeys.entityTags.root,
+  ];
+}
+
+/**
+ * What a successful view delete makes stale (#1070): the views, and the
+ * view's tags, which the delete removes, with the Tags page's usage counts.
+ * Pass it as the call's `invalidate` option (#985).
+ */
+export function curatedViewDeleteKeys(): QueryKey[] {
+  return [
+    queryKeys.curatedViews.root,
+    queryKeys.tagAssignments.root,
+    queryKeys.entityTags.root,
+  ];
+}

@@ -23,6 +23,7 @@ import { DeleteStationDialog } from "../components/DeleteStationDialog.component
 import {
   usePagination,
   PaginationToolbar,
+  type FilterConfig,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
@@ -36,15 +37,17 @@ export interface StationsViewUIProps {
   onCreateStation: () => void;
   onSetDefault: (station: Station) => void;
   onDelete: (station: Station) => void;
+  /** #1070: the list's Tags filter, built by the container. */
+  tagFilter: FilterConfig;
 }
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
   onSetDefault,
   onDelete,
+  tagFilter,
 }) => {
   const navigate = useNavigate();
-  const tagFilter = useTagFilter();
 
   const pagination = usePagination({
     sortFields: [
@@ -104,6 +107,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const StationsView: React.FC = () => {
+  const tagFilter = useTagFilter();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingStation, setDeletingStation] = useState<Station | null>(null);
@@ -176,6 +180,7 @@ export const StationsView: React.FC = () => {
         onCreateStation={handleOpenCreate}
         onSetDefault={handleSetDefault}
         onDelete={handleOpenDelete}
+        tagFilter={tagFilter}
       />
 
       <CreateStationDialog

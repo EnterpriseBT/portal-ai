@@ -181,4 +181,33 @@ describe("tag tombstones (#1070)", () => {
       );
     expect(live).toHaveLength(0);
   });
+
+  // #1070: the delete dialogs count every tag the delete removes.
+  it("counts a connector's own and its views' tags in its delete impact", async () => {
+    const res = await request(app).get(
+      `/api/connector-instances/${targets.connector_instance}/impact`
+    );
+    expect(res.status).toBe(200);
+    // The entity's, the connector's and the view's.
+    expect(res.body.payload.entityTagAssignments).toBe(3);
+  });
+
+  it("counts an entity's views' tags in its delete impact", async () => {
+    const res = await request(app).get(
+      `/api/connector-entities/${targets.entity}/impact`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.payload.entityTagAssignments).toBe(2);
+  });
+
+  it("refuses to tag an object deleted out from under it", async () => {
+    await db
+      .update(schema.stations)
+      .set({ deleted: Date.now(), deletedBy: fx.ownerId })
+      .where(eq(schema.stations.id, targets.station));
+    const res = await request(app)
+      .post(`/api/stations/${targets.station}/tags`)
+      .send({ entityTagId: tagId });
+    expect(res.status).toBe(404);
+  });
 });

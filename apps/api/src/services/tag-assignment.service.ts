@@ -18,7 +18,6 @@ import { inArray } from "drizzle-orm";
 
 import {
   EntityTagAssignmentModelFactory,
-  TAG_TARGET_PERMISSION_TYPE,
   TAG_TARGET_TYPES,
   type EntityTagAssignment,
   type TagTarget,
@@ -31,6 +30,7 @@ import { TARGET_TABLES } from "../db/repositories/entity-tag-assignments.reposit
 import { entityTags } from "../db/schema/index.js";
 import type { EntityTagSelect } from "../db/schema/zod.js";
 import { createLogger } from "../utils/logger.util.js";
+import { CuratedViewDeleteService } from "./curated-view-delete.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ObjectAccessService, type OwnedRow } from "./object-access.service.js";
@@ -101,7 +101,8 @@ export class TagAssignmentService {
     const set = await PermissionService.loadSet(ctx);
     const descriptor = TARGETS[target.type];
     const row = await descriptor.load(target.id);
-    const type = TAG_TARGET_PERMISSION_TYPE[target.type];
+    // Each target type is the permission type of its own name.
+    const type = target.type;
     if (verb === "write") {
       ObjectAccessService.loadForVerb(
         set,
@@ -152,24 +153,40 @@ export class TagAssignmentService {
     const base = new EntityTagAssignmentModelFactory()
       .create(ctx.userId)
       .toJSON();
-    const { row, created } = await DbService.repository.entityTagAssignments
-      .insertIfAbsent(target, entityTagId, {
-        id: base.id!,
-        created: base.created!,
-        createdBy: ctx.userId,
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-        organizationId: ctx.organizationId,
-      })
-      .catch((error: unknown) => {
-        throw new ApiError(
-          500,
-          ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
-          error instanceof Error ? error.message : "Failed to assign tag"
+    // The object's row stays share-locked until the insert commits, so a
+    // delete racing this assign either runs first (and the object is gone
+    // here: 404) or waits and then sweeps this assignment with the rest.
+    const { row, created } = await DbService.transaction(async (tx) => {
+      const live =
+        await DbService.repository.entityTagAssignments.lockLiveTarget(
+          target,
+          tx
         );
-      });
+      if (!live) throw TARGETS[target.type].notFound();
+      return DbService.repository.entityTagAssignments
+        .insertIfAbsent(
+          target,
+          entityTagId,
+          {
+            id: base.id!,
+            created: base.created!,
+            createdBy: ctx.userId,
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+            organizationId: ctx.organizationId,
+          },
+          tx
+        )
+        .catch((error: unknown) => {
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
+            error instanceof Error ? error.message : "Failed to assign tag"
+          );
+        });
+    });
     logger.info(
       { target, entityTagId, assignmentId: row.id, created },
       "Tag assignment"
@@ -286,7 +303,7 @@ export class TagAssignmentService {
             type,
             tagIds,
             organizationId,
-            set.visibilityPredicate(TAG_TARGET_PERMISSION_TYPE[type], {
+            set.visibilityPredicate(type, {
               createdByCol: table.createdBy,
               idCol: table.id,
             })
@@ -298,6 +315,31 @@ export class TagAssignmentService {
       })
     );
     return usage;
+  }
+
+  /**
+   * Every tag assignment a connector or entity delete removes (#1070): the
+   * entities' own, the connector's own, and those on the views over the
+   * entities, which the delete cascades to. For the delete-impact dialogs.
+   */
+  static async countRemovedByDelete(
+    organizationId: string,
+    scope: { entityIds: string[]; connectorInstanceIds?: string[] }
+  ): Promise<number> {
+    const repo = DbService.repository.entityTagAssignments;
+    const viewIds = await CuratedViewDeleteService.findIdsByConnectorEntityIds(
+      organizationId,
+      scope.entityIds
+    );
+    const counts = await Promise.all([
+      repo.countByTargetIds("entity", scope.entityIds),
+      repo.countByTargetIds(
+        "connector_instance",
+        scope.connectorInstanceIds ?? []
+      ),
+      repo.countByTargetIds("curated_view", viewIds),
+    ]);
+    return counts.reduce((a, b) => a + b, 0);
   }
 
   /** Only the tags the caller may read (#630 tag visibility). */

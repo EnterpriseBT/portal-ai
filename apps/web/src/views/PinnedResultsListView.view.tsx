@@ -20,13 +20,14 @@ import {
   usePagination,
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import { sdk, queryKeys } from "../api/sdk";
+import { sdk } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import type {
   PortalResultsListPayload,
   PortalResultsListParams,
 } from "../api/portal-results.api";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import { pinDeleteKeys } from "../utils/delete-invalidation.util";
 
 // ── Data fetcher ────────────────────────────────────────────────────
 
@@ -67,9 +68,9 @@ export const PinnedResultsListView: React.FC = () => {
     async function attempt(id: string): Promise<void> {
       try {
         await removeMutation.mutateAsync({ id });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.portalResults.root,
-        });
+        for (const queryKey of pinDeleteKeys()) {
+          queryClient.invalidateQueries({ queryKey });
+        }
       } catch {
         toast.error("Could not remove this pinned result. Please try again.", {
           action: { label: "Retry", onClick: () => void attempt(id) },

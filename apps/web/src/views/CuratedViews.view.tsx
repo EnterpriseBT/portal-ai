@@ -30,7 +30,6 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
-import { queryKeys } from "../api/keys";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { toServerError } from "../utils/api.util";
@@ -39,6 +38,7 @@ import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.c
 import { ShareDialog } from "../components/ShareDialog.component";
 import { TagChipListUI } from "../components/TagChipList.component";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 
 type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
 
@@ -235,7 +235,7 @@ export const CuratedViews: React.FC = () => {
     if (!deleteTarget) return;
     const label = deleteTarget.label;
     deleteView(undefined, {
-      invalidate: [queryKeys.curatedViews.root],
+      invalidate: curatedViewDeleteKeys(),
       toast: { success: `Deleted "${label}"` },
       onSuccess: () => setDeleteTarget(null),
     });

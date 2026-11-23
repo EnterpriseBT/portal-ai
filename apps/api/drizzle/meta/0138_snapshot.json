@@ -1,5 +1,5 @@
 {
-  "id": "300a967f-201b-4c2e-a59d-b61b7deb09b7",
+  "id": "bff698ab-5ee0-4399-a8e7-36d9a8fd32e5",
   "prevId": "2c01caa4-4671-43c1-8860-5beed00e2629",
   "version": "7",
   "dialect": "postgresql",
@@ -2252,7 +2252,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "entity_tag_assignments_portal_result_id_portal_results_id_fk": {
@@ -2265,7 +2265,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "entity_tag_assignments_connector_instance_id_connector_instances_id_fk": {
@@ -2278,7 +2278,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "entity_tag_assignments_curated_view_id_curated_views_id_fk": {
@@ -2291,7 +2291,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "entity_tag_assignments_entity_tag_id_entity_tags_id_fk": {

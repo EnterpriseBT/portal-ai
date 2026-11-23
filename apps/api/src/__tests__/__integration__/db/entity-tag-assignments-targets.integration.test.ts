@@ -127,4 +127,46 @@ describe("entity_tag_assignments targets (#1070)", () => {
       }),
     });
   });
+
+  // #1070: a hard delete of a tagged object (a failed draft commit's
+  // rollback, org delete) takes its tags instead of failing on them.
+  it("cascades a hard delete of a tagged connector to its tags", async () => {
+    await db
+      .insert(schema.entityTagAssignments)
+      .values(row({ connectorInstanceId: org.connectorInstanceId }));
+    const pending = {
+      id: generateId(),
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      connectorDefinitionId: (
+        await db
+          .select()
+          .from(schema.connectorInstances)
+          .where(eq(schema.connectorInstances.id, org.connectorInstanceId))
+      )[0]!.connectorDefinitionId,
+      organizationId: org.orgId,
+      name: "Pending upload",
+      status: "pending",
+      config: {},
+      credentials: null,
+    };
+    await db.insert(schema.connectorInstances).values(pending as never);
+    await db
+      .insert(schema.entityTagAssignments)
+      .values(row({ connectorInstanceId: pending.id }));
+
+    await db
+      .delete(schema.connectorInstances)
+      .where(eq(schema.connectorInstances.id, pending.id));
+
+    const left = await db
+      .select()
+      .from(schema.entityTagAssignments)
+      .where(eq(schema.entityTagAssignments.connectorInstanceId, pending.id));
+    expect(left).toHaveLength(0);
+  });
 });

@@ -41,6 +41,7 @@ import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { freshData } from "../utils/query-result.util";
 import { TagsSection } from "../components/TagsSection.component";
+import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
@@ -300,7 +301,7 @@ export const CuratedViewDetail: React.FC = () => {
 
   const handleDelete = () => {
     removeView(undefined, {
-      invalidate: [queryKeys.curatedViews.root],
+      invalidate: curatedViewDeleteKeys(),
       toast: { success: `Deleted "${view.label}"` },
       onSuccess: () => navigate({ to: "/views" }),
     });
