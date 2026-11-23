@@ -981,6 +981,13 @@
       "when": 1795464326184,
       "tag": "0139_add-entity-tag-source-portal-id",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1795468881395,
+      "tag": "0140_attach-tags-pack-to-administrate",
+      "breakpoints": true
     }
   ]
 }

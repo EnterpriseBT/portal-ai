@@ -28,8 +28,15 @@ export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
   {
     name: "Administrate",
     description:
-      "Manage members and access through the assistant: invitations, members and shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works.",
-    builtinSlugs: ["rbac_management", "member_management", "help"],
+      "Manage members, access and tags through the assistant: invitations, members, shares and tags on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works.",
+    // #1071: tag_management joined; migration 0140 backfills it onto
+    // existing orgs' Administrate.
+    builtinSlugs: [
+      "rbac_management",
+      "member_management",
+      "tag_management",
+      "help",
+    ],
     attachSandbox: false,
     isDefault: true,
   },
