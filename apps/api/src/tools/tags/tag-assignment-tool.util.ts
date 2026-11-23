@@ -1,16 +1,7 @@
 import { z } from "zod";
-import { inArray } from "drizzle-orm";
 
 import type { TagTarget } from "@portalai/core/models";
 
-import { ApiCode } from "../../constants/api-codes.constants.js";
-import { entityTags } from "../../db/schema/index.js";
-import { DbService } from "../../services/db.service.js";
-import { ApiError } from "../../services/http.service.js";
-import { ObjectAccessService } from "../../services/object-access.service.js";
-import { PermissionService } from "../../services/permission.service.js";
-import type { PermissionContext } from "../../services/permission.service.js";
-import { TagAssignmentService } from "../../services/tag-assignment.service.js";
 import { TagTargetInputSchema } from "./tag-tool.util.js";
 
 /** #1071: at most this many tags and objects in one assign or unassign. */
@@ -48,37 +39,4 @@ export function dedupeAssignment(input: TagAssignmentInput): {
     return true;
   });
   return { tagIds: [...new Set(input.tagIds)], targets };
-}
-
-/**
- * #1071: check every object and tag before changing anything, so a refused
- * bulk call applies nothing. Each object must be readable (else its own 404)
- * and writable (else 403), the same check as each object's tag route; each
- * tag must be in the caller's org and readable (else 404). Throws on the
- * first failure.
- */
-export async function preflightAssignment(
-  ctx: PermissionContext,
-  tagIds: string[],
-  targets: TagTarget[]
-): Promise<void> {
-  for (const target of targets) {
-    await TagAssignmentService.loadTarget(ctx, target, "write");
-  }
-  const set = await PermissionService.loadSet(ctx);
-  const tags = await DbService.repository.entityTags.findMany(
-    inArray(entityTags.id, tagIds)
-  );
-  const readable = new Set(
-    tags
-      .filter((tag) =>
-        ObjectAccessService.readableInOrg(set, ctx.organizationId, "tag", tag)
-      )
-      .map((tag) => tag.id)
-  );
-  for (const tagId of tagIds) {
-    if (!readable.has(tagId)) {
-      throw new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Tag not found");
-    }
-  }
 }

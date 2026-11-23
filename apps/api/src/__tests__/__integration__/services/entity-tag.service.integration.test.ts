@@ -283,7 +283,9 @@ describe("EntityTagService (#1071)", () => {
         });
       }
 
-      const result = await EntityTagService.delete(member, id);
+      const result = await EntityTagService.delete(member, id, {
+        countRemoved: true,
+      });
 
       expect(result).toEqual({ id, removedFrom: ALL(1) });
       const live = await db
@@ -297,6 +299,19 @@ describe("EntityTagService (#1071)", () => {
         .from(schema.entityTags)
         .where(eq(schema.entityTags.id, id));
       expect(tag.deleted).not.toBeNull();
+    });
+
+    it("counts nothing unless asked, as the route doesn't", async () => {
+      const id = await seedTag(db, fx.orgId, fx.ownerId, "Finance");
+      await tagAll(id, await seedTagTargets(db, fx.orgId, fx.ownerId, "o"));
+      expect(await EntityTagService.delete(owner, id)).toEqual({ id });
+    });
+
+    it("answers 404 for a tag another delete already removed", async () => {
+      const id = await seedTag(db, fx.orgId, fx.ownerId, "Finance");
+      await EntityTagService.delete(owner, id);
+      const err = await apiError(() => EntityTagService.delete(owner, id));
+      expect(err.status).toBe(404);
     });
 
     it("answers 404 for a tag the caller can't read", async () => {

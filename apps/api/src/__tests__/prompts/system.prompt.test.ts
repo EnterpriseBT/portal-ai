@@ -2626,6 +2626,9 @@ describe("buildSystemPrompt — tag notes (#1071)", () => {
     const p = prompt(["tag_management"]);
     expect(p).toContain("`tag_list`");
     expect(p).toContain("Never invent a tag id");
+    // Code review: search also matches descriptions, so pick by name.
+    expect(p).toContain("`search` matches the name or the description");
+    expect(p).toContain("pick the tag whose name is the one the user gave");
     expect(p).toContain("Create a tag only when the user asks for a new one");
   });
 

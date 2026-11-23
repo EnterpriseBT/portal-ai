@@ -24,8 +24,6 @@ const logger = createLogger({ module: "entity-tag" });
 
 export const entityTagRouter = Router();
 
-/** Map of sortable field names to their Drizzle columns. */
-
 /**
  * @openapi
  * /api/entity-tags:

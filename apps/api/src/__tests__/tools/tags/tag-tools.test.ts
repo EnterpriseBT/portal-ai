@@ -283,7 +283,7 @@ describe("tag_delete", () => {
     del.mockResolvedValue({ id: "tag-1", removedFrom });
     const r = await exec(new TagDeleteTool().build(ctx), { tagId: "tag-1" });
 
-    expect(del).toHaveBeenCalledWith(ctx, "tag-1");
+    expect(del).toHaveBeenCalledWith(ctx, "tag-1", { countRemoved: true });
     expect(r).toEqual({ success: true, id: "tag-1", removedFrom });
   });
 

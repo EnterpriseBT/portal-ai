@@ -263,6 +263,15 @@ Run `npm run test:unit` / `npm run test:integration` from each package, using `-
 - `apps/web/src/components/TagCard.component.tsx`, `PortalSession.component.tsx`
 - `apps/web/src/utils/tool-pack-icons.util.ts` (`LocalOffer: LocalOfferOutlined`)
 
+## Revisions after code review
+
+`/code-review` changed four parts of the surface above. The code is the reference where they differ.
+
+1. **Administrate is matched by `rbac_management` alone**, not with `member_management` (decision 6). #847 never backfilled `member_management`, so an org provisioned between #848 and #847 has an Administrate without it. `0140` also rewrites Administrate's description, but only where it is still exactly the #847 default.
+2. **Assignment is one transaction.** `TagAssignmentService.assignMany` / `unassignMany` load the permissions once, check every object and tag, then lock them and write every pair in one transaction, so a failure part-way through applies nothing. The tools call them; the tools' own pre-flight is gone. `unassignMany` reads each object's tags inside the transaction, so a pair removed meanwhile reports `not_assigned`.
+3. **Tags are row-locked for writes.** An assign share-locks the tag; a delete update-locks it. A delete waits for assigns in flight, and an assign after it finds the tag gone.
+4. **`removedFrom` is opt-in** (`EntityTagService.delete(ctx, id, { countRemoved })`, which only `tag_delete` passes) and counted inside the delete's transaction, under the tag lock.
+
 ## Next step
 
 `docs/TAGS_TOOLPACK.plan.md` sequences this as about eight TDD slices on this branch:

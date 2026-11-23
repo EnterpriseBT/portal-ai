@@ -36,7 +36,8 @@ export class TagDeleteTool extends Tool<typeof InputSchema> {
         runTagTool(ApiCode.ENTITY_TAG_DELETE_FAILED, async () => {
           const { id, removedFrom } = await EntityTagService.delete(
             ctx,
-            this.validate(input).tagId
+            this.validate(input).tagId,
+            { countRemoved: true }
           );
           return { success: true, id, removedFrom };
         }),

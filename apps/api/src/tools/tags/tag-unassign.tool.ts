@@ -2,21 +2,20 @@ import { tool } from "ai";
 
 import { Tool } from "../../types/tools.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
-import { DbService } from "../../services/db.service.js";
 import { TagAssignmentService } from "../../services/tag-assignment.service.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import { runTagTool } from "./tag-tool.util.js";
 import {
   TagAssignmentInputSchema,
   dedupeAssignment,
-  preflightAssignment,
 } from "./tag-assignment-tool.util.js";
 
 /**
- * #1071: remove tags from objects of any taggable type. Every object and tag
- * is checked first, so a refusal removes nothing; then each pair the object
- * carries is removed through TagAssignmentService, the routes' own path. A
- * pair it doesn't carry reports `not_assigned`, never an error.
+ * #1071: remove tags from objects of any taggable type, all or nothing:
+ * TagAssignmentService.unassignMany checks every object and tag with the
+ * routes' own rules, then removes every pair in one transaction. A pair the
+ * object doesn't carry (including one removed meanwhile) reports
+ * `not_assigned`, never an error.
  */
 export class TagUnassignTool extends Tool<typeof TagAssignmentInputSchema> {
   slug = "tag_unassign";
@@ -35,29 +34,17 @@ export class TagUnassignTool extends Tool<typeof TagAssignmentInputSchema> {
       execute: (input) =>
         runTagTool(ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED, async () => {
           const { tagIds, targets } = dedupeAssignment(this.validate(input));
-          await preflightAssignment(ctx, tagIds, targets);
-          const results = [];
-          for (const target of targets) {
-            const assigned = new Map(
-              (
-                await DbService.repository.entityTagAssignments.findByTarget(
-                  target
-                )
-              ).map((row) => [row.id, row.assignmentId])
-            );
-            for (const tagId of tagIds) {
-              const assignmentId = assigned.get(tagId);
-              if (assignmentId) {
-                await TagAssignmentService.unassign(ctx, target, assignmentId);
-              }
-              results.push({
-                type: target.type,
-                id: target.id,
-                tagId,
-                status: assignmentId ? "removed" : "not_assigned",
-              });
-            }
-          }
+          const pairs = await TagAssignmentService.unassignMany(
+            ctx,
+            targets,
+            tagIds
+          );
+          const results = pairs.map(({ target, entityTagId, removed }) => ({
+            type: target.type,
+            id: target.id,
+            tagId: entityTagId,
+            status: removed ? "removed" : "not_assigned",
+          }));
           return { success: true, results };
         }),
     });

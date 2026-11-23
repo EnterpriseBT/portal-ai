@@ -29,6 +29,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { TARGET_TABLES } from "../db/repositories/entity-tag-assignments.repository.js";
 import { entityTags } from "../db/schema/index.js";
 import type { EntityTagSelect } from "../db/schema/zod.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 import { createLogger } from "../utils/logger.util.js";
 import { CuratedViewDeleteService } from "./curated-view-delete.service.js";
 import { DbService } from "./db.service.js";
@@ -41,6 +42,21 @@ import {
 } from "./permission.service.js";
 
 const logger = createLogger({ module: "tag-assignment" });
+
+const tagNotFound = () =>
+  new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Tag not found");
+
+/** Wrap an unexpected failure as `code`, passing an `ApiError` through. */
+const failedAs =
+  (code: ApiCode, fallback: string) =>
+  (error: unknown): never => {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      500,
+      code,
+      error instanceof Error ? error.message : fallback
+    );
+  };
 
 interface TargetDescriptor {
   load: (id: string) => Promise<OwnedRow | null | undefined>;
@@ -99,6 +115,21 @@ export class TagAssignmentService {
     verb: "read" | "write"
   ): Promise<PermissionSet> {
     const set = await PermissionService.loadSet(ctx);
+    await TagAssignmentService.checkTarget(set, ctx, target, verb);
+    return set;
+  }
+
+  /**
+   * The one target check every path runs, against a permission set already
+   * loaded: the object must be in the caller's org and readable (else its
+   * own 404), and writable for a change (else 403).
+   */
+  private static async checkTarget(
+    set: PermissionSet,
+    ctx: PermissionContext,
+    target: TagTarget,
+    verb: "read" | "write"
+  ): Promise<void> {
     const descriptor = TARGETS[target.type];
     const row = await descriptor.load(target.id);
     // Each target type is the permission type of its own name.
@@ -117,7 +148,54 @@ export class TagAssignmentService {
     ) {
       throw descriptor.notFound();
     }
-    return set;
+  }
+
+  /** Every tag among `ids` must be in the caller's org and readable. */
+  private static async checkTags(
+    set: PermissionSet,
+    ctx: PermissionContext,
+    ids: string[]
+  ): Promise<void> {
+    const tags = await DbService.repository.entityTags.findMany(
+      inArray(entityTags.id, ids)
+    );
+    const readable = new Set(
+      tags
+        .filter((tag) =>
+          ObjectAccessService.readableInOrg(set, ctx.organizationId, "tag", tag)
+        )
+        .map((tag) => tag.id)
+    );
+    if (ids.some((id) => !readable.has(id))) throw tagNotFound();
+  }
+
+  /**
+   * Inside a write's transaction: share-lock the tags (a tag delete waits
+   * for the write, and a write after a delete finds the tag gone) and the
+   * objects (an object delete waits, or ran first and the object is gone),
+   * each in a fixed order so concurrent writers never deadlock.
+   */
+  private static async lockForWrite(
+    tagIds: string[],
+    targets: TagTarget[],
+    tx: DbClient
+  ): Promise<void> {
+    const live = await DbService.repository.entityTags.lockLive(
+      tagIds,
+      "share",
+      tx
+    );
+    if (live.length !== new Set(tagIds).size) throw tagNotFound();
+    const ordered = [...targets].sort((a, b) =>
+      `${a.type}:${a.id}`.localeCompare(`${b.type}:${b.id}`)
+    );
+    for (const target of ordered) {
+      const ok = await DbService.repository.entityTagAssignments.lockLiveTarget(
+        target,
+        tx
+      );
+      if (!ok) throw TARGETS[target.type].notFound();
+    }
   }
 
   /** The tags on an object that the caller may read. */
@@ -145,7 +223,7 @@ export class TagAssignmentService {
     if (
       !ObjectAccessService.readableInOrg(set, ctx.organizationId, "tag", tag)
     ) {
-      throw new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Tag not found");
+      throw tagNotFound();
     }
 
     // The factory stamps the id and audit columns; the repository sets the
@@ -157,12 +235,7 @@ export class TagAssignmentService {
     // delete racing this assign either runs first (and the object is gone
     // here: 404) or waits and then sweeps this assignment with the rest.
     const { row, created } = await DbService.transaction(async (tx) => {
-      const live =
-        await DbService.repository.entityTagAssignments.lockLiveTarget(
-          target,
-          tx
-        );
-      if (!live) throw TARGETS[target.type].notFound();
+      await TagAssignmentService.lockForWrite([entityTagId], [target], tx);
       return DbService.repository.entityTagAssignments
         .insertIfAbsent(
           target,
@@ -226,6 +299,137 @@ export class TagAssignmentService {
   }
 
   /**
+   * #1071: put every tag on every object, all or nothing (the agent's
+   * `tag_assign`). The caller's permissions load once; every object and tag
+   * is checked (the same checks as one assign) before anything is written,
+   * and every pair is written in one transaction, so a failure anywhere
+   * leaves nothing applied. Results come back in input order; a pair the
+   * object already carried reports `created: false`.
+   */
+  static async assignMany(
+    ctx: PermissionContext,
+    targets: TagTarget[],
+    tagIds: string[]
+  ): Promise<{ target: TagTarget; entityTagId: string; created: boolean }[]> {
+    const set = await PermissionService.loadSet(ctx);
+    for (const target of targets) {
+      await TagAssignmentService.checkTarget(set, ctx, target, "write");
+    }
+    await TagAssignmentService.checkTags(set, ctx, tagIds);
+
+    const results = await DbService.transaction(async (tx) => {
+      await TagAssignmentService.lockForWrite(tagIds, targets, tx);
+      const out: {
+        target: TagTarget;
+        entityTagId: string;
+        created: boolean;
+      }[] = [];
+      for (const target of targets) {
+        for (const entityTagId of tagIds) {
+          const base = new EntityTagAssignmentModelFactory()
+            .create(ctx.userId)
+            .toJSON();
+          const { created } =
+            await DbService.repository.entityTagAssignments.insertIfAbsent(
+              target,
+              entityTagId,
+              {
+                id: base.id!,
+                created: base.created!,
+                createdBy: ctx.userId,
+                updated: null,
+                updatedBy: null,
+                deleted: null,
+                deletedBy: null,
+                organizationId: ctx.organizationId,
+              },
+              tx
+            );
+          out.push({ target, entityTagId, created });
+        }
+      }
+      return out;
+    }).catch(
+      failedAs(
+        ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
+        "Failed to assign tags"
+      )
+    );
+    logger.info(
+      {
+        pairs: results.length,
+        created: results.filter((r) => r.created).length,
+      },
+      "Tag assignments"
+    );
+    return results;
+  }
+
+  /**
+   * #1071: take every tag off every object, all or nothing (the agent's
+   * `tag_unassign`). Checked like {@link assignMany}; the object's current
+   * tags are read inside the transaction, so a pair someone else removed
+   * meanwhile reports `removed: false` rather than failing the call.
+   */
+  static async unassignMany(
+    ctx: PermissionContext,
+    targets: TagTarget[],
+    tagIds: string[]
+  ): Promise<{ target: TagTarget; entityTagId: string; removed: boolean }[]> {
+    const set = await PermissionService.loadSet(ctx);
+    for (const target of targets) {
+      await TagAssignmentService.checkTarget(set, ctx, target, "write");
+    }
+    await TagAssignmentService.checkTags(set, ctx, tagIds);
+
+    const results = await DbService.transaction(async (tx) => {
+      await TagAssignmentService.lockForWrite(tagIds, targets, tx);
+      const out: {
+        target: TagTarget;
+        entityTagId: string;
+        removed: boolean;
+      }[] = [];
+      const toDelete: string[] = [];
+      for (const target of targets) {
+        const assigned = new Map(
+          (
+            await DbService.repository.entityTagAssignments.findByTarget(
+              target,
+              tx
+            )
+          ).map((row) => [row.id, row.assignmentId])
+        );
+        for (const entityTagId of tagIds) {
+          const assignmentId = assigned.get(entityTagId);
+          if (assignmentId) toDelete.push(assignmentId);
+          out.push({ target, entityTagId, removed: !!assignmentId });
+        }
+      }
+      if (toDelete.length > 0) {
+        await DbService.repository.entityTagAssignments.softDeleteMany(
+          toDelete,
+          ctx.userId,
+          tx
+        );
+      }
+      return out;
+    }).catch(
+      failedAs(
+        ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED,
+        "Failed to remove tags"
+      )
+    );
+    logger.info(
+      {
+        pairs: results.length,
+        removed: results.filter((r) => r.removed).length,
+      },
+      "Tag assignments removed"
+    );
+    return results;
+  }
+
+  /**
    * A list's `tagIds` filter, narrowed to tags the caller may read in their
    * org. `undefined` means no filter; an empty array means the filter names
    * no tag the caller can see, so the list matches nothing (a hidden tag
@@ -286,7 +490,8 @@ export class TagAssignmentService {
   static async usageByTag(
     set: PermissionSet,
     organizationId: string,
-    tagIds: string[]
+    tagIds: string[],
+    client?: DbClient
   ): Promise<Map<string, TagUsage>> {
     const usage = new Map<string, TagUsage>(
       tagIds.map((id) => [
@@ -306,7 +511,8 @@ export class TagAssignmentService {
             set.visibilityPredicate(type, {
               createdByCol: table.createdBy,
               idCol: table.id,
-            })
+            }),
+            client
           );
         for (const [tagId, n] of counts) {
           const row = usage.get(tagId);

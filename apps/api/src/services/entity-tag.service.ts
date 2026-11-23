@@ -227,14 +227,20 @@ export class EntityTagService {
   }
 
   /**
-   * Delete a tag and take it off every object. `removedFrom` counts, per
-   * type, only the objects the caller can read, read before the delete: a
-   * count over the rest would reveal they exist.
+   * Delete a tag and take it off every object, in one transaction that holds
+   * the tag's row lock, so no assign lands on it meanwhile (#1071).
+   *
+   * With `countRemoved` (the agent's `tag_delete`), `removedFrom` counts per
+   * type the objects it came off, read inside that transaction so it matches
+   * what was removed, over only the objects the caller can read: a count over
+   * the rest would reveal they exist. The route doesn't ask, so a delete from
+   * the Tags page pays for no counting.
    */
   static async delete(
     ctx: PermissionContext,
-    id: string
-  ): Promise<{ id: string; removedFrom: TagUsage }> {
+    id: string,
+    opts: { countRemoved?: boolean } = {}
+  ): Promise<{ id: string; removedFrom?: TagUsage }> {
     // #630: a member may delete only their own tag; owner/admin any.
     // #713: one the caller can't read answers 404, like its GET.
     const set = await PermissionService.loadSet(ctx);
@@ -247,13 +253,27 @@ export class EntityTagService {
       notFound
     );
 
-    const usage = await TagAssignmentService.usageByTag(
-      set,
-      ctx.organizationId,
-      [id]
-    );
+    const removedFrom = await DbService.transaction(async (tx) => {
+      // Assigns share-lock the tag, so this waits for any in flight; one
+      // that comes after finds the tag gone. A concurrent delete won.
+      const [live] = await DbService.repository.entityTags.lockLive(
+        [id],
+        "update",
+        tx
+      );
+      if (!live) throw notFound();
 
-    await DbService.transaction(async (tx) => {
+      const usage = opts.countRemoved
+        ? (
+            await TagAssignmentService.usageByTag(
+              set,
+              ctx.organizationId,
+              [id],
+              tx
+            )
+          ).get(id)
+        : undefined;
+
       const assignments =
         await DbService.repository.entityTagAssignments.findByEntityTagId(
           id,
@@ -268,11 +288,12 @@ export class EntityTagService {
         );
       }
       await DbService.repository.entityTags.softDelete(id, ctx.userId, tx);
+      return usage;
     }).catch(
       failedAs(ApiCode.ENTITY_TAG_DELETE_FAILED, "Failed to delete entity tag")
     );
 
     logger.info({ id }, "Entity tag soft-deleted");
-    return { id, removedFrom: usage.get(id)! };
+    return removedFrom ? { id, removedFrom } : { id };
   }
 }

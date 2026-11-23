@@ -1,7 +1,9 @@
 /**
  * #1071: migration 0140 attaches the Tags pack to every live org's
- * Administrate station. Administrate is the system-created station carrying
- * both rbac_management and member_management, so a rename doesn't hide it.
+ * Administrate station, and rewrites Administrate's description where it is
+ * still the #847 default. Administrate is the system-created station carrying
+ * rbac_management, so a rename doesn't hide it, nor does a missing
+ * member_management (#847 never backfilled it).
  *
  * The global setup has already applied 0140 (an empty test DB has nothing to
  * attach), so each case seeds stations and re-runs the migration's SQL in a
@@ -17,6 +19,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import * as schema from "../../../db/schema/index.js";
+import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
 import {
   createOrganization,
   createUser,
@@ -62,7 +65,8 @@ describe("0140 attach-tags-pack-to-administrate (#1071)", () => {
     orgId: string,
     name: string,
     createdBy: string,
-    slugs: string[]
+    slugs: string[],
+    description: string | null = null
   ): Promise<string> {
     const id = generateId();
     const base = {
@@ -77,7 +81,7 @@ describe("0140 attach-tags-pack-to-administrate (#1071)", () => {
       id,
       organizationId: orgId,
       name,
-      description: null,
+      description,
       ...base,
     } as never);
     for (const builtinSlug of slugs) {
@@ -102,6 +106,21 @@ describe("0140 attach-tags-pack-to-administrate (#1071)", () => {
   }
 
   const ADMINISTRATE = ["rbac_management", "member_management", "help"];
+  /** Administrate as provisioned between #848 and #847. */
+  const ADMINISTRATE_PRE_847 = ["rbac_management", "help"];
+
+  const OLD_DESCRIPTION =
+    "Manage members and access through the assistant: invitations, members and shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works.";
+  const NEW_DESCRIPTION =
+    "Manage members, access and tags through the assistant: invitations, members, shares and tags on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works.";
+  const PRE_847_DESCRIPTION =
+    "Manage access through the assistant: shares on any plan, and custom roles, policies and groups where your plan includes them. No data is attached here. You can also ask how Portals works.";
+
+  async function descriptionOf(stationId: string): Promise<string | null> {
+    const [row] =
+      await connection`SELECT description FROM stations WHERE id = ${stationId}`;
+    return row.description as string | null;
+  }
   const PLAYGROUND = ["data_query", "entity_management", "view_management"];
 
   beforeEach(async () => {
@@ -131,6 +150,72 @@ describe("0140 attach-tags-pack-to-administrate (#1071)", () => {
       SELECT created_by FROM station_toolpacks
       WHERE station_id = ${admin} AND builtin_slug = 'tag_management'`;
     expect(row.created_by).toBe(PRINCIPAL);
+  });
+
+  it("attaches the pack to an Administrate from before #847, without member_management", async () => {
+    const orgId = await seedOrg();
+    const admin = await seedStation(
+      orgId,
+      "Administrate",
+      PRINCIPAL,
+      ADMINISTRATE_PRE_847
+    );
+
+    await runMigration();
+
+    expect(await slugsOn(admin)).toEqual(
+      [...ADMINISTRATE_PRE_847, "tag_management"].sort()
+    );
+  });
+
+  it("writes the description provisioning gives a new org", () => {
+    expect(NEW_DESCRIPTION).toBe(
+      PROVISIONED_STATIONS.find((st) => st.name === "Administrate")!.description
+    );
+    expect(MIGRATION).toContain(NEW_DESCRIPTION);
+    expect(MIGRATION).toContain(OLD_DESCRIPTION);
+  });
+
+  it("rewrites only a description that is still the #847 default", async () => {
+    const orgId = await seedOrg();
+    const current = await seedStation(
+      orgId,
+      "Administrate",
+      PRINCIPAL,
+      ADMINISTRATE,
+      OLD_DESCRIPTION
+    );
+    const edited = await seedStation(
+      (await seedOrg()) as string,
+      "Administrate",
+      PRINCIPAL,
+      ADMINISTRATE,
+      "Our admin corner"
+    );
+    const older = await seedStation(
+      (await seedOrg()) as string,
+      "Administrate",
+      PRINCIPAL,
+      ADMINISTRATE_PRE_847,
+      PRE_847_DESCRIPTION
+    );
+    const usersOwn = await seedStation(
+      orgId,
+      "Copy",
+      ownerId,
+      ADMINISTRATE,
+      OLD_DESCRIPTION
+    );
+
+    await runMigration();
+
+    expect(await descriptionOf(current)).toBe(NEW_DESCRIPTION);
+    expect(await descriptionOf(edited)).toBe("Our admin corner");
+    expect(await descriptionOf(older)).toBe(PRE_847_DESCRIPTION);
+    expect(await descriptionOf(usersOwn)).toBe(OLD_DESCRIPTION);
+    const [row] =
+      await connection`SELECT updated_by FROM stations WHERE id = ${current}`;
+    expect(row.updated_by).toBe(PRINCIPAL);
   });
 
   it("leaves Playground and a user-built look-alike alone", async () => {

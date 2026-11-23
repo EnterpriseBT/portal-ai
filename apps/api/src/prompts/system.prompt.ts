@@ -864,8 +864,10 @@ export const PACK_PROMPT_SECTIONS: Record<
       lines.push("");
       lines.push(
         "**Look a tag up before you act on it.** Find its id with " +
-          "`tag_list` (`search` matches the name). Never invent a tag id. " +
-          "If several tags match the name the user gave, ask which one. " +
+          "`tag_list`; `search` matches the name or the description, so " +
+          "pick the tag whose name is the one the user gave (names are " +
+          "unique). Never invent a tag id. If no tag has that name exactly " +
+          "but some come close, ask which one. " +
           "Create a tag only when the user asks for a new one; a name that " +
           "matches no tag is a question for the user, not a reason to " +
           "create it."

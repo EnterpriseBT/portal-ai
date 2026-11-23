@@ -4,7 +4,7 @@
  * Extends the generic {@link Repository} with org-scoped tag lookups.
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import { entityTags } from "../schema/index.js";
 import { db } from "../client.js";
@@ -22,6 +22,26 @@ export class EntityTagsRepository extends Repository<
 > {
   constructor() {
     super(entityTags);
+  }
+
+  /**
+   * #1071: lock the live tags among `ids` for the rest of `client`'s
+   * transaction, in id order so two lockers never deadlock. `share` lets
+   * assigns run side by side; a delete takes `update`, so it waits for them,
+   * and an assign after it finds the tag gone. Deleted tags aren't returned.
+   */
+  async lockLive(
+    ids: string[],
+    mode: "share" | "update",
+    client: DbClient
+  ): Promise<EntityTagSelect[]> {
+    if (ids.length === 0) return [];
+    return (await (client as typeof db)
+      .select()
+      .from(entityTags)
+      .where(and(inArray(entityTags.id, ids), isNull(entityTags.deleted)))
+      .orderBy(asc(entityTags.id))
+      .for(mode)) as EntityTagSelect[];
   }
 
   /** Return non-deleted tags for an organization. Supports full ListOptions for sorting/pagination. */
