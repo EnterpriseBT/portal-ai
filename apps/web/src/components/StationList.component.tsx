@@ -36,6 +36,7 @@ import {
 import { decideActionGate } from "../utils/action-gate.util";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
+import { TagChipListUI } from "./TagChipList.component";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -176,6 +177,12 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             ),
             variant: "chip",
             hidden: (station.enabledToolpacks ?? []).length === 0,
+          },
+          {
+            label: "Tags",
+            value: <TagChipListUI tags={station.tags} />,
+            variant: "chip",
+            hidden: !station.tags?.length,
           },
         ]}
       />

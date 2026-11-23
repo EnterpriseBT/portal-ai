@@ -69,6 +69,41 @@ describe("PinnedResultCardUI", () => {
     jest.clearAllMocks();
   });
 
+  // #1070: a pin's tags, from the list's include=tags.
+  it("shows the pin's tags", () => {
+    render(
+      <PinnedResultCardUI
+        {...defaultCardProps}
+        result={{
+          ...result1,
+          tags: [
+            {
+              id: "tag-1",
+              organizationId: "org-1",
+              name: "Finance",
+              color: "#2563EB",
+              description: null,
+              created: 1,
+              createdBy: "user-1",
+              updated: null,
+              updatedBy: null,
+              deleted: null,
+              deletedBy: null,
+            },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByText("Finance")).toBeInTheDocument();
+    // Smoke walk (#1070): labelled like the other cards' Tags row.
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+  });
+
+  it("shows no Tags row for an untagged pin", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} />);
+    expect(screen.queryByText("Tags")).toBeNull();
+  });
+
   it("should render result name and relative timestamp", () => {
     render(<PinnedResultCardUI {...defaultCardProps} />);
     expect(screen.getByText("Revenue Summary")).toBeInTheDocument();

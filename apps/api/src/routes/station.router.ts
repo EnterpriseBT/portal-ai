@@ -35,10 +35,17 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 const logger = createLogger({ module: "station" });
 
 export const stationRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+stationRouter.use(
+  "/:stationId/tags",
+  createTagAssignmentRouter("station", "stationId")
+);
 
 /**
  * #848: "no description" is stored as null. An empty or whitespace-only one
@@ -362,6 +369,8 @@ async function planToolPackChanges(
  *         schema:
  *           type: string
  *         description: Filter stations by name (case-insensitive)
+ *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations; `tags` attaches each row's readable tags (#1070)." }
  *     responses:
  *       200:
  *         description: Stations retrieved successfully
@@ -404,11 +413,26 @@ stationRouter.get(
       );
     }
     try {
-      const { limit, offset, sortBy, sortOrder, search } = parsedQuery.data;
+      const { limit, offset, sortBy, sortOrder, search, include, tagIds } =
+        parsedQuery.data;
+      const includes = new Set(
+        include
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean) ?? []
+      );
       // #1036: the same listing the agent's station_list tool reads.
       const { stations: rows, total } = await StationQueryService.listForCaller(
         req.application!.metadata,
-        { limit, offset, sortBy, sortOrder, search }
+        {
+          limit,
+          offset,
+          sortBy,
+          sortOrder,
+          search,
+          tagIds,
+          includeTags: includes.has("tags"),
+        }
       );
 
       return HttpService.success<StationListResponsePayload>(res, {
@@ -1204,6 +1228,14 @@ stationRouter.delete(
         );
         await DbService.repository.stationToolpacks.softDeleteByStation(
           id,
+          userId,
+          tx,
+          deletedAt
+        );
+        // #1070: its tags go with it.
+        await DbService.repository.entityTagAssignments.softDeleteByTargets(
+          "station",
+          [id],
           userId,
           tx,
           deletedAt

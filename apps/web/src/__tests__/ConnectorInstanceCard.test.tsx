@@ -33,6 +33,41 @@ const instance = (
 });
 
 describe("ConnectorInstanceCardUI", () => {
+  // #1070: a connector's tags, from the list's include=tags.
+  it("shows the connector's tags, and no tag row without any", () => {
+    const { rerender } = render(
+      <ConnectorInstanceCardUI
+        connectorInstance={{
+          ...instance(true),
+          tags: [
+            {
+              id: "tag-1",
+              organizationId: "org-1",
+              name: "Finance",
+              color: "#2563EB",
+              description: null,
+              created: 1,
+              createdBy: "user-1",
+              updated: null,
+              updatedBy: null,
+              deleted: null,
+              deletedBy: null,
+            },
+          ],
+        }}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByText("Finance")).toBeInTheDocument();
+    rerender(
+      <ConnectorInstanceCardUI
+        connectorInstance={instance(true)}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.queryByText("Tags")).toBeNull();
+  });
+
   it("offers Delete when the caller may delete the instance", () => {
     render(
       <ConnectorInstanceCardUI

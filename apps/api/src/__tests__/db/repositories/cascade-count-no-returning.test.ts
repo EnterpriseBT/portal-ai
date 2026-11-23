@@ -125,9 +125,10 @@ const CASCADES: ReadonlyArray<{
       ),
   },
   {
-    name: "entityTagAssignments.softDeleteByConnectorEntityIds",
+    name: "entityTagAssignments.softDeleteByTargets",
     call: (c) =>
-      new EntityTagAssignmentsRepository().softDeleteByConnectorEntityIds(
+      new EntityTagAssignmentsRepository().softDeleteByTargets(
+        "entity",
         ENTITY_IDS,
         "user-1",
         c

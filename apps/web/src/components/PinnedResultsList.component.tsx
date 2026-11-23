@@ -5,6 +5,7 @@ import {
   Box,
   CardList,
   DetailCard,
+  MetadataList,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -22,6 +23,7 @@ import { RouterLink } from "./RouterLink.component";
 import { sdk } from "../api/sdk";
 import type { PortalResultsListPayload } from "../api/portal-results.api";
 import { decideActionGate } from "../utils/action-gate.util";
+import { TagChipListUI } from "./TagChipList.component";
 
 /** A pin list row, with the caller's capabilities on it (#688). */
 type PinnedResultRow = PortalResultListResponsePayload["portalResults"][number];
@@ -96,6 +98,17 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
           </Typography>
         )}
       </Stack>
+      {/* #1070: labelled like the other cards' Tags row. */}
+      <MetadataList
+        items={[
+          {
+            label: "Tags",
+            value: <TagChipListUI tags={result.tags} />,
+            variant: "chip",
+            hidden: !result.tags?.length,
+          },
+        ]}
+      />
     </DetailCard>
   );
 };

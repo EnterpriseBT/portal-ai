@@ -332,6 +332,9 @@ const TEARDOWN_BUDGET_MS = 40_000;
  *  curated-view tables are leaf-most (FK → curated_views, stations,
  *  connector_entities, field_mappings, organizations). */
 const BEFORE_AUDIT = [
+  // #1070: a tag assignment can point at a view, station, pin or connector,
+  // so it goes before all of them.
+  entityTagAssignments,
   stationViews,
   curatedViewFieldMappings,
   curatedViews,
@@ -344,7 +347,6 @@ const BEFORE_AUDIT = [
   stations,
   entityGroupMembers,
   entityGroups,
-  entityTagAssignments,
   entityTags,
   entityRecords,
   wideTableColumns,

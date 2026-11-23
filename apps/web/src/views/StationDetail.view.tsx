@@ -49,6 +49,7 @@ import {
   stationDataSetupFor,
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
+import { TagsSection } from "../components/TagsSection.component";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -317,6 +318,12 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         )}
                       />
                     </PageHeader>
+
+                    {/* #1070: the station's tags */}
+                    <TagsSection
+                      target={{ type: "station", id: station.id }}
+                      canWrite={station.capabilities.write}
+                    />
 
                     {/* Portals Section */}
                     <PageSection

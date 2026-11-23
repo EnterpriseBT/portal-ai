@@ -86,10 +86,21 @@ export class CuratedViewDeleteService {
       ids,
       tx
     );
+    const deletedAt = Date.now();
     const deletedViews = await repo.curatedViews.updateWhere(
       inArray(curatedViews.id, ids),
-      { deleted: Date.now(), deletedBy: userId },
+      { deleted: deletedAt, deletedBy: userId },
       tx
+    );
+    // #1070: a view's tags go with it, after its row: writing the row waits
+    // out an assign holding it, so this sweep sees what that assign
+    // committed.
+    await repo.entityTagAssignments.softDeleteByTargets(
+      "curated_view",
+      ids,
+      userId,
+      tx,
+      deletedAt
     );
 
     return {

@@ -35,8 +35,23 @@ let mockUsageData: unknown = undefined;
 // #1041: the delete's refresh list, read off the call.
 const mockDeleteMutate = jest.fn();
 
+const mockTagList = jest.fn((..._args: unknown[]) => ({
+  data: { tags: [] },
+  isLoading: false,
+  isError: false,
+}));
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #1070: the page's Tags section and tag filter.
+    entityTags: {
+      search: () => ({ onSearch: async () => [], labelMap: {} }),
+    },
+    tagAssignments: {
+      list: (...args: unknown[]) => mockTagList(...args),
+      assign: () => ({ mutate: () => undefined }),
+      unassign: () => ({ mutate: () => undefined }),
+    },
     stations: {
       get: mockStationsGet,
       update: failedUpdate,
@@ -215,6 +230,17 @@ describe("StationDetailView — attachments (#674)", () => {
 
 // #1063: a member can't list the org's packs (the list mock answers none),
 // so the station read's names are what the chips show.
+// #1070: the page's Tags section reads this station's tags.
+describe("StationDetailView — tags (#1070)", () => {
+  beforeEach(() => mockStationsGet.mockReset());
+
+  it("reads the station's own tags", () => {
+    mockStationsGet.mockReturnValue(payload([], []));
+    render(<StationDetailView stationId="st-1" />);
+    expect(mockTagList).toHaveBeenCalledWith({ type: "station", id: "st-1" });
+  });
+});
+
 describe("StationDetailView — custom pack names (#1063)", () => {
   it("names a custom pack from the station read", () => {
     mockStationsGet.mockReturnValue(

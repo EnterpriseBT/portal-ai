@@ -1,13 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import {
-  eq,
-  and,
-  or,
-  inArray,
-  isNull,
-  type SQL,
-  type Column,
-} from "drizzle-orm";
+import { eq, and, or, inArray, type SQL, type Column } from "drizzle-orm";
 import { db } from "../db/client.js";
 
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
@@ -33,7 +25,7 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
-import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
+import { connectorEntities } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ParentAccessService } from "../services/parent-access.service.js";
@@ -45,10 +37,11 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { EntityDataDeleteService } from "../services/entity-data-delete.service.js";
 import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
-import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "connector-entity" });
 
@@ -57,10 +50,10 @@ export const connectorEntityRouter = Router();
 // Nest the entity records router under /:connectorEntityId/records
 connectorEntityRouter.use("/:connectorEntityId/records", entityRecordRouter);
 
-// Nest the entity tag assignments router under /:connectorEntityId/tags
+// Nest the tag assignment routes under /:connectorEntityId/tags (#1070)
 connectorEntityRouter.use(
   "/:connectorEntityId/tags",
-  entityTagAssignmentRouter
+  createTagAssignmentRouter("entity", "connectorEntityId")
 );
 
 /** Map of sortable field names to their Drizzle columns. */
@@ -192,30 +185,25 @@ connectorEntityRouter.get(
         );
       }
 
-      const tagIds = tagIdsRaw
-        ?.split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-      if (tagIds?.length) {
-        filters.push(
-          inArray(
-            connectorEntities.id,
-            db
-              .selectDistinct({ id: entityTagAssignments.connectorEntityId })
-              .from(entityTagAssignments)
-              .where(
-                and(
-                  inArray(entityTagAssignments.entityTagId, tagIds),
-                  isNull(entityTagAssignments.deleted)
-                )
-              )
-          )
-        );
-      }
-
       // #599: RBAC-gate raw entity reads — members see only entities they
       // created (≈none, entities are admin/sync-provisioned); admins (`*`) all.
       const set = await PermissionService.loadSet(req.application!.metadata);
+      // #1070: entities carrying any of the tags the caller can read; a tag
+      // they can't read narrows nothing.
+      const tagIds = await TagAssignmentService.readableTagIds(
+        set,
+        req.application!.metadata.organizationId,
+        tagIdsRaw
+      );
+      if (tagIds) {
+        filters.push(
+          DbService.repository.entityTagAssignments.taggedWithAny(
+            "entity",
+            connectorEntities.id,
+            tagIds
+          )
+        );
+      }
       const visibility = set.visibilityPredicate("entity", {
         createdByCol: connectorEntities.createdBy,
         idCol: connectorEntities.id,
@@ -273,7 +261,15 @@ connectorEntityRouter.get(
           set,
           req.application!.metadata.organizationId,
           "entity",
-          data as unknown as Array<{ id: string; createdBy: string }>
+          // #1070: only the tags the caller may read.
+          data.map((row) =>
+            "tags" in row && Array.isArray(row.tags)
+              ? {
+                  ...row,
+                  tags: TagAssignmentService.readableTags(set, row.tags),
+                }
+              : row
+          ) as unknown as Array<{ id: string; createdBy: string }>
         )) as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,
@@ -961,9 +957,10 @@ connectorEntityRouter.get(
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
-          entityIds
-        ),
+        // #1070: the entity's and its views' tags.
+        TagAssignmentService.countRemovedByDelete(existing.organizationId, {
+          entityIds,
+        }),
         DbService.repository.entityGroupMembers.countByConnectorEntityIds(
           entityIds
         ),

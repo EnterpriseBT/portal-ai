@@ -58,10 +58,18 @@ import { JsonataSuggestError } from "../adapters/rest-api/jsonata-suggest.types.
 
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
+import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
 export const connectorInstanceRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+connectorInstanceRouter.use(
+  "/:connectorInstanceId/tags",
+  createTagAssignmentRouter("connector_instance", "connectorInstanceId")
+);
 
 /** Map of sortable field names to their Drizzle columns. */
 // #756: keyed by the schema's `sortBy` enum, so every value the schema
@@ -126,6 +134,7 @@ const SORTABLE_COLUMNS: Record<
  *         schema:
  *           type: string
  *         description: Comma-separated list of required capability flags (read, write, sync). Only instances where all specified flags are enabled will be returned.
+ *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -180,6 +189,7 @@ connectorInstanceRouter.get(
         search,
         include,
         capability,
+        tagIds: tagIdsRaw,
       } = parsedQuery.data;
 
       const VALID_CAPABILITIES = ["sync", "read", "write", "push"] as const;
@@ -236,6 +246,21 @@ connectorInstanceRouter.get(
         idCol: connectorInstances.id,
       });
       if (visibility) filters.push(visibility);
+      // #1070: connectors carrying any of the tags the caller can read.
+      const tagIds = await TagAssignmentService.readableTagIds(
+        set,
+        req.application!.metadata.organizationId,
+        tagIdsRaw
+      );
+      if (tagIds) {
+        filters.push(
+          DbService.repository.entityTagAssignments.taggedWithAny(
+            "connector_instance",
+            connectorInstances.id,
+            tagIds
+          )
+        );
+      }
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy];
@@ -284,6 +309,19 @@ connectorInstanceRouter.get(
         data as unknown as Parameters<typeof redactInstances>[0],
         slugByDefinitionId
       );
+      const tagsByInstance = include_?.includes("tags")
+        ? await TagAssignmentService.tagsForTargets(
+            set,
+            "connector_instance",
+            data.map((row) => row.id)
+          )
+        : null;
+      const rows = tagsByInstance
+        ? redacted.map((row) => ({
+            ...row,
+            tags: tagsByInstance.get(row.id) ?? [],
+          }))
+        : redacted;
 
       return HttpService.success<
         | ConnectorInstanceListResponsePayload
@@ -293,7 +331,7 @@ connectorInstanceRouter.get(
         connectorInstances: ObjectCapabilitiesService.attach(
           set,
           "connector_instance",
-          redacted as unknown as Array<{ id: string; createdBy: string }>
+          rows as unknown as Array<{ id: string; createdBy: string }>
         ) as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
@@ -558,9 +596,11 @@ connectorInstanceRouter.get(
       ] = await Promise.all([
         DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
         DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
-          entityIds
-        ),
+        // #1070: the entities', the connector's own and its views' tags.
+        TagAssignmentService.countRemovedByDelete(ctx.organizationId, {
+          entityIds,
+          connectorInstanceIds: [id],
+        }),
         DbService.repository.entityGroupMembers.countByConnectorEntityIds(
           entityIds
         ),
@@ -1481,6 +1521,15 @@ connectorInstanceRouter.delete(
             tx
           );
 
+          // #1070: the instance's own tags go with it (its entities' and
+          // views' tags go with them below).
+          await DbService.repository.entityTagAssignments.softDeleteByTargets(
+            "connector_instance",
+            [id],
+            userId,
+            tx
+          );
+
           // Find all connector entities for this instance
           const entities =
             await DbService.repository.connectorEntities.findByConnectorInstanceId(
@@ -1513,7 +1562,8 @@ connectorInstanceRouter.delete(
                 userId,
                 tx
               ),
-              DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+              DbService.repository.entityTagAssignments.softDeleteByTargets(
+                "entity",
                 entityIds,
                 userId,
                 tx

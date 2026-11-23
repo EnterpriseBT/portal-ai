@@ -29,9 +29,7 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
-import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
-import Chip from "@mui/material/Chip";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -42,8 +40,9 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
-import { useCapabilities } from "../utils/use-capabilities.util";
-import { UnauthorizedState } from "../components/UnauthorizedState.component";
+import { useTagAssignments } from "../utils/use-tag-assignments.util";
+import { decideActionGate } from "../utils/action-gate.util";
+import { TagsSectionUI } from "../components/TagsSection.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
@@ -79,49 +78,11 @@ import {
   EntityRecordDataTableUI,
 } from "../components/EntityRecordDataTable.component";
 
-// ── Tag assignment select ────────────────────────────────────────────
+// ── Tag callback defaults ──────────────────────────────────────────
 
-interface TagAssignSelectProps {
-  onSearch: (query: string) => Promise<SelectOption[]>;
-  onAssign: (entityTagId: string) => void;
-  /** #630: false when the caller can't `read` tags — shows an unauthorized
-   *  panel in place of the picker. Defaults true (pure-UI/story render). */
-  canRead?: boolean;
-}
-
-const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
-  onSearch,
-  onAssign,
-  canRead = true,
-}) => {
-  const [value, setValue] = React.useState<string | null>(null);
-
-  const handleChange = (newValue: string | null) => {
-    if (newValue) {
-      onAssign(newValue);
-      setValue(null);
-    } else {
-      setValue(null);
-    }
-  };
-
-  if (!canRead) {
-    return (
-      <UnauthorizedState message="You don't have permission to view tags." />
-    );
-  }
-
-  return (
-    <AsyncSearchableSelect
-      value={value}
-      onChange={handleChange}
-      onSearch={onSearch}
-      label="Add tag"
-      placeholder="Search tags…"
-      size="small"
-    />
-  );
-};
+/** Stand-ins for a tag callback the caller didn't pass (stories, tests). */
+const noop = () => undefined;
+const noSearch = async (): Promise<SelectOption[]> => [];
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
@@ -384,46 +345,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         </PageHeader>
 
         {/* Tags */}
-        {tags && (
-          <PageSection title="Tags" icon={<Icon name={IconName.Label} />}>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {tags.map((tag) => (
-                <Chip
-                  key={tag.id}
-                  label={tag.name}
-                  size="small"
-                  icon={
-                    tag.color ? (
-                      <Box
-                        sx={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          backgroundColor: tag.color,
-                          flexShrink: 0,
-                        }}
-                      />
-                    ) : undefined
-                  }
-                  onDelete={
-                    onUnassignTag && gates.canEditTags
-                      ? () => onUnassignTag(tag.assignmentId)
-                      : undefined
-                  }
-                />
-              ))}
-            </Stack>
-            {onSearchTags && onAssignTag && gates.canEditTags && (
-              <Box sx={{ mt: 1, maxWidth: 300 }}>
-                <TagAssignSelect
-                  onSearch={onSearchTags}
-                  onAssign={onAssignTag}
-                  canRead={canReadTags}
-                />
-              </Box>
-            )}
-          </PageSection>
-        )}
+        <TagsSectionUI
+          tags={tags}
+          gate={decideActionGate({ allowed: gates.canEditTags })}
+          onAssign={onAssignTag ?? noop}
+          onUnassign={onUnassignTag ?? noop}
+          onSearch={onSearchTags ?? noSearch}
+          canReadTags={canReadTags}
+        />
 
         {/* Bidirectional consistency warnings */}
         {bidirectionalFieldMappings &&
@@ -644,10 +573,8 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
-  const { onSearch: handleSearchTags } = sdk.entityTags.search();
-  const { canOnResource, capabilitiesKnown } = useCapabilities();
-  // #630: optimistic while the current-org query loads.
-  const canReadTags = !capabilitiesKnown || canOnResource("tag", "read");
+  // #1070: the entity's tags, through the hook every taggable type uses.
+  const tagHandle = useTagAssignments({ type: "entity", id: entityId });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -685,10 +612,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
       sortBy: "created",
       sortOrder: "asc",
     });
-
-  const tagsResult = sdk.entityTagAssignments.listByEntity(entityId);
-  const assignMutation = sdk.entityTagAssignments.assign(entityId);
-  const unassignMutation = sdk.entityTagAssignments.unassign(entityId);
 
   // Subscribe to each running job's SSE stream; on the terminal event,
   // refresh the lock state + data and toast the clear's outcome (#453).
@@ -796,30 +719,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     });
   }, [clearRecordsMutation, queryClient, entityId, toast, connectSseForLock]);
 
-  const handleAssignTag = useCallback(
-    (entityTagId: string) => {
-      assignMutation.mutate(
-        { entityTagId },
-        {
-          invalidate: [queryKeys.entityTagAssignments.listByEntity(entityId)],
-        }
-      );
-    },
-    [assignMutation, entityId]
-  );
-
-  const handleUnassignTag = useCallback(
-    (assignmentId: string) => {
-      unassignMutation.mutate(
-        { assignmentId },
-        {
-          invalidate: [queryKeys.entityTagAssignments.listByEntity(entityId)],
-        }
-      );
-    },
-    [unassignMutation, entityId]
-  );
-
   const handleUpdate = useCallback(
     (body: ConnectorEntityPatchRequestBody) => {
       updateMutation.mutate(body, {
@@ -896,11 +795,11 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
                 ? bidirectionalFieldMappings
                 : undefined
             }
-            tags={tagsResult.data?.tags}
-            onAssignTag={handleAssignTag}
-            onUnassignTag={handleUnassignTag}
-            onSearchTags={handleSearchTags}
-            canReadTags={canReadTags}
+            tags={tagHandle.tags}
+            onAssignTag={tagHandle.onAssign}
+            onUnassignTag={tagHandle.onUnassign}
+            onSearchTags={tagHandle.onSearch}
+            canReadTags={tagHandle.canReadTags}
             isWriteEnabled={isWriteEnabled}
             onDelete={handleDelete}
             isDeleting={deleteMutation.isPending}

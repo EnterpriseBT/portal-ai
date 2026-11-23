@@ -19,7 +19,6 @@ import {
   Stack,
 } from "@portalai/core/ui";
 import type { ActionGate, ActionSuiteItem } from "@portalai/core/ui";
-import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useNavigate } from "@tanstack/react-router";
@@ -40,6 +39,8 @@ import { sdk, queryKeys } from "../api/sdk";
 import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
+import { TagChipListUI } from "../components/TagChipList.component";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
@@ -82,30 +83,7 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onDelete }) => {
           { label: "Key", value: entity.key, variant: "mono" },
           {
             label: "Tags",
-            value: (
-              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-                {(entity.tags ?? []).map((tag) => (
-                  <Chip
-                    key={tag.id}
-                    label={tag.name}
-                    size="small"
-                    icon={
-                      tag.color ? (
-                        <Box
-                          sx={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: "50%",
-                            backgroundColor: tag.color,
-                            flexShrink: 0,
-                          }}
-                        />
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </Stack>
-            ),
+            value: <TagChipListUI tags={entity.tags} />,
             variant: "chip",
             hidden: !entity.tags || entity.tags.length === 0,
           },
@@ -135,8 +113,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
     onSearch: searchConnectorInstances,
     labelMap: connectorInstanceLabelMap,
   } = sdk.connectorInstances.search();
-  const { onSearch: searchTags, labelMap: tagLabelMap } =
-    sdk.entityTags.search();
+  const tagFilter = useTagFilter();
 
   const pagination = usePagination({
     sortFields: [
@@ -154,13 +131,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
         onSearch: searchConnectorInstances,
         labelMap: connectorInstanceLabelMap,
       },
-      {
-        type: "multi-select",
-        field: "tagIds",
-        label: "Tags",
-        onSearch: searchTags,
-        labelMap: tagLabelMap,
-      },
+      tagFilter,
     ],
   });
 

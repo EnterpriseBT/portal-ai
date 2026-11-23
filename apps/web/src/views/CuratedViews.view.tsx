@@ -30,13 +30,15 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
-import { queryKeys } from "../api/keys";
 import { decideActionGate } from "../utils/action-gate.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
 import { ShareDialog } from "../components/ShareDialog.component";
+import { TagChipListUI } from "../components/TagChipList.component";
+import { useTagFilter } from "../utils/use-tag-filter.util";
+import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 
 type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
 
@@ -153,6 +155,12 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
                     variant: "chip",
                     hidden: !isSessionGenerated(view),
                   },
+                  {
+                    label: "Tags",
+                    value: <TagChipListUI tags={view.tags} />,
+                    variant: "chip",
+                    hidden: !view.tags?.length,
+                  },
                 ]}
               />
             </DetailCard>
@@ -188,6 +196,7 @@ export const CuratedViews: React.FC = () => {
     "Ask for access to create views"
   );
 
+  const tagFilter = useTagFilter();
   const pagination = usePagination({
     sortFields: [
       { field: "label", label: "Label" },
@@ -196,11 +205,13 @@ export const CuratedViews: React.FC = () => {
     ],
     defaultSortBy: "created",
     defaultSortOrder: "asc",
+    filters: [tagFilter],
   });
 
-  const listResult = sdk.curatedViews.list(
-    pagination.queryParams as Parameters<typeof sdk.curatedViews.list>[0]
-  );
+  const listResult = sdk.curatedViews.list({
+    ...pagination.queryParams,
+    include: "tags",
+  } as Parameters<typeof sdk.curatedViews.list>[0]);
 
   React.useEffect(() => {
     if (listResult.data?.total !== undefined) {
@@ -224,7 +235,7 @@ export const CuratedViews: React.FC = () => {
     if (!deleteTarget) return;
     const label = deleteTarget.label;
     deleteView(undefined, {
-      invalidate: [queryKeys.curatedViews.root],
+      invalidate: curatedViewDeleteKeys(),
       toast: { success: `Deleted "${label}"` },
       onSuccess: () => setDeleteTarget(null),
     });

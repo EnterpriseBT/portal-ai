@@ -22,6 +22,16 @@ let renamePending = false;
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #1070: the page's Tags section and tag filter.
+    organizations: { current: () => ({ data: undefined }) },
+    entityTags: {
+      search: () => ({ onSearch: async () => [], labelMap: {} }),
+    },
+    tagAssignments: {
+      list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
+      assign: () => ({ mutate: () => undefined }),
+      unassign: () => ({ mutate: () => undefined }),
+    },
     portalResults: {
       get: () => currentGetQuery,
       rename: () =>
@@ -126,6 +136,17 @@ const defaultProps = {
 };
 
 describe("PinnedResultDetailUI", () => {
+  // #1070: the container fills the Tags slot; the UI places it.
+  it("renders the tags section it's given", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        tagsSection={<div data-testid="tags-section" />}
+      />
+    );
+    expect(screen.getByTestId("tags-section")).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });

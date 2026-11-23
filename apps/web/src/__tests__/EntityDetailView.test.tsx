@@ -95,13 +95,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
     },
   },
   queryKeys: {
-    entityTagAssignments: {
-      root: ["entityTagAssignments"],
-      listByEntity: (id: string) => [
-        "entityTagAssignments",
-        "listByEntity",
-        id,
-      ],
+    tagAssignments: {
+      root: ["tagAssignments"],
+      listByTarget: (type: string, id: string) => ["tagAssignments", type, id],
     },
   },
 }));

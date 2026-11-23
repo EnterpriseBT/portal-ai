@@ -23,11 +23,13 @@ import { DeleteStationDialog } from "../components/DeleteStationDialog.component
 import {
   usePagination,
   PaginationToolbar,
+  type FilterConfig,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -35,12 +37,15 @@ export interface StationsViewUIProps {
   onCreateStation: () => void;
   onSetDefault: (station: Station) => void;
   onDelete: (station: Station) => void;
+  /** #1070: the list's Tags filter, built by the container. */
+  tagFilter: FilterConfig;
 }
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
   onSetDefault,
   onDelete,
+  tagFilter,
 }) => {
   const navigate = useNavigate();
 
@@ -51,6 +56,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
     ],
     defaultSortBy: "name",
     defaultSortOrder: "asc",
+    filters: [tagFilter],
   });
 
   return (
@@ -81,7 +87,12 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 
         <Box>
           <StationListConnected
-            query={pagination.queryParams as StationListRequestQuery}
+            query={
+              {
+                ...pagination.queryParams,
+                include: "tags",
+              } as StationListRequestQuery
+            }
             setTotal={pagination.setTotal}
             onSetDefault={onSetDefault}
             onDelete={onDelete}
@@ -96,6 +107,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const StationsView: React.FC = () => {
+  const tagFilter = useTagFilter();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingStation, setDeletingStation] = useState<Station | null>(null);
@@ -168,6 +180,7 @@ export const StationsView: React.FC = () => {
         onCreateStation={handleOpenCreate}
         onSetDefault={handleSetDefault}
         onDelete={handleOpenDelete}
+        tagFilter={tagFilter}
       />
 
       <CreateStationDialog

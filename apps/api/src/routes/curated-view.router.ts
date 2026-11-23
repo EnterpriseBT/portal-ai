@@ -32,8 +32,15 @@ import { CuratedViewService } from "../services/curated-view.service.js";
 import { CuratedViewFilterSqlService } from "../services/curated-view-filter-sql.service.js";
 
 import type { Request } from "../types/request.js";
+import { createTagAssignmentRouter } from "./tag-assignment.router.js";
 
 export const curatedViewRouter = Router();
+
+// #1070: the object's tags (GET, POST, DELETE /:assignmentId).
+curatedViewRouter.use(
+  "/:curatedViewId/tags",
+  createTagAssignmentRouter("curated_view", "curatedViewId")
+);
 
 /**
  * @openapi
@@ -51,6 +58,8 @@ export const curatedViewRouter = Router();
  *       - { in: query, name: search, schema: { type: string } }
  *       - { in: query, name: connectorEntityId, schema: { type: string } }
  *       - { in: query, name: stationId, schema: { type: string } }
+ *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations; `tags` attaches each row's readable tags (#1070)." }
  *     responses:
  *       200:
  *         description: Paginated curated views

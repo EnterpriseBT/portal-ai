@@ -110,7 +110,11 @@ export class ConnectorEntitiesRepository extends Repository<
           ? this.findFieldMappingsByEntityIds(entityIds, client)
           : Promise.resolve(null),
         includes.has("tags")
-          ? entityTagAssignmentsRepo.findByConnectorEntityIds(entityIds, client)
+          ? entityTagAssignmentsRepo.findByTargetIds(
+              "entity",
+              entityIds,
+              client
+            )
           : Promise.resolve(null),
       ]);
 

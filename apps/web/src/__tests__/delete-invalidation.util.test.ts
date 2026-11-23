@@ -17,6 +17,8 @@ import {
   connectorInstanceDeleteKeys,
   connectorEntityDeleteKeys,
   stationDeleteKeys,
+  pinDeleteKeys,
+  curatedViewDeleteKeys,
 } from "../utils/delete-invalidation.util";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -71,6 +73,24 @@ describe("stationDeleteKeys", () => {
   it("refreshes connector instances, whose station counts change", () => {
     expect(stationDeleteKeys()).toContainEqual(
       queryKeys.connectorInstances.root
+    );
+  });
+});
+
+// #1070: a deleted object's tags go with it, and the Tags page counts it.
+describe.each([
+  ["connectorInstanceDeleteKeys", connectorInstanceDeleteKeys],
+  ["connectorEntityDeleteKeys", connectorEntityDeleteKeys],
+  ["stationDeleteKeys", stationDeleteKeys],
+  ["pinDeleteKeys", pinDeleteKeys],
+  ["curatedViewDeleteKeys", curatedViewDeleteKeys],
+])("%s (#1070)", (_name, keys) => {
+  it("refreshes tag assignments and tag usage", () => {
+    expect(keys()).toEqual(
+      expect.arrayContaining([
+        queryKeys.tagAssignments.root,
+        queryKeys.entityTags.root,
+      ])
     );
   });
 });

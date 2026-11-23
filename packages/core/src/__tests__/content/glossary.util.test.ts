@@ -75,7 +75,7 @@ describe("GLOSSARY_ENTRIES", () => {
     "Entity Group",
     "Entity Group Member",
     "Link Field",
-    "Entity Tag",
+    "Tag",
     "Overlap Preview",
     // Analytics
     "Station",

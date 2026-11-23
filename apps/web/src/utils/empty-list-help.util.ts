@@ -63,7 +63,7 @@ export const EMPTY_LIST_HELP: Record<EmptyList, EmptyListCopy> = {
   },
   tags: {
     description:
-      "Tags are color-coded labels you attach to entities to group and filter them.",
+      "Tags are color-coded labels that group and filter entities, stations, pins, connectors and views.",
     faq: "How do tags work?",
   },
   columnDefinitions: {

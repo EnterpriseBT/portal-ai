@@ -67,6 +67,16 @@ jest.unstable_mockModule("@tanstack/react-router", () => ({
 }));
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #1070: the page's Tags section and tag filter.
+    organizations: { current: () => ({ data: undefined }) },
+    entityTags: {
+      search: () => ({ onSearch: async () => [], labelMap: {} }),
+    },
+    tagAssignments: {
+      list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
+      assign: () => ({ mutate: () => undefined }),
+      unassign: () => ({ mutate: () => undefined }),
+    },
     curatedViews: {
       get: useViewQuery,
       records: useRecordsQuery,

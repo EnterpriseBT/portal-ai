@@ -74,6 +74,40 @@ function baseProps(createGate: ActionGate = HIDE) {
 }
 
 describe("CuratedViewsUI", () => {
+  // #1070: a view's tags, from the list's include=tags.
+  it("shows a view's tags", () => {
+    const [first, second] = views;
+    render(
+      <CuratedViewsUI
+        {...baseProps()}
+        views={
+          [
+            {
+              ...first,
+              tags: [
+                {
+                  id: "tag-1",
+                  organizationId: "org-1",
+                  name: "Finance",
+                  color: "#2563EB",
+                  description: null,
+                  created: 1,
+                  createdBy: "user-1",
+                  updated: null,
+                  updatedBy: null,
+                  deleted: null,
+                  deletedBy: null,
+                },
+              ],
+            },
+            second,
+          ] as typeof views
+        }
+      />
+    );
+    expect(screen.getByText("Finance")).toBeInTheDocument();
+  });
+
   it("#645: marks a view created in a portal session", () => {
     const [first, second] = views;
     render(

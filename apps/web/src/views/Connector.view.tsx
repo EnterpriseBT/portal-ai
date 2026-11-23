@@ -48,6 +48,7 @@ import { GoogleSheetsConnectorWorkflow } from "../workflows/GoogleSheetsConnecto
 import { MicrosoftExcelConnectorWorkflow } from "../workflows/MicrosoftExcelConnector";
 import { RestApiConnectorWorkflow } from "../workflows/RestApiConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
+import { useTagFilter } from "../utils/use-tag-filter.util";
 
 export interface ConnectorWorkflowProps {
   open: boolean;
@@ -131,6 +132,7 @@ export const ConnectorView = () => {
   }, []);
 
   // --- Instance pagination (Tab 0) ---
+  const tagFilter = useTagFilter();
   const instancePagination = usePagination({
     defaultSortBy: "created",
     defaultSortOrder: "desc",
@@ -152,6 +154,7 @@ export const ConnectorView = () => {
           { label: "Pending", value: "pending" },
         ],
       },
+      tagFilter,
     ],
   });
 
@@ -199,7 +202,10 @@ export const ConnectorView = () => {
             <PaginationToolbar {...instancePagination.toolbarProps} />
             <ConnectorInstanceWithDefinitionDataList
               query={
-                instancePagination.queryParams as ConnectorInstanceListRequestQuery
+                {
+                  ...instancePagination.queryParams,
+                  include: "tags",
+                } as ConnectorInstanceListRequestQuery
               }
             >
               {(response) => (

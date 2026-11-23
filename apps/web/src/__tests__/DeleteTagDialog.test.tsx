@@ -64,10 +64,13 @@ describe("DeleteTagDialog", () => {
     expect(screen.getByText("Production")).toBeInTheDocument();
   });
 
+  // #1070: a tag comes off every kind of object it's on.
   it("should display the cascade warning message", () => {
     render(<DeleteTagDialog {...defaultProps} />);
     expect(
-      screen.getByText(/All entity tag assignments that reference this tag/)
+      screen.getByText(
+        /will be removed from every entity, station, pinned result, connector and view/
+      )
     ).toBeInTheDocument();
   });
 

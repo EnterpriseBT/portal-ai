@@ -7,6 +7,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { and, eq } from "drizzle-orm";
+
+import type { TagTarget } from "@portalai/core/models";
 
 import { EntityTagsRepository } from "../../../../db/repositories/entity-tags.repository.js";
 import { EntityTagAssignmentsRepository } from "../../../../db/repositories/entity-tag-assignments.repository.js";
@@ -23,6 +26,11 @@ import {
   createUser,
   createOrganization,
 } from "../../utils/application.util.js";
+import {
+  seedPopulatedOrg,
+  type PopulatedOrg,
+} from "../../utils/seed-populated-org.util.js";
+import { wideTableReconcilerService } from "../../../../services/wide-table-reconciler.service.js";
 
 describe("EntityTagAssignmentsRepository Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -177,52 +185,46 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
     return tag.id;
   }
 
-  // ── findByConnectorEntityId ──────────────────────────────────────
+  const entityTarget = (id: string) => ({ type: "entity" as const, id });
+  const row = () => ({
+    id: generateId(),
+    organizationId: orgId,
+    created: Date.now(),
+    createdBy: "test-system",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  });
 
-  describe("findByConnectorEntityId", () => {
-    it("should return enriched assignments with tag details when include is passed", async () => {
+  // ── findByTarget ─────────────────────────────────────────────────
+
+  describe("findByTarget", () => {
+    it("returns the object's tags with their assignment ids", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
-      await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
+      const assignment = await assignmentsRepo.create(
+        makeAssignment(entityId, tagId),
+        db
+      );
 
-      const results = await assignmentsRepo.findByConnectorEntityId(
-        entityId,
-        { include: ["entityTag"] },
+      const results = await assignmentsRepo.findByTarget(
+        entityTarget(entityId),
         db
       );
       expect(results).toHaveLength(1);
-      expect(results[0].connectorEntityId).toBe(entityId);
-      expect(results[0].entityTagId).toBe(tagId);
-      expect(results[0].tag).toBeDefined();
-      expect(results[0].tag!.id).toBe(tagId);
+      expect(results[0].id).toBe(tagId);
+      expect(results[0].assignmentId).toBe(assignment.id);
     });
 
-    it("should return plain assignments when no include is passed", async () => {
+    it("returns an empty array when the object has no tags", async () => {
       const entityId = await seedEntity();
-      const tagId = await seedTag();
-      await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
-
-      const results = await assignmentsRepo.findByConnectorEntityId(
-        entityId,
-        {},
-        db
-      );
-      expect(results).toHaveLength(1);
-      expect(results[0].connectorEntityId).toBe(entityId);
-      expect(results[0].tag).toBeUndefined();
+      expect(
+        await assignmentsRepo.findByTarget(entityTarget(entityId), db)
+      ).toHaveLength(0);
     });
 
-    it("should return empty array when entity has no assignments", async () => {
-      const entityId = await seedEntity();
-      const results = await assignmentsRepo.findByConnectorEntityId(
-        entityId,
-        {},
-        db
-      );
-      expect(results).toHaveLength(0);
-    });
-
-    it("should exclude soft-deleted assignments", async () => {
+    it("excludes soft-deleted assignments", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
       const assignment = await assignmentsRepo.create(
@@ -231,19 +233,27 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       );
       await assignmentsRepo.softDelete(assignment.id, "test-system", db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(
-        entityId,
-        { include: ["entityTag"] },
-        db
-      );
-      expect(results).toHaveLength(0);
+      expect(
+        await assignmentsRepo.findByTarget(entityTarget(entityId), db)
+      ).toHaveLength(0);
+    });
+
+    it("excludes a deleted tag", async () => {
+      const entityId = await seedEntity();
+      const tagId = await seedTag();
+      await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
+      await tagsRepo.softDelete(tagId, "test-system", db);
+
+      expect(
+        await assignmentsRepo.findByTarget(entityTarget(entityId), db)
+      ).toHaveLength(0);
     });
   });
 
-  // ── findByConnectorEntityIds ─────────────────────────────────────
+  // ── findByTargetIds ──────────────────────────────────────────────
 
-  describe("findByConnectorEntityIds", () => {
-    it("should batch-load tags for multiple entity IDs", async () => {
+  describe("findByTargetIds", () => {
+    it("batch-loads tags for multiple objects", async () => {
       const entityId1 = await seedEntity();
       const entityId2 = await seedEntity();
       const tagId1 = await seedTag();
@@ -252,7 +262,8 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       await assignmentsRepo.create(makeAssignment(entityId1, tagId1), db);
       await assignmentsRepo.create(makeAssignment(entityId2, tagId2), db);
 
-      const map = await assignmentsRepo.findByConnectorEntityIds(
+      const map = await assignmentsRepo.findByTargetIds(
+        "entity",
         [entityId1, entityId2],
         db
       );
@@ -263,19 +274,20 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       expect(map.get(entityId2)![0].id).toBe(tagId2);
     });
 
-    it("should return empty map for empty input", async () => {
-      const map = await assignmentsRepo.findByConnectorEntityIds([], db);
+    it("returns an empty map for empty input", async () => {
+      const map = await assignmentsRepo.findByTargetIds("entity", [], db);
       expect(map.size).toBe(0);
     });
 
-    it("should omit entities with no assignments from the map", async () => {
+    it("omits objects with no tags from the map", async () => {
       const entityWithTag = await seedEntity();
       const entityWithoutTag = await seedEntity();
       const tagId = await seedTag();
 
       await assignmentsRepo.create(makeAssignment(entityWithTag, tagId), db);
 
-      const map = await assignmentsRepo.findByConnectorEntityIds(
+      const map = await assignmentsRepo.findByTargetIds(
+        "entity",
         [entityWithTag, entityWithoutTag],
         db
       );
@@ -285,29 +297,114 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
     });
   });
 
-  // ── findExisting ─────────────────────────────────────────────────
+  // ── insertIfAbsent ───────────────────────────────────────────────
 
-  describe("findExisting", () => {
-    it("should detect an existing assignment", async () => {
-      const entityId = await seedEntity();
-      const tagId = await seedTag();
-      await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
-
-      const found = await assignmentsRepo.findExisting(entityId, tagId, db);
-      expect(found).toBeDefined();
-      expect(found!.connectorEntityId).toBe(entityId);
-      expect(found!.entityTagId).toBe(tagId);
-    });
-
-    it("should return undefined for non-existent pair", async () => {
+  describe("insertIfAbsent", () => {
+    it("creates an assignment, then reports the existing one", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
 
-      const found = await assignmentsRepo.findExisting(entityId, tagId, db);
-      expect(found).toBeUndefined();
+      const first = await assignmentsRepo.insertIfAbsent(
+        entityTarget(entityId),
+        tagId,
+        row(),
+        db
+      );
+      expect(first.created).toBe(true);
+      expect(first.row.connectorEntityId).toBe(entityId);
+      expect(first.row.stationId).toBeNull();
+
+      const second = await assignmentsRepo.insertIfAbsent(
+        entityTarget(entityId),
+        tagId,
+        row(),
+        db
+      );
+      expect(second.created).toBe(false);
+      expect(second.row.id).toBe(first.row.id);
     });
 
-    it("should return undefined for a soft-deleted assignment", async () => {
+    it("makes one row from two concurrent calls", async () => {
+      const entityId = await seedEntity();
+      const tagId = await seedTag();
+      // Two connections, so the inserts really race.
+      const other = postgres(process.env.DATABASE_URL!, { max: 1 });
+      try {
+        const db2 = drizzle(other, { schema });
+        const results = await Promise.all([
+          assignmentsRepo.insertIfAbsent(
+            entityTarget(entityId),
+            tagId,
+            row(),
+            db
+          ),
+          assignmentsRepo.insertIfAbsent(
+            entityTarget(entityId),
+            tagId,
+            row(),
+            db2
+          ),
+        ]);
+        expect(results.filter((r) => r.created)).toHaveLength(1);
+        expect(
+          await assignmentsRepo.findByTarget(entityTarget(entityId), db)
+        ).toHaveLength(1);
+      } finally {
+        await other.end();
+      }
+    });
+
+    it("assigns again after the previous assignment was removed", async () => {
+      const entityId = await seedEntity();
+      const tagId = await seedTag();
+      const first = await assignmentsRepo.insertIfAbsent(
+        entityTarget(entityId),
+        tagId,
+        row(),
+        db
+      );
+      await assignmentsRepo.softDelete(first.row.id, "test-system", db);
+
+      const again = await assignmentsRepo.insertIfAbsent(
+        entityTarget(entityId),
+        tagId,
+        row(),
+        db
+      );
+      expect(again.created).toBe(true);
+      expect(again.row.id).not.toBe(first.row.id);
+    });
+  });
+
+  // ── findAssignment ───────────────────────────────────────────────
+
+  describe("findAssignment", () => {
+    it("finds an assignment only on its own object", async () => {
+      const entityId = await seedEntity();
+      const otherEntityId = await seedEntity();
+      const tagId = await seedTag();
+      const assignment = await assignmentsRepo.create(
+        makeAssignment(entityId, tagId),
+        db
+      );
+
+      expect(
+        await assignmentsRepo.findAssignment(
+          entityTarget(entityId),
+          assignment.id,
+          db
+        )
+      ).toMatchObject({ id: assignment.id });
+      expect(
+        await assignmentsRepo.findAssignment(
+          entityTarget(otherEntityId),
+          assignment.id,
+          db
+        )
+      ).toBeUndefined();
+    });
+
+    it("misses a soft-deleted assignment", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
       const assignment = await assignmentsRepo.create(
@@ -316,8 +413,13 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       );
       await assignmentsRepo.softDelete(assignment.id, "test-system", db);
 
-      const found = await assignmentsRepo.findExisting(entityId, tagId, db);
-      expect(found).toBeUndefined();
+      expect(
+        await assignmentsRepo.findAssignment(
+          entityTarget(entityId),
+          assignment.id,
+          db
+        )
+      ).toBeUndefined();
     });
   });
 
@@ -334,5 +436,141 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
         assignmentsRepo.create(makeAssignment(entityId, tagId), db)
       ).rejects.toThrow();
     });
+  });
+});
+
+/**
+ * #1070: the same methods across every target type, on one org holding an
+ * entity, station, pin, connector instance and curated view.
+ */
+describe("EntityTagAssignmentsRepository across target types (#1070)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+  let org!: PopulatedOrg;
+  let tagId!: string;
+  const repo = new EntityTagAssignmentsRepository();
+  const client = () => db as DbClient;
+
+  const row = () => ({
+    id: generateId(),
+    organizationId: org.orgId,
+    created: Date.now(),
+    createdBy: "test-system",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  });
+
+  const targets = (): TagTarget[] => [
+    { type: "entity", id: org.connectorEntityId },
+    { type: "station", id: org.stationId },
+    { type: "pin", id: org.portalResultId },
+    { type: "connector_instance", id: org.connectorInstanceId },
+    { type: "curated_view", id: org.curatedViewId },
+  ];
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+    org = await seedPopulatedOrg(db, "tag-repo-targets");
+    // The populated org already tags its entity; start every target clean.
+    await db
+      .delete(schema.entityTagAssignments)
+      .where(eq(schema.entityTagAssignments.organizationId, org.orgId));
+    const tag = await new EntityTagsRepository().create(
+      {
+        ...row(),
+        name: `tag-${generateId().slice(0, 8)}`,
+        color: null,
+        description: null,
+      } as EntityTagInsert,
+      db as DbClient
+    );
+    tagId = tag.id;
+  });
+
+  afterEach(async () => {
+    await wideTableReconcilerService.dropTable(
+      org.connectorEntityId,
+      db as DbClient
+    );
+    await teardownOrg(db);
+    await connection.end();
+  });
+
+  it("assigns, reads back and reports duplicates on every type", async () => {
+    for (const target of targets()) {
+      const first = await repo.insertIfAbsent(target, tagId, row(), client());
+      expect(first.created).toBe(true);
+      const second = await repo.insertIfAbsent(target, tagId, row(), client());
+      expect(second.created).toBe(false);
+
+      const tags = await repo.findByTarget(target, client());
+      expect(tags.map((t) => t.id)).toEqual([tagId]);
+      const map = await repo.findByTargetIds(
+        target.type,
+        [target.id],
+        client()
+      );
+      expect(map.get(target.id)?.map((t) => t.id)).toEqual([tagId]);
+    }
+  });
+
+  it("soft-deletes only the named type's assignments", async () => {
+    for (const target of targets()) {
+      await repo.insertIfAbsent(target, tagId, row(), client());
+    }
+    const swept = await repo.softDeleteByTargets(
+      "station",
+      [org.stationId],
+      "test-system",
+      client()
+    );
+    expect(swept).toBe(1);
+    for (const target of targets()) {
+      const tags = await repo.findByTarget(target, client());
+      expect(tags).toHaveLength(target.type === "station" ? 0 : 1);
+    }
+  });
+
+  it("counts assignments per type", async () => {
+    for (const target of targets()) {
+      await repo.insertIfAbsent(target, tagId, row(), client());
+    }
+    expect(
+      await repo.countByTargetIds("pin", [org.portalResultId], client())
+    ).toBe(1);
+    expect(await repo.countByTargetIds("pin", [], client())).toBe(0);
+  });
+
+  it("filters a list to objects carrying any of the tags", async () => {
+    await repo.insertIfAbsent(
+      { type: "station", id: org.stationId },
+      tagId,
+      row(),
+      client()
+    );
+    const tagged = await db
+      .select({ id: schema.stations.id })
+      .from(schema.stations)
+      .where(
+        and(
+          eq(schema.stations.organizationId, org.orgId),
+          repo.taggedWithAny("station", schema.stations.id, [
+            tagId,
+            "no-such-tag",
+          ])
+        )
+      );
+    expect(tagged.map((s) => s.id)).toEqual([org.stationId]);
+
+    const none = await db
+      .select({ id: schema.stations.id })
+      .from(schema.stations)
+      .where(repo.taggedWithAny("station", schema.stations.id, []));
+    expect(none).toHaveLength(0);
   });
 });

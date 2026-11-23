@@ -90,7 +90,14 @@ export const connectorInstances = {
       queryKeys.connectorInstances.list(params),
       buildUrl(CONNECTOR_INSTANCES_URL, {
         ...params,
-        include: "connectorDefinition",
+        // The definition always; any other include the caller asked for
+        // (#1070: `tags`) rides along.
+        include: [
+          "connectorDefinition",
+          ...(params?.include?.split(",") ?? []).filter(
+            (rel) => rel && rel !== "connectorDefinition"
+          ),
+        ].join(","),
       }),
       undefined,
       options

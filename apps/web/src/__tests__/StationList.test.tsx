@@ -43,6 +43,36 @@ const defaultCardProps = {
 };
 
 describe("StationCardUI", () => {
+  // #1070: a station's tags, from the list's include=tags.
+  it("shows the station's tags, and no tag row without any", () => {
+    const { rerender } = render(
+      <StationCardUI
+        {...defaultCardProps}
+        station={{
+          ...defaultCardProps.station,
+          tags: [
+            {
+              id: "tag-1",
+              organizationId: "org-1",
+              name: "Finance",
+              color: "#2563EB",
+              description: null,
+              created: 1,
+              createdBy: "user-1",
+              updated: null,
+              updatedBy: null,
+              deleted: null,
+              deletedBy: null,
+            },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByText("Finance")).toBeInTheDocument();
+    rerender(<StationCardUI {...defaultCardProps} />);
+    expect(screen.queryByText("Tags")).toBeNull();
+  });
+
   it("should render station name and description", () => {
     render(<StationCardUI {...defaultCardProps} />);
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();

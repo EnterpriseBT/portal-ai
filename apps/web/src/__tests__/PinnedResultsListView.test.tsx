@@ -12,6 +12,15 @@ const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #1070: the page's Tags section and tag filter.
+    entityTags: {
+      search: () => ({ onSearch: async () => [], labelMap: {} }),
+    },
+    tagAssignments: {
+      list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
+      assign: () => ({ mutate: () => undefined }),
+      unassign: () => ({ mutate: () => undefined }),
+    },
     portalResults: {
       list: () => currentListQuery,
       // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through
