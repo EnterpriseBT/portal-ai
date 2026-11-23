@@ -182,7 +182,7 @@ Tag delete (`entity-tag.router.ts:656-700`) is unchanged: it already soft-delete
   - Their cards (`StationList`, `PinnedResultsList`, `ConnectorInstance`, `CuratedViews`) add a "Tags" `MetadataList` chip row via `TagChipListUI`, omitted when empty.
   - `Entities` switches to `TagChipListUI`.
 - **Tags page:** `Tags.view.tsx` passes `include: "usage"`. `TagCardUI` gains `usage?: Record<TagTargetType, number>` and renders the non-zero counts ("4 entities · 2 views"), or "Not used" when all are zero. `DeleteTagDialog` copy says it's removed "from every object it's on".
-- **`utils/glossary-routes.util.ts:38`:** the key "Entity Tag" becomes "Tag". `empty-list-help.util.ts` gains tag mentions for stations, connectors, views and pinnedResults, and its tags entry now says "attach to entities, stations, connectors, views and pinned results".
+- **`utils/glossary-routes.util.ts:38`:** the key "Entity Tag" becomes "Tag". `empty-list-help.util.ts`'s tags entry names all five types. The other four lists' entries are left alone: each one-sentence explainer (≤110 characters by test) says what its list holds, and the Tags filter is self-explanatory.
 
 ## Migration
 

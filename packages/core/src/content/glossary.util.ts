@@ -221,13 +221,19 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     relatedTerms: ["Entity Group", "Entity Group Member", "Overlap Preview"],
   },
   {
-    term: "Entity Tag",
+    term: "Tag",
     category: GlossaryCategory.Organization,
     definition:
-      "A color-coded label you attach to entities to categorize and filter them.",
+      "A color-coded label you attach to entities, stations, pinned results, connectors and views to group them and filter their lists.",
     example:
-      'Tag all your customer-data entities with a green "Customers" tag for quick filtering on the entities page.',
-    relatedTerms: ["Connector Entity"],
+      'Tag the stations, views and connectors your finance team uses with a green "Finance" tag, then filter each list to it in one click.',
+    relatedTerms: [
+      "Connector Entity",
+      "Station",
+      "Pinned Result",
+      "Connector Instance",
+      "Curated View",
+    ],
   },
   {
     term: "Overlap Preview",

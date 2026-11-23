@@ -220,9 +220,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do tags work?",
     answer:
-      "Entity tags are color-coded labels you attach to your entities to group and filter them. Tags appear as colored badges throughout the app and let you narrow long lists down to the subset you care about — for example, tagging all customer-data entities so you can filter to them in one click.",
+      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page, then add or remove a tag from an object's page, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on.",
     category: FAQCategory.Organization,
-    relatedGlossaryTerms: ["Entity Tag", "Connector Entity"],
+    relatedGlossaryTerms: [
+      "Tag",
+      "Connector Entity",
+      "Station",
+      "Curated View",
+    ],
   },
   {
     question: "How do I rename my organization?",

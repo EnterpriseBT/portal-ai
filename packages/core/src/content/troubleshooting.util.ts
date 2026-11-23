@@ -28,6 +28,23 @@ export interface TroubleshootingEntry {
 
 export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
   {
+    symptom: "I can't add or remove a tag",
+    cause:
+      "Changing an object's tags is a change to that object, so it needs permission to edit the object. Picking a tag also needs permission to view tags.",
+    fix: "Ask for edit access to the entity, station, pinned result, connector or view, and for view access to tags. Anyone who can view the object still sees its tags.",
+    related: [
+      { surface: "faq", title: "How do tags work?" },
+      { surface: "glossary", title: "Tag" },
+    ],
+    aliases: [
+      "can't tag",
+      "tag picker missing",
+      "no add tag",
+      "remove tag",
+      "tagging not allowed",
+    ],
+  },
+  {
     symptom: "A sync or import job failed",
     cause:
       "The job couldn't finish reading from the source: the source was unreachable, its sign-in expired, or its columns changed since the connector was set up.",

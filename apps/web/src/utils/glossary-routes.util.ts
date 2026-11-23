@@ -35,7 +35,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Entity Group": ApplicationRoute.EntityGroups,
   "Entity Group Member": ApplicationRoute.EntityGroups,
   "Link Field": ApplicationRoute.EntityGroups,
-  "Entity Tag": ApplicationRoute.Tags,
+  Tag: ApplicationRoute.Tags,
   "Overlap Preview": ApplicationRoute.EntityGroups,
   // Analytics
   Station: ApplicationRoute.Stations,
