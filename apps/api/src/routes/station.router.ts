@@ -1232,6 +1232,13 @@ stationRouter.delete(
           tx,
           deletedAt
         );
+        // #1070: its tags go with it.
+        await DbService.repository.entityTagAssignments.softDeleteByTargets(
+          "station",
+          [id],
+          userId,
+          tx
+        );
 
         await DbService.repository.stations.softDelete(
           id,

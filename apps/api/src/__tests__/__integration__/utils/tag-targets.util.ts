@@ -48,6 +48,8 @@ export async function seedTagTargets(
     status: "active",
     config: {},
     credentials: null,
+    // Entity deletes need the connector's write capability on.
+    enabledCapabilityFlags: { read: true, write: true },
   };
   await db.insert(schema.connectorInstances).values(instance as never);
   const entity = {

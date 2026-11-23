@@ -1520,6 +1520,15 @@ connectorInstanceRouter.delete(
             tx
           );
 
+          // #1070: the instance's own tags go with it (its entities' and
+          // views' tags go with them below).
+          await DbService.repository.entityTagAssignments.softDeleteByTargets(
+            "connector_instance",
+            [id],
+            userId,
+            tx
+          );
+
           // Find all connector entities for this instance
           const entities =
             await DbService.repository.connectorEntities.findByConnectorInstanceId(

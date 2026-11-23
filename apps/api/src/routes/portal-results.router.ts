@@ -868,7 +868,16 @@ portalResultsRouter.delete(
           )
       );
 
-      await DbService.repository.portalResults.softDelete(id, userId);
+      // #1070: the pin's tags go with it, in one transaction.
+      await DbService.transaction(async (tx) => {
+        await DbService.repository.entityTagAssignments.softDeleteByTargets(
+          "pin",
+          [id],
+          userId,
+          tx
+        );
+        await DbService.repository.portalResults.softDelete(id, userId, tx);
+      });
       logger.info({ id }, "Portal result soft-deleted");
 
       return HttpService.success(res, { id });
