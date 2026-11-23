@@ -974,6 +974,13 @@
       "when": 1795452039866,
       "tag": "0138_tag-assignment-targets",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1795464326184,
+      "tag": "0139_add-entity-tag-source-portal-id",
+      "breakpoints": true
     }
   ]
 }

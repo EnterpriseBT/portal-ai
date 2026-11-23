@@ -146,7 +146,8 @@ export class EntityTagService {
 
   static async create(
     ctx: PermissionContext,
-    body: EntityTagCreateRequestBody
+    body: EntityTagCreateRequestBody,
+    opts: { sourcePortalId?: string | null } = {}
   ): Promise<EntityTag> {
     const { organizationId, userId } = ctx;
 
@@ -167,6 +168,8 @@ export class EntityTagService {
       name: body.name,
       color: body.color ?? null,
       description: body.description ?? null,
+      // #641: an agent session's tag records the session; provenance only.
+      sourcePortalId: opts.sourcePortalId ?? null,
     });
 
     const entityTag = await DbService.repository.entityTags

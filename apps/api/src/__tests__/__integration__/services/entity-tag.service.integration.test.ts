@@ -174,6 +174,27 @@ describe("EntityTagService (#1071)", () => {
       });
     });
 
+    it("records no session for a tag created outside one", async () => {
+      const tag = await EntityTagService.create(owner, { name: "Finance" });
+      expect(tag.sourcePortalId).toBeNull();
+    });
+
+    it("records the portal session that created a tag (#641)", async () => {
+      const tag = await EntityTagService.create(
+        owner,
+        { name: "Finance" },
+        { sourcePortalId: "portal-1" }
+      );
+      expect(tag.sourcePortalId).toBe("portal-1");
+      const [row] = await db
+        .select()
+        .from(schema.entityTags)
+        .where(eq(schema.entityTags.id, tag.id));
+      expect(row.sourcePortalId).toBe("portal-1");
+      // Provenance only: the prompting user still owns it.
+      expect(row.createdBy).toBe(fx.ownerId);
+    });
+
     it("refuses a member without class write (403)", async () => {
       const err = await apiError(() =>
         EntityTagService.create(member, { name: "Finance" })

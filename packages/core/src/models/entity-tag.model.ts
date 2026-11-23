@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
+import { SourcePortalIdSchema } from "./provenance.model.js";
 
 export const EntityTagSchema = CoreSchema.extend({
   organizationId: z.string(),
   name: z.string().min(1),
   color: z.string().nullable(),
   description: z.string().nullable(),
+  /** #1071: the portal session that created the tag, if any (#641). */
+  sourcePortalId: SourcePortalIdSchema,
 });
 
 export type EntityTag = z.infer<typeof EntityTagSchema>;

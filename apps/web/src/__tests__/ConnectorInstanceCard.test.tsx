@@ -46,6 +46,7 @@ describe("ConnectorInstanceCardUI", () => {
               name: "Finance",
               color: "#2563EB",
               description: null,
+              sourcePortalId: null,
               created: 1,
               createdBy: "user-1",
               updated: null,
