@@ -363,6 +363,23 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     expect(prompt).toMatch(/If no tool fits, say so/i);
   });
 
+  // #1071 (adversarial walk): history marks earlier turns' results, and the
+  // prompt says what the mark means, whatever packs the station carries.
+  it.each([["tag_management"], ["data_query"], ["rbac_management"]])(
+    "treats an earlier turn's result as history when %s is enabled",
+    (pack) => {
+      const prompt = buildSystemPrompt(
+        makeContext({ effectiveToolPacks: [pack] })
+      );
+      expect(prompt).toMatch(/earlier turn's result is history/i);
+      expect(prompt).toContain("`fromEarlierTurn`");
+      expect(prompt).toContain("`[From an earlier turn]`");
+      expect(prompt).toMatch(/call the tool again in this turn/i);
+      expect(prompt).toMatch(/never say a call was already made this turn/i);
+      expect(prompt).toMatch(/its pack isn't on this station/i);
+    }
+  );
+
   // #1038: a result's rows aren't kept after its turn, so a follow-up about
   // an earlier answer's values has to re-run the query.
   it("says earlier results' rows aren't kept, so re-run to use their values", () => {

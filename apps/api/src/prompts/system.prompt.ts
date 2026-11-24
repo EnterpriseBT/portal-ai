@@ -1123,6 +1123,20 @@ export function buildSystemPrompt(rawContext: StationContext): string {
       "earlier turn aren't kept (you see only its row count and columns), so " +
       "when a follow-up needs their values, pass its `queryHandle` if it " +
       "names one and it's still live, or re-run the query.",
+    // #1071 (adversarial walk): a replayed result was read as this turn's
+    // ("Already done this turn"), so a deleted station and a removed pack
+    // were reported from history. History marks those results; this says
+    // what the mark means.
+    "- **An earlier turn's result is history, not the current state.** A " +
+      "result marked `fromEarlierTurn`, `[From an earlier turn]` or " +
+      '"[Previous … result …]" was true when that turn ran; objects may ' +
+      "have been created, changed, deleted or unshared since, and a tool may " +
+      "no longer be in this session. When the user asks again to list, find, " +
+      "check or act on something, call the tool again in this turn. Never " +
+      "say a call was already made this turn unless you made it in this " +
+      "turn. When a tool you used earlier isn't among your tools now, say " +
+      "its pack isn't on this station instead of answering from the old " +
+      "result.",
     "- **Report sign and direction exactly as the tool returns them.** When a " +
       "result carries a direction — a slope, trend, change, correlation, " +
       "growth/decline, drawdown, or delta — read it straight off the tool's " +
