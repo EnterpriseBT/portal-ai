@@ -28,6 +28,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { entityTags } from "../db/schema/index.js";
 import { ilikeContains } from "../utils/filter-sql.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ObjectAccessService } from "./object-access.service.js";
@@ -67,11 +68,20 @@ const duplicateName = () =>
     "An entity tag with this name already exists in this organization"
   );
 
-/** Wrap a repository failure as `code`, passing an `ApiError` through. */
+/** Wrap a repository failure as `code`, passing an `ApiError` through. A
+ *  write that lost a race to the same name hits the unique index (#1071) and
+ *  answers the same 409 as the check before it. */
 const failedAs =
   (code: ApiCode, fallback: string) =>
   (error: unknown): never => {
     if (error instanceof ApiError) throw error;
+    const pg = unwrapPgError(error);
+    if (
+      pg.code === "23505" &&
+      pg.message?.includes("entity_tags_org_name_unique")
+    ) {
+      throw duplicateName();
+    }
     throw new ApiError(
       500,
       code,

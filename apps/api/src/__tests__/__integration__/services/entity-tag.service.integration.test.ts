@@ -6,14 +6,22 @@
  * `removedFrom` a delete reports.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { TAG_TARGET_TYPES, type TagTargetType } from "@portalai/core/models";
 
 import * as schema from "../../../db/schema/index.js";
+import { DbService } from "../../../services/db.service.js";
 import { EntityTagAssignmentsRepository } from "../../../db/repositories/entity-tag-assignments.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { EntityTagService } from "../../../services/entity-tag.service.js";
@@ -111,6 +119,7 @@ describe("EntityTagService (#1071)", () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await teardownOrg(db);
     await connection.end();
   });
@@ -210,6 +219,75 @@ describe("EntityTagService (#1071)", () => {
       expect(err.status).toBe(409);
       expect(err.code).toBe(ApiCode.ENTITY_TAG_DUPLICATE_NAME);
     });
+
+    it("creates one tag when parallel creates race on a name (adversarial walk)", async () => {
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () =>
+          EntityTagService.create(owner, { name: "Race" })
+        )
+      );
+
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      for (const r of results.filter((r) => r.status === "rejected")) {
+        expect((r as PromiseRejectedResult).reason).toMatchObject({
+          status: 409,
+          code: ApiCode.ENTITY_TAG_DUPLICATE_NAME,
+        });
+      }
+      const live = await db
+        .select()
+        .from(schema.entityTags)
+        .where(
+          and(
+            eq(schema.entityTags.name, "Race"),
+            isNull(schema.entityTags.deleted)
+          )
+        );
+      expect(live).toHaveLength(1);
+    });
+
+    it("answers 409 when the insert itself hits the unique index", async () => {
+      await seedTag(db, fx.orgId, fx.ownerId, "Finance");
+      // The pre-check misses, as it does for a create that raced past it.
+      jest
+        .spyOn(DbService.repository.entityTags, "findByName")
+        .mockResolvedValue(undefined);
+
+      const err = await apiError(() =>
+        EntityTagService.create(owner, { name: "Finance" })
+      );
+
+      expect(err.status).toBe(409);
+      expect(err.code).toBe(ApiCode.ENTITY_TAG_DUPLICATE_NAME);
+    });
+
+    it("answers 409 when a rename itself hits the unique index", async () => {
+      const id = await seedTag(db, fx.orgId, fx.ownerId, "Finance");
+      await seedTag(db, fx.orgId, fx.ownerId, "Sales");
+      jest
+        .spyOn(DbService.repository.entityTags, "findByName")
+        .mockResolvedValue(undefined);
+
+      const err = await apiError(() =>
+        EntityTagService.update(owner, id, { name: "Sales" })
+      );
+
+      expect(err.status).toBe(409);
+      expect(err.code).toBe(ApiCode.ENTITY_TAG_DUPLICATE_NAME);
+    });
+
+    it("reuses the name of a deleted tag", async () => {
+      const id = await seedTag(db, fx.orgId, fx.ownerId, "Finance");
+      await EntityTagService.delete(owner, id);
+      const tag = await EntityTagService.create(owner, { name: "Finance" });
+      expect(tag.id).not.toBe(id);
+    });
+
+    it("allows the same name in another org", async () => {
+      await seedTag(db, fx.otherOrgId, fx.otherOwnerId, "Finance");
+      const tag = await EntityTagService.create(owner, { name: "Finance" });
+      expect(tag.name).toBe("Finance");
+    });
   });
 
   describe("update", () => {
@@ -265,6 +343,21 @@ describe("EntityTagService (#1071)", () => {
       );
       expect(err.status).toBe(409);
       expect(err.code).toBe(ApiCode.ENTITY_TAG_DUPLICATE_NAME);
+    });
+
+    it("renames one tag when parallel renames race onto a name", async () => {
+      const a = await seedTag(db, fx.orgId, fx.ownerId, "A");
+      const b = await seedTag(db, fx.orgId, fx.ownerId, "B");
+
+      const results = await Promise.allSettled(
+        [a, b].map((id) => EntityTagService.update(owner, id, { name: "Same" }))
+      );
+
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(
+        (results.find((r) => r.status === "rejected") as PromiseRejectedResult)
+          .reason
+      ).toMatchObject({ status: 409, code: ApiCode.ENTITY_TAG_DUPLICATE_NAME });
     });
   });
 

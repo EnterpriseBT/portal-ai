@@ -988,6 +988,13 @@
       "when": 1795468881395,
       "tag": "0140_attach-tags-pack-to-administrate",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1795500436023,
+      "tag": "0141_unique-entity-tag-name",
+      "breakpoints": true
     }
   ]
 }
