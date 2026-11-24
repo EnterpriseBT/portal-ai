@@ -71,13 +71,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     answer:
       "A station is a workspace that bundles together the views, connector instances and tool packs you want to analyze together. You need at least one station before you can open a portal, because the portal uses the station's data and tools to answer your questions. Keep each station to one kind of work. A new organization starts with two: Administrate, for managing members, access and tags, and Playground, for building and querying data. Both start with the Help pack, so you can ask either how Portals works.",
     category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: [
-      "Station",
-      "Curated View",
-      "Tool Pack",
-      "Portal",
-      "Default Station",
-    ],
+    relatedGlossaryTerms: ["Station", "Curated View", "Tool Pack", "Portal"],
   },
   {
     question: "How do I start asking questions about my data?",

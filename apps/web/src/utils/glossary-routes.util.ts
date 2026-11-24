@@ -52,7 +52,6 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Job Status": ApplicationRoute.Jobs,
   "Data Lock": ApplicationRoute.Jobs,
   Organization: ApplicationRoute.Settings,
-  "Default Station": ApplicationRoute.Stations,
   "Subscription Plan": ApplicationRoute.Settings,
   "Billing Portal": ApplicationRoute.Settings,
   // Access (#615): roles, policies, groups, invitations and the audit log

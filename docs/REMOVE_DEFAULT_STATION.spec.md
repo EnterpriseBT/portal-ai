@@ -108,7 +108,7 @@ Remove `DERIVED_CAPABILITIES`, `DerivedCapability` and `isDerived`. The capabili
 - **`components/CreatePortalDialog.component.tsx`:**
   - `StationPicker` loses `defaultStationId`, and its selection is `selected` only;
   - the dialog loses `orgDefaultStationId`, the `OrgData` wrapper and the render-time `setTimeout`;
-  - it submits `stationId` only, with Create disabled until one is picked.
+  - it submits `stationId` only. Create with no pick shows "Station is required" on the field and submits nothing (the Form & Dialog Pattern's validate-on-submit).
 - **`api/stations.api.ts:54-62`:** remove `setDefault`.
 - **`utils/delete-invalidation.util.ts`:** `stationDeleteKeys()` drops `queryKeys.organizations.root`, and the comment drops the default bullet.
 - **`utils/glossary-routes.util.ts:55`:** remove the "Default Station" entry.
@@ -167,7 +167,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
 
 ### Web unit
 - **`StationList.test.tsx`:** no "Set as default" or "Default" chip; the star and Delete remain; axe passes. ≈ 3
-- **`CreatePortalDialog.test.tsx`:** the picker starts empty; Create is disabled until a pick; submit sends the picked `stationId`; axe passes. ≈ 4
+- **`CreatePortalDialog.test.tsx`:** the picker starts empty; Create with no pick shows "Station is required" and doesn't submit; submit sends the picked `stationId`; axe passes. ≈ 4
 - **`DashboardView.test.tsx`, `StationDetail.view.test.tsx`, `Stations` view tests:** no "Default Station" or "Organization Default" text. ≈ 3
 - **`api/stations.api.test.ts`:** no `setDefault`. **`delete-invalidation.util.test.ts`:** no `organizations.root`. ≈ 2
 - **`audit-summary.util.test.ts`, `AuditLogActivity.test.tsx`:** legacy entries still render (unchanged; must pass). ≈ 0 new
@@ -185,7 +185,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
 
 ## Acceptance criteria
 - [ ] No web surface offers, shows or names a default station: station cards, StationDetail, the Dashboard, the Stations header, the New Portal dialog and Help.
-- [ ] The New Portal dialog opens with no station selected, Create is disabled until one is picked, and the portal is created on the picked station.
+- [ ] The New Portal dialog opens with no station selected, Create can't submit until one is picked (it says "Station is required"), and the portal is created on the picked station.
 - [ ] `PATCH /api/organization/:id` with `defaultStationId` answers `400 ORGANIZATION_INVALID_PAYLOAD` naming it, and `GET /api/organization/current` carries no `defaultStationId` and no `station.default.set`.
 - [ ] A new org gets Administrate and Playground, and `portalai org create --json` returns `{ organizationId, stationId: <Administrate> }`.
 - [ ] Deleting any station works and writes no default-change audit entry.

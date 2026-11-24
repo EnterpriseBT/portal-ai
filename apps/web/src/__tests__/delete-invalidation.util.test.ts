@@ -57,14 +57,20 @@ describe("connectorEntityDeleteKeys", () => {
 // pointing at it, and the Stations page showed "Station not found" until a
 // reload.
 describe("stationDeleteKeys", () => {
-  it("refreshes the station, its portals and pins, and the organization", () => {
+  it("refreshes the station, its portals and pins", () => {
     expect(stationDeleteKeys()).toEqual(
       expect.arrayContaining([
         queryKeys.stations.root,
         queryKeys.portals.root,
         queryKeys.portalResults.root,
-        queryKeys.organizations.root,
       ])
+    );
+  });
+
+  // #1114: a station delete no longer touches the org (no default to clear).
+  it("leaves the organization alone", () => {
+    expect(stationDeleteKeys()).not.toContainEqual(
+      queryKeys.organizations.root
     );
   });
 

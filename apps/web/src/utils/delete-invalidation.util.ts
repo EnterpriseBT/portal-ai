@@ -49,10 +49,7 @@ export function connectorEntityDeleteKeys(): QueryKey[] {
  * - its portals, which are deleted with it;
  * - pinned results, which are kept but lose their link to those portals;
  * - connector instances, which the delete unlinks from the station (a
- *   connector's delete dialog counts the stations it would unlink);
- * - the organization, whose default station is cleared when it was this one.
- *   Without it the app keeps the old `defaultStationId` and asks for a
- *   station that is gone.
+ *   connector's delete dialog counts the stations it would unlink).
  *
  * Pass it as the call's `invalidate` option (#985).
  */
@@ -62,7 +59,6 @@ export function stationDeleteKeys(): QueryKey[] {
     queryKeys.portals.root,
     queryKeys.portalResults.root,
     queryKeys.connectorInstances.root,
-    queryKeys.organizations.root,
     // #1070: the deleted objects' tags, and the Tags page's usage counts.
     queryKeys.tagAssignments.root,
     queryKeys.entityTags.root,

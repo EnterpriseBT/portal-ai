@@ -269,13 +269,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the member, access and tag tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Both also start with the Help pack, so you can ask how Portals works on either. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack. Star one you use often to make it one of your favorites.",
     example:
       'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
-    relatedTerms: [
-      "Curated View",
-      "Connector Instance",
-      "Tool Pack",
-      "Portal",
-      "Default Station",
-    ],
+    relatedTerms: ["Curated View", "Connector Instance", "Tool Pack", "Portal"],
     aliases: ["create a station", "new station", "set up a station"],
   },
   {
@@ -403,7 +397,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, charts, and maps. A pinned table, chart, or map keeps the query behind it, never a copy of the data, so opening it always shows live data as the person who pinned it sees it now. Share it and others see that same view; if the person who pinned it loses access to the data, the pin empties rather than showing anything stale. A result with no query behind it can't be pinned. Star one you use often to make it one of your favorites.",
     example:
       "Pin a quarterly-revenue chart so it's one click away from the dashboard — it shows current numbers every time you open it.",
-    relatedTerms: ["Portal Result", "Default Station", "Favorite"],
+    relatedTerms: ["Portal Result", "Favorite"],
   },
   {
     term: "Visualization Widget",
@@ -468,7 +462,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "Your top-level workspace; everything you create — connectors, entities, stations, column definitions — belongs to your organization.",
     example:
       "Column definitions are shared across your whole organization, so every team uses the same vocabulary.",
-    relatedTerms: ["Column Definition", "Default Station"],
+    relatedTerms: ["Column Definition"],
   },
   {
     term: "Policy",
@@ -550,15 +544,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "With SSO set up, your team signs in with their company accounts and you manage access in your own identity provider.",
     relatedTerms: ["Organization", "Invitation"],
-  },
-  {
-    term: "Default Station",
-    category: GlossaryCategory.System,
-    definition:
-      "The station opened by default on your dashboard and used when you launch a portal without picking a station explicitly. New organizations start with Administrate as the default; set a different one from the Stations page.",
-    example:
-      "Set your most-used station as the default so the dashboard surfaces its portals and pinned results first.",
-    relatedTerms: ["Station", "Pinned Result"],
   },
   {
     term: "Subscription Plan",

@@ -15,7 +15,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { DefaultStationMeta } from "../components/DefaultStationMeta.component";
 import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
 import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
@@ -55,7 +54,6 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
         }
       >
         <HealthCheck showLabel />
-        <DefaultStationMeta />
       </PageHeader>
 
       <PageGrid columns={{ xs: 1 }}>

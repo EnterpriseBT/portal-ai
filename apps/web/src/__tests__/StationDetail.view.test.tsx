@@ -68,7 +68,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
       remove: mutation,
     },
     organizations: {
-      current: () => result({ organization: { defaultStationId: null } }),
+      // Other parts of the page (capabilities) still read the org.
+      current: () => result({ organization: { id: "org-1" } }),
       usage: () => result(mockUsageData),
     },
     toolpacks: { list: () => result({ toolpacks: [] }) },
@@ -357,16 +358,15 @@ describe("StationDetailView — a failed edit doesn't follow the dialog (#789)",
   });
 });
 
-// #1041: deleting the default station from its own page left the cached org
-// pointing at it, and the Stations page showed "Station not found". The
-// delete must refresh the organization along with what cascades.
-describe("StationDetailView — delete refreshes the organization (#1041)", () => {
+// #1041: the delete refreshes what cascades. #1114: there's no default
+// station any more, so it no longer refreshes the organization.
+describe("StationDetailView — delete refreshes what cascades (#1041, #1114)", () => {
   beforeEach(() => {
     mockStationsGet.mockReset();
     mockDeleteMutate.mockReset();
   });
 
-  it("passes the organization among the keys the delete invalidates", async () => {
+  it("passes the cascaded keys to the delete, and not the organization", async () => {
     mockStationsGet.mockReturnValue(
       result({
         station: {
@@ -392,12 +392,8 @@ describe("StationDetailView — delete refreshes the organization (#1041)", () =
       { invalidate: unknown[] },
     ];
     expect(options.invalidate).toEqual(
-      expect.arrayContaining([
-        ["stations"],
-        ["portals"],
-        ["portalResults"],
-        ["organizations"],
-      ])
+      expect.arrayContaining([["stations"], ["portals"], ["portalResults"]])
     );
+    expect(options.invalidate).not.toContainEqual(["organizations"]);
   });
 });

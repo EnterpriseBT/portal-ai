@@ -16,7 +16,6 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "@tanstack/react-router";
 
-import { DefaultStationMeta } from "../components/DefaultStationMeta.component";
 import { StationListConnected } from "../components/StationList.component";
 import { CreateStationDialog } from "../components/CreateStationDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
@@ -36,7 +35,6 @@ import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
 
 export interface StationsViewUIProps {
   onCreateStation: () => void;
-  onSetDefault: (station: Station) => void;
   onDelete: (station: Station) => void;
   /** #1070: the list's Tags filter, built by the container. */
   tagFilter: FilterConfig;
@@ -44,7 +42,6 @@ export interface StationsViewUIProps {
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
-  onSetDefault,
   onDelete,
   tagFilter,
 }) => {
@@ -80,9 +77,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
               New Station
             </Button>
           }
-        >
-          <DefaultStationMeta />
-        </PageHeader>
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -95,7 +90,6 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
               } as StationListRequestQuery
             }
             setTotal={pagination.setTotal}
-            onSetDefault={onSetDefault}
             onDelete={onDelete}
             hasActiveFilters={pagination.isFiltered}
             favoritesOnly={pagination.isOnlyFilter(FAVORITE_FILTER.field)}
@@ -117,13 +111,9 @@ export const StationsView: React.FC = () => {
   const createMutation = sdk.stations.create();
   const deleteMutation = sdk.stations.delete(deletingStation?.id ?? "");
 
-  // We need the org data to call setDefault — fetch it eagerly
-  const orgResult = sdk.organizations.current();
-  const orgId = orgResult.data?.organization.id ?? "";
   // #284: the create picker offers unentitled built-ins as disabled.
   const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
     useBuiltinEntitlements();
-  const setDefaultMutation = sdk.stations.setDefault(orgId);
 
   // Create
   const handleOpenCreate = useCallback(() => {
@@ -145,17 +135,6 @@ export const StationsView: React.FC = () => {
     [createMutation, handleCreateClose]
   );
 
-  // Set as default
-  const handleSetDefault = useCallback(
-    (station: Station) => {
-      setDefaultMutation.mutate(
-        { defaultStationId: station.id },
-        { invalidate: [queryKeys.organizations.root] }
-      );
-    },
-    [setDefaultMutation]
-  );
-
   // Delete
   const handleOpenDelete = useCallback((station: Station) => {
     setDeletingStation(station);
@@ -169,8 +148,7 @@ export const StationsView: React.FC = () => {
 
   const handleDeleteConfirm = useCallback(() => {
     deleteMutation.mutate(undefined, {
-      // Its portals go with it, their pins lose their portal link, and the
-      // org's default station may have been this one.
+      // Its portals go with it, and their pins lose their portal link.
       invalidate: stationDeleteKeys(),
       onSuccess: handleDeleteClose,
     });
@@ -180,7 +158,6 @@ export const StationsView: React.FC = () => {
     <>
       <StationsViewUI
         onCreateStation={handleOpenCreate}
-        onSetDefault={handleSetDefault}
         onDelete={handleOpenDelete}
         tagFilter={tagFilter}
       />

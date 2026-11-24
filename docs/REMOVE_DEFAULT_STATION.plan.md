@@ -64,7 +64,7 @@ Remove every web surface and read of the default while core still has the field.
 
 1. **Tests (spec web cases ≈12).**
    - Cards show no "Set as default" or "Default" chip, and the star and Delete remain, with no axe violations.
-   - The New Portal picker starts empty, Create is disabled until a pick, and submit sends the picked `stationId`, with no axe violations.
+   - The New Portal picker starts empty, pressing Create with no pick shows "Station is required" and submits nothing (the form pattern), and submit sends the picked `stationId`, with no axe violations.
    - No "Default Station" or "Organization Default" text on the Dashboard, Stations or StationDetail.
    - `stations.api` has no `setDefault`, and `stationDeleteKeys()` excludes `organizations.root`.
    - `audit-summary` and `AuditLogActivity` still render legacy entries (unchanged, must pass).

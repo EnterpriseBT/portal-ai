@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import type { StationListResponsePayload } from "@portalai/core/contracts";
 
-const { expectNoAxeViolations, render, screen, fireEvent, within } =
+const { expectNoAxeViolations, render, screen, within } =
   await import("./test-utils");
 const { StationListUI, StationCardUI } =
   await import("../components/StationList.component");
@@ -36,9 +36,6 @@ const station2 = makeStation({
 
 const defaultCardProps = {
   station: station1,
-  isDefault: false,
-  canSetDefault: true,
-  onSetDefault: jest.fn(),
   onDelete: jest.fn(),
 };
 
@@ -145,42 +142,14 @@ describe("StationCardUI", () => {
     );
   });
 
-  it("should show Default badge when isDefault is true", () => {
-    render(<StationCardUI {...defaultCardProps} isDefault={true} />);
-    expect(screen.getByTestId("default-badge")).toBeInTheDocument();
-    expect(screen.getByText("Default")).toBeInTheDocument();
-  });
-
-  it("should not show Default badge when isDefault is false", () => {
-    render(<StationCardUI {...defaultCardProps} isDefault={false} />);
-    expect(screen.queryByTestId("default-badge")).not.toBeInTheDocument();
-  });
-
-  it("should show 'Set as default' button when not default", () => {
-    render(<StationCardUI {...defaultCardProps} isDefault={false} />);
-    expect(
-      screen.getByRole("button", { name: "Set as default" })
-    ).toBeInTheDocument();
-  });
-
-  it("should not show 'Set as default' button when default", () => {
-    render(<StationCardUI {...defaultCardProps} isDefault={true} />);
+  // #1114: the org-wide default station is gone from the card.
+  it("offers no default-station action or badge", () => {
+    render(<StationCardUI {...defaultCardProps} />);
     expect(
       screen.queryByRole("button", { name: "Set as default" })
     ).not.toBeInTheDocument();
-  });
-
-  it("should call onSetDefault when 'Set as default' is clicked", () => {
-    const onSetDefault = jest.fn();
-    render(
-      <StationCardUI
-        {...defaultCardProps}
-        isDefault={false}
-        onSetDefault={onSetDefault}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Set as default" }));
-    expect(onSetDefault).toHaveBeenCalledWith(station1);
+    expect(screen.queryByText("Default")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
   it("#690: shows Delete when the station's capabilities allow it", () => {
@@ -205,16 +174,10 @@ describe("StationCardUI", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
-  it("#690: hides 'Set as default' without station.default.set", () => {
-    render(<StationCardUI {...defaultCardProps} canSetDefault={false} />);
-    expect(screen.queryByRole("button", { name: "Set as default" })).toBeNull();
-  });
-
-  it("#690: a read-only card with no default right renders no actions at all", () => {
+  it("#690: a read-only card renders no actions at all", () => {
     render(
       <StationCardUI
         {...defaultCardProps}
-        canSetDefault={false}
         station={makeStation({
           capabilities: {
             read: true,
@@ -246,9 +209,6 @@ describe("StationCardUI", () => {
 
 const defaultListProps = {
   stations: [station1, station2],
-  defaultStationId: null as string | null,
-  canSetDefault: true,
-  onSetDefault: jest.fn(),
   onDelete: jest.fn(),
 };
 
@@ -302,20 +262,10 @@ describe("StationListUI", () => {
     expect(screen.queryByText("No stations found")).toBeNull();
   });
 
-  it("should mark the correct station as default", () => {
-    render(
-      <StationListUI {...defaultListProps} defaultStationId="station-1" />
-    );
-    expect(screen.getByTestId("default-badge")).toBeInTheDocument();
-    // Only one default badge should be shown
-    expect(screen.getAllByTestId("default-badge")).toHaveLength(1);
-  });
-
-  it("has no axe violations, with a default station and an unentitled pack", async () => {
+  it("has no axe violations, with an unentitled pack", async () => {
     const { container } = render(
       <StationListUI
         {...defaultListProps}
-        defaultStationId="station-1"
         entitledBuiltinSlugs={new Set(["data_query"])}
       />
     );
