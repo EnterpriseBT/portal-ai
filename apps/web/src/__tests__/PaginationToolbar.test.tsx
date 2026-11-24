@@ -1448,6 +1448,20 @@ describe("PaginationToolbar — toolbar toggles (#1072)", () => {
     expect(within(dialog).getByText("Category")).toBeInTheDocument();
   });
 
+  it("leads a toggle with its icon, keeping the label as its name", () => {
+    render(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [
+            { ...quick, icon: <span data-testid="quick-icon" aria-hidden /> },
+          ],
+        })}
+      />
+    );
+    const toggle = screen.getByRole("button", { name: "Starred only" });
+    expect(within(toggle).getByTestId("quick-icon")).toBeInTheDocument();
+  });
+
   it("hides the Filter button when every filter is a toolbar toggle", () => {
     render(<PaginationToolbar {...makeProps({ filterConfigs: [quick] })} />);
     expect(

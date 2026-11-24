@@ -203,7 +203,7 @@ export interface StationListUIProps {
   /** #1072: the control beside each station's name (its favorite star). */
   renderTitleAction?: (station: StationRow) => React.ReactNode;
   /**
-   * #1072: Favorites only is the one active filter, so an empty list means
+   * #1072: the Favorites toggle is the one active filter, so an empty list means
    * nothing is starred and says how to star a station.
    */
   favoritesOnly?: boolean;

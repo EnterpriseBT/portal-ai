@@ -10,7 +10,7 @@ export interface FavoritesEmptyResultsProps {
 }
 
 /**
- * #1072: a list's Favorites only filter with nothing starred. It says how
+ * #1072: a list's Favorites toggle with nothing starred. It says how
  * to star an item and links to the Help entry on favorites.
  */
 export const FavoritesEmptyResults: React.FC<FavoritesEmptyResultsProps> = ({

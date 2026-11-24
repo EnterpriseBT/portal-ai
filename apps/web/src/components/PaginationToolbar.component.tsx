@@ -92,6 +92,8 @@ export interface BooleanFilterConfig extends BaseFilterConfig {
    * results announcement treat it like any other filter. Default `"popover"`.
    */
   placement?: "popover" | "toolbar";
+  /** #1072: an icon before a toolbar toggle's label. */
+  icon?: React.ReactNode;
 }
 
 /** A boolean filter rendered as a toggle in the toolbar (#1072). */
@@ -927,6 +929,7 @@ export const PaginationToolbar = React.forwardRef<
                 key={config.field}
                 variant={pressed ? "contained" : "outlined"}
                 size="small"
+                startIcon={config.icon}
                 aria-pressed={pressed}
                 onClick={() =>
                   onFilterValueChange(config.field, pressed ? "" : "true")

@@ -56,7 +56,7 @@ export interface CuratedViewsUIProps {
   createGate: ActionGate;
   /** True when a search/filter is active — drives the empty-state copy. */
   hasActiveFilters: boolean;
-  /** #1072: Favorites only is the one active filter (empty = nothing starred). */
+  /** #1072: the Favorites toggle is the one active filter (empty = nothing starred). */
   favoritesOnly?: boolean;
   /** #1072: the control beside each view's name (its favorite star). */
   renderTitleAction?: (view: CuratedViewRow) => React.ReactNode;

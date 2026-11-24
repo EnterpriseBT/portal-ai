@@ -226,7 +226,7 @@ describe("PinnedResultsListView", () => {
 });
 
 describe("PinnedResultsListView favorites (#1072)", () => {
-  it("stars each pin and offers the Favorites only toggle", () => {
+  it("stars each pin and offers the Favorites toggle", () => {
     currentListQuery = {
       data: {
         portalResults: [
@@ -252,12 +252,13 @@ describe("PinnedResultsListView favorites (#1072)", () => {
     expect(
       screen.getByRole("button", { name: "Favorite Churn" })
     ).toHaveAttribute("aria-pressed", "false");
-    expect(
-      screen.getByRole("button", { name: "Favorites only" })
-    ).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Favorites" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
   });
 
-  it("explains favorites when Favorites only finds nothing", async () => {
+  it("explains favorites when the Favorites toggle finds nothing", async () => {
     currentListQuery = {
       data: { portalResults: [], total: 0, limit: 20, offset: 0 },
       isLoading: false,
@@ -266,7 +267,7 @@ describe("PinnedResultsListView favorites (#1072)", () => {
     } as Partial<ListQuery>;
 
     render(<PinnedResultsListView />);
-    fireEvent.click(screen.getByRole("button", { name: "Favorites only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
     await waitFor(() =>
       expect(screen.getByText("No favorites yet")).toBeInTheDocument()
     );

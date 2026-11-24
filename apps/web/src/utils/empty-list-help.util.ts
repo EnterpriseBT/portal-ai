@@ -82,7 +82,7 @@ export const EMPTY_LIST_HELP: Record<EmptyList, EmptyListCopy> = {
       "Jobs are background tasks such as imports, syncs and revalidations.",
     faq: "What are jobs?",
   },
-  // #1072: the Favorites only filter with nothing starred, on any of the
+  // #1072: the Favorites toggle with nothing starred, on any of the
   // four favoritable lists.
   favorites: {
     description:

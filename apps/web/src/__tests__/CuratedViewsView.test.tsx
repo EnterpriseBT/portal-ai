@@ -244,7 +244,7 @@ describe("CuratedViewsUI favorites (#1072)", () => {
     }
   });
 
-  it("explains favorites when Favorites only is the filter and nothing is starred", () => {
+  it("explains favorites when the Favorites toggle is the filter and nothing is starred", () => {
     render(
       <CuratedViewsUI
         {...baseProps()}

@@ -344,7 +344,7 @@ describe("StationListUI favorites (#1072)", () => {
     ).toBeInTheDocument();
   });
 
-  it("explains favorites when Favorites only is the filter and nothing is starred", () => {
+  it("explains favorites when the Favorites toggle is the filter and nothing is starred", () => {
     render(
       <StationListUI
         {...defaultListProps}
