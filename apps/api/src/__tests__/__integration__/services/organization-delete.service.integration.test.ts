@@ -289,8 +289,6 @@ describe("OrganizationDeleteService integration tests", () => {
       expect(row).toBeDefined();
       expect(row!.deleted).not.toBeNull();
       expect(row!.deletedBy).toBe(target.ownerUserId);
-      // defaultStationId was nulled before its station was deleted (case 10).
-      expect(row!.defaultStationId).toBeNull();
 
       const viaRepo = await DbService.repository.organizations.findById(
         target.orgId

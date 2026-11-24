@@ -12,6 +12,7 @@ import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
 import { users } from "../db/schema/users.table.js";
+import { stations } from "../db/schema/stations.table.js";
 import { db } from "../db/client.js";
 import type {
   DbClient,
@@ -526,6 +527,25 @@ export class ApplicationService {
   }
 
   /** CLI seam (#190): resolve an existing user by email, then provision. */
+  /**
+   * #1114: the org's provisioned Administrate station (the first entry of
+   * PROVISIONED_STATIONS, system-created), or null when it's been deleted.
+   * `portalai org create --json` reports it as `stationId`.
+   */
+  static async administrateStationId(
+    organizationId: string
+  ): Promise<string | null> {
+    const [administrate] = await DbService.repository.stations.findMany(
+      and(
+        eq(stations.organizationId, organizationId),
+        eq(stations.name, PROVISIONED_STATIONS[0]!.name),
+        eq(stations.createdBy, SystemUtilities.id.system),
+        isNull(stations.deleted)
+      )
+    );
+    return administrate?.id ?? null;
+  }
+
   static async createOrganizationForEmail(email: string, name: string) {
     const user = await DbService.repository.users.findByEmail(email);
     if (!user) {
@@ -969,7 +989,6 @@ export class ApplicationService {
 
     // ── Provisioned stations (#848) ────────────────────────────────
     const stationIds: string[] = [];
-    let defaultStationId: string | null = null;
     for (const provisioned of PROVISIONED_STATIONS) {
       const stationModel = new StationModelFactory().create(systemId).update({
         organizationId,
@@ -982,7 +1001,6 @@ export class ApplicationService {
         tx
       );
       stationIds.push(createdStation.id);
-      if (provisioned.isDefault) defaultStationId = createdStation.id;
 
       await DbService.repository.stationToolpacks.replaceForStation(
         createdStation.id,
@@ -1006,19 +1024,11 @@ export class ApplicationService {
       }
     }
 
-    // Set defaultStationId on organization
-    await DbService.repository.organizations.update(
-      organizationId,
-      { defaultStationId },
-      tx
-    );
-
     logger.info(
       {
         organizationId,
         connectorInstanceId: createdInstance.id,
         stationIds,
-        defaultStationId,
       },
       "Organization workspace provisioned"
     );

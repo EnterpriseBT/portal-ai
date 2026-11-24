@@ -229,11 +229,6 @@ export class OrganizationDeleteService {
         .delete(stationInstances)
         .where(inArray(stationInstances.stationId, orgStationIds));
 
-      // Break the org → default-station cycle before the stations go.
-      await tx
-        .update(organizations)
-        .set({ defaultStationId: null })
-        .where(eq(organizations.id, organizationId));
       await tx
         .delete(stations)
         .where(eq(stations.organizationId, organizationId));

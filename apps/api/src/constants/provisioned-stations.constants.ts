@@ -20,8 +20,6 @@ export interface ProvisionedStation {
   builtinSlugs: readonly BuiltinToolpackSlug[];
   /** Attach the organization's Sandbox connector instance. */
   attachSandbox: boolean;
-  /** The organization's `defaultStationId`. Exactly one entry sets it. */
-  isDefault: boolean;
 }
 
 export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
@@ -38,7 +36,6 @@ export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
       "help",
     ],
     attachSandbox: false,
-    isDefault: true,
   },
   {
     name: "Playground",
@@ -51,6 +48,5 @@ export const PROVISIONED_STATIONS: readonly ProvisionedStation[] = [
       "help",
     ],
     attachSandbox: true,
-    isDefault: false,
   },
 ];

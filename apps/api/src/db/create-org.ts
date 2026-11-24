@@ -33,10 +33,14 @@ async function main() {
     ownerEmail,
     name
   );
+  // #1114: `stationId` is the new org's Administrate station, looked up
+  // directly now that orgs have no default.
   console.log(
     JSON.stringify({
       organizationId: result.organization.id,
-      stationId: result.organization.defaultStationId ?? null,
+      stationId: await ApplicationService.administrateStationId(
+        result.organization.id
+      ),
     })
   );
 }

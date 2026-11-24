@@ -158,11 +158,10 @@ const wireHappyPath = () => {
   repos.stations.create.mockImplementation(async () => ({
     id: `st-${++stationSeq}`,
   }));
-  // The org as stored once provisioning has set its default station.
+  // The org as stored once provisioning is done.
   repos.organizations.findById.mockImplementation(async (id) => ({
     ...(repos.organizations.create.mock.calls[0]?.[0] ?? {}),
     id,
-    defaultStationId: "st-1",
   }));
   repos.stationToolpacks.replaceForStation.mockResolvedValue(undefined);
   repos.stationInstances.create.mockResolvedValue({});
@@ -181,8 +180,8 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("provisionOrganizationFor (the shared transaction body)", () => {
-  it("provisions the FULL set for an existing user: org, membership, column defs, sandbox, both stations, their packs, the sandbox link, defaultStationId (#848)", async () => {
-    const out = await ApplicationService.provisionOrganizationFor("u-77", {
+  it("provisions the FULL set for an existing user: org, membership, column defs, sandbox, both stations, their packs and the sandbox link, and no default station (#848, #1114)", async () => {
+    await ApplicationService.provisionOrganizationFor("u-77", {
       name: "Acme",
     });
 
@@ -239,15 +238,12 @@ describe("provisionOrganizationFor (the shared transaction body)", () => {
       connectorInstanceId: "ci-1",
     });
 
-    // The default is the isDefault entry (Administrate, created first).
-    expect(repos.organizations.update).toHaveBeenCalledWith(
-      org.id,
-      { defaultStationId: "st-1" },
-      "TX"
-    );
+    // #1114: provisioning writes no default station.
+    for (const call of repos.organizations.update.mock.calls as unknown[][]) {
+      expect(call[1]).not.toHaveProperty("defaultStationId");
+    }
     // The returned org is the stored row, re-read after provisioning.
     expect(repos.organizations.findById).toHaveBeenCalledWith(org.id, "TX");
-    expect(out.organization.defaultStationId).toBe("st-1");
     // No user was created — the owner already existed.
     expect(repos.users.create).not.toHaveBeenCalled();
   });

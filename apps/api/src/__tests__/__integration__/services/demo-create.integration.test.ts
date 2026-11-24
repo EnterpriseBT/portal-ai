@@ -100,11 +100,6 @@ describe("ApplicationService.createDemoOrganization (integration)", () => {
     const demo = stations.find((s) => s.id === stationId);
     expect(demo!.name).toBe(DEMO_STATION_NAME);
 
-    // The provisioned default (Administrate) stays the default.
-    const defaultName = PROVISIONED_STATIONS.find((s) => s.isDefault)!.name;
-    const defaultStation = stations.find((s) => s.id === org!.defaultStationId);
-    expect(defaultStation!.name).toBe(defaultName);
-
     // The demo station starts empty; the seed attaches connectors and packs.
     expect(
       await DbService.repository.stationInstances.findByStationId(stationId)
