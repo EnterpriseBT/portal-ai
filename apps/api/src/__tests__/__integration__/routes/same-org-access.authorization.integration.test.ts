@@ -27,7 +27,8 @@ import {
  * A member could add endpoints to, re-interpret or recommit, re-authorize
  * (swapping in their own OAuth account) or drive the stored token of another
  * member's instance; parse another member's upload; refresh or pin from
- * another member's portal; and change the org-wide default station.
+ * another member's portal. (#1114 removed the org-wide default station, so
+ * there's no default to change.)
  *
  * Members may read and write only the instances and portals they created, so
  * another member's are unreadable: 404. Fixture rows are owner- or

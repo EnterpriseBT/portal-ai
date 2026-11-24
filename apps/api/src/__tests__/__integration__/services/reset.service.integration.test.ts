@@ -42,7 +42,7 @@ type Db = ReturnType<typeof drizzle>;
 
 /**
  * Reset re-runs `ApplicationService.provisionOrganizationWorkspace`, which
- * needs the `sandbox` connector definition to build the default station.
+ * needs the `sandbox` connector definition to build the Playground station.
  * Without this row provisioning warns and skips, and the scaffolding
  * assertions below would pass vacuously.
  */

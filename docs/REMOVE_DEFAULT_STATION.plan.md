@@ -197,7 +197,7 @@ The field leaves core and the API in one compile unit.
 
 **Files**
 
-- Edit: `apps/api/swagger.json`, regenerated with `npm run swagger:generate` in `apps/api`.
+- `apps/api/swagger.json` is generated and git-ignored: run `npm run swagger:generate` in `apps/api` to confirm the output, and commit nothing for it.
 - Edit: `apps/api/src/services/billing.service.ts:551` (the comment) and any stray comment the final grep finds.
 
 **Steps**
@@ -206,7 +206,7 @@ The field leaves core and the API in one compile unit.
 2. **Implement** the regeneration and comment fixes.
 3. Lint and type-check across touched packages. Run the integration suites touched in slices 3–4 once more.
 
-**Done when:** the swagger diff only removes `defaultStationId` and `station.default.set`, and the sweep is clean.
+**Done when:** the generated spec mentions `defaultStationId` only as retired, and the sweep is clean.
 
 **Risk:** none.
 

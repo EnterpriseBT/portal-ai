@@ -52,10 +52,9 @@ describe("connectorEntityDeleteKeys", () => {
   });
 });
 
-// #1041: the station page's delete had its own copy of this list, without the
-// organization. Deleting the default station there left the cached org
-// pointing at it, and the Stations page showed "Station not found" until a
-// reload.
+// #1041: the station page's delete had its own copy of this list, so the two
+// drifted. Both now use stationDeleteKeys(). #1114 dropped the organization
+// from it, since there's no default station for a delete to clear.
 describe("stationDeleteKeys", () => {
   it("refreshes the station, its portals and pins", () => {
     expect(stationDeleteKeys()).toEqual(

@@ -897,8 +897,7 @@ export class ApplicationService {
       tx
     );
 
-    // #848: provisioning set the org's default station, so hand back the row
-    // as stored rather than a patched copy of the one created above.
+    // Hand back the row as stored rather than a copy of the one created above.
     const organization = await DbService.repository.organizations.findById(
       createdOrg.id,
       tx

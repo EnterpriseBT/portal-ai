@@ -90,7 +90,7 @@ Remove `DERIVED_CAPABILITIES`, `DerivedCapability` and `isDerived`. The capabili
 
 ### API — docs and guards
 - `__tests__/config/route-authorization.map.ts:582`: the PATCH `by:` reads "org scope + `org.write` (rename)".
-- `apps/api/swagger.json`: regenerated with `npm run swagger:generate`.
+- `apps/api/swagger.json`: generated and git-ignored, so nothing is committed. `npm run swagger:generate` confirms the spec now comes from the rename-only `@openapi` block (the only remaining mention is its "retired `defaultStationId`" note).
 
 ### Web — `apps/web/src/components/StationList.component.tsx`
 - `StationCardUI` loses `isDefault`, `canSetDefault` and `onSetDefault`, the "Set as default" action and the "Default" chip row.
@@ -205,7 +205,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
   - `routes/organization.router.ts`, `routes/station.router.ts`;
   - `services/organization-update.service.ts`, `services/permission.service.ts`, `services/application.service.ts`, `services/reset.service.ts`, `services/organization-delete.service.ts`;
   - `constants/provisioned-stations.constants.ts`, `db/create-org.ts`;
-  - `__tests__/config/route-authorization.map.ts`, `swagger.json`;
+  - `__tests__/config/route-authorization.map.ts`;
   - the tests listed above.
 - **Web:**
   - `components/StationList.component.tsx`, `components/CreatePortalDialog.component.tsx`, `components/DefaultStationMeta.component.tsx` (delete);
