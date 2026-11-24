@@ -76,7 +76,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      "From a station set up for your data, click \"Open Portal\" to open a chat session. Type your question — the assistant will use the station's tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization's default station, Administrate, is for managing members, access and tags and has no data: use Playground or a station of your own.",
+      "From a station set up for your data, click \"Open Portal\" to open a chat session. Type your question — the assistant will use the station's tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization's Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -282,7 +282,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Where can I see who changed what?",
     answer:
-      "Settings → Activity lists the organization's security-relevant actions — sign-ins, invitations, member and role changes, shares, policy edits, and organization settings such as a rename or a new default station — with who did each one and when. It's visible to anyone with permission to read the audit log, and entries are kept for about 24 months.",
+      "Settings → Activity lists the organization's security-relevant actions — sign-ins, invitations, member and role changes, shares, policy edits, and organization settings such as a rename — with who did each one and when. It's visible to anyone with permission to read the audit log, and entries are kept for about 24 months.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Activity Log"],
   },
@@ -365,7 +365,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Why are the assistant's answers vague or missing my data?",
     answer:
-      "First check the station is set up for data. A new organization's default station, Administrate, manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it. Otherwise it is almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a view attached and shared with you (with the Curated Views tool pack, the assistant can attach one for you), or a connector instance, and that its entities have records. A view you can't read shows on the station with a lock. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
+      "First check the station is set up for data. A new organization's Administrate station manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it. Otherwise it is almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a view attached and shared with you (with the Curated Views tool pack, the assistant can attach one for you), or a connector instance, and that its entities have records. A view you can't read shows on the station with a lock. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: [
       "Portal",
