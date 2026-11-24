@@ -17,6 +17,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { FavoriteService } from "../services/favorite.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -370,6 +371,7 @@ async function planToolPackChanges(
  *           type: string
  *         description: Filter stations by name (case-insensitive)
  *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - $ref: '#/components/parameters/favoriteFilterParam'
  *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations; `tags` attaches each row's readable tags (#1070)." }
  *     responses:
  *       200:
@@ -413,17 +415,26 @@ stationRouter.get(
       );
     }
     try {
-      const { limit, offset, sortBy, sortOrder, search, include, tagIds } =
-        parsedQuery.data;
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        include,
+        tagIds,
+        favorite,
+      } = parsedQuery.data;
       const includes = new Set(
         include
           ?.split(",")
           .map((s) => s.trim())
           .filter(Boolean) ?? []
       );
+      const ctx = req.application!.metadata;
       // #1036: the same listing the agent's station_list tool reads.
       const { stations: rows, total } = await StationQueryService.listForCaller(
-        req.application!.metadata,
+        ctx,
         {
           limit,
           offset,
@@ -432,11 +443,15 @@ stationRouter.get(
           search,
           tagIds,
           includeTags: includes.has("tags"),
+          favorite: favorite === "true",
         }
       );
+      // #1072: the caller's star on each row, here rather than in the shared
+      // listing so the agent's tool output doesn't change.
+      const starred = await FavoriteService.attach(ctx, "station", rows);
 
       return HttpService.success<StationListResponsePayload>(res, {
-        stations: rows as unknown as StationListResponsePayload["stations"],
+        stations: starred as unknown as StationListResponsePayload["stations"],
         total,
         limit,
         offset,
@@ -561,16 +576,17 @@ stationRouter.get(
         );
       }
 
-      // #674: every attachment, readable or not, each with canRead.
-      const { instances, views } =
-        await StationAttachmentService.listForStation(
+      // #674: every attachment, readable or not, each with canRead. #1072:
+      // the caller's star alongside.
+      const [{ instances, views }, enabled, isFavorite] = await Promise.all([
+        StationAttachmentService.listForStation(
           set,
           { stationId: id, organizationId },
           { include: include_ }
-        );
-
-      const enabled =
-        await DbService.repository.stationToolpacks.findByStationId(id);
+        ),
+        DbService.repository.stationToolpacks.findByStationId(id),
+        FavoriteService.isFavorite(ctx, "station", id),
+      ]);
       const enabledToolpacks = enabled.map((r) =>
         r.builtinSlug !== null
           ? r.builtinSlug
@@ -591,6 +607,7 @@ stationRouter.get(
           toolpacks,
           // #688: replaces the #621 canShare/canWrite/canDelete flags.
           capabilities: ObjectCapabilitiesService.for(set, "station", station),
+          isFavorite,
         } as unknown as StationGetResponsePayload["station"],
       });
     } catch (error) {
@@ -1239,6 +1256,14 @@ stationRouter.delete(
           userId,
           tx,
           deletedAt
+        );
+        // #1072: and every user's favorites of it. The row is already locked
+        // (findByIdForUpdate above), so a star either committed first and is
+        // swept here, or waits and then finds the station gone.
+        await DbService.repository.favorites.hardDeleteByTargets(
+          "station",
+          [id],
+          tx
         );
 
         await DbService.repository.stations.softDelete(

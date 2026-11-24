@@ -60,6 +60,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { TagsSection } from "../components/TagsSection.component";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
 
 const STATUS_COLOR: Record<
   string,
@@ -460,6 +461,13 @@ export const ConnectorInstanceView = ({
                     onNavigate={(href) => navigate({ to: href })}
                     title={ci.name}
                     icon={<Icon name={IconName.MemoryChip} />}
+                    titleAction={
+                      <FavoriteToggle
+                        target={{ type: "connector_instance", id: ci.id }}
+                        name={ci.name}
+                        isFavorite={ci.isFavorite ?? false}
+                      />
+                    }
                     primaryAction={primaryAction}
                     secondaryActions={secondaryActions}
                   >

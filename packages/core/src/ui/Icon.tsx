@@ -12,6 +12,7 @@ import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/Phone";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -66,6 +67,7 @@ export enum IconName {
   Phone = "phone",
   Favorite = "favorite",
   Star = "star",
+  StarBorder = "star_border",
   Check = "check",
   Close = "close",
   ArrowBack = "arrow_back",
@@ -142,6 +144,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <FavoriteIcon ref={ref} {...props} />;
       case IconName.Star:
         return <StarIcon ref={ref} {...props} />;
+      case IconName.StarBorder:
+        return <StarBorderIcon ref={ref} {...props} />;
       case IconName.Check:
         return <CheckIcon ref={ref} {...props} />;
       case IconName.Close:

@@ -251,3 +251,38 @@ describe("PageHeader Component", () => {
     await expectNoAxeViolations(document.body);
   });
 });
+
+describe("PageHeader titleAction (#1072)", () => {
+  it("renders the control beside the h1, outside it", () => {
+    render(
+      <PageHeader
+        title="Sales"
+        titleAction={<button type="button">Favorite Sales</button>}
+      />
+    );
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent(/^Sales$/);
+    expect(
+      screen.getByRole("button", { name: "Favorite Sales" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders no slot without one", () => {
+    render(<PageHeader title="Sales" />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("has no axe violations with a control", async () => {
+    const { container } = render(
+      <PageHeader
+        title="Sales"
+        titleAction={
+          <button type="button" aria-pressed="true">
+            Unfavorite Sales
+          </button>
+        }
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+});

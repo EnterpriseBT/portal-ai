@@ -125,6 +125,7 @@ import {
   EntityTagAssignmentCreateRequestBodySchema,
   EntityTagAssignmentCreateResponsePayloadSchema,
   EntityTagAssignmentListResponsePayloadSchema,
+  FavoriteResponsePayloadSchema,
 } from "@portalai/core/contracts";
 import {
   EntityRecordListItemSchema,
@@ -329,6 +330,10 @@ const domainModelSchemas: Record<string, unknown> = {
   ),
   EntityTagAssignmentListResponsePayload: z.toJSONSchema(
     EntityTagAssignmentListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  FavoriteResponsePayload: z.toJSONSchema(
+    FavoriteResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
   TagAssignmentDeleteResponsePayload: {
@@ -782,6 +787,31 @@ const options: swaggerJsdoc.Options = {
         },
       },
       parameters: {
+        favoriteTypeParam: {
+          in: "path",
+          name: "type",
+          required: true,
+          schema: {
+            type: "string",
+            enum: ["station", "pin", "curated_view", "connector_instance"],
+          },
+          description: "The favoritable object's type (#1072)",
+        },
+        favoriteFilterParam: {
+          in: "query",
+          name: "favorite",
+          required: false,
+          schema: { type: "string", enum: ["true"] },
+          description:
+            "#1072: `true` lists only the caller's favorites. Any other value is a 400.",
+        },
+        favoriteIdParam: {
+          in: "path",
+          name: "id",
+          required: true,
+          schema: { type: "string" },
+          description: "The object's id",
+        },
         limitParam: {
           in: "query",
           name: "limit",

@@ -22,6 +22,7 @@ export * from "./user-roles.repository.js";
 export * from "./groups.repository.js";
 export * from "./user-groups.repository.js";
 export * from "./entity-tag-assignments.repository.js";
+export * from "./favorites.repository.js";
 export * from "./entity-groups.repository.js";
 export * from "./entity-group-members.repository.js";
 export * from "./stations.repository.js";

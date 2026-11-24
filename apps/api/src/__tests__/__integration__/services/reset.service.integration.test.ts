@@ -129,6 +129,19 @@ describe("ResetService integration tests (#295)", () => {
       expect(layoutPlans).toHaveLength(0);
     });
 
+    it("deletes the org's favorites and leaves another org's (#1072)", async () => {
+      const mine = await db
+        .select()
+        .from(schema.favorites)
+        .where(eq(schema.favorites.organizationId, target.orgId));
+      expect(mine).toHaveLength(0);
+      const theirs = await db
+        .select()
+        .from(schema.favorites)
+        .where(eq(schema.favorites.organizationId, control.orgId));
+      expect(theirs).toHaveLength(1);
+    });
+
     it("clears curated views, their dependents and their grants (#802)", async () => {
       for (const table of [
         schema.curatedViews,

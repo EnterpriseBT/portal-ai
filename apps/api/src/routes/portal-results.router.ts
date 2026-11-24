@@ -15,6 +15,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
+import { FavoriteService } from "../services/favorite.service.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
@@ -432,6 +433,7 @@ portalResultsRouter.get(
  *           type: string
  *         description: Filter results by portal ID
  *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - $ref: '#/components/parameters/favoriteFilterParam'
  *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations: `portal` names each pin's source portal; `tags` attaches each pin's readable tags (#1070)." }
  *     responses:
  *       200:
@@ -484,6 +486,7 @@ portalResultsRouter.get(
         portalId,
         include,
         tagIds: tagIdsRaw,
+        favorite,
       } = parsedQuery.data;
       const ctx = req.application!.metadata;
       const { organizationId } = ctx;
@@ -521,6 +524,12 @@ portalResultsRouter.get(
           )
         );
       }
+      // #1072: only the caller's favorites.
+      if (favorite === "true") {
+        filters.push(
+          FavoriteService.onlyFavorites(ctx, "pin", portalResults.id)
+        );
+      }
       const where = and(...filters);
 
       const include_ = include
@@ -554,12 +563,14 @@ portalResultsRouter.get(
             data.map((row) => row.id)
           )
         : null;
+      // #1072: the caller's star on each pin.
+      const starred = await FavoriteService.attach(ctx, "pin", data);
       return HttpService.success<PortalResultListResponsePayload>(res, {
         // #688: each pin with the caller's capabilities on it.
         portalResults: ObjectCapabilitiesService.attach(
           set,
           "pin",
-          data.map((row) => ({
+          starred.map((row) => ({
             ...row,
             ...definers.get(row.id)!,
             ...(tagsByPin && { tags: tagsByPin.get(row.id) ?? [] }),
@@ -645,12 +656,17 @@ portalResultsRouter.get(
           )
         );
       }
+      const [definer, isFavorite] = await Promise.all([
+        PinDefinerService.describe(portalResult, ctx.userId),
+        FavoriteService.isFavorite(ctx, "pin", id),
+      ]);
       // #688: capabilities replace the #621 canShare/canWrite/canDelete flags.
       return HttpService.success<PortalResultGetResponsePayload>(res, {
         portalResult: {
           ...portalResult,
-          ...(await PinDefinerService.describe(portalResult, ctx.userId)),
+          ...definer,
           capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
+          isFavorite,
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });
     } catch (error) {
@@ -880,6 +896,12 @@ portalResultsRouter.delete(
           userId,
           tx,
           deletedAt
+        );
+        // #1072: and every user's favorites of it.
+        await DbService.repository.favorites.hardDeleteByTargets(
+          "pin",
+          [id],
+          tx
         );
       });
       logger.info({ id }, "Portal result soft-deleted");

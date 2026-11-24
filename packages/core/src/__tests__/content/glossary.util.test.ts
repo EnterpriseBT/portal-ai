@@ -76,6 +76,7 @@ describe("GLOSSARY_ENTRIES", () => {
     "Entity Group Member",
     "Link Field",
     "Tag",
+    "Favorite",
     "Overlap Preview",
     // Analytics
     "Station",
@@ -478,6 +479,28 @@ describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
       /With the Tags tool pack, the assistant can create, edit and delete tags and add or remove them on objects in a portal session, with your permissions\./
     );
   });
+
+  it("Favorite says favorites are personal, read-gated and never reorder (#1072)", () => {
+    const { definition, relatedTerms } = find("Favorite");
+    expect(definition).toMatch(/only you see them/);
+    expect(definition).toMatch(/needs only access to see the item/);
+    expect(definition).toMatch(/without changing the order/);
+    for (const term of [
+      "Station",
+      "Pinned Result",
+      "Curated View",
+      "Connector Instance",
+    ]) {
+      expect(relatedTerms).toContain(term);
+    }
+  });
+
+  it.each(["Station", "Pinned Result", "Curated View", "Connector Instance"])(
+    "%s says it can be starred (#1072)",
+    (term) => {
+      expect(find(term).definition).toMatch(/Star one you use often/);
+    }
+  );
 
   it("keeps the scoping practice single-sourced on Station", () => {
     for (const entry of GLOSSARY_ENTRIES) {

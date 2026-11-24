@@ -73,6 +73,10 @@ export const HELP_PARAPHRASES: readonly { query: string; expect: string }[] = [
     expect: "faq:what-s-the-difference-between-a-connector-and-an-entity",
   },
   { query: "how do tags work", expect: "faq:how-do-tags-work" },
+  // #1072
+  { query: "how do favorites work", expect: "faq:how-do-favorites-work" },
+  { query: "star a station", expect: "faq:how-do-favorites-work" },
+  { query: "what is a favorite", expect: "glossary:favorite" },
   { query: "write my own tool", expect: "glossary:custom-toolpack" },
   { query: "convert addresses to coordinates", expect: "glossary:geocoding" },
   { query: "who manages billing", expect: "faq:who-can-manage-billing" },

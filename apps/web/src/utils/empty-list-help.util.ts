@@ -14,7 +14,8 @@ export type EmptyList =
   | "tags"
   | "columnDefinitions"
   | "pinnedResults"
-  | "jobs";
+  | "jobs"
+  | "favorites";
 
 interface EmptyListCopy {
   /** One sentence: what the list holds and what it's for. Names no role and
@@ -80,6 +81,13 @@ export const EMPTY_LIST_HELP: Record<EmptyList, EmptyListCopy> = {
     description:
       "Jobs are background tasks such as imports, syncs and revalidations.",
     faq: "What are jobs?",
+  },
+  // #1072: the Favorites toggle with nothing starred, on any of the
+  // four favoritable lists.
+  favorites: {
+    description:
+      "Favorites are the items you starred, kept in reach and seen only by you.",
+    faq: "How do favorites work?",
   },
 };
 

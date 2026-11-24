@@ -308,3 +308,57 @@ describe("DetailCard title heading (#793)", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("DetailCard titleAction (#1072)", () => {
+  it("renders the control beside the title, outside its heading", () => {
+    render(
+      <DetailCard
+        title="Alpha"
+        href="/alpha"
+        titleAction={<button type="button">Favorite Alpha</button>}
+      />
+    );
+    const heading = screen.getByRole("heading", { name: "Alpha" });
+    expect(
+      screen.getByRole("button", { name: "Favorite Alpha" })
+    ).toBeInTheDocument();
+    expect(heading).not.toHaveTextContent("Favorite Alpha");
+  });
+
+  it("never follows the card's link when the control is clicked", async () => {
+    const user = userEvent.setup();
+    const onToggle = jest.fn();
+    const onNavigate = jest.fn((e: Event) => e.preventDefault());
+    render(
+      <DetailCard
+        title="Alpha"
+        href="/alpha"
+        titleAction={
+          <button type="button" onClick={onToggle}>
+            Favorite Alpha
+          </button>
+        }
+      />
+    );
+    const link = screen.getByRole("link", { name: "Alpha" });
+    link.addEventListener("click", onNavigate);
+    await user.click(screen.getByRole("button", { name: "Favorite Alpha" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("has no axe violations with a control", async () => {
+    const { container } = render(
+      <DetailCard
+        title="Alpha"
+        href="/alpha"
+        titleAction={
+          <button type="button" aria-pressed="false">
+            Favorite Alpha
+          </button>
+        }
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+});

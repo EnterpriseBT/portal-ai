@@ -25,6 +25,12 @@
       "dark": "#92620a",
       "contrastText": "#ffffff"
     },
+    "favorite": {
+      "main": "#b07c00",
+      "light": "#e2a020",
+      "dark": "#8a6100",
+      "contrastText": "#ffffff"
+    },
     "info": {
       "main": "#185fa5",
       "light": "#3d84cc",

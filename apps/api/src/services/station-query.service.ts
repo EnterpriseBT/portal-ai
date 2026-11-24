@@ -18,6 +18,7 @@ import type { PermissionContext } from "./permission.service.js";
 import { ObjectCapabilitiesService } from "./object-capabilities.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import { StationToolpackNamesService } from "./station-toolpack-names.service.js";
+import { FavoriteService } from "./favorite.service.js";
 import { TagAssignmentService } from "./tag-assignment.service.js";
 import { stations } from "../db/schema/index.js";
 import type { EntityTagSelect, StationSelect } from "../db/schema/zod.js";
@@ -33,6 +34,8 @@ export interface StationListOptions {
   tagIds?: string;
   /** #1070: attach each station's readable tags. */
   includeTags?: boolean;
+  /** #1072: only the caller's favorites. */
+  favorite?: boolean;
 }
 
 export type StationListRow = StationSelect & {
@@ -85,6 +88,9 @@ export class StationQueryService {
           tagIds
         )
       );
+    }
+    if (opts.favorite) {
+      filters.push(FavoriteService.onlyFavorites(ctx, "station", stations.id));
     }
     const where = and(...filters);
 

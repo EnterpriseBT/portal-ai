@@ -72,6 +72,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
     },
+    // #1072: the favorite star renders in this view's header or rows.
+    favorites: {
+      set: () => ({ mutate: () => undefined, isPending: false }),
+      unset: () => ({ mutate: () => undefined, isPending: false }),
+    },
     tagAssignments: {
       list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
       assign: () => ({ mutate: () => undefined }),

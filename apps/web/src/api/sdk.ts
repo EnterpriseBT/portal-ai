@@ -12,6 +12,7 @@ import { entityGroups } from "./entity-groups.api";
 import { entityTags } from "./entity-tags.api";
 import { curatedViews } from "./curated-views.api";
 import { tagAssignments } from "./tag-assignments.api";
+import { favorites } from "./favorites.api";
 import { fieldMappings } from "./field-mappings.api";
 import { fileUploads } from "./file-uploads.api";
 import { googleSheets } from "./google-sheets.api";
@@ -56,6 +57,7 @@ export interface Sdk {
   readonly entityTags: typeof entityTags;
   readonly curatedViews: typeof curatedViews;
   readonly tagAssignments: typeof tagAssignments;
+  readonly favorites: typeof favorites;
   readonly fieldMappings: typeof fieldMappings;
   readonly fileUploads: typeof fileUploads;
   readonly googleSheets: typeof googleSheets;
@@ -94,6 +96,7 @@ export const sdk: Sdk = {
   entityTags,
   curatedViews,
   tagAssignments,
+  favorites,
   fieldMappings,
   fileUploads,
   googleSheets,

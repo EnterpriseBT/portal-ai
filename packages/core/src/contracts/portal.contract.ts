@@ -17,6 +17,10 @@ import {
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
 import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
+import {
+  FavoriteListQueryFields,
+  FavoriteRowFields,
+} from "./favorite.contract.js";
 
 // ── List ──────────────────────────────────────────────────────────────
 
@@ -172,6 +176,7 @@ export type PinDefinerFields = z.infer<typeof PinDefinerFieldsSchema>;
 export const PortalResultListItemSchema = PortalResultSchema.extend({
   portalName: z.string().nullable().optional(),
   ...TaggedRowFields,
+  ...FavoriteRowFields,
 }).extend(PinDefinerFieldsSchema.shape);
 export type PortalResultListItem = z.infer<typeof PortalResultListItemSchema>;
 
@@ -190,7 +195,9 @@ export type PortalResultListResponsePayload = z.infer<
  *  canShare/canWrite/canDelete flags). */
 export const PortalResultGetResponsePayloadSchema = z.object({
   portalResult: withShareableCapabilities(
-    PortalResultSchema.extend(PinDefinerFieldsSchema.shape)
+    PortalResultSchema.extend(PinDefinerFieldsSchema.shape).extend(
+      FavoriteRowFields
+    )
   ),
 });
 export type PortalResultGetResponsePayload = z.infer<
@@ -202,6 +209,7 @@ export const PortalResultListRequestQuerySchema =
     sortBy: z.enum(["created"]).optional().default("created"),
     portalId: z.string().optional(),
     ...TagListQueryFields,
+    ...FavoriteListQueryFields,
   });
 
 export type PortalResultListRequestQuery = z.infer<

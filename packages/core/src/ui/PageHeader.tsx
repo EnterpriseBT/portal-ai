@@ -19,6 +19,11 @@ export interface PageHeaderProps {
   title: string;
   /** Icon rendered before the title. Accepts any React node (e.g. MUI Icon or core Icon). */
   icon?: React.ReactNode;
+  /**
+   * A control right after the title, outside the h1 (#1072: a favorite
+   * star), so the page's heading stays its title alone.
+   */
+  titleAction?: React.ReactNode;
   /** Primary call-to-action rendered at the trailing edge of the title row. */
   primaryAction?: React.ReactNode;
   /** Secondary actions rendered in a dropdown menu triggered by a "more" icon button. */
@@ -38,6 +43,7 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
       onNavigate,
       title,
       icon,
+      titleAction,
       primaryAction,
       secondaryActions,
       children,
@@ -91,6 +97,9 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
               >
                 {title}
               </MuiTypography>
+              {titleAction && (
+                <Box sx={{ display: "flex", flexShrink: 0 }}>{titleAction}</Box>
+              )}
             </Stack>
 
             {hasActions && (

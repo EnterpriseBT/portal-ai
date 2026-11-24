@@ -22,6 +22,11 @@ export interface DetailCardProps {
   /** Action buttons rendered at the trailing edge of the title row. */
   actions?: ActionSuiteItem[];
   /**
+   * A control right after the title, outside its heading (#1072: a favorite
+   * star). Clicking it never follows the card's link.
+   */
+  titleAction?: React.ReactNode;
+  /**
    * The card runs an action (opens a dialog): its title becomes a button.
    * For navigation pass `href` instead, so it's a link (#794).
    */
@@ -49,6 +54,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
       icon,
       children,
       actions,
+      titleAction,
       onClick,
       href,
       linkComponent,
@@ -150,6 +156,10 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
         >
           {titleControl}
         </MuiTypography>
+        {titleAction && (
+          // A sibling of the heading, so it isn't part of the title's name.
+          <Box sx={{ display: "flex", flexShrink: 0 }}>{titleAction}</Box>
+        )}
       </Stack>
     );
 

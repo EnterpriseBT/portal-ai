@@ -14,6 +14,10 @@ import {
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
 import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
+import {
+  FavoriteListQueryFields,
+  FavoriteRowFields,
+} from "./favorite.contract.js";
 
 // ── List ──────────────────────────────────────────────────────────────
 
@@ -23,6 +27,7 @@ export const StationListRequestQuerySchema =
     search: z.string().optional(),
     include: z.string().optional(),
     ...TagListQueryFields,
+    ...FavoriteListQueryFields,
   });
 
 export type StationListRequestQuery = z.infer<
@@ -53,6 +58,7 @@ export const StationWithToolpacksSchema = StationSchema.extend({
    */
   toolpacks: z.array(AttachedToolpackSchema).optional(),
   ...TaggedRowFields,
+  ...FavoriteRowFields,
 });
 
 export type StationWithToolpacks = z.infer<typeof StationWithToolpacksSchema>;

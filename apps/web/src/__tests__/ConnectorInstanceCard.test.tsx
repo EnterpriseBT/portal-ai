@@ -90,3 +90,24 @@ describe("ConnectorInstanceCardUI", () => {
     expect(screen.getByText("Sales sheet")).toBeInTheDocument();
   });
 });
+
+describe("ConnectorInstanceCardUI favorites (#1072)", () => {
+  it("renders its title action beside the name", () => {
+    const ci = instance(true);
+    render(
+      <ConnectorInstanceCardUI
+        connectorInstance={ci}
+        href={`/connectors/${ci.id}`}
+        titleAction={
+          <button
+            type="button"
+            aria-pressed="false"
+          >{`Favorite ${ci.name}`}</button>
+        }
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: `Favorite ${ci.name}` })
+    ).toBeInTheDocument();
+  });
+});

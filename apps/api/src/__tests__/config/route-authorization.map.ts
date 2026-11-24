@@ -93,6 +93,13 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     by: "org scope + read, else 404 (#713) + per-object resource.write/delete tag",
     locks: { none: "tags; no job reads or writes them" },
   },
+  "DELETE /api/favorites/{type}/{id}": {
+    kind: "authorized",
+    by: "FavoriteService: org scope + per-object resource.read on the target, else its 404; acts only on the caller's own favorite (#1072)",
+    locks: {
+      none: "favorites are the caller's own data; no job reads or writes them",
+    },
+  },
   "DELETE /api/field-mappings/{id}": {
     kind: "authorized",
     by: "loadReadableMapping (org + entity readable, else 404) + write on its entity (#829: mappings are parts of the entity)",
@@ -892,6 +899,13 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     reason:
       "public: Stripe signature verified over the raw body (constructEvent)",
     locks: { none: "billing webhook; no job reads or writes it" },
+  },
+  "PUT /api/favorites/{type}/{id}": {
+    kind: "authorized",
+    by: "FavoriteService: org scope + per-object resource.read on the target, else its 404; writes only the caller's own favorite (#1072)",
+    locks: {
+      none: "favorites are the caller's own data; no job reads or writes them",
+    },
   },
   "PUT /api/groups/{id}": {
     kind: "authorized",

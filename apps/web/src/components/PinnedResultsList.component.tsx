@@ -50,12 +50,15 @@ export interface PinnedResultCardUIProps {
   onUnpin: (id: string) => void;
   /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
   headingLevel?: 2 | 3;
+  /** #1072: a control beside the name (the favorite star). */
+  titleAction?: React.ReactNode;
 }
 
 export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
   result,
   onUnpin,
   headingLevel,
+  titleAction,
 }) => {
   const actions: ActionSuiteItem[] = [
     {
@@ -76,6 +79,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
       linkComponent={RouterLink}
       headingLevel={headingLevel}
       actions={actions}
+      titleAction={titleAction}
       data-testid={`pinned-result-row-${result.id}`}
     >
       <Stack spacing={0.25}>

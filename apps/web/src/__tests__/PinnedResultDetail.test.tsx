@@ -27,6 +27,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
     },
+    // #1072: the favorite star renders in this view's header or rows.
+    favorites: {
+      set: () => ({ mutate: () => undefined, isPending: false }),
+      unset: () => ({ mutate: () => undefined, isPending: false }),
+    },
     tagAssignments: {
       list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
       assign: () => ({ mutate: () => undefined }),
@@ -145,6 +150,19 @@ describe("PinnedResultDetailUI", () => {
       />
     );
     expect(screen.getByTestId("tags-section")).toBeInTheDocument();
+  });
+
+  // #1072: the container fills the star slot; the UI puts it by the h1.
+  it("renders the title action beside the heading", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        titleAction={<button type="button">Favorite it</button>}
+      />
+    );
+    const h1 = screen.getByRole("heading", { level: 1 });
+    const star = screen.getByRole("button", { name: "Favorite it" });
+    expect(h1).not.toContainElement(star);
   });
 
   beforeEach(() => {

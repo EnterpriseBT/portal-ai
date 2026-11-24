@@ -87,7 +87,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Connector Instance",
     category: GlossaryCategory.DataSources,
     definition:
-      "A live connection to one of your data sources, created by configuring a connector definition with your credentials or files.",
+      "A live connection to one of your data sources, created by configuring a connector definition with your credentials or files. Star one you use often to make it one of your favorites.",
     example:
       'You upload a CSV of customer data — that creates a connector instance named "Q1 Customers CSV".',
     relatedTerms: ["Connector Definition", "Connector Entity", "Station"],
@@ -236,6 +236,22 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     ],
   },
   {
+    term: "Favorite",
+    category: GlossaryCategory.Organization,
+    definition:
+      "A station, pinned result, view or connector you starred. Favorites are personal: only you see them, and starring needs only access to see the item. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. Deleting an item removes it from everyone's favorites.",
+    example:
+      "Star the three stations you open every morning, then press Favorites on the Stations page to see just those.",
+    relatedTerms: [
+      "Station",
+      "Pinned Result",
+      "Curated View",
+      "Connector Instance",
+      "Tag",
+    ],
+    aliases: ["star", "starred", "favourite"],
+  },
+  {
     term: "Overlap Preview",
     category: GlossaryCategory.Organization,
     definition:
@@ -250,7 +266,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Station",
     category: GlossaryCategory.Analytics,
     definition:
-      "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the member, access and tag tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Both also start with the Help pack, so you can ask how Portals works on either. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
+      "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the member, access and tag tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Both also start with the Help pack, so you can ask how Portals works on either. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack. Star one you use often to make it one of your favorites.",
     example:
       'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
     relatedTerms: [
@@ -266,7 +282,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Curated View",
     category: GlossaryCategory.Analytics,
     definition:
-      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there. With the Curated Views tool pack, the assistant can create, edit, delete and share views in a session, and attach a view to a station, its own session's station included, so a view it just created can be queried straight away. Attaching needs permission to edit the station.",
+      "A named, filtered window onto one entity's records: a chosen set of columns and an optional row filter. Views are attached to stations, and a portal session queries the attached views the user has read access to. A view someone can't read still shows on the station, locked, so it's clear it's there. With the Curated Views tool pack, the assistant can create, edit, delete and share views in a session, and attach a view to a station, its own session's station included, so a view it just created can be queried straight away. Attaching needs permission to edit the station. Star one you use often to make it one of your favorites.",
     example:
       'An "Active customers" view over the Customers entity, showing only name, region and plan for rows where status is active.',
     relatedTerms: [
@@ -384,10 +400,10 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Pinned Result",
     category: GlossaryCategory.Analytics,
     definition:
-      "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, charts, and maps. A pinned table, chart, or map keeps the query behind it, never a copy of the data, so opening it always shows live data as the person who pinned it sees it now. Share it and others see that same view; if the person who pinned it loses access to the data, the pin empties rather than showing anything stale. A result with no query behind it can't be pinned.",
+      "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, charts, and maps. A pinned table, chart, or map keeps the query behind it, never a copy of the data, so opening it always shows live data as the person who pinned it sees it now. Share it and others see that same view; if the person who pinned it loses access to the data, the pin empties rather than showing anything stale. A result with no query behind it can't be pinned. Star one you use often to make it one of your favorites.",
     example:
       "Pin a quarterly-revenue chart so it's one click away from the dashboard — it shows current numbers every time you open it.",
-    relatedTerms: ["Portal Result", "Default Station"],
+    relatedTerms: ["Portal Result", "Default Station", "Favorite"],
   },
   {
     term: "Visualization Widget",

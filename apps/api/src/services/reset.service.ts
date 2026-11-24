@@ -114,6 +114,13 @@ export class ResetService {
       logger.info(
         `Deleted ${deletedEntityTagAssignments.length} tag assignments`
       );
+      // #1072: the same for favorites.
+      const deletedFavorites =
+        await DbService.repository.favorites.hardDeleteByOrganization(
+          organizationId,
+          tx
+        );
+      logger.info(`Deleted ${deletedFavorites} favorites`);
 
       // #802: curated views hold FKs to field mappings, stations and
       // entities, all hard-deleted below — clear the view tables first,

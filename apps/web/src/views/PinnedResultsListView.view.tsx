@@ -27,6 +27,9 @@ import type {
   PortalResultsListParams,
 } from "../api/portal-results.api";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
+import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 import { pinDeleteKeys } from "../utils/delete-invalidation.util";
 
 // ── Data fetcher ────────────────────────────────────────────────────
@@ -59,7 +62,7 @@ export const PinnedResultsListView: React.FC = () => {
     sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: "created",
     defaultSortOrder: "desc",
-    filters: [tagFilter],
+    filters: [FAVORITE_FILTER, tagFilter],
   });
 
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
@@ -111,6 +114,9 @@ export const PinnedResultsListView: React.FC = () => {
                   const payload = pinned as unknown as PortalResultsListPayload;
                   const results = payload.portalResults;
                   if (payload.total === 0) {
+                    if (pagination.isOnlyFilter(FAVORITE_FILTER.field)) {
+                      return <FavoritesEmptyResults noun="pinned result" />;
+                    }
                     const hasActiveFilters = pagination.isFiltered;
                     return hasActiveFilters ? (
                       <EmptyResults />
@@ -130,6 +136,13 @@ export const PinnedResultsListView: React.FC = () => {
                           result={result}
                           headingLevel={2}
                           onUnpin={handleUnpin}
+                          titleAction={
+                            <FavoriteToggle
+                              target={{ type: "pin", id: result.id }}
+                              name={result.name}
+                              isFavorite={result.isFavorite ?? false}
+                            />
+                          }
                         />
                       ))}
                     </CardList>

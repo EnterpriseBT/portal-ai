@@ -16,6 +16,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
     },
+    // #1072: the favorite star renders in this view's header or rows.
+    favorites: {
+      set: () => ({ mutate: () => undefined, isPending: false }),
+      unset: () => ({ mutate: () => undefined, isPending: false }),
+    },
     tagAssignments: {
       list: () => ({ data: { tags: [] }, isLoading: false, isError: false }),
       assign: () => ({ mutate: () => undefined }),
@@ -217,5 +222,59 @@ describe("PinnedResultsListView", () => {
     expect(screen.getAllByText("Pinned Results").length).toBeGreaterThanOrEqual(
       2
     );
+  });
+});
+
+describe("PinnedResultsListView favorites (#1072)", () => {
+  it("stars each pin and offers the Favorites toggle", () => {
+    currentListQuery = {
+      data: {
+        portalResults: [
+          {
+            ...makePinnedResult({ id: "r-1", name: "Revenue" }),
+            isFavorite: true,
+          },
+          makePinnedResult({ id: "r-2", name: "Churn" }),
+        ],
+        total: 2,
+        limit: 20,
+        offset: 0,
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<PinnedResultsListView />);
+    expect(
+      screen.getByRole("button", { name: "Favorite Revenue" })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "Favorite Churn" })
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Favorites" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+
+  it("explains favorites when the Favorites toggle finds nothing", async () => {
+    currentListQuery = {
+      data: { portalResults: [], total: 0, limit: 20, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<PinnedResultsListView />);
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    await waitFor(() =>
+      expect(screen.getByText("No favorites yet")).toBeInTheDocument()
+    );
+    expect(
+      screen.getByText(
+        "Star a pinned result to keep it here. Only you see your favorites."
+      )
+    ).toBeInTheDocument();
   });
 });

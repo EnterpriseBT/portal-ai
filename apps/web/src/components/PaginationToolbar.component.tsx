@@ -84,7 +84,23 @@ export interface SelectFilterConfig extends BaseFilterConfig {
 
 export interface BooleanFilterConfig extends BaseFilterConfig {
   type: "boolean";
+  /**
+   * Where the filter renders. `"toolbar"` (#1072) is a one-click toggle beside
+   * the Filter button instead of a switch in its popover: pressed sets
+   * `["true"]`, unpressed clears the filter (never `"false"`). It's the same
+   * filter state either way, so chips, `isFiltered`, persistence and the
+   * results announcement treat it like any other filter. Default `"popover"`.
+   */
+  placement?: "popover" | "toolbar";
+  /** #1072: an icon before a toolbar toggle's label. */
+  icon?: React.ReactNode;
 }
+
+/** A boolean filter rendered as a toggle in the toolbar (#1072). */
+export const isToolbarFilter = (
+  config: FilterConfig | undefined
+): config is BooleanFilterConfig =>
+  config?.type === "boolean" && config.placement === "toolbar";
 
 export interface NumberFilterConfig extends BaseFilterConfig {
   type: "number";
@@ -205,6 +221,8 @@ export interface UsePaginationReturn {
    * still at its default (the Catalog's `isActive`) doesn't count.
    */
   isFiltered: boolean;
+  /** #1072: see `isOnlyFilter` in the hook. */
+  isOnlyFilter: (field: string) => boolean;
   toolbarProps: PaginationToolbarProps;
   /** Cursor driving the current request in keyset mode; null on page one. */
   cursor: string | null;
@@ -556,21 +574,41 @@ export function usePagination(
     lastPageSize,
   ]);
 
-  const isFiltered = React.useMemo(() => {
-    if (search.trim() !== "") return true;
-    if (!isFilterExpressionEmpty(advancedFilters)) return true;
+  /** The filters moved off their configured default, by field. */
+  const changedFilterFields = React.useMemo(() => {
     const fields = new Set([
       ...Object.keys(filters),
       ...filterConfigs.map((c) => c.field),
     ]);
+    const changed: string[] = [];
     for (const field of fields) {
       const current = [...(filters[field] ?? [])].sort();
       const config = filterConfigs.find((c) => c.field === field);
       const initial = [...(config?.defaultValue ?? [])].sort();
-      if (JSON.stringify(current) !== JSON.stringify(initial)) return true;
+      if (JSON.stringify(current) !== JSON.stringify(initial)) {
+        changed.push(field);
+      }
     }
-    return false;
-  }, [search, advancedFilters, filters, filterConfigs]);
+    return changed;
+  }, [filters, filterConfigs]);
+
+  const hasSearchOrAdvanced =
+    search.trim() !== "" || !isFilterExpressionEmpty(advancedFilters);
+
+  const isFiltered = hasSearchOrAdvanced || changedFilterFields.length > 0;
+
+  /**
+   * #1072: whether `field` is the list's one active narrowing: moved off its
+   * default, with no search, advanced filter or other filter changed. A list
+   * uses it to give an empty page a filter-specific explanation.
+   */
+  const isOnlyFilter = React.useCallback(
+    (field: string) =>
+      !hasSearchOrAdvanced &&
+      changedFilterFields.length === 1 &&
+      changedFilterFields[0] === field,
+    [hasSearchOrAdvanced, changedFilterFields]
+  );
 
   const activeFilterCount = Object.values(filters).reduce(
     (count, values) => count + values.length,
@@ -660,6 +698,7 @@ export function usePagination(
     setTotal,
     queryParams,
     isFiltered,
+    isOnlyFilter,
     toolbarProps,
     cursor,
     setNextCursor,
@@ -794,6 +833,21 @@ export const PaginationToolbar = React.forwardRef<
       ? changed(onAdvancedFiltersClearProp)
       : undefined;
 
+    // #1072: toolbar toggles render beside the Filter button; the rest stay
+    // in its popover, whose badge counts only them.
+    const toolbarFilters = filterConfigs.filter(isToolbarFilter);
+    // `: boolean` stops TS inferring a predicate that would drop every
+    // boolean filter (popover ones included) from the type.
+    const popoverFilters = filterConfigs.filter(
+      (c): boolean => !isToolbarFilter(c)
+    );
+    const popoverFilterCount =
+      activeFilterCount -
+      toolbarFilters.reduce(
+        (count, c) => count + (filters[c.field]?.length ?? 0),
+        0
+      );
+
     const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement | null>(
       null
     );
@@ -867,10 +921,29 @@ export const PaginationToolbar = React.forwardRef<
             }}
           />
 
+          {/* #1072: quick toggles, one click each, outside the popover */}
+          {toolbarFilters.map((config) => {
+            const pressed = (filters[config.field] ?? [])[0] === "true";
+            return (
+              <Button
+                key={config.field}
+                variant={pressed ? "contained" : "outlined"}
+                size="small"
+                startIcon={config.icon}
+                aria-pressed={pressed}
+                onClick={() =>
+                  onFilterValueChange(config.field, pressed ? "" : "true")
+                }
+              >
+                {config.label}
+              </Button>
+            );
+          })}
+
           {/* Filter Button */}
-          {filterConfigs.length > 0 && (
+          {popoverFilters.length > 0 && (
             <>
-              <Badge badgeContent={activeFilterCount} color="primary">
+              <Badge badgeContent={popoverFilterCount} color="primary">
                 <Button
                   variant="outlined"
                   size="small"
@@ -882,8 +955,8 @@ export const PaginationToolbar = React.forwardRef<
                   // The badge's count is part of the name (it starts with the
                   // visible label, WCAG 2.5.3).
                   aria-label={
-                    activeFilterCount > 0
-                      ? `Filter, ${activeFilterCount} active`
+                    popoverFilterCount > 0
+                      ? `Filter, ${popoverFilterCount} active`
                       : undefined
                   }
                 >
@@ -906,7 +979,7 @@ export const PaginationToolbar = React.forwardRef<
                 }}
               >
                 <Box sx={{ p: 2, minWidth: 220 }}>
-                  {filterConfigs.map((config, idx) => (
+                  {popoverFilters.map((config, idx) => (
                     <Box key={config.field}>
                       {idx > 0 && <Divider sx={{ my: 1 }} />}
                       <Typography
@@ -1291,7 +1364,8 @@ export const PaginationToolbar = React.forwardRef<
                 return (
                   <Chip
                     key={field}
-                    label={`${label}: ${on}`}
+                    // A toolbar toggle is only ever on, so its label says it all.
+                    label={isToolbarFilter(config) ? label : `${label}: ${on}`}
                     size="small"
                     onDelete={() => onFilterValueChange(field, "")}
                   />

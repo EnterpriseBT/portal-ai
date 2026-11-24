@@ -22,6 +22,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
+import { FavoriteService } from "../services/favorite.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
@@ -59,6 +60,7 @@ curatedViewRouter.use(
  *       - { in: query, name: connectorEntityId, schema: { type: string } }
  *       - { in: query, name: stationId, schema: { type: string } }
  *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - $ref: '#/components/parameters/favoriteFilterParam'
  *       - { in: query, name: include, required: false, schema: { type: string }, description: "Comma-separated relations; `tags` attaches each row's readable tags (#1070)." }
  *     responses:
  *       200:
@@ -99,13 +101,18 @@ curatedViewRouter.get(
       );
     }
     try {
-      return HttpService.success<CuratedViewListResponsePayload>(
-        res,
-        await CuratedViewService.list(
-          req.application!.metadata,
-          parsedQuery.data
-        )
-      );
+      const ctx = req.application!.metadata;
+      const page = await CuratedViewService.list(ctx, parsedQuery.data);
+      return HttpService.success<CuratedViewListResponsePayload>(res, {
+        ...page,
+        // #1072: the caller's star on each row, here rather than in the
+        // service so the agent's view tools don't change.
+        curatedViews: await FavoriteService.attach(
+          ctx,
+          "curated_view",
+          page.curatedViews
+        ),
+      });
     } catch (error) {
       return next(
         error instanceof ApiError
@@ -149,11 +156,15 @@ curatedViewRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const ctx = req.application!.metadata;
+      // #1072: the star lookup runs alongside the view's read; it reveals
+      // nothing on its own, and an unreadable view still answers its 404.
+      const [curatedView, isFavorite] = await Promise.all([
+        CuratedViewService.get(ctx, req.params.id),
+        FavoriteService.isFavorite(ctx, "curated_view", req.params.id),
+      ]);
       return HttpService.success<CuratedViewGetResponsePayload>(res, {
-        curatedView: await CuratedViewService.get(
-          req.application!.metadata,
-          req.params.id
-        ),
+        curatedView: { ...curatedView, isFavorite },
       });
     } catch (error) {
       return next(

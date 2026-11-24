@@ -207,6 +207,17 @@ export async function seedPopulatedOrg(
     entityTagId: tag.id,
   } as never);
 
+  // #1072: the owner's favorite of the station.
+  await db.insert(schema.favorites).values({
+    ...base(now),
+    organizationId: org.id,
+    userId: owner.id,
+    stationId: station.id,
+    portalResultId: null,
+    curatedViewId: null,
+    connectorInstanceId: null,
+  } as never);
+
   await db.insert(schema.stationToolpacks).values({
     ...base(now),
     stationId: station.id,

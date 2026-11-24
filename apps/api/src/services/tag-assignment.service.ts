@@ -34,7 +34,8 @@ import { createLogger } from "../utils/logger.util.js";
 import { CuratedViewDeleteService } from "./curated-view-delete.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
-import { ObjectAccessService, type OwnedRow } from "./object-access.service.js";
+import { ObjectAccessService } from "./object-access.service.js";
+import { ObjectTargetService } from "./object-target.service.js";
 import type { PermissionSet } from "./permission-set.js";
 import {
   PermissionService,
@@ -57,51 +58,6 @@ const failedAs =
       error instanceof Error ? error.message : fallback
     );
   };
-
-interface TargetDescriptor {
-  load: (id: string) => Promise<OwnedRow | null | undefined>;
-  notFound: () => ApiError;
-}
-
-const TARGETS: Record<TagTargetType, TargetDescriptor> = {
-  entity: {
-    load: (id) => DbService.repository.connectorEntities.findById(id),
-    notFound: () =>
-      new ApiError(
-        404,
-        ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-        "Connector entity not found"
-      ),
-  },
-  station: {
-    load: (id) => DbService.repository.stations.findById(id),
-    notFound: () =>
-      new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found"),
-  },
-  pin: {
-    load: (id) => DbService.repository.portalResults.findById(id),
-    notFound: () =>
-      new ApiError(
-        404,
-        ApiCode.PORTAL_RESULT_NOT_FOUND,
-        "Portal result not found"
-      ),
-  },
-  connector_instance: {
-    load: (id) => DbService.repository.connectorInstances.findById(id),
-    notFound: () =>
-      new ApiError(
-        404,
-        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-        "Connector instance not found"
-      ),
-  },
-  curated_view: {
-    load: (id) => DbService.repository.curatedViews.findById(id),
-    notFound: () =>
-      new ApiError(404, ApiCode.CURATED_VIEW_NOT_FOUND, "View not found"),
-  },
-};
 
 export class TagAssignmentService {
   /**
@@ -130,24 +86,21 @@ export class TagAssignmentService {
     target: TagTarget,
     verb: "read" | "write"
   ): Promise<void> {
-    const descriptor = TARGETS[target.type];
+    if (verb === "read") {
+      await ObjectTargetService.loadReadable(set, ctx, target);
+      return;
+    }
+    const descriptor = ObjectTargetService.descriptor(target.type);
     const row = await descriptor.load(target.id);
     // Each target type is the permission type of its own name.
-    const type = target.type;
-    if (verb === "write") {
-      ObjectAccessService.loadForVerb(
-        set,
-        ctx.organizationId,
-        type,
-        row,
-        "write",
-        descriptor.notFound
-      );
-    } else if (
-      !ObjectAccessService.readableInOrg(set, ctx.organizationId, type, row)
-    ) {
-      throw descriptor.notFound();
-    }
+    ObjectAccessService.loadForVerb(
+      set,
+      ctx.organizationId,
+      target.type,
+      row,
+      "write",
+      descriptor.notFound
+    );
   }
 
   /** Every tag among `ids` must be in the caller's org and readable. */
@@ -194,7 +147,7 @@ export class TagAssignmentService {
         target,
         tx
       );
-      if (!ok) throw TARGETS[target.type].notFound();
+      if (!ok) throw ObjectTargetService.descriptor(target.type).notFound();
     }
   }
 

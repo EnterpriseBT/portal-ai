@@ -309,3 +309,27 @@ describe("PinnedResultsListUI accessibility", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+describe("PinnedResultCardUI favorites (#1072)", () => {
+  it("renders its title action beside the name, outside the heading", () => {
+    render(
+      <PinnedResultCardUI
+        result={result1}
+        onUnpin={jest.fn()}
+        titleAction={
+          <button
+            type="button"
+            aria-pressed="true"
+          >{`Unfavorite ${result1.name}`}</button>
+        }
+      />
+    );
+    const star = screen.getByRole("button", {
+      name: `Unfavorite ${result1.name}`,
+    });
+    expect(star).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: result1.name })
+    ).not.toContainElement(star);
+  });
+});

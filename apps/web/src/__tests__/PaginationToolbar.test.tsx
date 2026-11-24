@@ -1419,3 +1419,207 @@ describe("usePagination — keyset mode (#433)", () => {
     expect(result.current.queryParams.cursor).toBeUndefined();
   });
 });
+
+// =============================================================================
+// #1072: toolbar quick toggles (`placement: "toolbar"`)
+// =============================================================================
+
+describe("PaginationToolbar — toolbar toggles (#1072)", () => {
+  const quick: FilterConfig = {
+    type: "boolean",
+    field: "starred",
+    label: "Starred only",
+    placement: "toolbar",
+  };
+
+  it("renders the toggle in the toolbar, not in the Filter popover", async () => {
+    const user = userEvent.setup();
+    render(
+      <PaginationToolbar
+        {...makeProps({ filterConfigs: [quick, selectFilter] })}
+      />
+    );
+    const toggle = screen.getByRole("button", { name: "Starred only" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    expect(within(dialog).queryByText("Starred only")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Category")).toBeInTheDocument();
+  });
+
+  it("leads a toggle with its icon, keeping the label as its name", () => {
+    render(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [
+            { ...quick, icon: <span data-testid="quick-icon" aria-hidden /> },
+          ],
+        })}
+      />
+    );
+    const toggle = screen.getByRole("button", { name: "Starred only" });
+    expect(within(toggle).getByTestId("quick-icon")).toBeInTheDocument();
+  });
+
+  it("hides the Filter button when every filter is a toolbar toggle", () => {
+    render(<PaginationToolbar {...makeProps({ filterConfigs: [quick] })} />);
+    expect(
+      screen.queryByRole("button", { name: /^Filter/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("sets true when pressed and clears (never false) when unpressed", async () => {
+    const user = userEvent.setup();
+    const onFilterValueChange = jest.fn();
+    const { rerender } = render(
+      <PaginationToolbar
+        {...makeProps({ filterConfigs: [quick], onFilterValueChange })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Starred only" }));
+    expect(onFilterValueChange).toHaveBeenLastCalledWith("starred", "true");
+
+    rerender(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [quick],
+          filters: { starred: ["true"] },
+          onFilterValueChange,
+        })}
+      />
+    );
+    // The active chip is a button too; the toggle is the pressed one.
+    const pressed = screen.getByRole("button", {
+      name: "Starred only",
+      pressed: true,
+    });
+    expect(pressed).toHaveAttribute("aria-pressed", "true");
+    await user.click(pressed);
+    expect(onFilterValueChange).toHaveBeenLastCalledWith("starred", "");
+    expect(onFilterValueChange).not.toHaveBeenCalledWith("starred", "false");
+  });
+
+  it("shows an active chip named by its label, whose delete clears it", async () => {
+    const user = userEvent.setup();
+    const onFilterValueChange = jest.fn();
+    render(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [quick],
+          filters: { starred: ["true"] },
+          onFilterValueChange,
+        })}
+      />
+    );
+    const chip = screen.getByText("Starred only", {
+      selector: ".MuiChip-label",
+    });
+    expect(chip).toBeInTheDocument();
+    expect(screen.queryByText("Starred only: Yes")).not.toBeInTheDocument();
+    const deleteIcon = chip.parentElement!.querySelector(
+      ".MuiChip-deleteIcon"
+    )!;
+    await user.click(deleteIcon);
+    expect(onFilterValueChange).toHaveBeenCalledWith("starred", "");
+  });
+
+  it("leaves the popover badge to the popover's own filters", () => {
+    render(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [quick, selectFilter],
+          filters: { starred: ["true"], category: ["crm"] },
+          activeFilterCount: 2,
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Filter, 1 active" })
+    ).toBeInTheDocument();
+  });
+
+  it("announces the results after a toggle", async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({
+        advanceTimers: jest.advanceTimersByTime,
+      });
+      render(
+        <PaginationToolbar
+          {...makeProps({ filterConfigs: [quick], total: 3, totalPages: 1 })}
+        />
+      );
+      await user.click(screen.getByRole("button", { name: "Starred only" }));
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("3 results");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("counts as filtering and round-trips through usePagination", () => {
+    const { result } = renderHook(() => usePagination({ filters: [quick] }));
+    expect(result.current.isFiltered).toBe(false);
+    act(() =>
+      result.current.toolbarProps.onFilterValueChange("starred", "true")
+    );
+    expect(result.current.isFiltered).toBe(true);
+    expect(result.current.queryParams).toMatchObject({ starred: true });
+    act(() => result.current.toolbarProps.onFilterValueChange("starred", ""));
+    expect(result.current.isFiltered).toBe(false);
+    expect(result.current.queryParams).not.toHaveProperty("starred");
+  });
+
+  it("reports a toggle as the only filter only when nothing else narrows", () => {
+    const tags: FilterConfig = {
+      type: "multi-select",
+      field: "tagIds",
+      label: "Tags",
+      options: [{ label: "Q4", value: "q4" }],
+    };
+    const preset: FilterConfig = {
+      type: "boolean",
+      field: "isActive",
+      label: "Active",
+      defaultValue: ["true"],
+    };
+    const { result } = renderHook(() =>
+      usePagination({ filters: [quick, tags, preset] })
+    );
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+    act(() =>
+      result.current.toolbarProps.onFilterValueChange("starred", "true")
+    );
+    // A filter still at its default isn't narrowing.
+    expect(result.current.isOnlyFilter("starred")).toBe(true);
+    act(() => result.current.setFilter("tagIds", ["q4"]));
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+    act(() => result.current.setFilter("tagIds", []));
+    act(() =>
+      result.current.setAdvancedFilters({
+        combinator: "and",
+        conditions: [{ field: "name", operator: "eq", value: "x" }],
+      } as never)
+    );
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+  });
+
+  it("has no axe violations, pressed or not", async () => {
+    const { container, rerender } = render(
+      <PaginationToolbar {...makeProps({ filterConfigs: [quick] })} />
+    );
+    await expectNoAxeViolations(container);
+    rerender(
+      <PaginationToolbar
+        {...makeProps({
+          filterConfigs: [quick],
+          filters: { starred: ["true"] },
+        })}
+      />
+    );
+    await expectNoAxeViolations(container);
+  });
+});

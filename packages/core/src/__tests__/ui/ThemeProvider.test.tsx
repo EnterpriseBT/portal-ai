@@ -809,6 +809,21 @@ describe("sheet canvas rules (#996)", () => {
   });
 });
 
+describe("a favorite's star (#1072)", () => {
+  it.each(["brand", "brand.dark"] as const)(
+    "%s colours it from palette.favorite, over the theme's icon button colour",
+    (name) => {
+      const root = (
+        a11yComponents(THEME_MAP[name].palette).components?.MuiIconButton
+          ?.styleOverrides as { root: Record<string, unknown> }
+      ).root;
+      expect(
+        root['&.MuiIconButton-colorFavorite:not([aria-disabled="true"])']
+      ).toEqual({ color: THEME_MAP[name].palette.favorite.main });
+    }
+  );
+});
+
 describe("ThemeProvider accessibility", () => {
   it("has no axe violations", async () => {
     const { container } = render(

@@ -28,6 +28,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import { FavoriteService } from "./favorite.service.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import type { CuratedViewSelect } from "../db/schema/zod.js";
 import {
@@ -439,6 +440,7 @@ export class CuratedViewService {
       stationId,
       include,
       tagIds: tagIdsRaw,
+      favorite,
     } = query;
     const { organizationId } = ctx;
     const set = await PermissionService.loadSet(ctx);
@@ -489,6 +491,12 @@ export class CuratedViewService {
           curatedViews.id,
           tagIds
         )
+      );
+    }
+    // #1072: only the caller's favorites.
+    if (favorite === "true") {
+      filters.push(
+        FavoriteService.onlyFavorites(ctx, "curated_view", curatedViews.id)
       );
     }
 
