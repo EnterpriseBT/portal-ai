@@ -98,20 +98,13 @@ export type DemoOrganizationCreateInput = z.infer<
 >;
 
 /**
- * Request body for PATCH /api/organization/:id (#907). Each field is checked
- * and written only when present: `name` needs `org.write`, `defaultStationId`
- * the class station write (#690). `null` clears the default station.
+ * Request body for PATCH /api/organization/:id (#907): a rename, which needs
+ * `org.write`. #1114 removed `defaultStationId`.
  */
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const OrganizationUpdateRequestSchema = z
-  .object({
-    name: organizationNameField().optional(),
-    defaultStationId: z.string().min(1).nullable().optional(),
-  })
-  .strict()
-  .refine((b) => b.name !== undefined || b.defaultStationId !== undefined, {
-    message: "Provide a name or a default station",
-  });
+  .object({ name: organizationNameField() })
+  .strict();
 
 export type OrganizationUpdateRequest = z.infer<
   typeof OrganizationUpdateRequestSchema

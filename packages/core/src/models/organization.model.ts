@@ -13,7 +13,6 @@ export const OrganizationSchema = CoreSchema.extend({
   name: z.string(),
   timezone: z.string(),
   ownerUserId: z.string(), // ID of the user who owns this organization
-  defaultStationId: z.string().nullable().default(null),
   /** Subscription tier slug — FK to `tiers.slug` (#172). Defaults to
    *  `standard`; the Stripe webhook (#176) writes this. */
   tier: z.string().default("standard"),

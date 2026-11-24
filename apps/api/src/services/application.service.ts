@@ -515,8 +515,7 @@ export class ApplicationService {
   /** Provision a full organization for an EXISTING user (#190 — the
    *  portalai CLI's `org create` / `seed org` path). Same transaction body
    *  the webhook uses: org + owner membership + system column definitions +
-   *  the Sandbox instance + the provisioned stations (#848) and their packs +
-   *  defaultStationId. */
+   *  the Sandbox instance + the provisioned stations (#848) and their packs. */
   static async provisionOrganizationFor(
     userId: string,
     opts: { name?: string } = {}
@@ -921,7 +920,7 @@ export class ApplicationService {
   /**
    * The scaffolding every organization gets: system column definitions, the
    * RBAC system roles and policies, a Sandbox connector instance, and the
-   * {@link PROVISIONED_STATIONS} (#848): Administrate, the default, with the
+   * {@link PROVISIONED_STATIONS} (#848): Administrate, with the
    * access tools and no data; and Playground, with the Sandbox and the packs
    * to build, share and query entities and views. Both also carry the Help
    * pack (#1044).

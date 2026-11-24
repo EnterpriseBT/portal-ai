@@ -25,8 +25,9 @@ export const AUDIT_ACTIONS = [
   "org.create",
   "org.delete",
   /** #907: an org field changed; metadata `{ field, from, to }`. #935: a
-   *  `defaultStationId` change adds `fromName`/`toName`, the stations' names
-   *  as of the change. */
+   *  `defaultStationId` change added `fromName`/`toName`, the stations' names
+   *  as of the change; #1114 removed the default station, so those are
+   *  legacy entries only, still rendered in Activity. */
   "org.update",
   "member.add",
   "member.remove",

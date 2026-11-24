@@ -405,44 +405,23 @@ describe("Same-org object access (#685)", () => {
     expect(pins).toHaveLength(0);
   });
 
-  // ── Org default station ─────────────────────────────────────────────
+  // ── Org default station (#1114: removed) ─────────────────────────────
 
-  it("org settings: a member can't change the default station (403); the owner can", async () => {
-    const { stationId } = await portalWithMessage(fx.ownerId);
-    currentSub = MEMBER_SUB;
-    const refused = await request(app)
-      .patch(`/api/organization/${fx.orgId}`)
-      .send({ defaultStationId: null });
-    expect(refused.status).toBe(403);
-
-    currentSub = OWNER_SUB;
-    const ok = await request(app)
-      .patch(`/api/organization/${fx.orgId}`)
-      .send({ defaultStationId: stationId });
-    expect(ok.status).toBe(200);
-    const [org] = await db
-      .select()
-      .from(schema.organizations)
-      .where(eq(schema.organizations.id, fx.orgId));
-    expect(org.defaultStationId).toBe(stationId);
-  });
-
-  it("#690: the caller's station.default.set capability agrees with the default-station PATCH", async () => {
-    const { stationId } = await portalWithMessage(fx.ownerId);
-    for (const [sub, expected] of [
-      [MEMBER_SUB, false],
-      [OWNER_SUB, true],
-    ] as const) {
+  it("org settings: a defaultStationId body is a 400 for everyone, and the capability is gone", async () => {
+    for (const sub of [MEMBER_SUB, OWNER_SUB]) {
       currentSub = sub;
-      const current = await request(app).get("/api/organization/current");
-      expect(current.status).toBe(200);
-      expect(current.body.payload.capabilities["station.default.set"]).toBe(
-        expected
-      );
-      const patch = await request(app)
+      const res = await request(app)
         .patch(`/api/organization/${fx.orgId}`)
-        .send({ defaultStationId: stationId });
-      expect(patch.status).toBe(expected ? 200 : 403);
+        .send({ defaultStationId: null });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+      const current = await request(app).get("/api/organization/current");
+      expect(current.body.payload.capabilities).not.toHaveProperty(
+        "station.default.set"
+      );
+      expect(current.body.payload.organization).not.toHaveProperty(
+        "defaultStationId"
+      );
     }
   });
 

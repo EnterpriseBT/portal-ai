@@ -5,7 +5,6 @@ import {
   RESOURCE_PERMISSION_TYPES,
   type OrgRole,
   type PolicyPrincipalType,
-  type CallerCapabilityAction,
   type CapabilityMap,
   type PagePermissionMap,
   type ResourcePermissionMap,
@@ -86,18 +85,6 @@ export type PermissionObject =
  * wired into list routes in #621.
  */
 /**
- * Caller capabilities that aren't policy verbs: each is the class-level check
- * its route runs, which an ownership-conditioned grant doesn't satisfy.
- */
-const DERIVED_CAPABILITIES = {
-  // #690: the org PATCH's default-station change.
-  "station.default.set": (set) =>
-    set.can("resource.write", { type: "station" }),
-} satisfies Partial<
-  Record<CallerCapabilityAction, (set: PermissionSet) => boolean>
->;
-
-/**
  * How a type's create route authorizes (#708), so `resourcePermissions[type]
  * .create` runs the same check:
  *  - `class`: `{ type }`, an unconditional grant (owner/admin by default);
@@ -125,10 +112,6 @@ const CREATE_RULES: Record<ResourcePermissionType, CreateRule> = {
   job: "none",
   toolpack: "class", // POST /api/toolpacks
 };
-
-type DerivedCapability = keyof typeof DERIVED_CAPABILITIES;
-const isDerived = (a: CallerCapabilityAction): a is DerivedCapability =>
-  a in DERIVED_CAPABILITIES;
 
 export class PermissionService {
   /**
@@ -217,16 +200,13 @@ export class PermissionService {
   }
 
   /**
-   * `can(a)` for every caller-capability action. Most are policy verbs; a
-   * derived one is computed with the exact check its route runs, so the
-   * button and the server agree.
+   * `can(a)` for every caller-capability action: each is a policy verb, so
+   * the button and the server agree. (#1114 removed the one derived action,
+   * `station.default.set`, and the mechanism with it.)
    */
   static capabilityMap(set: PermissionSet): CapabilityMap {
     return Object.fromEntries(
-      CALLER_CAPABILITY_ACTIONS.map((action) => [
-        action,
-        isDerived(action) ? DERIVED_CAPABILITIES[action](set) : set.can(action),
-      ])
+      CALLER_CAPABILITY_ACTIONS.map((action) => [action, set.can(action)])
     ) as CapabilityMap;
   }
 

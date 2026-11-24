@@ -26,7 +26,7 @@ import {
 } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { ResetService } from "../../../services/reset.service.js";
 import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
@@ -326,11 +326,12 @@ describe("ResetService integration tests (#295)", () => {
     });
 
     it("leaves the control org fully intact (case 8)", async () => {
-      const [org] = await db
-        .select()
-        .from(schema.organizations)
-        .where(eq(schema.organizations.id, control.orgId));
-      expect(org.defaultStationId).toBe(control.stationId);
+      // The control org's dormant default_station_id (set by the fixture) is
+      // untouched: the reset is scoped to its own org (#1114: nothing reads it).
+      const [org] = (await db.execute(
+        sql`SELECT default_station_id FROM organizations WHERE id = ${control.orgId}`
+      )) as unknown as { default_station_id: string | null }[];
+      expect(org.default_station_id).toBe(control.stationId);
 
       const wideCols = await db
         .select()

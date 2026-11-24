@@ -29,11 +29,11 @@ import {
 import { atLeast, eventually } from "../utils/eventually.util.js";
 
 /**
- * #907: renaming an organization through `PATCH /api/organization/:id`. Each
- * field is checked only when present (`name` → `org.write`, `defaultStationId`
- * → class station write), the body is strict, a real rename is audited as
- * `org.update` and copied to the Stripe customer best effort, and concurrent
- * renames each record the name they replaced.
+ * #907: renaming an organization through `PATCH /api/organization/:id`. A
+ * rename needs `org.write`, the body is strict (#1114: `defaultStationId` is
+ * gone and is a 400 naming it), a real rename is audited as `org.update` and
+ * copied to the Stripe customer best effort, and concurrent renames each
+ * record the name they replaced.
  */
 
 const OWNER_SUB = "auth0|rename-owner";
@@ -111,7 +111,7 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     } as never);
     await db
       .update(schema.organizations)
-      .set({ name: ORIGINAL, defaultStationId: stationId })
+      .set({ name: ORIGINAL })
       .where(eq(schema.organizations.id, fx.orgId));
     currentSub = OWNER_SUB;
   });
@@ -163,16 +163,16 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     ["owner", OWNER_SUB],
     ["admin", ADMIN_SUB],
   ])(
-    "an %s renames with a name-only body, leaving the default station",
+    "an %s renames, and the response carries no defaultStationId (#1114)",
     async (_role, sub) => {
       currentSub = sub;
       const res = await patch({ name: "Acme Corp" });
       expect(res.status).toBe(200);
       expect(res.body.payload.organization.name).toBe("Acme Corp");
-      expect(res.body.payload.organization.defaultStationId).toBe(stationId);
-      const row = await orgRow();
-      expect(row.name).toBe("Acme Corp");
-      expect(row.defaultStationId).toBe(stationId);
+      expect(res.body.payload.organization).not.toHaveProperty(
+        "defaultStationId"
+      );
+      expect((await orgRow()).name).toBe("Acme Corp");
     }
   );
 
@@ -200,47 +200,17 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     expect((await orgRow()).name).toBe("Acme Corp");
   });
 
-  it("a station-only body behaves as #690: refused for a member, allowed for an owner, name kept", async () => {
-    currentSub = MEMBER_SUB;
-    expect((await patch({ defaultStationId: null })).status).toBe(403);
-
-    currentSub = OWNER_SUB;
-    const res = await patch({ defaultStationId: null });
-    expect(res.status).toBe(200);
-    const row = await orgRow();
-    expect(row.defaultStationId).toBeNull();
-    expect(row.name).toBe(ORIGINAL);
-  });
-
-  it("a body with both fields needs both permissions, and writes nothing on a refusal", async () => {
-    // write org alone: the station half still refuses.
-    await allowForUser(db, {
-      organizationId: fx.orgId,
-      userId: fx.memberId,
-      verb: "write",
-      resourceType: "org",
-    });
-    currentSub = MEMBER_SUB;
-    const res = await patch({ name: "Acme Corp", defaultStationId: null });
-    expect(res.status).toBe(403);
-    const row = await orgRow();
-    expect(row.name).toBe(ORIGINAL);
-    expect(row.defaultStationId).toBe(stationId);
-
-    currentSub = OWNER_SUB;
-    const ok = await patch({ name: "Acme Corp", defaultStationId: null });
-    expect(ok.status).toBe(200);
-    expect(ok.body.payload.organization).toMatchObject({
-      name: "Acme Corp",
-      defaultStationId: null,
-    });
-  });
-
   // ── Validation ──────────────────────────────────────────────────────
 
   it.each([
     ["an empty body", {}],
     ["an unknown key", { name: "Acme Corp", timezone: "UTC" }],
+    // #1114: the default station is gone.
+    ["a defaultStationId", { defaultStationId: null }],
+    [
+      "a name with a defaultStationId",
+      { name: "Acme Corp", defaultStationId: "st-1" },
+    ],
     ["a blank name", { name: "   " }],
     ["a 121-character name", { name: "a".repeat(121) }],
     ["a name with a line break", { name: "Acme\nCorp" }],
@@ -287,132 +257,6 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     // The audit write would run after the response; give it time to land.
     await new Promise((r) => setTimeout(r, 300));
     expect(await auditRows()).toHaveLength(0);
-  });
-
-  // ── Default-station audit (#935) ────────────────────────────────────
-
-  describe("default-station changes", () => {
-    let otherStationId: string;
-
-    const insertStation = async (organizationId: string, name: string) => {
-      const id = generateId();
-      await db.insert(schema.stations).values({
-        id,
-        organizationId,
-        name,
-        description: null,
-        created: Date.now(),
-        createdBy: fx.ownerId,
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
-      return id;
-    };
-
-    const stationRows = async () =>
-      (await auditRows()).filter(
-        (row) =>
-          (row.metadata as { field?: string } | null)?.field ===
-          "defaultStationId"
-      );
-
-    const settle = () => new Promise((r) => setTimeout(r, 300));
-
-    beforeEach(async () => {
-      otherStationId = await insertStation(fx.orgId, "Sales");
-    });
-
-    it("setting it from none records from null to the station, with its name", async () => {
-      await db
-        .update(schema.organizations)
-        .set({ defaultStationId: null })
-        .where(eq(schema.organizations.id, fx.orgId));
-      currentSub = ADMIN_SUB;
-
-      expect((await patch({ defaultStationId: stationId })).status).toBe(200);
-
-      const rows = await eventually(stationRows, atLeast(1));
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({
-        userId: adminId,
-        targetType: "organization",
-        targetId: fx.orgId,
-        metadata: {
-          field: "defaultStationId",
-          from: null,
-          to: stationId,
-          fromName: null,
-          toName: "Default station",
-        },
-      });
-    });
-
-    it("changing it records both stations by id and name", async () => {
-      expect((await patch({ defaultStationId: otherStationId })).status).toBe(
-        200
-      );
-
-      const rows = await eventually(stationRows, atLeast(1));
-      expect(rows).toHaveLength(1);
-      expect(rows[0].metadata).toEqual({
-        field: "defaultStationId",
-        from: stationId,
-        to: otherStationId,
-        fromName: "Default station",
-        toName: "Sales",
-      });
-    });
-
-    it("clearing it records from the station to null", async () => {
-      expect((await patch({ defaultStationId: null })).status).toBe(200);
-
-      const rows = await eventually(stationRows, atLeast(1));
-      expect(rows[0].metadata).toEqual({
-        field: "defaultStationId",
-        from: stationId,
-        to: null,
-        fromName: "Default station",
-        toName: null,
-      });
-    });
-
-    it("re-saving the same station records nothing", async () => {
-      expect((await patch({ defaultStationId: stationId })).status).toBe(200);
-      await settle();
-      expect(await stationRows()).toHaveLength(0);
-    });
-
-    it("a refused change records nothing", async () => {
-      currentSub = MEMBER_SUB;
-      expect((await patch({ defaultStationId: otherStationId })).status).toBe(
-        403
-      );
-
-      currentSub = OWNER_SUB;
-      const foreign = await insertStation(fx.otherOrgId, "Elsewhere");
-      const res = await patch({ defaultStationId: foreign });
-      expect(res.status).toBe(404);
-      expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
-
-      await settle();
-      expect(await stationRows()).toHaveLength(0);
-      expect((await orgRow()).defaultStationId).toBe(stationId);
-    });
-
-    it("a name and a station change in one request record one entry each", async () => {
-      expect(
-        (await patch({ name: "Acme Corp", defaultStationId: otherStationId }))
-          .status
-      ).toBe(200);
-
-      const rows = await eventually(auditRows, atLeast(2));
-      expect(rows).toHaveLength(2);
-      expect(
-        rows.map((r) => (r.metadata as { field: string }).field).sort()
-      ).toEqual(["defaultStationId", "name"]);
-    });
   });
 
   // ── Stripe ──────────────────────────────────────────────────────────

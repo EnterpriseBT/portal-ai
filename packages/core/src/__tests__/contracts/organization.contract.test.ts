@@ -25,7 +25,6 @@ describe("OrganizationGetResponseSchema (#620)", () => {
     "member.role.assign": true,
     "member.invite": true,
     "member.remove": true,
-    "station.default.set": true,
   };
   const base = {
     organization,
@@ -167,25 +166,31 @@ describe("MemberRolesSetRequestSchema (#620/#622)", () => {
 // ── PATCH /organization/:id request (#907) ───────────────────────────
 
 describe("OrganizationUpdateRequestSchema (#907)", () => {
-  it("accepts a name alone, a station alone, a null station, and both", () => {
-    for (const body of [
-      { name: "Acme" },
-      { defaultStationId: "st-1" },
-      { defaultStationId: null },
-      { name: "Acme", defaultStationId: "st-1" },
-    ]) {
-      expect(OrganizationUpdateRequestSchema.safeParse(body).success).toBe(
-        true
-      );
-    }
+  it("accepts a name", () => {
+    expect(
+      OrganizationUpdateRequestSchema.safeParse({ name: "Acme" }).success
+    ).toBe(true);
   });
 
-  it("rejects an empty body with the refine message", () => {
-    const result = OrganizationUpdateRequestSchema.safeParse({});
+  it("rejects an empty body: a rename is the only update (#1114)", () => {
+    expect(OrganizationUpdateRequestSchema.safeParse({}).success).toBe(false);
+  });
+
+  // #1114: the default station is gone; the strict schema names the key.
+  it.each([
+    [{ defaultStationId: "st-1" }],
+    [{ defaultStationId: null }],
+    [{ name: "Acme", defaultStationId: "st-1" }],
+  ])("rejects defaultStationId as an unknown key: %j", (body) => {
+    const result = OrganizationUpdateRequestSchema.safeParse(body);
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe(
-      "Provide a name or a default station"
-    );
+    expect(
+      result.error?.issues.some(
+        (i) =>
+          i.code === "unrecognized_keys" &&
+          (i as { keys?: string[] }).keys?.includes("defaultStationId")
+      )
+    ).toBe(true);
   });
 
   it("rejects an unknown key", () => {

@@ -67,38 +67,6 @@ beforeEach(() => {
     );
 });
 
-describe("OrganizationUpdateService.auditDefaultStationChange (#935)", () => {
-  it("records org.update with the change exactly as given, reading nothing", async () => {
-    const context = {
-      userId: "user-1",
-      organizationId: "org-1",
-      sourceIp: "127.0.0.1",
-      userAgent: "jest",
-    };
-
-    await OrganizationUpdateService.auditDefaultStationChange(
-      context,
-      "org-1",
-      { from: "st-a", to: "st-b", fromName: "Main", toName: "Sales" }
-    );
-
-    expect(mockRecord).toHaveBeenCalledWith({
-      ...context,
-      action: "org.update",
-      targetType: "organization",
-      targetId: "org-1",
-      metadata: {
-        field: "defaultStationId",
-        from: "st-a",
-        to: "st-b",
-        fromName: "Main",
-        toName: "Sales",
-      },
-    });
-    expect(mockStationFindById).not.toHaveBeenCalled();
-  });
-});
-
 describe("OrganizationUpdateService.syncStripeCustomerName (#907)", () => {
   it("sets the customer's name when the org has one", async () => {
     await OrganizationUpdateService.syncStripeCustomerName("org-1");
