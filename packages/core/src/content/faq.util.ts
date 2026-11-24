@@ -230,6 +230,20 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     ],
   },
   {
+    question: "How do favorites work?",
+    answer:
+      "Star a station, pinned result, view or connector to make it one of your favorites. The star is on each item in its list and on its own page, and anyone who can see an item can star it. Favorites are yours alone: nobody else sees them, and they don't change the item for anyone. Each of those lists has a Favorites only button that shows just your favorites, without changing the order. If you lose access to a favorite it disappears from your lists, and it comes back starred if your access returns. Deleting an item removes it from everyone's favorites. Tags are the shared way to group items for the whole organization.",
+    category: FAQCategory.Organization,
+    aliases: ["star", "starred", "favourite"],
+    relatedGlossaryTerms: [
+      "Station",
+      "Pinned Result",
+      "Curated View",
+      "Connector Instance",
+      "Tag",
+    ],
+  },
+  {
     question: "How do I rename my organization?",
     answer:
       "Open Settings → Organization and choose Rename next to the organization's name. Rename appears for anyone with permission to edit the organization. Names don't have to be unique. The new name shows straight away in the header and the organization switcher, and on invoices from then on. The rename is recorded in Settings → Activity, and if you later delete the organization, the confirmation asks for its new name.",

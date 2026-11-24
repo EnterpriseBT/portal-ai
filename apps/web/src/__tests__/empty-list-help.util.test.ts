@@ -20,6 +20,8 @@ describe("EMPTY_LIST_HELP", () => {
         "connectors",
         "entities",
         "entityGroups",
+        // #1072: the Favorites only filter with nothing starred.
+        "favorites",
         "jobs",
         "pinnedResults",
         "stations",

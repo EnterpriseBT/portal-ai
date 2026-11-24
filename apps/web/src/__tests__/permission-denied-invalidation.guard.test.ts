@@ -32,6 +32,7 @@ const PER_OBJECT_API_FILES = [
   "entity-records.api.ts",
   "tag-assignments.api.ts",
   "entity-tags.api.ts",
+  "favorites.api.ts",
   "field-mappings.api.ts",
   "portal-results.api.ts",
   "portals.api.ts",
