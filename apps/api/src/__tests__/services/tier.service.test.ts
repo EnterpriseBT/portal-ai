@@ -75,6 +75,7 @@ describe("TierService.tierPolicyFromRow", () => {
         "web_search",
         "help",
         "member_management",
+        "tag_management",
       ],
       customToolpacks: true,
     });
@@ -87,7 +88,7 @@ describe("TierService.tierPolicyFromRow", () => {
       customToolpacks: false,
     } as never);
     expect(restrictive.entitlements).toEqual({
-      builtinToolpacks: ["help", "member_management"],
+      builtinToolpacks: ["help", "member_management", "tag_management"],
       customToolpacks: false,
     });
   });
@@ -101,6 +102,7 @@ describe("TierService.tierPolicyFromRow", () => {
       "help",
       "data_query",
       "member_management",
+      "tag_management",
     ]);
   });
 });
@@ -133,6 +135,7 @@ describe("TierService.resolveTier", () => {
         "web_search",
         "help",
         "member_management",
+        "tag_management",
       ],
       customToolpacks: true,
     });

@@ -7,6 +7,7 @@ import GroupAddOutlined from "@mui/icons-material/GroupAddOutlined";
 import HelpOutlineOutlined from "@mui/icons-material/HelpOutlineOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
 import LayersOutlined from "@mui/icons-material/LayersOutlined";
+import LocalOfferOutlined from "@mui/icons-material/LocalOfferOutlined";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import PaidOutlined from "@mui/icons-material/PaidOutlined";
 import StorageOutlined from "@mui/icons-material/StorageOutlined";
@@ -55,6 +56,8 @@ const ICONS_BY_SLUG: Record<string, SvgIconComponent> = {
   HelpOutline: HelpOutlineOutlined,
   // #847: the Members pack.
   GroupAdd: GroupAddOutlined,
+  // #1071: the Tags pack.
+  LocalOffer: LocalOfferOutlined,
   [CUSTOM_PACK_ICON_SLUG]: ExtensionOutlined,
 };
 

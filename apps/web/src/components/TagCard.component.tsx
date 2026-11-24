@@ -1,7 +1,7 @@
 import React from "react";
 
 import type { ObjectCapabilities, TagUsage } from "@portalai/core/contracts";
-import type { EntityTag } from "@portalai/core/models";
+import { isSessionGenerated, type EntityTag } from "@portalai/core/models";
 import { Box, DetailCard, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import EditIcon from "@mui/icons-material/Edit";
@@ -9,6 +9,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 
 import { decideActionGate } from "../utils/action-gate.util";
 import { formatTagUsage } from "../utils/tag-usage.util";
+import { SessionGeneratedChipUI } from "./SessionGeneratedChip.component";
 
 export interface TagCardUIProps {
   /** A list row, with the caller's `capabilities` on it (#689). */
@@ -66,6 +67,8 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
           {tag.description}
         </Typography>
       )}
+      {/* #1071: provenance only; the tag is still its creator's. */}
+      {isSessionGenerated(tag) && <SessionGeneratedChipUI />}
       {/* #1070: where the tag is used, over what the caller can read. */}
       {tag.usage && (
         <Typography

@@ -85,6 +85,8 @@ export const SESSION_CREATING_TOOLS = [
   "PolicyCreateTool",
   "GroupCreateTool",
   "CuratedViewCreateTool",
+  // #1071: a session's tag records the session.
+  "TagCreateTool",
 ] as const;
 
 /** Where authorization is decided; none of it may read provenance. */

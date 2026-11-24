@@ -26,6 +26,8 @@ describe("station data packs (#848)", () => {
       false
     );
     expect(usesStationData(["web_search"], false)).toBe(false);
+    // #1071: tags are org metadata, not station data.
+    expect(usesStationData(["tag_management"], false)).toBe(false);
     expect(usesStationData([], false)).toBe(false);
   });
 

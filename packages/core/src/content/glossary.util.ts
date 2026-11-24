@@ -224,7 +224,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Tag",
     category: GlossaryCategory.Organization,
     definition:
-      "A color-coded label you attach to entities, stations, pinned results, connectors and views to group them and filter their lists.",
+      "A color-coded label you attach to entities, stations, pinned results, connectors and views to group them and filter their lists. With the Tags tool pack, the assistant can create, edit and delete tags and add or remove them on objects in a portal session, with your permissions.",
     example:
       'Tag the stations, views and connectors your finance team uses with a green "Finance" tag, then filter each list to it in one click.',
     relatedTerms: [
@@ -250,7 +250,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Station",
     category: GlossaryCategory.Analytics,
     definition:
-      "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the member and access tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Both also start with the Help pack, so you can ask how Portals works on either. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
+      "A workspace that groups views, connector instances and tool packs so you can work with them in a portal. Scope a station to one set of goals or tasks and attach only what that work needs: unrelated connectors and tool packs don't share a station. New organizations start with two examples: Administrate, the default, with the member, access and tag tools and no data, and Playground, with the Sandbox connector and the packs to build, share and query entities and views. Both also start with the Help pack, so you can ask how Portals works on either. Views and connectors are attached independently; anyone who can edit the station can attach any view or connector they can read. Views can be attached when creating or editing the station, or by the assistant with the Curated Views tool pack.",
     example:
       'Create a "Sales" station with your "Open deals" and "Invoices" views, your CRM connector, and the statistics tool pack.',
     relatedTerms: [
@@ -299,7 +299,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Tool Pack",
     category: GlossaryCategory.Analytics,
     definition:
-      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, entity management, access & roles, members (invitations, removals, roles and seats), curated views, visualization, GIS (maps and geocoding), and Help, which answers questions about how Portals works in a session. Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs (see Station for scoping a station to one kind of work).",
+      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, entity management, access & roles, members (invitations, removals, roles and seats), curated views, tags (create, edit, delete and apply tags), visualization, GIS (maps and geocoding), and Help, which answers questions about how Portals works in a session. Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs (see Station for scoping a station to one kind of work).",
     example:
       "Enable the regression tool pack on a station so the assistant has the `regression`, `logistic_regression`, and `forecast` tools available for trend and prediction questions.",
     relatedTerms: ["Tool", "Station", "Portal", "Custom Toolpack"],

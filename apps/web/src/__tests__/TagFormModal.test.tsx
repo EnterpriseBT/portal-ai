@@ -26,6 +26,7 @@ const existingTag: EntityTag = {
   name: "Production",
   color: "#EF4444",
   description: "Production environment",
+  sourcePortalId: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,

@@ -16,6 +16,7 @@ const tag = (
   name,
   color,
   description: null,
+  sourcePortalId: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,

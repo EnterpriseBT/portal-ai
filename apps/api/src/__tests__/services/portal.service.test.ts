@@ -228,6 +228,7 @@ const {
   narrationStepPrep,
   renderedBlockReminder,
   NEXT_TOOL_REMINDER,
+  EARLIER_TURN_PREFIX,
 } = await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
@@ -1424,6 +1425,96 @@ describe("PortalService", () => {
       expect(output.value).toContain("columns: [elev, geom]");
       expect(output.value).not.toContain("MultiPolygon");
       expect(Buffer.byteLength(output.value, "utf8")).toBeLessThan(1_000);
+    });
+
+    // #1071 (adversarial walk): the model read a previous turn's tag_list /
+    // tag_target_list results as this turn's. Every replayed result says it
+    // is from an earlier turn.
+    it("marks a replayed JSON result as from an earlier turn", async () => {
+      const result = { tags: [{ id: "t1", name: "Finance Ops" }], total: 1 };
+      const messages = [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ type: "text", content: "tags?" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool-call",
+              toolCallId: "tc-tags",
+              toolName: "tag_list",
+              input: {},
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc-tags",
+              toolName: "tag_list",
+              content: result,
+            },
+            { type: "text", content: "One tag." },
+          ],
+        },
+        {
+          id: "u2",
+          role: "user",
+          blocks: [{ type: "text", content: "again" }],
+        },
+      ];
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue(messages);
+
+      const { coreMessages } = await PortalService.getPortal(PORTAL_ID);
+      const toolMsg = coreMessages.find((m) => m.role === "tool") as {
+        content: Array<{ output: unknown }>;
+      };
+
+      expect(toolMsg.content[0].output).toEqual({
+        type: "json",
+        value: { fromEarlierTurn: true, result },
+      });
+    });
+
+    it("prefixes a replayed text result as from an earlier turn", async () => {
+      const messages = [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ type: "text", content: "time?" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool-call",
+              toolCallId: "tc-t",
+              toolName: "current_time",
+              input: {},
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc-t",
+              toolName: "current_time",
+              content: "2026-11-24T06:00:00Z",
+            },
+          ],
+        },
+      ];
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue(messages);
+
+      const { coreMessages } = await PortalService.getPortal(PORTAL_ID);
+      const toolMsg = coreMessages.find((m) => m.role === "tool") as {
+        content: Array<{ output: unknown }>;
+      };
+
+      expect(toolMsg.content[0].output).toEqual({
+        type: "text",
+        value: `${EARLIER_TURN_PREFIX} 2026-11-24T06:00:00Z`,
+      });
     });
 
     it("throws PORTAL_NOT_FOUND when portal does not exist", async () => {

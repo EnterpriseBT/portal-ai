@@ -17,6 +17,7 @@ const makeTag = (
   name: "Production",
   color: "#EF4444",
   description: "Production environment resources",
+  sourcePortalId: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,
@@ -48,6 +49,26 @@ describe("TagCardUI", () => {
     expect(screen.getByTestId("tag-usage")).toHaveTextContent(
       "3 entities · 1 connector"
     );
+  });
+
+  // #1071: a tag the agent created in a portal session says so.
+  it("marks a tag created in a portal session", async () => {
+    render(
+      <TagCardUI
+        tag={makeTag({ sourcePortalId: "portal-1" })}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByText("Created in a portal session")).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("doesn't mark a tag created outside a session", () => {
+    render(
+      <TagCardUI tag={makeTag()} onEdit={jest.fn()} onDelete={jest.fn()} />
+    );
+    expect(screen.queryByText("Created in a portal session")).toBeNull();
   });
 
   it("leaves out the usage line when the list didn't ask for it", () => {

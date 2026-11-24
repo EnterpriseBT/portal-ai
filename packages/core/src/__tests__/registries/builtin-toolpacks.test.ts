@@ -28,8 +28,8 @@ function distinctSpecsByName(
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly twelve packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(12);
+  it("registers exactly thirteen packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(13);
   });
 
   // Case 2
@@ -49,9 +49,26 @@ describe("BUILTIN_TOOLPACKS", () => {
       "help",
       // #847: the member roster and invitations.
       "member_management",
+      // #1071: the tag catalog and tag assignments.
+      "tag_management",
     ];
     const actual = BUILTIN_TOOLPACKS.map((p) => p.slug).sort();
     expect(actual).toEqual([...expected].sort());
+  });
+
+  // #1071: the Tags pack carries the catalog tools.
+  it("gives the Tags pack its catalog and assignment tools", () => {
+    const tags = BUILTIN_TOOLPACK_BY_SLUG.tag_management;
+    expect(tags.name).toBe("Tags");
+    expect(tags.tools.map((t) => t.name)).toEqual([
+      "tag_list",
+      "tag_target_list",
+      "tag_create",
+      "tag_update",
+      "tag_delete",
+      "tag_assign",
+      "tag_unassign",
+    ]);
   });
 
   // Case 3

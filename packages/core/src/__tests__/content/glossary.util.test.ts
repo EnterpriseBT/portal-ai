@@ -450,8 +450,10 @@ describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
     expect(definition).toMatch(/one set of goals or tasks/);
     expect(definition).toMatch(/attach only what that work needs/);
     expect(definition).toMatch(/Administrate, the default/);
-    // #847: Administrate manages members as well as access.
-    expect(definition).toMatch(/with the member and access tools and no data/);
+    // #847: Administrate manages members as well as access; #1071: and tags.
+    expect(definition).toMatch(
+      /with the member, access and tag tools and no data/
+    );
     expect(definition).toMatch(/Playground, with the Sandbox connector/);
     // #1044: both answer product questions.
     expect(definition).toMatch(
@@ -462,6 +464,18 @@ describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
   it("Tool Pack lists the Members pack (#847)", () => {
     expect(find("Tool Pack").definition).toMatch(
       /members \(invitations, removals, roles and seats\)/
+    );
+  });
+
+  it("Tool Pack lists the Tags pack (#1071)", () => {
+    expect(find("Tool Pack").definition).toMatch(
+      /tags \(create, edit, delete and apply tags\)/
+    );
+  });
+
+  it("Tag says the assistant can manage and apply tags with the Tags pack (#1071)", () => {
+    expect(find("Tag").definition).toMatch(
+      /With the Tags tool pack, the assistant can create, edit and delete tags and add or remove them on objects in a portal session, with your permissions\./
     );
   });
 

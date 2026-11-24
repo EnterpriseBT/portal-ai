@@ -69,6 +69,8 @@ export const ALWAYS_ENTITLED_PACKS: readonly BuiltinToolpackSlug[] = [
   "help",
   // #847: member management is decided by permissions, not by plan.
   "member_management",
+  // #1071: tagging too, like the Tags page, which no plan gates.
+  "tag_management",
 ];
 
 // ── Aggregate ───────────────────────────────────────────────────────

@@ -1,7 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, or, type SQL, type Column } from "drizzle-orm";
 
-import { EntityTagModelFactory } from "@portalai/core/models";
 import {
   EntityTagListRequestQuerySchema,
   type EntityTagListResponsePayload,
@@ -10,34 +8,21 @@ import {
   type EntityTagCreateResponsePayload,
   EntityTagUpdateRequestBodySchema,
   type EntityTagUpdateResponsePayload,
-  type EntityTagListRequestQuery,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
-import { entityTags } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PermissionService } from "../services/permission.service.js";
-import { ObjectAccessService } from "../services/object-access.service.js";
 import { ObjectCapabilitiesService } from "../services/object-capabilities.service.js";
-
-import { ilikeContains } from "../utils/filter-sql.util.js";
+import { EntityTagService } from "../services/entity-tag.service.js";
 import type { Request } from "../types/request.js";
-import { TagAssignmentService } from "../services/tag-assignment.service.js";
 
 const logger = createLogger({ module: "entity-tag" });
 
 export const entityTagRouter = Router();
-
-/** Map of sortable field names to their Drizzle columns. */
-// #756: keyed by the schema's `sortBy` enum, so every value the schema
-// accepts has a column and nothing else reaches the lookup.
-const SORTABLE_COLUMNS: Record<EntityTagListRequestQuery["sortBy"], Column> = {
-  name: entityTags.name,
-  created: entityTags.created,
-};
 
 /**
  * @openapi
@@ -110,70 +95,25 @@ entityTagRouter.get(
     try {
       const { limit, offset, sortBy, sortOrder, search, include } =
         parsedQuery.data;
-
-      const organizationId = req.application!.metadata.organizationId;
-      const filters: SQL[] = [eq(entityTags.organizationId, organizationId)];
-
-      if (search) {
-        filters.push(
-          or(
-            ilikeContains(entityTags.name, search),
-            ilikeContains(entityTags.description, search)
-          )!
-        );
-      }
-
-      // #630: filter to the tags the caller may `read`.
-      const set = await PermissionService.loadSet(req.application!.metadata);
-      const visibility = set.visibilityPredicate("tag", {
-        createdByCol: entityTags.createdBy,
-        idCol: entityTags.id,
-      });
-      if (visibility) filters.push(visibility);
-
-      const where = and(...filters);
-      const column = SORTABLE_COLUMNS[sortBy];
-      const listOpts = {
-        limit,
-        offset,
-        orderBy: { column, direction: sortOrder },
-      };
-
-      const [data, total] = await Promise.all([
-        DbService.repository.entityTags.findMany(where, listOpts),
-        DbService.repository.entityTags.count(where),
-      ]).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(
-          500,
-          ApiCode.ENTITY_TAG_FETCH_FAILED,
-          error instanceof Error ? error.message : "Failed to list entity tags"
-        );
-      });
-
-      // #1070: with include=usage, each tag's per-type counts over the
-      // objects the caller can read.
-      const wantsUsage = (include ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .includes("usage");
-      const usage = wantsUsage
-        ? await TagAssignmentService.usageByTag(
-            set,
-            organizationId,
-            data.map((tag) => tag.id)
-          )
-        : null;
+      const { entityTags: rows, total } = await EntityTagService.list(
+        req.application!.metadata,
+        {
+          search,
+          limit,
+          offset,
+          sortBy,
+          sortOrder,
+          // #1070: with include=usage, each tag's per-type counts over the
+          // objects the caller can read.
+          includeUsage: (include ?? "")
+            .split(",")
+            .map((s) => s.trim())
+            .includes("usage"),
+        }
+      );
 
       return HttpService.success<EntityTagListResponsePayload>(res, {
-        // #688: each row with the caller's capabilities.
-        entityTags: ObjectCapabilitiesService.attach(
-          set,
-          "tag",
-          usage
-            ? data.map((tag) => ({ ...tag, usage: usage.get(tag.id) }))
-            : data
-        ) as unknown as EntityTagListResponsePayload["entityTags"],
+        entityTags: rows,
         total,
         limit,
         offset,
@@ -388,56 +328,10 @@ entityTagRouter.post(
         );
       }
 
-      const { organizationId, userId } = req.application!.metadata;
-
-      // #685: creating one is owner/admin only (class write on tag).
-      // MemberAccess holds nothing on this type, so members can't create
-      // what they couldn't then edit or delete.
-      await PermissionService.check(
+      const entityTag = await EntityTagService.create(
         req.application!.metadata,
-        "resource.write",
-        {
-          type: "tag",
-        }
+        parsed.data
       );
-
-      const duplicate = await DbService.repository.entityTags.findByName(
-        organizationId,
-        parsed.data.name
-      );
-      if (duplicate) {
-        return next(
-          new ApiError(
-            409,
-            ApiCode.ENTITY_TAG_DUPLICATE_NAME,
-            "An entity tag with this name already exists in this organization"
-          )
-        );
-      }
-
-      const factory = new EntityTagModelFactory();
-      const model = factory.create(userId);
-      model.update({
-        organizationId,
-        name: parsed.data.name,
-        color: parsed.data.color ?? null,
-        description: parsed.data.description ?? null,
-      });
-
-      const entityTag = await DbService.repository.entityTags
-        .create(model.parse())
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_TAG_CREATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to create entity tag"
-          );
-        });
-
-      logger.info({ id: entityTag.id, organizationId }, "Entity tag created");
 
       return HttpService.success<EntityTagCreateResponsePayload>(
         res,
@@ -552,58 +446,11 @@ entityTagRouter.patch(
         );
       }
 
-      // #630: a member may edit only their own tag; owner/admin any.
-      // #713: one the caller can't read answers 404, like its GET.
-      const existing = ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
-        req.application!.metadata.organizationId,
-        "tag",
-        await DbService.repository.entityTags.findById(id),
-        "write",
-        () =>
-          new ApiError(
-            404,
-            ApiCode.ENTITY_TAG_NOT_FOUND,
-            "Entity tag not found"
-          )
+      const entityTag = await EntityTagService.update(
+        req.application!.metadata,
+        id,
+        parsed.data
       );
-
-      if (parsed.data.name && parsed.data.name !== existing.name) {
-        const duplicate = await DbService.repository.entityTags.findByName(
-          existing.organizationId,
-          parsed.data.name
-        );
-        if (duplicate) {
-          return next(
-            new ApiError(
-              409,
-              ApiCode.ENTITY_TAG_DUPLICATE_NAME,
-              "An entity tag with this name already exists in this organization"
-            )
-          );
-        }
-      }
-
-      const { userId } = req.application!.metadata;
-
-      const entityTag = await DbService.repository.entityTags
-        .update(id, {
-          ...parsed.data,
-          updated: Date.now(),
-          updatedBy: userId,
-        } as never)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_TAG_UPDATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to update entity tag"
-          );
-        });
-
-      logger.info({ id }, "Entity tag updated");
 
       return HttpService.success<EntityTagUpdateResponsePayload>(res, {
         entityTag:
@@ -679,49 +526,7 @@ entityTagRouter.delete(
     try {
       const { id } = req.params;
 
-      // #630: a member may delete only their own tag; owner/admin any.
-      // #713: one the caller can't read answers 404, like its GET.
-      ObjectAccessService.loadForVerb(
-        await PermissionService.loadSet(req.application!.metadata),
-        req.application!.metadata.organizationId,
-        "tag",
-        await DbService.repository.entityTags.findById(id),
-        "delete",
-        () =>
-          new ApiError(
-            404,
-            ApiCode.ENTITY_TAG_NOT_FOUND,
-            "Entity tag not found"
-          )
-      );
-
-      const { userId } = req.application!.metadata;
-
-      await DbService.transaction(async (tx) => {
-        const assignments =
-          await DbService.repository.entityTagAssignments.findByEntityTagId(
-            id,
-            tx
-          );
-        const assignmentIds = assignments.map((a) => a.id);
-        if (assignmentIds.length > 0) {
-          await DbService.repository.entityTagAssignments.softDeleteMany(
-            assignmentIds,
-            userId,
-            tx
-          );
-        }
-        await DbService.repository.entityTags.softDelete(id, userId, tx);
-      }).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(
-          500,
-          ApiCode.ENTITY_TAG_DELETE_FAILED,
-          error instanceof Error ? error.message : "Failed to delete entity tag"
-        );
-      });
-
-      logger.info({ id }, "Entity tag soft-deleted");
+      await EntityTagService.delete(req.application!.metadata, id);
 
       return HttpService.success(res, { id });
     } catch (error) {

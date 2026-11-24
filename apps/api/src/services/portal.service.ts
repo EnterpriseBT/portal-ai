@@ -1274,13 +1274,30 @@ function storedSummary(toolName: string, content: unknown): string | null {
     : null;
 }
 
+/** Prefixes a replayed text result (see {@link replayResult}). */
+export const EARLIER_TURN_PREFIX = "[From an earlier turn]";
+
 /**
  * #726: a recent turn's tool result as the model reads it on replay — the same
  * projection the live step sent (`toModelOutput`), so the model's account of
  * a result doesn't change between turns. A row result is its stored summary.
+ *
+ * #1071 (adversarial walk): every replayed result is from an earlier turn,
+ * and it says so. Unmarked, the model took a previous turn's `tag_list` and
+ * `tag_target_list` results for this turn's ("Already done this turn"),
+ * naming a station deleted since and a pack removed since. A row summary
+ * already reads "[Previous … result: …]"; anything else is wrapped as
+ * `{ fromEarlierTurn: true, result }`, or prefixed when it's text, and the
+ * prompt says what the mark means.
  */
 function replayResult(toolName: string, content: unknown): unknown {
-  return storedSummary(toolName, content) ?? toModelView(content);
+  const summary = storedSummary(toolName, content);
+  if (summary) return summary;
+  const view = toModelView(content);
+  if (view === undefined) return view;
+  return typeof view === "string"
+    ? `${EARLIER_TURN_PREFIX} ${view}`
+    : { fromEarlierTurn: true, result: view };
 }
 
 /**

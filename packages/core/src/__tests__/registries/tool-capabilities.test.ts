@@ -137,6 +137,14 @@ describe("costHint pin (#184)", () => {
     grant_share: "free",
     grant_revoke: "free",
     grant_list: "free",
+    // tag_management (#1071): tag admin is never metered.
+    tag_list: "free",
+    tag_target_list: "free",
+    tag_create: "free",
+    tag_update: "free",
+    tag_delete: "free",
+    tag_assign: "free",
+    tag_unassign: "free",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",
@@ -248,9 +256,14 @@ describe("platform_help capability", () => {
 });
 
 describe("ALWAYS_ENTITLED_PACKS (#1050)", () => {
-  it("is the help pack and the members pack (#847)", () => {
+  it("is the help, members and tags packs (#847, #1071)", () => {
     // #847: member management is decided by permissions, not by plan.
-    expect([...ALWAYS_ENTITLED_PACKS]).toEqual(["help", "member_management"]);
+    // #1071: so is tagging, like the ungated Tags page.
+    expect([...ALWAYS_ENTITLED_PACKS]).toEqual([
+      "help",
+      "member_management",
+      "tag_management",
+    ]);
   });
 
   it("holds only free tools, so entitling every tier costs nothing", () => {

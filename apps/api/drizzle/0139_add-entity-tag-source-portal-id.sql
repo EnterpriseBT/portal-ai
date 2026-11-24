@@ -1,0 +1,1 @@
+ALTER TABLE "entity_tags" ADD COLUMN "source_portal_id" text;

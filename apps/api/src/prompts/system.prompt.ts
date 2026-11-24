@@ -274,6 +274,8 @@ export const PACK_ELSEWHERE: Record<BuiltinToolpackSlug, string> = {
   help: "answering questions about how Portals works, with links into Help",
   member_management:
     "inviting and removing members, invitations and seat usage",
+  tag_management:
+    "creating, editing and deleting tags and adding or removing them on objects",
 };
 
 export const PACK_PROMPT_SECTIONS: Record<
@@ -840,6 +842,64 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
+  // #1071: the tag catalog and tag assignments.
+  tag_management: {
+    capability: "manage and apply tags",
+    requestShapes: ["a tag change"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["manage and apply tags", "## Tags Notes"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("## Tags Notes");
+      lines.push("");
+      lines.push(
+        "You can list, create, edit and delete tags, and add or remove them " +
+          "on objects, with the tag_management tools. They act on the user's own authority: a change they cannot " +
+          "make on the Tags page you cannot make here. " +
+          "`TOOL_PERMISSION_DENIED` means they lack that permission; " +
+          "`TOOL_TARGET_NOT_FOUND` means the tag (or object) doesn't exist " +
+          "for them. Relay either plainly and do not retry. `tag_list` and " +
+          "`tag_target_list` return only what the user can read: an empty " +
+          "result means none they can see, not that none exist."
+      );
+      lines.push("");
+      lines.push(
+        "**Look a tag up before you act on it.** Find its id with " +
+          "`tag_list`; `search` matches the name or the description, so " +
+          "pick the tag whose name is the one the user gave (names are " +
+          "unique). Never invent a tag id. If no tag has that name exactly " +
+          "but some come close, ask which one. " +
+          "Create a tag only when the user asks for a new one; a name that " +
+          "matches no tag is a question for the user, not a reason to " +
+          "create it."
+      );
+      lines.push("");
+      lines.push(
+        "`tag_assign` and `tag_unassign` take `tagIds` and `targets`, each " +
+          "target a { type, id } where type is entity, station, pin (a " +
+          "pinned result), connector_instance or curated_view. Objects of " +
+          "different types can go in one call. Find each object's id with " +
+          "`tag_target_list` (its `type`, and `search` on the name), or take " +
+          "it from an earlier tool result. Never guess an object id. If " +
+          "several objects match the name the user gave, ask which one."
+      );
+      lines.push("");
+      lines.push(
+        "Each pair in the result has a status: `assigned` or " +
+          "`already_assigned`, `removed` or `not_assigned`. Report what " +
+          "changed and what already was. If the call is refused, nothing " +
+          "was changed: say which object or tag it names, and stop."
+      );
+      lines.push("");
+      lines.push(
+        "Deleting a tag removes it from every object that carries it; " +
+          "report the counts in the result."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
   // #1050: platform help is a pack a station attaches (#367's `## Help`
   // section, moved here from the base prompt unchanged).
   help: {
@@ -1063,6 +1123,20 @@ export function buildSystemPrompt(rawContext: StationContext): string {
       "earlier turn aren't kept (you see only its row count and columns), so " +
       "when a follow-up needs their values, pass its `queryHandle` if it " +
       "names one and it's still live, or re-run the query.",
+    // #1071 (adversarial walk): a replayed result was read as this turn's
+    // ("Already done this turn"), so a deleted station and a removed pack
+    // were reported from history. History marks those results; this says
+    // what the mark means.
+    "- **An earlier turn's result is history, not the current state.** A " +
+      "result marked `fromEarlierTurn`, `[From an earlier turn]` or " +
+      '"[Previous … result …]" was true when that turn ran; objects may ' +
+      "have been created, changed, deleted or unshared since, and a tool may " +
+      "no longer be in this session. When the user asks again to list, find, " +
+      "check or act on something, call the tool again in this turn. Never " +
+      "say a call was already made this turn unless you made it in this " +
+      "turn. When a tool you used earlier isn't among your tools now, say " +
+      "its pack isn't on this station instead of answering from the old " +
+      "result.",
     "- **Report sign and direction exactly as the tool returns them.** When a " +
       "result carries a direction — a slope, trend, change, correlation, " +
       "growth/decline, drawdown, or delta — read it straight off the tool's " +

@@ -10,6 +10,7 @@ const baseTag: TagCardUIProps["tag"] = {
   name: "Production",
   color: "#EF4444",
   description: "Resources running in the production environment",
+  sourcePortalId: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,
@@ -93,5 +94,12 @@ export const LongName: Story = {
       description:
         "This is an equally long description that should also be truncated when it overflows the card width",
     },
+  },
+};
+
+/** #1071: a tag the assistant created in a portal session. */
+export const CreatedInSession: Story = {
+  args: {
+    tag: { ...baseTag, name: "Q4 Revenue", sourcePortalId: "portal-1" },
   },
 };

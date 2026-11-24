@@ -117,6 +117,13 @@ import {
   MemberInviteTool,
 } from "../tools/rbac/invitation.tool.js";
 import { CuratedViewListTool } from "../tools/curated-views/curated-view-list.tool.js";
+import { TagListTool } from "../tools/tags/tag-list.tool.js";
+import { TagTargetListTool } from "../tools/tags/tag-target-list.tool.js";
+import { TagCreateTool } from "../tools/tags/tag-create.tool.js";
+import { TagUpdateTool } from "../tools/tags/tag-update.tool.js";
+import { TagDeleteTool } from "../tools/tags/tag-delete.tool.js";
+import { TagAssignTool } from "../tools/tags/tag-assign.tool.js";
+import { TagUnassignTool } from "../tools/tags/tag-unassign.tool.js";
 import { CuratedViewEntityListTool } from "../tools/curated-views/curated-view-entity-list.tool.js";
 import { CuratedViewGetTool } from "../tools/curated-views/curated-view-get.tool.js";
 import { CuratedViewCreateTool } from "../tools/curated-views/curated-view-create.tool.js";
@@ -301,6 +308,14 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "curated_view_attach",
   "curated_view_detach",
   "station_list",
+  // tag_management (#1071)
+  "tag_list",
+  "tag_target_list",
+  "tag_create",
+  "tag_update",
+  "tag_delete",
+  "tag_assign",
+  "tag_unassign",
 ]);
 
 export class ToolService {
@@ -982,6 +997,28 @@ export class ToolService {
         permissionContext,
         viewSession
       );
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: tag_management (#1071)
+    // -------------------------------------------------------------------
+    // The agent-facing companion to the Tags page and each object's Tags
+    // section. Each tool routes to EntityTagService / TagAssignmentService,
+    // which run the routes' own checks; a refusal surfaces as
+    // TOOL_PERMISSION_DENIED (the gate's catch-403) or TOOL_TARGET_NOT_FOUND.
+    // Control-plane (`writes:[]`), so the tools stay on read-only stations,
+    // and tags take no job lock (the routes declare `locks: none`).
+    if (enabledPacks.has("tag_management")) {
+      tools.tag_list = new TagListTool().build(permissionContext);
+      tools.tag_target_list = new TagTargetListTool().build(permissionContext);
+      tools.tag_create = new TagCreateTool().build(
+        permissionContext,
+        portalId ?? null
+      );
+      tools.tag_update = new TagUpdateTool().build(permissionContext);
+      tools.tag_delete = new TagDeleteTool().build(permissionContext);
+      tools.tag_assign = new TagAssignTool().build(permissionContext);
+      tools.tag_unassign = new TagUnassignTool().build(permissionContext);
     }
 
     // -------------------------------------------------------------------
