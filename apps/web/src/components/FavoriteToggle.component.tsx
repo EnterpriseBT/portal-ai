@@ -31,6 +31,9 @@ export const FavoriteToggleUI: React.FC<FavoriteToggleUIProps> = ({
 }) => (
   <GatedIconButton
     icon={isFavorite ? IconName.Star : IconName.StarBorder}
+    // A favorite's star is the brand yellow (palette.favorite, held at 3:1
+    // in both themes); an unstarred outline stays neutral.
+    color={isFavorite ? "favorite" : "default"}
     size="small"
     aria-pressed={isFavorite}
     aria-label={`Favorite ${name}`}

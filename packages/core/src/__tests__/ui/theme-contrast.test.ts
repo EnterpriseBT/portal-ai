@@ -93,6 +93,12 @@ describe.each(Object.keys(THEME_MAP) as ThemeName[])("%s contrast", (name) => {
       );
     });
 
+    it("a favorite's star (favorite.main) stands out (#1072)", () => {
+      expect(
+        getContrastRatio(palette.favorite.main, bg)
+      ).toBeGreaterThanOrEqual(NON_TEXT);
+    });
+
     it("the focus ring (primary.main) stands out", () => {
       expect(getContrastRatio(palette.primary.main, bg)).toBeGreaterThanOrEqual(
         NON_TEXT

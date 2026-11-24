@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
-import type {} from "@mui/material/styles";
+import type { PaletteColor, PaletteColorOptions } from "@mui/material/styles";
 import type {} from "@mui/material/Typography";
+import type {} from "@mui/material/IconButton";
 
 /** One overlay kind on the sheet canvas: its tint, its outline, and the
  *  opaque fill its chip's text sits on (#996). */
@@ -97,12 +98,16 @@ export interface DataVizPalette {
 
 declare module "@mui/material/styles" {
   interface Palette {
+    /** #1072: the brand yellow of a favorited item's star (≥ 3:1 on both
+     *  surfaces, `theme-contrast.test.ts`). */
+    favorite: PaletteColor;
     sheet: SheetPalette;
     code: CodePalette;
     dataViz: DataVizPalette;
   }
 
   interface PaletteOptions {
+    favorite?: PaletteColorOptions;
     sheet?: SheetPalette;
     code?: CodePalette;
     dataViz?: DataVizPalette;
@@ -115,6 +120,13 @@ declare module "@mui/material/styles" {
   // Allow configuration using `createTheme`
   interface TypographyVariantsOptions {
     monospace?: CSSProperties;
+  }
+}
+
+// #1072: an IconButton can take the favorite colour (the star).
+declare module "@mui/material/IconButton" {
+  interface IconButtonPropsColorOverrides {
+    favorite: true;
   }
 }
 

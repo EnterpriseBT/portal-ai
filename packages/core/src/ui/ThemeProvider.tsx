@@ -311,7 +311,9 @@ export function sheetCanvasRules(
  *   says why, so they're aria-disabled, and this is the one place that
  *   styles them;
  * - a name for every `CircularProgress`, so an unnamed spinner announces
- *   "Loading". A caller's own `aria-label` still wins.
+ *   "Loading". A caller's own `aria-label` still wins;
+ * - a favorite's star in `palette.favorite.main` (#1072), held at 3:1 in
+ *   both themes.
  *
  * `createTheme(options, this)` deep-merges, so a JSON override for the same
  * component keeps its other keys. That's why every override here is an
@@ -374,6 +376,13 @@ export function a11yComponents(palette: Palette): ThemeOptions {
               cursor: "not-allowed",
               color: action.disabled,
               "&:hover": { backgroundColor: "transparent" },
+            },
+            // #1072: a favorite's star, in the palette's brand yellow. The
+            // class selector outranks a theme JSON's plain icon button colour
+            // (the dark theme sets one); the disabled look above still wins
+            // while it's aria-disabled.
+            '&.MuiIconButton-colorFavorite:not([aria-disabled="true"])': {
+              color: palette.favorite.main,
             },
           },
         },

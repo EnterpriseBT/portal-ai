@@ -31,6 +31,14 @@ describe("FavoriteToggleUI (#1072)", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("draws a favorite's star in the brand yellow, and an unstarred one neutral", () => {
+    const { rerender } = render(<FavoriteToggleUI {...props()} />);
+    const button = () => screen.getByRole("button", { name: "Favorite Sales" });
+    expect(button().className).not.toMatch(/MuiIconButton-colorFavorite/);
+    rerender(<FavoriteToggleUI {...props({ isFavorite: true })} />);
+    expect(button().className).toMatch(/MuiIconButton-colorFavorite/);
+  });
+
   it("calls onToggle when pressed", async () => {
     const user = userEvent.setup();
     const onToggle = jest.fn();
