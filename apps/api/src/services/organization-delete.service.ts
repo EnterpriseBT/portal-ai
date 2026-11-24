@@ -38,6 +38,7 @@ import {
   entityGroups,
   entityRecords,
   entityTagAssignments,
+  favorites,
   entityTags,
   fieldMappings,
   fileUploads,
@@ -178,6 +179,10 @@ export class OrganizationDeleteService {
       await tx
         .delete(entityTagAssignments)
         .where(eq(entityTagAssignments.organizationId, organizationId));
+      // #1072: the same for favorites.
+      await tx
+        .delete(favorites)
+        .where(eq(favorites.organizationId, organizationId));
 
       // #802: curated views hold FKs to field mappings (projection links),
       // stations (attachments) and entities (the view itself), all

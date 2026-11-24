@@ -1256,6 +1256,14 @@ stationRouter.delete(
           tx,
           deletedAt
         );
+        // #1072: and every user's favorites of it. The row is already locked
+        // (findByIdForUpdate above), so a star either committed first and is
+        // swept here, or waits and then finds the station gone.
+        await DbService.repository.favorites.hardDeleteByTargets(
+          "station",
+          [id],
+          tx
+        );
 
         await DbService.repository.stations.softDelete(
           id,

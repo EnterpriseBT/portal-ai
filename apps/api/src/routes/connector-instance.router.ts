@@ -1552,6 +1552,13 @@ connectorInstanceRouter.delete(
             userId,
             tx
           );
+          // #1072: every user's favorites of it (its views' go with them
+          // below, through CuratedViewDeleteService).
+          await DbService.repository.favorites.hardDeleteByTargets(
+            "connector_instance",
+            [id],
+            tx
+          );
 
           // Find all connector entities for this instance
           const entities =

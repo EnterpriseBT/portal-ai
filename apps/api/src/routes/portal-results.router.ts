@@ -893,6 +893,12 @@ portalResultsRouter.delete(
           tx,
           deletedAt
         );
+        // #1072: and every user's favorites of it.
+        await DbService.repository.favorites.hardDeleteByTargets(
+          "pin",
+          [id],
+          tx
+        );
       });
       logger.info({ id }, "Portal result soft-deleted");
 

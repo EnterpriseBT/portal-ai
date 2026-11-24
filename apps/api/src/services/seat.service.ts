@@ -588,10 +588,21 @@ export class SeatService {
           );
         }
       }
-      await DbService.repository.organizationUsers.softDelete(
-        target.id,
-        caller.userId
-      );
+      // #1072: the membership and the member's favorites in this org go in
+      // one transaction, so a removed member never keeps a favorite here and a
+      // re-invite starts with none.
+      await DbService.transaction(async (tx) => {
+        await DbService.repository.organizationUsers.softDelete(
+          target.id,
+          caller.userId,
+          tx
+        );
+        await DbService.repository.favorites.hardDeleteByUser(
+          orgId,
+          target.userId,
+          tx
+        );
+      });
       // #620: tombstone the member's role assignments along with the membership.
       await DbService.repository.userRole.removeAllForUser(
         target.userId,

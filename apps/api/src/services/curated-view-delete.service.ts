@@ -102,6 +102,9 @@ export class CuratedViewDeleteService {
       tx,
       deletedAt
     );
+    // #1072: every user's favorites of the views, hard-deleted, after the
+    // rows for the same reason: a star share-locks the row it lands on.
+    await repo.favorites.hardDeleteByTargets("curated_view", ids, tx);
 
     return {
       curatedViews: deletedViews.length,

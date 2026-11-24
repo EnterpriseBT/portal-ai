@@ -115,6 +115,7 @@ describe("OrganizationDeleteService integration tests", () => {
       const byOrg: Array<[string, { organizationId: unknown }]> = [
         ["entity_group_members", schema.entityGroupMembers],
         ["entity_tag_assignments", schema.entityTagAssignments],
+        ["favorites", schema.favorites],
         ["entity_records", schema.entityRecords],
         ["field_mappings", schema.fieldMappings],
         ["portal_results", schema.portalResults],
@@ -196,6 +197,7 @@ describe("OrganizationDeleteService integration tests", () => {
         "entity_records",
         "entity_tag_assignments",
         "entity_tags",
+        "favorites",
         "field_mappings",
         "file_uploads",
         "jobs",
