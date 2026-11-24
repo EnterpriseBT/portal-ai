@@ -38,6 +38,12 @@ import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.c
 import { ShareDialog } from "../components/ShareDialog.component";
 import { TagChipListUI } from "../components/TagChipList.component";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import {
+  isFavoritesOnly,
+  useFavoriteFilter,
+} from "../utils/use-favorite-filter.util";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
+import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 
 type CuratedViewRow = CuratedViewListResponsePayload["curatedViews"][number];
@@ -53,6 +59,10 @@ export interface CuratedViewsUIProps {
   createGate: ActionGate;
   /** True when a search/filter is active — drives the empty-state copy. */
   hasActiveFilters: boolean;
+  /** #1072: Favorites only is the one active filter (empty = nothing starred). */
+  favoritesOnly?: boolean;
+  /** #1072: the control beside each view's name (its favorite star). */
+  renderTitleAction?: (view: CuratedViewRow) => React.ReactNode;
   /** The rendered pagination toolbar (search / sort / page controls). */
   paginationToolbar: React.ReactNode;
   onCreate: () => void;
@@ -66,6 +76,8 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
   isError,
   createGate,
   hasActiveFilters,
+  favoritesOnly,
+  renderTitleAction,
   paginationToolbar,
   onCreate,
   onShare,
@@ -88,6 +100,8 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
   let body: React.ReactNode;
   if (isError) {
     body = <EmptyResults />;
+  } else if (!isLoading && views.length === 0 && favoritesOnly) {
+    body = <FavoritesEmptyResults noun="view" />;
   } else if (!isLoading && views.length === 0) {
     body = hasActiveFilters ? (
       <EmptyResults />
@@ -127,6 +141,7 @@ export const CuratedViewsUI: React.FC<CuratedViewsUIProps> = ({
               linkComponent={RouterLink}
               headingLevel={2}
               actions={actions}
+              titleAction={renderTitleAction?.(view)}
             >
               <MetadataList
                 items={[
@@ -197,6 +212,7 @@ export const CuratedViews: React.FC = () => {
   );
 
   const tagFilter = useTagFilter();
+  const favoriteFilter = useFavoriteFilter();
   const pagination = usePagination({
     sortFields: [
       { field: "label", label: "Label" },
@@ -205,7 +221,7 @@ export const CuratedViews: React.FC = () => {
     ],
     defaultSortBy: "created",
     defaultSortOrder: "asc",
-    filters: [tagFilter],
+    filters: [favoriteFilter, tagFilter],
   });
 
   const listResult = sdk.curatedViews.list({
@@ -249,6 +265,14 @@ export const CuratedViews: React.FC = () => {
         isError={listResult.isError}
         createGate={createGate}
         hasActiveFilters={hasActiveFilters}
+        favoritesOnly={isFavoritesOnly(pagination.filters, pagination.search)}
+        renderTitleAction={(view) => (
+          <FavoriteToggle
+            target={{ type: "curated_view", id: view.id }}
+            name={view.label}
+            isFavorite={view.isFavorite ?? false}
+          />
+        )}
         paginationToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
         onCreate={() => setCreateOpen(true)}
         onShare={(view) => setShareTarget(view)}

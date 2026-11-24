@@ -33,6 +33,7 @@ import { pinDataRefusal, type PinDataRefusal } from "../utils/pin-data.util";
 import { useToast } from "../utils/toast.context";
 import type { PortalResultPayload } from "../api/portal-results.api";
 import { TagsSection } from "../components/TagsSection.component";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { pinDeleteKeys } from "../utils/delete-invalidation.util";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -111,6 +112,8 @@ export interface PinnedResultDetailUIProps {
   dataRefusalMessage?: string | null;
   /** #1070: the pin's Tags section, rendered under its header. */
   tagsSection?: React.ReactNode;
+  /** #1072: the control beside the pin's name (its favorite star). */
+  titleAction?: React.ReactNode;
 }
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
@@ -129,6 +132,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   dataRefusal = null,
   dataRefusalMessage = null,
   tagsSection,
+  titleAction,
 }) => {
   const contentBlock = toContentBlock(result);
   const refusal = dataRefusal ? REFUSAL_NOTICES[dataRefusal] : null;
@@ -154,6 +158,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           onNavigate={onNavigate}
           title={result.name}
           icon={<Icon name={IconName.PushPin} />}
+          titleAction={titleAction}
           primaryAction={
             // #621/#690: Unpin removes the pin (a delete), so a read-only
             // grantee can view but not remove someone else's pin.
@@ -399,6 +404,13 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               definerName={definerName}
               dataRefusal={dataRefusal}
               dataRefusalMessage={pinData.error?.message ?? null}
+              titleAction={
+                <FavoriteToggle
+                  target={{ type: "pin", id: portalResult.id }}
+                  name={portalResult.name}
+                  isFavorite={payload?.portalResult.isFavorite ?? false}
+                />
+              }
               tagsSection={
                 <TagsSection
                   target={{ type: "pin", id: portalResult.id }}

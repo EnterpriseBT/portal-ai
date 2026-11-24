@@ -87,6 +87,8 @@ export interface ConnectorInstanceCardUIProps {
   onDelete?: (connectorInstance: ConnectorInstanceApi) => void;
   /** The title's heading level (#794): 2 directly under a page's h1. Default 3. */
   headingLevel?: 2 | 3;
+  /** #1072: a control beside the name (the favorite star). */
+  titleAction?: React.ReactNode;
 }
 
 export const ConnectorInstanceCardUI = ({
@@ -95,6 +97,7 @@ export const ConnectorInstanceCardUI = ({
   href,
   onDelete,
   headingLevel,
+  titleAction,
 }: ConnectorInstanceCardUIProps) => {
   const actions: ActionSuiteItem[] = [];
   if (onDelete && ci.capabilities.delete) {
@@ -132,6 +135,7 @@ export const ConnectorInstanceCardUI = ({
           {ci.name.charAt(0).toUpperCase()}
         </Avatar>
       }
+      titleAction={titleAction}
       href={href}
       linkComponent={RouterLink}
       headingLevel={headingLevel}

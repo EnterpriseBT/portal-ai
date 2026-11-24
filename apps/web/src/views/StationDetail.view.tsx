@@ -50,6 +50,7 @@ import {
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
 import { TagsSection } from "../components/TagsSection.component";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -195,6 +196,13 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       onNavigate={(href) => navigate({ to: href })}
                       title={station.name}
                       icon={<Icon name={IconName.SatelliteAlt} />}
+                      titleAction={
+                        <FavoriteToggle
+                          target={{ type: "station", id: station.id }}
+                          name={station.name}
+                          isFavorite={station.isFavorite ?? false}
+                        />
+                      }
                       primaryAction={
                         <Button
                           variant="contained"

@@ -322,3 +322,46 @@ describe("StationListUI", () => {
     await expectNoAxeViolations(container);
   });
 });
+
+describe("StationListUI favorites (#1072)", () => {
+  it("puts each station's title action beside its name", () => {
+    render(
+      <StationListUI
+        {...defaultListProps}
+        renderTitleAction={(s) => (
+          <button
+            type="button"
+            aria-pressed="false"
+          >{`Favorite ${s.name}`}</button>
+        )}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Favorite Sales Analytics" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Favorite Finance Hub" })
+    ).toBeInTheDocument();
+  });
+
+  it("explains favorites when Favorites only is the filter and nothing is starred", () => {
+    render(
+      <StationListUI
+        {...defaultListProps}
+        stations={[]}
+        favoritesOnly
+        hasActiveFilters
+      />
+    );
+    expect(screen.getByText("No favorites yet")).toBeInTheDocument();
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
+  });
+
+  it("says no results when another filter narrows it too", () => {
+    render(
+      <StationListUI {...defaultListProps} stations={[]} hasActiveFilters />
+    );
+    expect(screen.getByText("No results found")).toBeInTheDocument();
+    expect(screen.queryByText("No favorites yet")).not.toBeInTheDocument();
+  });
+});

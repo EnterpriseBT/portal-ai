@@ -118,6 +118,19 @@ describe("CuratedViewDetailUI", () => {
     expect(screen.getByTestId("tags-section")).toBeInTheDocument();
   });
 
+  // #1072: the container fills the star slot; the UI puts it by the h1.
+  it("renders the title action beside the heading", () => {
+    render(
+      <CuratedViewDetailUI
+        {...baseProps}
+        titleAction={<button type="button">Favorite it</button>}
+      />
+    );
+    const h1 = screen.getByRole("heading", { level: 1 });
+    const star = screen.getByRole("button", { name: "Favorite it" });
+    expect(h1).not.toContainElement(star);
+  });
+
   it("#645: marks a view created in a portal session", () => {
     render(
       <CuratedViewDetailUI

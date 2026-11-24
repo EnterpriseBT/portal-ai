@@ -17,6 +17,8 @@ import {
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { EmptyResults } from "./EmptyResults.component";
+import { FavoriteToggle } from "./FavoriteToggle.component";
+import { FavoritesEmptyResults } from "./FavoritesEmptyResults.component";
 import { emptyListHelp } from "../utils/empty-list-help.util";
 import { RouterLink } from "./RouterLink.component";
 import Chip from "@mui/material/Chip";
@@ -73,6 +75,8 @@ export type StationRow = StationListResponsePayload["stations"][number];
 
 export interface StationCardUIProps {
   station: StationRow;
+  /** #1072: a control beside the name (the favorite star). */
+  titleAction?: React.ReactNode;
   isDefault: boolean;
   /** #690: the caller may change the org's default station
    *  (`station.default.set`, owner/admin). */
@@ -96,6 +100,7 @@ export interface StationCardUIProps {
 
 export const StationCardUI: React.FC<StationCardUIProps> = ({
   station,
+  titleAction,
   isDefault,
   canSetDefault,
   onSetDefault,
@@ -134,6 +139,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
       linkComponent={RouterLink}
       headingLevel={2}
       actions={actions}
+      titleAction={titleAction}
       data-testid="station-card"
     >
       <MetadataList
@@ -194,6 +200,13 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
 
 export interface StationListUIProps {
   stations: StationRow[];
+  /** #1072: the control beside each station's name (its favorite star). */
+  renderTitleAction?: (station: StationRow) => React.ReactNode;
+  /**
+   * #1072: Favorites only is the one active filter, so an empty list means
+   * nothing is starred and says how to star a station.
+   */
+  favoritesOnly?: boolean;
   defaultStationId: string | null;
   /** #690: see {@link StationCardUIProps.canSetDefault}. */
   canSetDefault: boolean;
@@ -218,6 +231,8 @@ export interface StationListUIProps {
 
 export const StationListUI: React.FC<StationListUIProps> = ({
   stations,
+  renderTitleAction,
+  favoritesOnly,
   defaultStationId,
   canSetDefault,
   onSetDefault,
@@ -227,6 +242,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   customPacksEntitled,
 }) => {
   if (stations.length === 0) {
+    if (favoritesOnly) return <FavoritesEmptyResults noun="station" />;
     return hasActiveFilters ? (
       <EmptyResults />
     ) : (
@@ -244,6 +260,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
         <StationCardUI
           key={station.id}
           station={station}
+          titleAction={renderTitleAction?.(station)}
           isDefault={station.id === defaultStationId}
           canSetDefault={canSetDefault}
           onSetDefault={onSetDefault}
@@ -263,6 +280,8 @@ export interface StationListConnectedProps {
   setTotal: (t: number) => void;
   onSetDefault: (station: Station) => void;
   hasActiveFilters?: boolean;
+  /** #1072: see {@link StationListUIProps.favoritesOnly}. */
+  favoritesOnly?: boolean;
   onDelete: (station: Station) => void;
 }
 
@@ -272,6 +291,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   onSetDefault,
   onDelete,
   hasActiveFilters,
+  favoritesOnly,
 }) => {
   // #284: one shared usage-query read for every card's chips.
   const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
@@ -298,6 +318,14 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                       onSetDefault={onSetDefault}
                       onDelete={onDelete}
                       hasActiveFilters={hasActiveFilters}
+                      favoritesOnly={favoritesOnly}
+                      renderTitleAction={(station) => (
+                        <FavoriteToggle
+                          target={{ type: "station", id: station.id }}
+                          name={station.name}
+                          isFavorite={station.isFavorite ?? false}
+                        />
+                      )}
                       entitledBuiltinSlugs={entitledBuiltinSlugs}
                       customPacksEntitled={customPacksEntitled}
                     />

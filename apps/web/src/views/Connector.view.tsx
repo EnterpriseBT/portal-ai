@@ -49,6 +49,12 @@ import { MicrosoftExcelConnectorWorkflow } from "../workflows/MicrosoftExcelConn
 import { RestApiConnectorWorkflow } from "../workflows/RestApiConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import {
+  isFavoritesOnly,
+  useFavoriteFilter,
+} from "../utils/use-favorite-filter.util";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
+import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 
 export interface ConnectorWorkflowProps {
   open: boolean;
@@ -133,6 +139,7 @@ export const ConnectorView = () => {
 
   // --- Instance pagination (Tab 0) ---
   const tagFilter = useTagFilter();
+  const favoriteFilter = useFavoriteFilter();
   const instancePagination = usePagination({
     defaultSortBy: "created",
     defaultSortOrder: "desc",
@@ -143,6 +150,7 @@ export const ConnectorView = () => {
       { field: "created", label: "Created" },
     ],
     filters: [
+      favoriteFilter,
       {
         type: "multi-select",
         field: "status",
@@ -216,7 +224,12 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorInstances: response }}>
                     {({ connectorInstances }) =>
                       connectorInstances.total === 0 ? (
-                        instancePagination.isFiltered ? (
+                        isFavoritesOnly(
+                          instancePagination.filters,
+                          instancePagination.search
+                        ) ? (
+                          <FavoritesEmptyResults noun="connector" />
+                        ) : instancePagination.isFiltered ? (
                           <EmptyResults />
                         ) : (
                           <EmptyState
@@ -237,6 +250,16 @@ export const ConnectorView = () => {
                               href={`/connectors/${ci.id}`}
                               headingLevel={2}
                               onDelete={handleDeleteClick}
+                              titleAction={
+                                <FavoriteToggle
+                                  target={{
+                                    type: "connector_instance",
+                                    id: ci.id,
+                                  }}
+                                  name={ci.name}
+                                  isFavorite={ci.isFavorite ?? false}
+                                />
+                              }
                             />
                           ))}
                         </CardList>

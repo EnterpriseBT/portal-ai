@@ -223,3 +223,41 @@ describe("CuratedViewsUI", () => {
     expect(card.getByRole("button", { name: /delete/i })).toBeInTheDocument();
   });
 });
+
+describe("CuratedViewsUI favorites (#1072)", () => {
+  it("puts each view's title action beside its label", () => {
+    render(
+      <CuratedViewsUI
+        {...baseProps()}
+        renderTitleAction={(v) => (
+          <button
+            type="button"
+            aria-pressed="false"
+          >{`Favorite ${v.label}`}</button>
+        )}
+      />
+    );
+    for (const v of views) {
+      expect(
+        screen.getByRole("button", { name: `Favorite ${v.label}` })
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("explains favorites when Favorites only is the filter and nothing is starred", () => {
+    render(
+      <CuratedViewsUI
+        {...baseProps()}
+        views={[]}
+        hasActiveFilters
+        favoritesOnly
+      />
+    );
+    expect(screen.getByText("No favorites yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Star a view to keep it here. Only you see your favorites."
+      )
+    ).toBeInTheDocument();
+  });
+});

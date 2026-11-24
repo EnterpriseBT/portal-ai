@@ -41,6 +41,7 @@ import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { freshData } from "../utils/query-result.util";
 import { TagsSection } from "../components/TagsSection.component";
+import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
@@ -67,6 +68,8 @@ export interface CuratedViewDetailUIProps {
   onNavigate: (href: string) => void;
   /** #1070: the view's Tags section, rendered under its details. */
   tagsSection?: React.ReactNode;
+  /** #1072: the control beside the view's name (its favorite star). */
+  titleAction?: React.ReactNode;
 }
 
 export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
@@ -83,6 +86,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onDelete,
   onNavigate,
   tagsSection,
+  titleAction,
 }) => {
   // #688: what this caller may do to this view.
   const editGate = decideActionGate({ allowed: view.capabilities.write });
@@ -141,6 +145,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
           onNavigate={onNavigate}
           title={view.label}
           icon={<Icon name={IconName.Layers} />}
+          titleAction={titleAction}
           primaryAction={
             editGate.kind === "hide" &&
             deleteGate.kind === "hide" ? undefined : (
@@ -334,6 +339,13 @@ export const CuratedViewDetail: React.FC = () => {
         onEdit={() => setEditOpen(true)}
         onDelete={() => setDeleteOpen(true)}
         onNavigate={(href) => navigate({ to: href })}
+        titleAction={
+          <FavoriteToggle
+            target={{ type: "curated_view", id: view.id }}
+            name={view.label}
+            isFavorite={view.isFavorite ?? false}
+          />
+        }
         tagsSection={
           <TagsSection
             target={{ type: "curated_view", id: view.id }}

@@ -30,6 +30,10 @@ import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { useTagFilter } from "../utils/use-tag-filter.util";
+import {
+  isFavoritesOnly,
+  useFavoriteFilter,
+} from "../utils/use-favorite-filter.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -48,6 +52,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   tagFilter,
 }) => {
   const navigate = useNavigate();
+  const favoriteFilter = useFavoriteFilter();
 
   const pagination = usePagination({
     sortFields: [
@@ -56,7 +61,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
     ],
     defaultSortBy: "name",
     defaultSortOrder: "asc",
-    filters: [tagFilter],
+    filters: [favoriteFilter, tagFilter],
   });
 
   return (
@@ -97,6 +102,10 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             onSetDefault={onSetDefault}
             onDelete={onDelete}
             hasActiveFilters={pagination.isFiltered}
+            favoritesOnly={isFavoritesOnly(
+              pagination.filters,
+              pagination.search
+            )}
           />
         </Box>
       </Stack>
