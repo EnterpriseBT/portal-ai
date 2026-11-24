@@ -52,7 +52,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         >
           <button
             aria-label="Clear search"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-edgeEnd MuiIconButton-sizeSmall css-eayb48-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-edgeEnd MuiIconButton-sizeSmall css-iyf3eb-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -209,7 +209,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </p>
       <button
         aria-label="First page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-1u2l8im-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -227,7 +227,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Previous page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-1u2l8im-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -245,7 +245,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Next page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-1u2l8im-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
@@ -263,7 +263,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </button>
       <button
         aria-label="Last page"
-        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-tpt9ah-MuiButtonBase-root-MuiIconButton-root"
+        class="MuiButtonBase-root MuiIconButton-root MuiIconButton-sizeSmall css-1u2l8im-MuiButtonBase-root-MuiIconButton-root"
         tabindex="0"
         type="button"
       >
