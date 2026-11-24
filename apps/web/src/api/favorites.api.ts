@@ -15,7 +15,7 @@ export const favorites = {
       url: ({ type, id }) => `/api/favorites/${type}/${encodeURIComponent(id)}`,
       method: "PUT",
       body: () => undefined,
-      onPermissionDenied: { invalidate: (target) => favoriteKeys(target.type) },
+      onPermissionDenied: { invalidate: (target) => favoriteKeys(target) },
     }),
 
   unset: () =>
@@ -23,6 +23,6 @@ export const favorites = {
       url: ({ type, id }) => `/api/favorites/${type}/${encodeURIComponent(id)}`,
       method: "DELETE",
       body: () => undefined,
-      onPermissionDenied: { invalidate: (target) => favoriteKeys(target.type) },
+      onPermissionDenied: { invalidate: (target) => favoriteKeys(target) },
     }),
 };

@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+
+import { useQueryClient } from "@tanstack/react-query";
 
 import { GatedIconButton, IconName, pendingGate } from "@portalai/core/ui";
 import type { FavoriteTarget } from "@portalai/core/models";
@@ -17,8 +19,9 @@ export interface FavoriteToggleUIProps {
 
 /**
  * #1072: the star on a station, pinned result, view or connector. A toggle
- * button: `aria-pressed` says whether it's a favorite, and its name says
- * what pressing it does to which object.
+ * button (APG): its name stays "Favorite {name}" and `aria-pressed` says
+ * whether it's on, so the state is announced once and never contradicts the
+ * name.
  */
 export const FavoriteToggleUI: React.FC<FavoriteToggleUIProps> = ({
   name,
@@ -30,7 +33,7 @@ export const FavoriteToggleUI: React.FC<FavoriteToggleUIProps> = ({
     icon={isFavorite ? IconName.Star : IconName.StarBorder}
     size="small"
     aria-pressed={isFavorite}
-    aria-label={`${isFavorite ? "Unfavorite" : "Favorite"} ${name}`}
+    aria-label={`Favorite ${name}`}
     gate={pendingGate(pending)}
     onClick={onToggle}
   />
@@ -44,33 +47,57 @@ export interface FavoriteToggleProps {
 
 /**
  * Stars and unstars through the SDK. The star shows the server's answer:
- * the call refreshes the object's type (lists and detail) instead of
- * patching the cache, and a failure raises a toast.
+ * the call refreshes the object's lists and detail read instead of patching
+ * the cache. The button stays pending until that refetch lands, so a second
+ * click always acts on the new state (code review: a click between the
+ * write and the refetch repeated the write instead of undoing it).
  */
 export const FavoriteToggle: React.FC<FavoriteToggleProps> = ({
   target,
   name,
   isFavorite,
 }) => {
-  const { mutate: set, isPending: setting } = sdk.favorites.set();
-  const { mutate: unset, isPending: unsetting } = sdk.favorites.unset();
+  const queryClient = useQueryClient();
+  const { mutateAsync: set } = sdk.favorites.set();
+  const { mutateAsync: unset } = sdk.favorites.unset();
+  const [pending, setPending] = useState(false);
 
-  const handleToggle = () =>
-    (isFavorite ? unset : set)(target, {
-      invalidate: favoriteKeys(target.type),
-      toast: {
-        error: isFavorite
-          ? "Couldn't remove the favorite."
-          : "Couldn't add the favorite.",
-      },
-    });
+  const handleToggle = async () => {
+    if (pending) return;
+    setPending(true);
+    const keys = favoriteKeys(target);
+    try {
+      // `invalidate` refreshes even if this unmounts first (#970); the wait
+      // below joins that refetch rather than starting another.
+      await (isFavorite ? unset : set)(target, {
+        invalidate: keys,
+        toast: {
+          error: isFavorite
+            ? "Couldn't remove the favorite."
+            : "Couldn't add the favorite.",
+        },
+      });
+      await Promise.all(
+        keys.map((queryKey) =>
+          queryClient.refetchQueries(
+            { queryKey, type: "active" },
+            { cancelRefetch: false }
+          )
+        )
+      );
+    } catch {
+      // The call's toast reported it.
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <FavoriteToggleUI
       name={name}
       isFavorite={isFavorite}
-      pending={setting || unsetting}
-      onToggle={handleToggle}
+      pending={pending}
+      onToggle={() => void handleToggle()}
     />
   );
 };

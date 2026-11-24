@@ -1559,6 +1559,40 @@ describe("PaginationToolbar — toolbar toggles (#1072)", () => {
     expect(result.current.queryParams).not.toHaveProperty("starred");
   });
 
+  it("reports a toggle as the only filter only when nothing else narrows", () => {
+    const tags: FilterConfig = {
+      type: "multi-select",
+      field: "tagIds",
+      label: "Tags",
+      options: [{ label: "Q4", value: "q4" }],
+    };
+    const preset: FilterConfig = {
+      type: "boolean",
+      field: "isActive",
+      label: "Active",
+      defaultValue: ["true"],
+    };
+    const { result } = renderHook(() =>
+      usePagination({ filters: [quick, tags, preset] })
+    );
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+    act(() =>
+      result.current.toolbarProps.onFilterValueChange("starred", "true")
+    );
+    // A filter still at its default isn't narrowing.
+    expect(result.current.isOnlyFilter("starred")).toBe(true);
+    act(() => result.current.setFilter("tagIds", ["q4"]));
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+    act(() => result.current.setFilter("tagIds", []));
+    act(() =>
+      result.current.setAdvancedFilters({
+        combinator: "and",
+        conditions: [{ field: "name", operator: "eq", value: "x" }],
+      } as never)
+    );
+    expect(result.current.isOnlyFilter("starred")).toBe(false);
+  });
+
   it("has no axe violations, pressed or not", async () => {
     const { container, rerender } = render(
       <PaginationToolbar {...makeProps({ filterConfigs: [quick] })} />

@@ -157,16 +157,14 @@ curatedViewRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const ctx = req.application!.metadata;
-      const curatedView = await CuratedViewService.get(ctx, req.params.id);
+      // #1072: the star lookup runs alongside the view's read; it reveals
+      // nothing on its own, and an unreadable view still answers its 404.
+      const [curatedView, isFavorite] = await Promise.all([
+        CuratedViewService.get(ctx, req.params.id),
+        FavoriteService.isFavorite(ctx, "curated_view", req.params.id),
+      ]);
       return HttpService.success<CuratedViewGetResponsePayload>(res, {
-        curatedView: {
-          ...curatedView,
-          isFavorite: await FavoriteService.isFavorite(
-            ctx,
-            "curated_view",
-            curatedView.id
-          ),
-        },
+        curatedView: { ...curatedView, isFavorite },
       });
     } catch (error) {
       return next(

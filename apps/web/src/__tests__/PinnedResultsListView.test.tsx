@@ -247,7 +247,7 @@ describe("PinnedResultsListView favorites (#1072)", () => {
 
     render(<PinnedResultsListView />);
     expect(
-      screen.getByRole("button", { name: "Unfavorite Revenue" })
+      screen.getByRole("button", { name: "Favorite Revenue" })
     ).toHaveAttribute("aria-pressed", "true");
     expect(
       screen.getByRole("button", { name: "Favorite Churn" })

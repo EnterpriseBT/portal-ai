@@ -38,10 +38,7 @@ import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.c
 import { ShareDialog } from "../components/ShareDialog.component";
 import { TagChipListUI } from "../components/TagChipList.component";
 import { useTagFilter } from "../utils/use-tag-filter.util";
-import {
-  isFavoritesOnly,
-  useFavoriteFilter,
-} from "../utils/use-favorite-filter.util";
+import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
@@ -212,7 +209,6 @@ export const CuratedViews: React.FC = () => {
   );
 
   const tagFilter = useTagFilter();
-  const favoriteFilter = useFavoriteFilter();
   const pagination = usePagination({
     sortFields: [
       { field: "label", label: "Label" },
@@ -221,7 +217,7 @@ export const CuratedViews: React.FC = () => {
     ],
     defaultSortBy: "created",
     defaultSortOrder: "asc",
-    filters: [favoriteFilter, tagFilter],
+    filters: [FAVORITE_FILTER, tagFilter],
   });
 
   const listResult = sdk.curatedViews.list({
@@ -265,7 +261,7 @@ export const CuratedViews: React.FC = () => {
         isError={listResult.isError}
         createGate={createGate}
         hasActiveFilters={hasActiveFilters}
-        favoritesOnly={isFavoritesOnly(pagination.filters, pagination.search)}
+        favoritesOnly={pagination.isOnlyFilter(FAVORITE_FILTER.field)}
         renderTitleAction={(view) => (
           <FavoriteToggle
             target={{ type: "curated_view", id: view.id }}

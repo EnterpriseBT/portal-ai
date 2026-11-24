@@ -6,7 +6,8 @@
  * unstarring need only **read** on the object (else its own 404, the same for
  * both verbs, so an unreadable id reveals nothing). The user always comes
  * from the request context. Nothing here takes a job lock: no job reads or
- * writes favorites.
+ * writes favorites. A star share-locks the object's row and the caller's
+ * membership, so it can't outlive either's removal.
  */
 
 import type { SQL } from "drizzle-orm";
@@ -51,11 +52,23 @@ export class FavoriteService {
       const set = await PermissionService.loadSet(ctx);
       await ObjectTargetService.loadReadable(set, ctx, target);
       await DbService.transaction(async (tx) => {
+        const notFound = ObjectTargetService.descriptor(target.type).notFound;
+        // The caller's membership too (code review): a removal sweeps the
+        // member's favorites, so a star must not commit after it. Either the
+        // removal waits for this and sweeps the star, or it ran first and
+        // the caller, no longer a member, can read nothing here.
+        const member =
+          await DbService.repository.organizationUsers.lockLiveMembership(
+            ctx.organizationId,
+            ctx.userId,
+            tx
+          );
+        if (!member) throw notFound();
         const live = await DbService.repository.favorites.lockLiveTarget(
           target,
           tx
         );
-        if (!live) throw ObjectTargetService.descriptor(target.type).notFound();
+        if (!live) throw notFound();
         // The factory stamps the id and created time; the repository sets
         // the target column.
         const base = new FavoriteModelFactory().create(ctx.userId).toJSON();

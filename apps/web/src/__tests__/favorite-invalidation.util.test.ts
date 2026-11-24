@@ -19,20 +19,33 @@ const { queryKeys } = await import("../api/keys");
 const { favoriteKeys } = await import("../utils/favorite-invalidation.util");
 const { favorites } = await import("../api/favorites.api");
 
-const ROOTS: Record<FavoriteTargetType, readonly unknown[]> = {
-  station: queryKeys.stations.root,
-  pin: queryKeys.portalResults.root,
-  curated_view: queryKeys.curatedViews.root,
-  connector_instance: queryKeys.connectorInstances.root,
-};
-
 describe("favoriteKeys (#1072)", () => {
-  it.each(Object.keys(ROOTS) as FavoriteTargetType[])(
-    "refreshes the %s root (its lists and detail)",
-    (type) => {
-      expect(favoriteKeys(type)).toEqual([ROOTS[type]]);
-    }
-  );
+  it("refreshes a station's lists and its detail read, prefix-matched", () => {
+    expect(favoriteKeys({ type: "station", id: "s1" })).toEqual([
+      ["stations", "list"],
+      ["stations", "get", "s1"],
+    ]);
+  });
+
+  it("never refreshes a pin's live data or a view's records", () => {
+    const pin = favoriteKeys({ type: "pin", id: "p1" });
+    expect(pin).toEqual([
+      ["portalResults", "list"],
+      queryKeys.portalResults.get("p1"),
+    ]);
+    expect(pin).not.toContainEqual(queryKeys.portalResults.data("p1"));
+    expect(favoriteKeys({ type: "curated_view", id: "v1" })).toEqual([
+      ["curatedViews", "list"],
+      queryKeys.curatedViews.get("v1"),
+    ]);
+  });
+
+  it("covers connectors the same way", () => {
+    expect(favoriteKeys({ type: "connector_instance", id: "c1" })).toEqual([
+      ["connectorInstances", "list"],
+      queryKeys.connectorInstances.get("c1"),
+    ]);
+  });
 });
 
 describe("sdk.favorites (#1072)", () => {
@@ -53,8 +66,8 @@ describe("sdk.favorites (#1072)", () => {
 
   it("refetches the object's type on a 403 or 404", () => {
     const config = favorites.unset() as unknown as Config;
-    expect(config.onPermissionDenied.invalidate(target)).toEqual([
-      queryKeys.curatedViews.root,
-    ]);
+    expect(config.onPermissionDenied.invalidate(target)).toEqual(
+      favoriteKeys(target)
+    );
   });
 });

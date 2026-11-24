@@ -576,16 +576,17 @@ stationRouter.get(
         );
       }
 
-      // #674: every attachment, readable or not, each with canRead.
-      const { instances, views } =
-        await StationAttachmentService.listForStation(
+      // #674: every attachment, readable or not, each with canRead. #1072:
+      // the caller's star alongside.
+      const [{ instances, views }, enabled, isFavorite] = await Promise.all([
+        StationAttachmentService.listForStation(
           set,
           { stationId: id, organizationId },
           { include: include_ }
-        );
-
-      const enabled =
-        await DbService.repository.stationToolpacks.findByStationId(id);
+        ),
+        DbService.repository.stationToolpacks.findByStationId(id),
+        FavoriteService.isFavorite(ctx, "station", id),
+      ]);
       const enabledToolpacks = enabled.map((r) =>
         r.builtinSlug !== null
           ? r.builtinSlug
@@ -606,7 +607,7 @@ stationRouter.get(
           toolpacks,
           // #688: replaces the #621 canShare/canWrite/canDelete flags.
           capabilities: ObjectCapabilitiesService.for(set, "station", station),
-          isFavorite: await FavoriteService.isFavorite(ctx, "station", id),
+          isFavorite,
         } as unknown as StationGetResponsePayload["station"],
       });
     } catch (error) {

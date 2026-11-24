@@ -468,10 +468,13 @@ connectorInstanceRouter.get(
         );
       }
 
-      const connectorDefinition =
-        await DbService.repository.connectorDefinitions
+      // #1072: the caller's star, alongside the definition read.
+      const [connectorDefinition, isFavorite] = await Promise.all([
+        DbService.repository.connectorDefinitions
           .findById(connectorInstance.connectorDefinitionId)
-          .catch(() => null);
+          .catch(() => null),
+        FavoriteService.isFavorite(ctx, "connector_instance", id),
+      ]);
 
       // Only resolve syncEligible / identityWarnings for sync-capable
       // connectors. For sandbox/file-upload (and anything else without
@@ -513,11 +516,7 @@ connectorInstanceRouter.get(
             "connector_instance",
             connectorInstance
           ),
-          isFavorite: await FavoriteService.isFavorite(
-            ctx,
-            "connector_instance",
-            connectorInstance.id
-          ),
+          isFavorite,
         },
       });
     } catch (error) {

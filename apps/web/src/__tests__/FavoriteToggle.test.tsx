@@ -14,16 +14,21 @@ const props = (overrides = {}) => ({
 });
 
 describe("FavoriteToggleUI (#1072)", () => {
-  it("offers to favorite an unstarred object, unpressed", () => {
+  it("is named Favorite {name} and unpressed when not starred", () => {
     render(<FavoriteToggleUI {...props()} />);
     const button = screen.getByRole("button", { name: "Favorite Sales" });
     expect(button).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("offers to unfavorite a starred object, pressed", () => {
+  // Code review: APG toggle buttons keep their name; aria-pressed carries
+  // the state, so it's announced once and never contradicts the name.
+  it("keeps its name when starred, and reads as pressed", () => {
     render(<FavoriteToggleUI {...props({ isFavorite: true })} />);
-    const button = screen.getByRole("button", { name: "Unfavorite Sales" });
+    const button = screen.getByRole("button", { name: "Favorite Sales" });
     expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByRole("button", { name: /Unfavorite/ })
+    ).not.toBeInTheDocument();
   });
 
   it("calls onToggle when pressed", async () => {

@@ -6,7 +6,7 @@ import {
   type FavoriteResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
-import { HttpService, ApiError } from "../services/http.service.js";
+import { HttpService } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -39,16 +39,6 @@ function parseTarget(req: Request) {
     );
   }
   return params.data;
-}
-
-function failure(error: unknown, message: string): ApiError {
-  return error instanceof ApiError
-    ? error
-    : new ApiError(
-        500,
-        ApiCode.FAVORITE_UPDATE_FAILED,
-        error instanceof Error ? error.message : message
-      );
 }
 
 /**
@@ -113,7 +103,8 @@ favoriteRouter.put(
       return HttpService.success<FavoriteResponsePayload>(res, payload);
     } catch (error) {
       logger.error({ error }, "Failed to favorite object");
-      return next(failure(error, "Failed to favorite object"));
+      // FavoriteService and parseTarget throw only ApiErrors.
+      return next(error);
     }
   }
 );
@@ -179,7 +170,7 @@ favoriteRouter.delete(
       return HttpService.success<FavoriteResponsePayload>(res, payload);
     } catch (error) {
       logger.error({ error }, "Failed to unfavorite object");
-      return next(failure(error, "Failed to unfavorite object"));
+      return next(error);
     }
   }
 );

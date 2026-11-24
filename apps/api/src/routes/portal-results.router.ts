@@ -656,13 +656,17 @@ portalResultsRouter.get(
           )
         );
       }
+      const [definer, isFavorite] = await Promise.all([
+        PinDefinerService.describe(portalResult, ctx.userId),
+        FavoriteService.isFavorite(ctx, "pin", id),
+      ]);
       // #688: capabilities replace the #621 canShare/canWrite/canDelete flags.
       return HttpService.success<PortalResultGetResponsePayload>(res, {
         portalResult: {
           ...portalResult,
-          ...(await PinDefinerService.describe(portalResult, ctx.userId)),
+          ...definer,
           capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
-          isFavorite: await FavoriteService.isFavorite(ctx, "pin", id),
+          isFavorite,
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });
     } catch (error) {

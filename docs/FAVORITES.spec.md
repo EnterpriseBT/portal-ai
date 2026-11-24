@@ -200,11 +200,11 @@ Both gain `titleAction?: React.ReactNode`, rendered immediately after the title 
 
 - **`api/favorites.api.ts`, registered as `sdk.favorites`.**
   - `set()` and `unset()` are `useAuthMutation` hooks taking `FavoriteTarget`, sending `PUT`/`DELETE` to `/api/favorites/${type}/${id}`.
-  - Both set `onPermissionDenied: { invalidate: (t) => favoriteKeys(t.type) }`.
-- **`utils/favorite-invalidation.util.ts`.** `favoriteKeys(type)` returns the type's `.root` key: `stations`, `portalResults`, `curatedViews` or `connectorInstances` (`api/keys.ts`).
+  - Both set `onPermissionDenied: { invalidate: (t) => favoriteKeys(t) }`.
+- **`utils/favorite-invalidation.util.ts`.** `favoriteKeys(target)` returns the type's list prefix and the object's detail key (`api/keys.ts`), never the whole root, which also holds a pin's live data and a view's records.
 - **`components/FavoriteToggle.component.tsx`.**
-  - `FavoriteToggleUI {name, isFavorite, pending, onToggle}`: an `IconButton` (Star / StarBorder) with `aria-pressed={isFavorite}`, `aria-label` "Favorite {name}" / "Unfavorite {name}", and `gate={pendingGate(pending)}`.
-  - `FavoriteToggle {target, name, isFavorite}` calls `set`/`unset` with `invalidate: favoriteKeys(target.type)` and `toast.error` through `serverErrorMessage`. It does no optimistic update.
+  - `FavoriteToggleUI {name, isFavorite, pending, onToggle}`: an `IconButton` (Star / StarBorder) with `aria-pressed={isFavorite}`, `aria-label` "Favorite {name}" in both states (the APG toggle pattern: `aria-pressed` carries the state), and `gate={pendingGate(pending)}`.
+  - `FavoriteToggle {target, name, isFavorite}` calls `set`/`unset` with `invalidate: favoriteKeys(target)` and a `toast.error`, then waits for those queries' refetch before leaving its pending state. It does no optimistic update.
 - **`utils/use-favorite-filter.util.ts`.** `useFavoriteFilter(): BooleanFilterConfig` returns `{ field: "favorite", label: "Favorites only", type: "boolean", placement: "toolbar" }`.
 - **`components/FavoritesEmptyResults.component.tsx`.** A pure UI component over core `EmptyState`, with title "No favorites yet" and description "Star a {noun} to keep it here. Only you see your favorites.". Its `helpLink` goes to the FAQ entry "How do favorites work?".
 
@@ -370,3 +370,12 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
 6. the toolbar `placement` slot;
 7. the core `titleAction`, `FavoriteToggle`, SDK and wiring on lists and details, with the empty state;
 8. content.
+
+## Revisions after code review
+
+1. **Fixed toggle name.** The star is always named "Favorite {name}", with `aria-pressed` carrying the state. Switching to "Unfavorite {name}" when pressed announced the state twice and contradicted the name.
+2. **Pending until the refetch lands.** `FavoriteToggle` stays pending until its lists and detail have refetched, so a second click acts on the new state instead of repeating the last call.
+3. **Narrower refresh.** `favoriteKeys(target)` refreshes the type's lists and the object's detail read, not the whole root.
+4. **Membership lock.** `FavoriteService.set` share-locks the caller's live membership (`organizationUsers.lockLiveMembership`) as well as the object, so a star can't commit after the member's removal has swept their favorites. A star from a member removed mid-request answers the object's 404.
+5. **One rule for "only this filter".** `usePagination` gains `isOnlyFilter(field)`, which shares `isFiltered`'s rules (search, advanced filters, defaults). The four lists use it with `FAVORITE_FILTER`, which replaces `useFavoriteFilter` and `isFavoritesOnly`.
+6. The favorites router passes errors straight to `next` (the service already wraps them), and the four detail reads look up `isFavorite` in parallel with their other reads.

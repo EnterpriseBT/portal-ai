@@ -63,6 +63,31 @@ export class OrganizationUsersRepository extends Repository<
     return row as OrganizationUserSelect | undefined;
   }
 
+  /**
+   * #1072: share-lock the user's live membership for the length of the
+   * caller's transaction, so a removal (which soft-deletes this row) waits
+   * for it, or ran first and the membership is gone. Returns false when
+   * there's no live membership.
+   */
+  async lockLiveMembership(
+    organizationId: string,
+    userId: string,
+    client: DbClient
+  ): Promise<boolean> {
+    const [row] = await (client as typeof db)
+      .select({ id: organizationUsers.id })
+      .from(this.table)
+      .where(
+        and(
+          eq(organizationUsers.organizationId, organizationId),
+          eq(organizationUsers.userId, userId),
+          this.notDeleted()
+        )
+      )
+      .for("share");
+    return !!row;
+  }
+
   /** Check whether a specific user belongs to a specific organization. */
   async exists(
     organizationId: string,

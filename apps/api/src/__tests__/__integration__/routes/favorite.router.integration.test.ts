@@ -20,7 +20,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { FavoriteTargetType } from "@portalai/core/models";
 
@@ -249,6 +249,53 @@ describe("favorite routes: input and races (#1072)", () => {
       .send({ userId: fx.memberId });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.FAVORITE_INVALID_PAYLOAD);
+    expect(await db.select().from(schema.favorites)).toHaveLength(0);
+  });
+
+  it("never leaves a star for a member removed while starring", async () => {
+    // Code review: hold the membership row the way a removal does, star
+    // meanwhile, then tombstone the membership and sweep the member's
+    // favorites in that transaction. The star waits for the removal and then
+    // finds the caller no longer a member.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const removal = db.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.organizationUsers.id })
+        .from(schema.organizationUsers)
+        .where(
+          and(
+            eq(schema.organizationUsers.organizationId, fx.orgId),
+            eq(schema.organizationUsers.userId, fx.ownerId)
+          )
+        )
+        .for("update");
+      locked();
+      await held;
+      await tx
+        .update(schema.organizationUsers)
+        .set({ deleted: Date.now(), deletedBy: fx.ownerId })
+        .where(
+          and(
+            eq(schema.organizationUsers.organizationId, fx.orgId),
+            eq(schema.organizationUsers.userId, fx.ownerId)
+          )
+        );
+      await tx
+        .delete(schema.favorites)
+        .where(eq(schema.favorites.userId, fx.ownerId));
+    });
+    await isLocked;
+    const starred = request(app)
+      .put(`/api/favorites/station/${owners.station}`)
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await removal;
+    const res = await starred;
+    expect(res.status).toBe(404);
     expect(await db.select().from(schema.favorites)).toHaveLength(0);
   });
 

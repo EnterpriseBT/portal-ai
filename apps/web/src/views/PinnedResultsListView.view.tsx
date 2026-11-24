@@ -27,10 +27,7 @@ import type {
   PortalResultsListParams,
 } from "../api/portal-results.api";
 import { useTagFilter } from "../utils/use-tag-filter.util";
-import {
-  isFavoritesOnly,
-  useFavoriteFilter,
-} from "../utils/use-favorite-filter.util";
+import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 import { pinDeleteKeys } from "../utils/delete-invalidation.util";
@@ -60,13 +57,12 @@ export const PinnedResultsListView: React.FC = () => {
   const toast = useToast();
   const removeMutation = sdk.portalResults.remove();
   const tagFilter = useTagFilter();
-  const favoriteFilter = useFavoriteFilter();
 
   const pagination = usePagination({
     sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: "created",
     defaultSortOrder: "desc",
-    filters: [favoriteFilter, tagFilter],
+    filters: [FAVORITE_FILTER, tagFilter],
   });
 
   // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
@@ -118,9 +114,7 @@ export const PinnedResultsListView: React.FC = () => {
                   const payload = pinned as unknown as PortalResultsListPayload;
                   const results = payload.portalResults;
                   if (payload.total === 0) {
-                    if (
-                      isFavoritesOnly(pagination.filters, pagination.search)
-                    ) {
+                    if (pagination.isOnlyFilter(FAVORITE_FILTER.field)) {
                       return <FavoritesEmptyResults noun="pinned result" />;
                     }
                     const hasActiveFilters = pagination.isFiltered;

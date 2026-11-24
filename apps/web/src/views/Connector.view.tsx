@@ -49,10 +49,7 @@ import { MicrosoftExcelConnectorWorkflow } from "../workflows/MicrosoftExcelConn
 import { RestApiConnectorWorkflow } from "../workflows/RestApiConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 import { useTagFilter } from "../utils/use-tag-filter.util";
-import {
-  isFavoritesOnly,
-  useFavoriteFilter,
-} from "../utils/use-favorite-filter.util";
+import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { FavoritesEmptyResults } from "../components/FavoritesEmptyResults.component";
 
@@ -139,7 +136,6 @@ export const ConnectorView = () => {
 
   // --- Instance pagination (Tab 0) ---
   const tagFilter = useTagFilter();
-  const favoriteFilter = useFavoriteFilter();
   const instancePagination = usePagination({
     defaultSortBy: "created",
     defaultSortOrder: "desc",
@@ -150,7 +146,7 @@ export const ConnectorView = () => {
       { field: "created", label: "Created" },
     ],
     filters: [
-      favoriteFilter,
+      FAVORITE_FILTER,
       {
         type: "multi-select",
         field: "status",
@@ -224,9 +220,8 @@ export const ConnectorView = () => {
                   <DataResult results={{ connectorInstances: response }}>
                     {({ connectorInstances }) =>
                       connectorInstances.total === 0 ? (
-                        isFavoritesOnly(
-                          instancePagination.filters,
-                          instancePagination.search
+                        instancePagination.isOnlyFilter(
+                          FAVORITE_FILTER.field
                         ) ? (
                           <FavoritesEmptyResults noun="connector" />
                         ) : instancePagination.isFiltered ? (

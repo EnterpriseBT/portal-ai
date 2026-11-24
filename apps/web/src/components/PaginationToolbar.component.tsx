@@ -219,6 +219,8 @@ export interface UsePaginationReturn {
    * still at its default (the Catalog's `isActive`) doesn't count.
    */
   isFiltered: boolean;
+  /** #1072: see `isOnlyFilter` in the hook. */
+  isOnlyFilter: (field: string) => boolean;
   toolbarProps: PaginationToolbarProps;
   /** Cursor driving the current request in keyset mode; null on page one. */
   cursor: string | null;
@@ -570,21 +572,41 @@ export function usePagination(
     lastPageSize,
   ]);
 
-  const isFiltered = React.useMemo(() => {
-    if (search.trim() !== "") return true;
-    if (!isFilterExpressionEmpty(advancedFilters)) return true;
+  /** The filters moved off their configured default, by field. */
+  const changedFilterFields = React.useMemo(() => {
     const fields = new Set([
       ...Object.keys(filters),
       ...filterConfigs.map((c) => c.field),
     ]);
+    const changed: string[] = [];
     for (const field of fields) {
       const current = [...(filters[field] ?? [])].sort();
       const config = filterConfigs.find((c) => c.field === field);
       const initial = [...(config?.defaultValue ?? [])].sort();
-      if (JSON.stringify(current) !== JSON.stringify(initial)) return true;
+      if (JSON.stringify(current) !== JSON.stringify(initial)) {
+        changed.push(field);
+      }
     }
-    return false;
-  }, [search, advancedFilters, filters, filterConfigs]);
+    return changed;
+  }, [filters, filterConfigs]);
+
+  const hasSearchOrAdvanced =
+    search.trim() !== "" || !isFilterExpressionEmpty(advancedFilters);
+
+  const isFiltered = hasSearchOrAdvanced || changedFilterFields.length > 0;
+
+  /**
+   * #1072: whether `field` is the list's one active narrowing: moved off its
+   * default, with no search, advanced filter or other filter changed. A list
+   * uses it to give an empty page a filter-specific explanation.
+   */
+  const isOnlyFilter = React.useCallback(
+    (field: string) =>
+      !hasSearchOrAdvanced &&
+      changedFilterFields.length === 1 &&
+      changedFilterFields[0] === field,
+    [hasSearchOrAdvanced, changedFilterFields]
+  );
 
   const activeFilterCount = Object.values(filters).reduce(
     (count, values) => count + values.length,
@@ -674,6 +696,7 @@ export function usePagination(
     setTotal,
     queryParams,
     isFiltered,
+    isOnlyFilter,
     toolbarProps,
     cursor,
     setNextCursor,
