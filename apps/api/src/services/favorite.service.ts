@@ -105,6 +105,32 @@ export class FavoriteService {
     );
   }
 
+  /**
+   * The rows with the caller's `isFavorite` on each, from one lookup. Rows
+   * keep their order: favorites never reorder a list.
+   */
+  static async attach<T extends { id: string }>(
+    ctx: PermissionContext,
+    type: FavoriteTargetType,
+    rows: T[]
+  ): Promise<(T & { isFavorite: boolean })[]> {
+    const starred = await FavoriteService.favoritedIds(
+      ctx,
+      type,
+      rows.map((r) => r.id)
+    );
+    return rows.map((r) => ({ ...r, isFavorite: starred.has(r.id) }));
+  }
+
+  /** Whether the caller favorited one object. */
+  static async isFavorite(
+    ctx: PermissionContext,
+    type: FavoriteTargetType,
+    id: string
+  ): Promise<boolean> {
+    return (await FavoriteService.favoritedIds(ctx, type, [id])).has(id);
+  }
+
   /** A list predicate: the object is one of the caller's favorites. */
   static onlyFavorites(
     ctx: PermissionContext,

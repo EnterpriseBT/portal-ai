@@ -797,6 +797,14 @@ const options: swaggerJsdoc.Options = {
           },
           description: "The favoritable object's type (#1072)",
         },
+        favoriteFilterParam: {
+          in: "query",
+          name: "favorite",
+          required: false,
+          schema: { type: "string", enum: ["true"] },
+          description:
+            "#1072: `true` lists only the caller's favorites. Any other value is a 400.",
+        },
         favoriteIdParam: {
           in: "path",
           name: "id",

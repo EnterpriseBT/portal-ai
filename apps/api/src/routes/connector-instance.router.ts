@@ -6,6 +6,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
+import { FavoriteService } from "../services/favorite.service.js";
 import {
   connectorDefinitions,
   connectorInstances,
@@ -135,6 +136,7 @@ const SORTABLE_COLUMNS: Record<
  *           type: string
  *         description: Comma-separated list of required capability flags (read, write, sync). Only instances where all specified flags are enabled will be returned.
  *       - { in: query, name: tagIds, required: false, schema: { type: string }, description: "#1070: comma-separated tag ids; only objects carrying any of them. A tag the caller can't read matches nothing." }
+ *       - $ref: '#/components/parameters/favoriteFilterParam'
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -190,6 +192,7 @@ connectorInstanceRouter.get(
         include,
         capability,
         tagIds: tagIdsRaw,
+        favorite,
       } = parsedQuery.data;
 
       const VALID_CAPABILITIES = ["sync", "read", "write", "push"] as const;
@@ -258,6 +261,16 @@ connectorInstanceRouter.get(
             "connector_instance",
             connectorInstances.id,
             tagIds
+          )
+        );
+      }
+      // #1072: only the caller's favorites.
+      if (favorite === "true") {
+        filters.push(
+          FavoriteService.onlyFavorites(
+            req.application!.metadata,
+            "connector_instance",
+            connectorInstances.id
           )
         );
       }
@@ -331,7 +344,12 @@ connectorInstanceRouter.get(
         connectorInstances: ObjectCapabilitiesService.attach(
           set,
           "connector_instance",
-          rows as unknown as Array<{ id: string; createdBy: string }>
+          // #1072: the caller's star on each row.
+          await FavoriteService.attach(
+            req.application!.metadata,
+            "connector_instance",
+            rows as unknown as Array<{ id: string; createdBy: string }>
+          )
         ) as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
@@ -494,6 +512,11 @@ connectorInstanceRouter.get(
             set,
             "connector_instance",
             connectorInstance
+          ),
+          isFavorite: await FavoriteService.isFavorite(
+            ctx,
+            "connector_instance",
+            connectorInstance.id
           ),
         },
       });

@@ -10,6 +10,10 @@ import {
   PaginationRequestQuerySchema,
 } from "./pagination.contract.js";
 import { TagListQueryFields, TaggedRowFields } from "./tag-list.contract.js";
+import {
+  FavoriteListQueryFields,
+  FavoriteRowFields,
+} from "./favorite.contract.js";
 
 /**
  * Connector-defined public projection of a credential blob.
@@ -68,6 +72,7 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
   identityWarnings: z.array(z.object({ regionId: z.string() })).optional(),
   /** #1070: the instance's readable tags, on a list with `include=tags`. */
   ...TaggedRowFields,
+  ...FavoriteRowFields,
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
@@ -80,6 +85,7 @@ export const ConnectorInstanceListRequestQuerySchema =
     include: z.string().optional(),
     capability: z.string().optional(),
     ...TagListQueryFields,
+    ...FavoriteListQueryFields,
   });
 
 export type ConnectorInstanceListRequestQuery = z.infer<

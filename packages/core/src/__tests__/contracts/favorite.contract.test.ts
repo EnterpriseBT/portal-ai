@@ -6,6 +6,10 @@ import {
   FavoriteResponsePayloadSchema,
   FavoriteRowFields,
 } from "../../contracts/favorite.contract.js";
+import { StationListRequestQuerySchema } from "../../contracts/station.contract.js";
+import { PortalResultListRequestQuerySchema } from "../../contracts/portal.contract.js";
+import { CuratedViewListRequestQuerySchema } from "../../contracts/curated-view.contract.js";
+import { ConnectorInstanceListRequestQuerySchema } from "../../contracts/connector-instance.contract.js";
 
 describe("FavoriteParamsSchema (#1072)", () => {
   it("accepts each favoritable type", () => {
@@ -63,5 +67,17 @@ describe("FavoriteRowFields", () => {
     expect(Row.safeParse({ isFavorite: false }).success).toBe(true);
     expect(Row.safeParse({}).success).toBe(true);
     expect(Row.safeParse({ isFavorite: "yes" }).success).toBe(false);
+  });
+});
+
+describe("the four favoritable lists (#1072)", () => {
+  it.each([
+    ["stations", StationListRequestQuerySchema],
+    ["pinned results", PortalResultListRequestQuerySchema],
+    ["curated views", CuratedViewListRequestQuerySchema],
+    ["connector instances", ConnectorInstanceListRequestQuerySchema],
+  ] as const)("%s accept favorite=true and refuse false", (_name, schema) => {
+    expect(schema.safeParse({ favorite: "true" }).success).toBe(true);
+    expect(schema.safeParse({ favorite: "false" }).success).toBe(false);
   });
 });
