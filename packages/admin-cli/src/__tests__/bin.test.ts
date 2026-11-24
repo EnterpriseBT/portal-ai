@@ -110,6 +110,28 @@ describe("runCli — the agent contract", () => {
     expect(opt("--rows").defaultValue).toBe("10000");
   });
 
+  // #1114: the org-wide default station is gone.
+  it("org update --default-station-id is a usage error, exit 2", async () => {
+    const code = await runCli([
+      "org",
+      "update",
+      "o-1",
+      "--default-station-id",
+      "st-1",
+      "--env",
+      "app-dev",
+      "--yes",
+    ]);
+    expect(code).toBe(2);
+    const { buildProgram } = await import("../bin.js");
+    const update = buildProgram()
+      .commands.find((c) => c.name() === "org")!
+      .commands.find((c) => c.name() === "update")!;
+    expect(update.options.map((o) => o.long)).not.toContain(
+      "--default-station-id"
+    );
+  });
+
   it.each([["seed"], ["reset"]])(
     "demo %s no longer exists (#1035) → usage error, exit 2",
     async (sub) => {

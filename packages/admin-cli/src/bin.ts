@@ -166,14 +166,10 @@ export function buildProgram(): Command {
   );
 
   common(
-    org
-      .command("update")
-      .description("patch name/timezone/default station")
-      .argument("<id>")
+    org.command("update").description("patch name/timezone").argument("<id>")
   )
     .option("--name <name>")
     .option("--timezone <tz>")
-    .option("--default-station-id <id>")
     .action(async (id: string, o: GlobalOpts) =>
       execute(o, async (def) => {
         const result = await orgUpdate(
@@ -182,9 +178,6 @@ export function buildProgram(): Command {
           {
             ...(o.name ? { name: o.name as string } : {}),
             ...(o.timezone ? { timezone: o.timezone as string } : {}),
-            ...(o.defaultStationId
-              ? { defaultStationId: o.defaultStationId as string }
-              : {}),
           },
           flags(o)
         );

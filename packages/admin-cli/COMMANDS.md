@@ -47,13 +47,13 @@ Read. Live orgs, name-ILIKE search, created desc.
 Read. `--json`: `{ "org": Organization }` · absent/soft-deleted → 8.
 
 ### `portalai org create --name <name> --owner-email <email> --env <env> --yes [--confirm-prod] [--json]`
-Mutation. **Full app provisioning** via `db:create-org` (org + owner membership + system column definitions + Sandbox connector + the Administrate and Playground stations with their toolpacks + `defaultStationId`, which is Administrate). Owner must be an existing user (users originate in Auth0) → else 8-shaped failure from the script (exit 7 envelope carries the message).
-`--json`: `{ "organizationId", "stationId" }` (`stationId` is the default station, Administrate)
+Mutation. **Full app provisioning** via `db:create-org` (org + owner membership + system column definitions + Sandbox connector + the Administrate and Playground stations with their toolpacks). Owner must be an existing user (users originate in Auth0) → else 8-shaped failure from the script (exit 7 envelope carries the message).
+`--json`: `{ "organizationId", "stationId" }` (`stationId` is the new org's Administrate station)
 
-### `portalai org update <id> [--name] [--timezone] [--default-station-id] --env <env> --yes [--json]`
+### `portalai org update <id> [--name] [--timezone] --env <env> --yes [--json]`
 Mutation, in one transaction with the org row locked. Pass at least one field (else `ADMIN_INVALID_INPUT`, exit 2). `--name` follows the app's rule: trimmed, 1–120 characters, one line (else exit 2, nothing runs). A value equal to the current one writes nothing (the row isn't stamped as edited).
-- **Activity (#936):** a changed `--name` or `--default-station-id` records the same `org.update` entry the app does: `{ field: "name", from, to }` (#907) or `{ field: "defaultStationId", from, to, fromName, toName }` (#935), plus `via: "portalai"`. Entries commit with the change and are attributed to your user when your `portalai login` session matches one (else the session `sub`, or the OS username locally). An unchanged value records nothing. `--timezone` isn't recorded in Activity.
-- **Default station:** must be a live station in that org, else `ADMIN_NOT_FOUND` (exit 8) and nothing is written.
+- **Activity (#936):** a changed `--name` records the same `org.update` entry the app does: `{ field: "name", from, to }` (#907), plus `via: "portalai"`. Entries commit with the change and are attributed to your user when your `portalai login` session matches one (else the session `sub`, or the OS username locally). An unchanged value records nothing. `--timezone` isn't recorded in Activity.
+- **No default station (#1114):** the org-wide default station is gone; `--default-station-id` is a usage error (exit 2).
 - **Stripe:** `portalai` holds no Stripe credential. When the name changed and the org has a Stripe customer, the result carries the step that keeps the customer's name (invoices, billing portal) in step, and human output warns on stderr. Run it with the env's Stripe CLI.
 - `--json`: `{ "org": Organization, "stripe"?: { "action": "update_customer_name", "customerId", "name", "command" } }`. The command targets the env's Stripe account: `stripe customers update '<cus>' --name='<name>'`, plus `--project-name <env>` for app-dev, and `--project-name prod --live` for prod.
 - The local operator audit line records `{ orgId, requested, changed }`: the fields asked for and the ones that moved.

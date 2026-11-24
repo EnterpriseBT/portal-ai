@@ -57,22 +57,17 @@ const stripeTarget = (def: EnvironmentDefinition) =>
     ? ""
     : ` --project-name ${def.name}${def.kind === "production" ? " --live" : ""}`;
 
-/** #936: the app's PATCH rules for a name and station id (#907), so the CLI
- *  can't write what the app would refuse. Returns the patch as stored (the
- *  name trimmed). */
+/** #936: the app's PATCH rule for a name (#907), so the CLI can't write what
+ *  the app would refuse. Returns the patch as stored (the name trimmed). */
 function validatePatch(patch: OrgPatch): OrgPatch {
   if (Object.keys(patch).length === 0) {
     throw new AdminInvalidInputError(
-      "Nothing to update: pass --name, --timezone or --default-station-id"
+      "Nothing to update: pass --name or --timezone"
     );
   }
-  if (patch.name === undefined && patch.defaultStationId === undefined)
-    return patch;
+  if (patch.name === undefined) return patch;
   const parsed = OrganizationUpdateRequestSchema.safeParse({
-    ...(patch.name !== undefined ? { name: patch.name } : {}),
-    ...(patch.defaultStationId !== undefined
-      ? { defaultStationId: patch.defaultStationId }
-      : {}),
+    name: patch.name,
   });
   if (!parsed.success) {
     throw new AdminInvalidInputError(
