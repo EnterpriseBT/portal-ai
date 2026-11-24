@@ -20,6 +20,7 @@ import { fieldMappings } from "./field-mappings.table.js";
 import { entityRecords } from "./entity-records.table.js";
 import { entityTags } from "./entity-tags.table.js";
 import { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import { favorites } from "./favorites.table.js";
 import { permissionPolicies } from "./permission-policies.table.js";
 import { permissionStatements } from "./permission-statements.table.js";
 import { policyAttachments } from "./policy-attachments.table.js";
@@ -299,6 +300,18 @@ export type EntityTagAssignmentSelect = z.infer<
 export type EntityTagAssignmentInsert = z.infer<
   typeof EntityTagAssignmentInsertSchema
 >;
+
+// ── Favorites (#1072) ───────────────────────────────────────────────
+
+/** Zod schema for a `favorites` row returned by SELECT. */
+export const FavoriteSelectSchema = createSelectSchema(favorites);
+
+/** Zod schema for inserting into `favorites`. */
+export const FavoriteInsertSchema = createInsertSchema(favorites);
+
+/** Inferred types */
+export type FavoriteSelect = z.infer<typeof FavoriteSelectSchema>;
+export type FavoriteInsert = z.infer<typeof FavoriteInsertSchema>;
 
 // ── Entity Groups ───────────────────────────────────────────────────
 

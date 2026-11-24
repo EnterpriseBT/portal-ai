@@ -25,6 +25,7 @@ import type {
   EntityRecord,
   EntityTag,
   EntityTagAssignment,
+  Favorite,
   Policy,
   PermissionStatement,
   PolicyAttachment,
@@ -65,6 +66,7 @@ import type {
   FieldMappingSelect,
   EntityTagSelect,
   EntityTagAssignmentSelect,
+  FavoriteSelect,
   PolicySelect,
   PermissionStatementSelect,
   PolicyAttachmentSelect,
@@ -105,6 +107,7 @@ import type { connectorEntities } from "./connector-entities.table.js";
 import type { fieldMappings } from "./field-mappings.table.js";
 import type { entityTags } from "./entity-tags.table.js";
 import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import type { favorites } from "./favorites.table.js";
 import type { permissionPolicies } from "./permission-policies.table.js";
 import type { permissionStatements } from "./permission-statements.table.js";
 import type { policyAttachments } from "./policy-attachments.table.js";
@@ -527,6 +530,16 @@ type _EntTagAssignInferredToModel = IsAssignable<
   EntityTagAssignment
 >;
 const _entTagAssignInferredToModel: _EntTagAssignInferredToModel = true;
+
+// ── Favorite (#1072) ────────────────────────────────────────────────
+
+type _FavoriteDrizzleToModel = IsAssignable<FavoriteSelect, Favorite>;
+const _favoriteDrizzleToModel: _FavoriteDrizzleToModel = true;
+type _FavoriteModelToDrizzle = IsAssignable<Favorite, FavoriteSelect>;
+const _favoriteModelToDrizzle: _FavoriteModelToDrizzle = true;
+type _FavoriteInferredRow = InferSelectModel<typeof favorites>;
+type _FavoriteInferredToModel = IsAssignable<_FavoriteInferredRow, Favorite>;
+const _favoriteInferredToModel: _FavoriteInferredToModel = true;
 
 // ── EntityGroup ─────────────────────────────────────────────────────
 

@@ -995,6 +995,13 @@
       "when": 1795500436023,
       "tag": "0141_unique-entity-tag-name",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795539335160,
+      "tag": "0142_add-favorites",
+      "breakpoints": true
     }
   ]
 }

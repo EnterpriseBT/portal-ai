@@ -37,6 +37,7 @@ const {
   columnDefinitions,
   entityRecords,
   entityTagAssignments,
+  favorites,
   entityTags,
   entityGroupMembers,
   entityGroups,
@@ -335,6 +336,9 @@ const BEFORE_AUDIT = [
   // #1070: a tag assignment can point at a view, station, pin or connector,
   // so it goes before all of them.
   entityTagAssignments,
+  // #1072: a favorite points at a view, station, pin or connector, and at a
+  // user and org, so it goes before all of them.
+  favorites,
   stationViews,
   curatedViewFieldMappings,
   curatedViews,
