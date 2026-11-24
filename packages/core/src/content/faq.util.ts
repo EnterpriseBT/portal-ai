@@ -236,6 +236,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Organization,
     aliases: ["star", "starred", "favourite"],
     relatedGlossaryTerms: [
+      "Favorite",
       "Station",
       "Pinned Result",
       "Curated View",
