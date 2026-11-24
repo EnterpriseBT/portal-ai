@@ -277,6 +277,11 @@ Run `npm run test:unit` / `npm run test:integration` from each package, using `-
 5. **The pack finds its own object ids: `tag_target_list({ type, search?, limit?, offset? })`** → `{ targets: { type, id, name }[], total }`, the objects of one taggable type the caller can read (org-scoped, the type's read visibility; `search` on the name, and on the key for views and entities), sorted by name. `rbacRead()`, free. Without it the agent on Administrate, which has no data and no other lookup tools, could tag nothing, and no tool anywhere listed pinned results.
 6. The prompt says `tag_list` / `tag_target_list` return only what the user can read: an empty result means none they can see.
 
+## Revisions after the adversarial walk
+
+7. **Tag names are unique per org among live tags, in the database.** Migration `0141_unique-entity-tag-name` adds the partial unique index `entity_tags_org_name_unique (organization_id, name) WHERE deleted IS NULL`. It first renames every live duplicate except each name's oldest to `<name> (<first 8 of its id>)`, so a database the old race already reached still migrates. `EntityTagService` keeps its pre-check for the clean 409, and a create or rename that races past it hits the index and gets the same `409 ENTITY_TAG_DUPLICATE_NAME`. The walk had found five parallel creates of one name all answering 201.
+8. **Replayed tool results say they're from an earlier turn.** History reconstruction (`replayResult` in `portal.service.ts`) wraps a recent turn's JSON result as `{ fromEarlierTurn: true, result }` and prefixes a text one with `[From an earlier turn]`. Row summaries already read `[Previous … result …]`. The system prompt says such a result is history: call the tool again for anything current, never claim a call was made this turn when it wasn't, and when a tool used earlier is gone, say its pack isn't on this station. The walk had the agent answer "Already done this turn" from a previous turn's results, naming a station deleted since and ignoring a pack removed since.
+
 ## Next step
 
 `docs/TAGS_TOOLPACK.plan.md` sequences this as about eight TDD slices on this branch:
