@@ -37,7 +37,7 @@ Both run in the **`prod` GitHub Environment**, so both pause for approval.
 
 ## Cutting a release
 
-1. Confirm `main` is green and carries everything you intend to ship.
+1. Confirm `main` is green and carries everything you intend to ship. **Check the pending migrations against the live release**: a migration that drops a column or table the live release still reads must not ship in the same release as the change that stopped reading it. That change ships alone first, and the drop follows in a later release, because old tasks keep serving while new ones roll out. Example: #1118's column drop waits for a release carrying #1114 alone.
 2. GitHub → Releases → **Draft a new release**. Create a tag (`v<major>.<minor>.<patch>`) against `main`.
 3. Write the release notes. **These are the deployment journal** — the reason the trigger is a release rather than a manual dispatch. Say what changed, not just which PRs merged.
 4. **Publish**. Both workflows start.

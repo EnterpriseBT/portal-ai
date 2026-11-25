@@ -189,6 +189,15 @@ host's (`host.docker.internal:80`) for it; a browser on the host needs nothing.
   pulled failed its hook and rolled back while the app kept serving). Migrations are
   forward-only — a mistake is undone by a new forward migration, never a
   down-migration. Set `upgrade.enabled=false` to fall back to migrate-only.
+- **Some upgrades must go through an earlier release first.** A column is
+  dropped one release after the code stops reading it, so the previous image
+  still works on the old schema during a rollout. Skipping that release breaks
+  the guarantee: the hook drops the column while old pods still select it, so
+  their reads fail until the rollout ends, and an `--atomic` rollback puts the
+  old image on a schema without the column. Upgrade through each release
+  listed here, in order:
+  - **The release that removed the default station (#1114)**, before any
+    release that drops `organizations.default_station_id` (#1118).
 - **Hook jobs read their own copy of the env.** A `pre-install` or
   `pre-upgrade` hook runs before Helm creates or updates the release's
   ConfigMap and Secret, so the migrate and upgrade jobs load

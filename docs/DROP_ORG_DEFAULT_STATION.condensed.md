@@ -19,9 +19,9 @@ The camelCase `defaultStationId` references stay. They're tests that the strict 
 
 ## Decision — drop now, merge after #1114 is live in prod
 
-- **Generated, one statement.** `npm run db:generate -- --name drop-org-default-station` → `0143_drop-org-default-station.sql` with `ALTER TABLE "organizations" DROP COLUMN "default_station_id";` and `-- destructive-ok: column unread since #1114 (PR #1117)` on the line above. Commit the `.sql`, `meta/_journal.json` and `meta/0143_snapshot.json` together. No `IF EXISTS`: the column exists on every install that ran 0024.
+- **Generated, one statement.** `npm run db:generate -- --name drop-org-default-station` → `0143_drop-org-default-station.sql` with `ALTER TABLE "organizations" DROP COLUMN IF EXISTS "default_station_id";` and `-- destructive-ok: column unread since #1114 (PR #1117)` on the line above. Commit the `.sql`, `meta/_journal.json` and `meta/0143_snapshot.json` together. `IF EXISTS` (code review): a dev database synced with `db:push` after #1114 has already lost the column, and a failing 0143 would block every later migration there.
 - **Release gate, which is the risk.** Prod is on v1.2.3 (2026-11-08), which doesn't include #1114. This PR merges to `main` only after a prod release carrying #1114 **without** this migration is live. If both land in one release, the migration drops the column while old prod tasks still select it, and every org read fails until the rollout ends. app-dev is fine once 8c438b41 has deployed (in progress at the time of writing).
-- **Residency installs.** The Helm `pre-upgrade` hook migrates before pods roll, so the same rule applies to a customer upgrade. The release notes for the version carrying this migration say: upgrade through the #1114 release first, or expect org reads on old pods to fail until the rollout completes.
+- **Residency installs.** The Helm `pre-upgrade` hook migrates before pods roll, so the same rule applies to a customer upgrade. `deploy/helm/portalai/README.md` (Notes & caveats) carries this durably: upgrade through the #1114 release first. Skipping it fails org reads on old pods during the rollout, and an `--atomic` rollback lands the old image on a schema without the column. `docs/PROD_DEPLOY.runbook.md` step 1 now checks for such an ordering before every release.
 - **Rollback.** Forward-only. Reverting the code after this ships needs no column, since nothing reads it. Restoring the column would be a new forward migration, and none is planned.
 
 ## Plan — 1 slice
@@ -36,7 +36,7 @@ The camelCase `defaultStationId` references stay. They're tests that the strict 
 - `npm run lint:migrations` (root) passes with the reason.
 - `cd apps/api && npm run test:integration -- --testPathPattern "station.router|application.service|provisioned-stations|reset.service|organization-delete"`; the integration CI run migrates a fresh database through 0143.
 - `cd packages/admin-cli && npm run test`.
-- `git grep -n default_station_id -- ':!apps/api/drizzle'` is empty.
+- `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` is empty (phase docs describe the column, so `docs/` is excluded).
 
 ## Smoke (manual, against your dev stack)
 
