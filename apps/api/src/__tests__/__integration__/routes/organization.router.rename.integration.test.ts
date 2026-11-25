@@ -31,7 +31,7 @@ import { atLeast, eventually } from "../utils/eventually.util.js";
 /**
  * #907: renaming an organization through `PATCH /api/organization/:id`. A
  * rename needs `org.write`, the body is strict (#1114: `defaultStationId` is
- * gone and is a 400 naming it), a real rename is audited as `org.update` and
+ * gone and is a 400 listing it in its issues), a real rename is audited as `org.update` and
  * copied to the Stripe customer best effort, and concurrent renames each
  * record the name they replaced.
  */
@@ -219,6 +219,20 @@ describe("PATCH /api/organization/:id — rename (#907)", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
     expect((await orgRow()).name).toBe(ORIGINAL);
+  });
+
+  // #1114: the message names the first failing field, so a bare
+  // defaultStationId reads as the missing name; the issues name the key
+  // either way.
+  it.each([
+    [{ defaultStationId: "st-1" }, /name/],
+    [{ name: "Acme Corp", defaultStationId: "st-1" }, /defaultStationId/],
+  ])("%j lists defaultStationId in details.issues", async (body, message) => {
+    const res = await patch(body);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(message);
+    const issues = res.body.details.issues as { keys?: string[] }[];
+    expect(issues.some((i) => i.keys?.includes("defaultStationId"))).toBe(true);
   });
 
   it("another org's id is 404 before the body is validated", async () => {

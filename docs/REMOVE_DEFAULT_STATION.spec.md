@@ -5,7 +5,7 @@ This pins the removal of the org-wide default station from core, the API, web, t
 ## Key decisions (flag for review)
 
 1. **Expand/contract.** This PR removes every reader and writer and the Drizzle column definition. `organizations.default_station_id` stays in the database, unread, for one release, so old API tasks keep working while a deploy rolls out. A follow-up PR drops it (`-- destructive-ok`). The ticket was amended to match.
-2. **`PATCH /api/organization/:id` becomes rename-only.** `name` is required, the either/or refine goes, and `.strict()` makes a `defaultStationId` key `400 ORGANIZATION_INVALID_PAYLOAD` naming it.
+2. **`PATCH /api/organization/:id` becomes rename-only.** `name` is required, the either/or refine goes, and `.strict()` makes a `defaultStationId` key `400 ORGANIZATION_INVALID_PAYLOAD` listing it in `details.issues`. The message names the first failing field, so it names `defaultStationId` when a `name` is sent too, and the missing `name` when it isn't (amended after the smoke walk).
 3. **The derived-capability mechanism goes with its only entry.** `station.default.set` leaves `CALLER_CAPABILITY_ACTIONS`, and `DERIVED_CAPABILITIES`, `isDerived` and its branch leave `permission.service.ts`.
 4. **Past Activity stays readable.** `org.update` entries with `{ field: "defaultStationId", … }` keep rendering through `audit-summary.util.ts`, documented as legacy. Nothing writes new ones.
 5. **The New Portal picker starts empty.** No preselection, and no new `stationId` prop, since no station page opens the dialog (StationDetail creates portals directly).
@@ -152,7 +152,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
 ### API integration
 - **`routes/organization.router.integration.test.ts` and `.rename.integration.test.ts`:**
   - rename works and audits as before;
-  - a `defaultStationId` body is `400 ORGANIZATION_INVALID_PAYLOAD` naming it, with nothing written;
+  - a `defaultStationId` body is `400 ORGANIZATION_INVALID_PAYLOAD` with the key in `details.issues`, with nothing written (the message names it only when a `name` is sent too);
   - `{}` is a 400;
   - the GET has no `defaultStationId` and no `station.default.set` capability.
 
@@ -186,7 +186,7 @@ Run per package: `cd packages/core && npm run test:unit`, `cd apps/api && npm ru
 ## Acceptance criteria
 - [ ] No web surface offers, shows or names a default station: station cards, StationDetail, the Dashboard, the Stations header, the New Portal dialog and Help.
 - [ ] The New Portal dialog opens with no station selected, Create can't submit until one is picked (it says "Station is required"), and the portal is created on the picked station.
-- [ ] `PATCH /api/organization/:id` with `defaultStationId` answers `400 ORGANIZATION_INVALID_PAYLOAD` naming it, and `GET /api/organization/current` carries no `defaultStationId` and no `station.default.set`.
+- [ ] `PATCH /api/organization/:id` with `defaultStationId` answers `400 ORGANIZATION_INVALID_PAYLOAD` with the key in `details.issues` and nothing written. The message names `defaultStationId` when a `name` is sent too; alone, it names the missing `name`. And `GET /api/organization/current` carries no `defaultStationId` and no `station.default.set`.
 - [ ] A new org gets Administrate and Playground, and `portalai org create --json` returns `{ organizationId, stationId: <Administrate> }`.
 - [ ] Deleting any station works and writes no default-change audit entry.
 - [ ] Settings → Activity still renders past default-station changes.

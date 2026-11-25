@@ -159,7 +159,7 @@ The field leaves core and the API in one compile unit.
 
 1. **Tests (spec core contract ≈4 + capability ≈1; API org router ≈5; organization-update and permission ≈3 + the unit ≈1).**
    - PATCH `{name}` works and audits as before.
-   - PATCH with `defaultStationId` returns `400 ORGANIZATION_INVALID_PAYLOAD` naming it, and `{}` returns 400.
+   - PATCH with `defaultStationId` returns `400 ORGANIZATION_INVALID_PAYLOAD` with the key in `details.issues` (the message names it when a `name` is sent too), and `{}` returns 400.
    - The GET has no `defaultStationId` and no `station.default.set`.
    - The capability map is built from `set.can` for every action.
 

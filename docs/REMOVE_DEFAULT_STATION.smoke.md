@@ -18,7 +18,7 @@ Run **§Preflight** once. After that, each section stands alone. Steps tagged `�
 
 ### Fixtures
 
-- [ ] Signed in as the e2e owner in the seeded `e2e-fixture` org (`npm run --workspace @portalai/e2e e2e:seed`), which has Administrate and Playground plus at least one station of your own.
+- [ ] Signed in as the e2e owner in the seeded `e2e-fixture` org (`npm run --workspace @portalai/e2e e2e:seed`). An org provisioned before #848 has no Administrate or Playground; then use any station of yours wherever a step names them.
 - [ ] For §5, a **past** default-station audit entry in that org. Nothing writes these any more, so insert one from `db:psql` / `db:studio` (replace `<org>` and `<owner>`):
   ```sql
   INSERT INTO audit_log (id, created, created_by, organization_id, user_id, action, target_type, target_id, outcome, metadata)
@@ -29,7 +29,8 @@ Run **§Preflight** once. After that, each section stands alone. Steps tagged `�
 
 ### Reset between runs
 
-- [ ] Delete the stations and portals the walk created (§2, §4). Delete the smoke audit row: `DELETE FROM audit_log WHERE id = 'smoke-1114-audit';`. For §6, `portalai org delete` the org you created.
+- [ ] Delete the portal §2 created, and restore `organizations.default_station_id` if §4's optional step changed it. For §6, `portalai org delete <id> --env local --yes` the org you created.
+- [ ] The §5 audit row **can't be deleted**: `audit_log` is append-only. Insert it once (the `INSERT` fails on a second run because the id exists, which is fine) and leave it.
 
 ---
 
@@ -52,13 +53,13 @@ Run **§Preflight** once. After that, each section stands alone. Steps tagged `�
 Run these from the walk browser's console, or with curl and a bearer token from the signed-in session.
 
 - [ ] `GET /api/organization/current`. The organization payload has **no** `defaultStationId` key, and the capability map has **no** `station.default.set` entry. — backend
-- [ ] `PATCH /api/organization/<org>` with `{"defaultStationId":"<any station id>"}` answers **400 `ORGANIZATION_INVALID_PAYLOAD`**, and the message names `defaultStationId`. — backend
-- [ ] `PATCH /api/organization/<org>` with `{"name":"<current name> 2","defaultStationId":"x"}` also answers 400, and the name is unchanged. — backend
+- [ ] `PATCH /api/organization/<org>` with `{"defaultStationId":"<any station id>"}` answers **400 `ORGANIZATION_INVALID_PAYLOAD`**. The message names the missing `name` (the first failing field), and `details.issues` includes an unrecognized-keys issue listing `defaultStationId`. — backend
+- [ ] `PATCH /api/organization/<org>` with `{"name":"<current name> 2","defaultStationId":"x"}` also answers 400, its message names `defaultStationId` ("Unrecognized key"), and the name is unchanged. — backend
 - [ ] Settings → General: rename the organization, then rename it back. Both saves succeed, and the header shows each new name.
 
 ## §4 — Station delete
 
-- [ ] Create a station "Smoke 1114 delete" on `/stations`, then delete it from its card menu. It disappears from the list with a success toast, and no error appears.
+- [ ] Create a station "Smoke 1114 delete" on `/stations`, then delete it with its card's Delete button and confirm. The card disappears and no error appears (a station delete shows no toast, before or after this change).
 - [ ] Settings → Activity: no new "Default station …" entry appears for that delete (only the station's own delete, if Activity records one).
 - [ ] Optional: the column is dormant but present. Set `UPDATE organizations SET default_station_id = '<a station id>' WHERE id = '<org>';`, then delete that station from the UI. The delete succeeds, and `default_station_id` still holds the stale id, since nothing reads or clears it. — backend
 
@@ -68,7 +69,7 @@ Run these from the walk browser's console, or with curl and a bearer token from 
 
 ## §6 — Provisioning and the admin CLI
 
-- [ ] `npx portalai org create --env local --owner-email <your dev login> --name "Smoke 1114" --json`. Stdout is `{"organizationId":"…","stationId":"…"}`, and `stationId` is that org's **Administrate** station (`SELECT name FROM stations WHERE id = '<stationId>'` → `Administrate`). The org also has Playground. — backend
+- [ ] `npx portalai org create --env local --owner-email <an existing local user, e.g. the e2e owner> --name "Smoke 1114" --json`. Stdout is `{"organizationId":"…","stationId":"…"}`, and `stationId` is that org's **Administrate** station (`SELECT name FROM stations WHERE id = '<stationId>'` → `Administrate`). The org also has Playground. — backend
 - [ ] In that new org's row, `default_station_id` is `NULL`: provisioning didn't write it. — backend
 - [ ] `npx portalai org update <org> --default-station-id x --env local`. It exits **2** (unknown option), and nothing is written. — backend
 - [ ] `npx portalai org update <org> --name "Smoke 1114 renamed" --env local --json`. It succeeds, and the name changes. — backend

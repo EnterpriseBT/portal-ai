@@ -145,7 +145,8 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *     description: >-
  *       Renames the caller's current organization (#907). `name` is required
  *       and needs `org.write`; any other key (including the retired
- *       `defaultStationId`, #1114) is a 400 naming it. A rename is audited as
+ *       `defaultStationId`, #1114) is a 400 listing it in `details.issues`.
+ *       The message names the first failing field. A rename is audited as
  *       `org.update` and, best effort, copied to the org's Stripe customer.
  *     security:
  *       - bearerAuth: []
