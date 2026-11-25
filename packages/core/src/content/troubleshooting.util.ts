@@ -40,6 +40,7 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
       "can't tag",
       "tag picker missing",
       "no add tag",
+      "no edit tags button",
       "remove tag",
       "tagging not allowed",
     ],
