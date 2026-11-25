@@ -81,6 +81,8 @@ export const SplitButton: React.FC<SplitButtonProps> = ({
           gate={mainGate}
           onClick={onClick}
           aria-label={iconOnly ? label : undefined}
+          // Icon-only, it shows its name on hover or focus too.
+          tooltip={iconOnly ? label : undefined}
           startIcon={iconOnly ? undefined : <Icon name={icon} />}
         >
           {iconOnly ? <Icon name={icon} /> : label}
@@ -89,6 +91,11 @@ export const SplitButton: React.FC<SplitButtonProps> = ({
           <GatedButton
             id={menuButtonId}
             aria-label={menuLabel ?? `More options for ${label}`}
+            // Always an icon, so it shows its name too (not while its menu
+            // is open, where the tooltip would cover the menu).
+            tooltip={
+              open ? undefined : (menuLabel ?? `More options for ${label}`)
+            }
             aria-haspopup="menu"
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}

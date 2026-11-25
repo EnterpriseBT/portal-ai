@@ -216,3 +216,35 @@ describe("GatedButton keeps focus across gates (#793)", () => {
     expect(button).toHaveFocus();
   });
 });
+
+describe("GatedButton tooltip (#1122)", () => {
+  it("shows its name on hover, without announcing it as a description", async () => {
+    render(
+      <GatedButton aria-label="New portal" tooltip="New portal">
+        +
+      </GatedButton>
+    );
+    const button = screen.getByRole("button", { name: "New portal" });
+    await userEvent.hover(button);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("New portal");
+    expect(button).not.toHaveAccessibleDescription("New portal");
+  });
+
+  it("gives the tooltip to a gate's reason instead", async () => {
+    render(
+      <GatedButton
+        aria-label="New portal"
+        tooltip="New portal"
+        gate={{ kind: "disable", reason: "Ask for access" }}
+      >
+        +
+      </GatedButton>
+    );
+    const button = screen.getByRole("button", { name: "New portal" });
+    await userEvent.hover(button);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Ask for access"
+    );
+    expect(button).toHaveAccessibleDescription("Ask for access");
+  });
+});

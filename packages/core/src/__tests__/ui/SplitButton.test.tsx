@@ -128,6 +128,52 @@ describe("SplitButton (#1122)", () => {
     expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
+  it("shows its name in a tooltip when it's only an icon", async () => {
+    render(
+      <SplitButton
+        label="New portal in Sales Ops"
+        onClick={jest.fn()}
+        layout="icon"
+        menuItems={menuItems()}
+      />
+    );
+    await userEvent.hover(
+      screen.getByRole("button", { name: /^New portal in Sales Ops$/ })
+    );
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "New portal in Sales Ops"
+    );
+  });
+
+  it("names its menu button in a tooltip", async () => {
+    render(
+      <SplitButton
+        label="New portal"
+        onClick={jest.fn()}
+        menuItems={menuItems()}
+      />
+    );
+    await userEvent.hover(
+      screen.getByRole("button", { name: "More options for New portal" })
+    );
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "More options for New portal"
+    );
+  });
+
+  it("has no name tooltip on a labelled main action", async () => {
+    render(
+      <SplitButton
+        label="New portal"
+        onClick={jest.fn()}
+        menuItems={menuItems()}
+      />
+    );
+    await userEvent.hover(screen.getByRole("button", { name: /^New portal$/ }));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("shows only icons, named by its label, in the icon layout", async () => {
     const { container } = render(
       <SplitButton

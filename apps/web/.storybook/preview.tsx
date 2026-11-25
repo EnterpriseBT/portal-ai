@@ -72,7 +72,9 @@ const preview: Preview = {
     (Story, context) => {
       const theme = context.globals.theme as ThemeName;
       return (
-        <ApplicationProvider defaultTheme={theme}>
+        // Keyed by theme: the provider reads `defaultTheme` only when it
+        // mounts, so without a remount the toolbar's theme never applied.
+        <ApplicationProvider key={theme} defaultTheme={theme}>
           <RouterContextProvider router={storybookRouter}>
             <Story />
           </RouterContextProvider>

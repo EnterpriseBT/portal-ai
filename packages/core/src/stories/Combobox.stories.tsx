@@ -13,32 +13,14 @@ import { Typography } from "../ui/Typography";
  * command palette. Arrows, Home/End move the highlight; Enter runs an
  * action or follows a link. Filtering is the caller's (here, the story's).
  */
-const followLink = fn();
-
-/** Stands in for the app's router link: logs instead of navigating. */
-const StoryLink = React.forwardRef<
-  HTMLAnchorElement,
-  React.AnchorHTMLAttributes<HTMLAnchorElement>
->(({ onClick, ...props }, ref) => (
-  <a
-    ref={ref}
-    {...props}
-    onClick={(event) => {
-      onClick?.(event);
-      event.preventDefault();
-      followLink(props.href);
-    }}
-  />
-));
-
 const OPTIONS: ComboboxOption[] = [
-  { id: "new", label: "New portal", group: "Actions", onSelect: fn() },
-  { id: "station", label: "New station", group: "Actions", onSelect: fn() },
+  // Actions get their onSelect from the story's `onRun` arg.
+  { id: "new", label: "New portal", group: "Actions" },
+  { id: "station", label: "New station", group: "Actions" },
   {
     id: "invite",
     label: "Invite a member",
     group: "Actions",
-    onSelect: fn(),
     gate: { kind: "disable", reason: "Needs member.invite" },
   },
   { id: "st-1", label: "Sales Ops", group: "Favorites", href: "/stations/1" },
@@ -65,14 +47,40 @@ const ICONS: Record<string, IconName> = {
 const Playground = ({
   options = OPTIONS,
   statusOverride,
+  onRun,
+  onFollow,
 }: {
   options?: ComboboxOption[];
   statusOverride?: string;
+  /** Logged in the Actions panel when an action option is picked. */
+  onRun: (id: string) => void;
+  /** Logged in the Actions panel when a link option is followed, instead of
+   *  navigating: core's Storybook has no router. */
+  onFollow: (href: string) => void;
 }) => {
   const [value, setValue] = React.useState("");
-  const shown = options.filter((o) =>
-    o.label.toLowerCase().includes(value.toLowerCase())
+  // Stands in for the app's router link.
+  const StoryLink = React.useMemo(
+    () =>
+      React.forwardRef<
+        HTMLAnchorElement,
+        React.AnchorHTMLAttributes<HTMLAnchorElement>
+      >(({ onClick, ...props }, ref) => (
+        <a
+          ref={ref}
+          {...props}
+          onClick={(event) => {
+            onClick?.(event);
+            event.preventDefault();
+            onFollow(props.href ?? "");
+          }}
+        />
+      )),
+    [onFollow]
   );
+  const shown = options
+    .filter((o) => o.label.toLowerCase().includes(value.toLowerCase()))
+    .map((o) => (o.href ? o : { ...o, onSelect: () => onRun(o.id) }));
   return (
     <Combobox
       options={shown}
@@ -113,6 +121,7 @@ const meta = {
   title: "Components/Combobox",
   component: Playground,
   parameters: { layout: "padded" },
+  args: { onRun: fn(), onFollow: fn() },
 } satisfies Meta<typeof Playground>;
 
 export default meta;

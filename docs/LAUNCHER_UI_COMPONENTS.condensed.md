@@ -25,7 +25,7 @@
 - **`SplitButton` (core, new).**
   - Shape: a `ButtonGroup` of a `GatedButton` (the main action) and a `GatedIconButton` menu trigger, which has `aria-haspopup="menu"`, `aria-expanded`, `aria-controls` and the `aria-label` "More {label} options". It opens a `GatedMenu` of `ActionMenuItem`s (a new file holding `ActionsMenu`'s gated-item rendering, which `ActionsMenu` now uses too), and MUI owns the menu's keys. Both halves are `GatedButton`s: `ButtonGroup` styles them through context, so the gate's hidden reason doesn't break the group.
   - `gate` and `pending` (through `pendingGate`) apply to the main action. Each menu item keeps its own gate.
-  - `layout: "full" | "icon"`, decided by the view as with `MetadataList`. `"icon"` renders the main action as an icon button whose `aria-label` is its label.
+  - `layout: "full" | "icon"`, decided by the view as with `MetadataList`. `"icon"` renders the main action as an icon button whose `aria-label` is its label, and which shows that label in a tooltip on hover or focus (`GatedButton`'s new `tooltip`; a gate's reason takes its place). The menu button, always an icon, shows its name the same way.
   - New `IconName`s: `Add` and `ArrowDropDown`.
 - **`Combobox` (core, new), a shell for a list that's always shown, not a popup select.**
   - Built on MUI's headless `useAutocomplete`, with `open` held true, `groupBy`, `filterOptions` = identity (the caller filters), and `autoHighlight`. That gives `role="combobox"`, `aria-activedescendant`, arrows, Home/End, Enter and the grouped `listbox`, without a hand-rolled keyboard model.
@@ -51,10 +51,10 @@ Each slice: `npm run test:unit -- --testPathPattern <names>` in its package, the
 
 ## Smoke (manual, in Storybook: `npm run storybook`, core :7006, web :7007)
 
-1. Core → SplitButton: Tab to the main action, then the arrow; Enter opens the menu, arrows move, Escape closes and returns focus to the arrow. The Disabled story keeps the button focusable and reads its reason. The Pending story shows "Saving…". The Icon story shows only icons.
-2. Core → Combobox: typing filters (story-side); arrows move the highlight through grouped options, Enter on a link option navigates the story's router and on an action option logs it; a screen reader hears the result count.
-3. Web → CommandPaletteTrigger: a search-box button reading "Search or run…" with a "⌘K" keycap (the Windows story shows "Ctrl K"). Web → CommandPalette: the footer shows the four key hints; every state story (Default, Tag query, Loading, No results, Empty/teaching, Gated action) renders in Brand and Brand Dark and at 400px width.
-4. Web → NewPortalButton: "New portal in Sales Ops"; the menu shows the "On this page" and "Favorite stations" headings, starred favorites (or the teaching row), a divider and "Choose station…"; Narrow shows the icon with its name on hover.
+1. Core → SplitButton: Tab to the main action, then the arrow; Enter opens the menu, arrows move, Escape closes and returns focus to the arrow. The Disabled story keeps the button focusable and reads its reason. The Pending story reads "Starting…" (its reason). The Icon story shows only icons, and hovering either half shows its name.
+2. Core → Combobox: typing filters (story-side); arrows move the highlight through grouped options, Enter on a link option logs `onFollow` with its href and on an action option logs `onRun` with its id, in the Actions panel (core's Storybook has no router); a screen reader hears the result count.
+3. Web → CommandPaletteTrigger: a search-box button reading "Search or run…" with a "⌘K" keycap (the Windows story shows "Ctrl K"). Web → CommandPalette: the footer shows the four key hints; every state story (Default, which holds the gated action, Tag query, Search results, Loading, No results, Empty, Nothing at all) renders in Brand and Brand Dark (switched from the toolbar's theme menu) and at 400px width.
+4. Web → NewPortalButton: "New portal in Sales Ops"; the menu shows the "On this page" and "Favorite stations" headings, starred favorites (or the teaching row), a divider and "Choose station…"; Narrow shows the icon, with its name in a tooltip on hover.
 5. Web → SidebarFavorites: Capped shows 8 and "Show all (12)", which expands; the active item is marked; Collapsed shows icons with tooltips; Empty shows the hint; long names truncate.
 6. The running app (`npm run dev`) shows none of these anywhere.
 
