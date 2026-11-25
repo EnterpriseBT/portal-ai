@@ -326,14 +326,6 @@
           "subtitle1": "p",
           "subtitle2": "p"
         }
-      },
-      "styleOverrides": {
-        "root": {
-          "&.SidebarFavorites-hint": {
-            "display": "block",
-            "padding": "8px 24px 8px 48px"
-          }
-        }
       }
     },
     "MuiCssBaseline": {
@@ -1074,6 +1066,16 @@
           },
           "&.Mui-completed": {
             "color": "#9898b8"
+          }
+        }
+      }
+    },
+    "MuiList": {
+      "styleOverrides": {
+        "root": {
+          "& .SidebarFavorites-hint": {
+            "display": "block",
+            "padding": "8px 24px 8px 48px"
           }
         }
       }
