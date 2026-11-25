@@ -6,6 +6,7 @@ import {
   Typography,
 } from "@portalai/core/ui";
 import { HeaderMenu } from "../components/HeaderMenu.component";
+import { NewPortalButton } from "../components/NewPortalButton.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";
 import { Link } from "@tanstack/react-router";
@@ -56,10 +57,14 @@ export const AuthorizedLayout = ({
             </Link>
           </ButtonGroup>
 
-          <ButtonGroup>
-            <ThemeSwitcher />
-            <HeaderMenu />
-          </ButtonGroup>
+          <Box display="flex" alignItems="center" gap={1}>
+            {/* #1075: start a portal from any page; an icon at phone width. */}
+            <NewPortalButton layout={isMobile ? "icon" : "full"} />
+            <ButtonGroup>
+              <ThemeSwitcher />
+              <HeaderMenu />
+            </ButtonGroup>
+          </Box>
         </Toolbar>
       </AppBar>
       <Box display="flex" position="relative" flex={1} minHeight={0}>

@@ -1,7 +1,14 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 
+import { useNavigate } from "@tanstack/react-router";
 import { Icon, IconName, pendingGate, SplitButton } from "@portalai/core/ui";
 import type { ActionGate, ActionMenuItem } from "@portalai/core/ui";
+import type { CreatePortalBody } from "@portalai/core/contracts";
+
+import { queryKeys, sdk } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
+import { usePortalLauncher } from "../utils/use-portal-launcher.util";
+import { CreatePortalDialog } from "./CreatePortalDialog.component";
 
 export interface NewPortalStation {
   id: string;
@@ -108,5 +115,68 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
       layout={layout}
       size="small"
     />
+  );
+};
+
+export interface NewPortalButtonProps {
+  /** The view decides: the full label, or an icon at narrow widths. */
+  layout?: "full" | "icon";
+}
+
+/**
+ * The header's New portal button, wired (#1075): `usePortalLauncher`
+ * picks the stations, gate and launch, and "Choose station…" opens the
+ * existing CreatePortalDialog, whose create error shows in its FormAlert
+ * (a launch from the button or a favorite toasts instead).
+ */
+export const NewPortalButton: React.FC<NewPortalButtonProps> = ({
+  layout = "full",
+}) => {
+  const launcher = usePortalLauncher();
+  const navigate = useNavigate();
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const chooseMutation = sdk.portals.create();
+
+  const handleChooserClose = useCallback(() => {
+    chooseMutation.reset();
+    setChooserOpen(false);
+  }, [chooseMutation]);
+
+  const handleChooserSubmit = useCallback(
+    (body: CreatePortalBody) => {
+      chooseMutation.mutate(body, {
+        invalidate: [queryKeys.portals.root],
+        onSuccess: (data) => {
+          setChooserOpen(false);
+          navigate({ to: `/portals/${data.portal.id}` });
+        },
+      });
+    },
+    [chooseMutation, navigate]
+  );
+
+  return (
+    <>
+      <NewPortalButtonUI
+        station={launcher.station}
+        onLaunch={() =>
+          launcher.station && launcher.launch(launcher.station.id)
+        }
+        pageStation={launcher.pageStation}
+        favoriteStations={launcher.favoriteStations}
+        onLaunchIn={launcher.launch}
+        onChooseStation={() => setChooserOpen(true)}
+        gate={launcher.gate}
+        pending={launcher.pending || chooseMutation.isPending}
+        layout={layout}
+      />
+      <CreatePortalDialog
+        open={chooserOpen}
+        onClose={handleChooserClose}
+        onSubmit={handleChooserSubmit}
+        isPending={chooseMutation.isPending}
+        serverError={toServerError(chooseMutation.error)}
+      />
+    </>
   );
 };
