@@ -124,7 +124,7 @@ search: {
 ```
 
 - `queryKeys.search = { root: ["search"], query: (p) => ["search", p] }` goes in `api/keys.ts`.
-- The search keys are invalidated wherever `stations.root`, `curatedViews.root`, `connectorInstances.root`, `connectorEntities.root`, `portalResults.root`, `portals.root`, `entityTags.root` or the favorites keys are. The mechanism is to add `queryKeys.search.root` to the shared invalidation helpers (`delete-invalidation.util.ts`, `favoriteKeys`, `tagCatalogChangeKeys`) and, for creates and renames, `staleTime: 0` on search, so a reopened palette refetches.
+- **Freshness.** The search query sets `staleTime: 0`, and the palette enables its queries only while it's open, so every open refetches. A create, rename, delete or star therefore shows the next time the palette opens, without adding the search key to each mutation's invalidation helpers.
 - **`useAuthQuery` (`utils/api.util.ts:290`).** Pass `context.signal` when `queryOptions.meta?.abortable === true` (as well as during a read pause). React Query then aborts the superseded fetch when the key changes.
 
 ### Web — palette types (`apps/web/src/utils/launcher-items.util.ts`)
@@ -418,7 +418,6 @@ Run the tests with each package's npm scripts: `cd packages/core && npm run test
   - `utils/api.util.ts`
   - `utils/launcher-items.util.ts`
   - `utils/routes.util.ts`
-  - `utils/delete-invalidation.util.ts`, `favorite-invalidation.util.ts`, `tag-invalidation.util.ts`
   - `components/CommandPalette.component.tsx`, `CommandPaletteTrigger.component.tsx`, `CommandPaletteOption.component.tsx`, `NewPortalButton.component.tsx`
   - `layouts/Authorized.layout.tsx`
   - routes `stations.index.tsx`, `views.index.tsx`, `entities.index.tsx`, `tags.index.tsx`, `connectors.index.tsx`, and `routeTree.gen.ts` if it changes

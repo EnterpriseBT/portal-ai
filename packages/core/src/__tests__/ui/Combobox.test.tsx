@@ -245,4 +245,49 @@ describe("Combobox (#1122)", () => {
     await userEvent.type(screen.getByRole("combobox"), "s");
     expect(onInputChange).toHaveBeenCalledWith("s");
   });
+
+  it("doesn't render a gated link option as a link (#1076)", async () => {
+    const onUpgrade = jest.fn();
+    render(
+      <Harness
+        opts={[
+          {
+            id: "new-station",
+            label: "New station",
+            group: "Actions",
+            href: "/stations?create=station",
+            gate: {
+              kind: "disable",
+              reason: "Ask for access to create stations",
+            },
+          },
+          {
+            id: "new-view",
+            label: "New view",
+            group: "Actions",
+            href: "/views?create=view",
+            gate: { kind: "upsell", reason: "Upgrade for views", onUpgrade },
+          },
+          {
+            id: "st-1",
+            label: "Sales Ops",
+            group: "Favorites",
+            href: "/stations/1",
+          },
+        ]}
+      />
+    );
+    expect(screen.queryByRole("link", { name: /New station/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /New view/ })).toBeNull();
+    expect(screen.getByRole("option", { name: "New station" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("option", { name: "Sales Ops" })).toHaveAttribute(
+      "href",
+      "/stations/1"
+    );
+    await userEvent.click(screen.getByRole("option", { name: "New view" }));
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
 });

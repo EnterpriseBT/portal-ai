@@ -215,7 +215,11 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
         )}
       </>
     );
-    if (option.href) {
+    // #1076: a gated link isn't a link, so a click can't follow it; picking
+    // it still runs the gate (an upsell's onUpgrade, a disable's nothing).
+    const gated =
+      option.gate?.kind === "disable" || option.gate?.kind === "upsell";
+    if (option.href && !gated) {
       const Link = linkComponent ?? "a";
       return (
         <li key={key} role="none">

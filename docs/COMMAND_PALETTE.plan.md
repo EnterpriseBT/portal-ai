@@ -94,13 +94,12 @@ Add the core contract and `GET /api/search` in all four modes, with the read-saf
     - `toLauncherItem`, `parsePaletteQuery` and `RESULT_GROUP_LABEL`.
   - `apps/web/src/components/CommandPaletteOption.component.tsx`: the portal row.
   - `packages/core/src/ui/Combobox.tsx`: a gated link option renders as a non-link.
-  - The search key added to `delete-invalidation.util.ts`, `favorite-invalidation.util.ts` and `tag-invalidation.util.ts`.
+  - Freshness through `staleTime: 0` on the search query (see the spec), not invalidation helpers.
 - **Tests:**
   - `api.util.test.ts`;
   - `launcher-items.util.test.ts`;
   - `CommandPaletteOption.test.tsx` (a portal row);
   - core `Combobox.test.tsx`;
-  - the invalidation helpers' tests (the search root included).
 
 **Steps**
 
@@ -247,7 +246,7 @@ Add the core contract and `GET /api/search` in all four modes, with the read-saf
 | Slice | Lands | Gate |
 |---|---|---|
 | 1 | Core contract and `GET /api/search` (four modes) | Contract, router, integration and agreement tests; route map; swagger |
-| 2 | SDK and abortable query; palette types; core gated-link fix; invalidation | `api.util`, `launcher-items`, `Combobox`, invalidation tests; stories intact |
+| 2 | SDK and abortable query; palette types; core gated-link fix | `api.util`, `launcher-items`, `Combobox` tests; stories intact |
 | 3 | Shortcut, debounce, Recent store, visit recording | Util tests; detail-view recording tests |
 | 4 | Launcher provider; `?create=` deep links; New Station gate | `use-create-param`, view and launcher tests; route tree committed |
 | 5 | Palette container in the header | Container (with axe), trigger and layout tests |
