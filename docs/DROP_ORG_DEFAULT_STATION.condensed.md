@@ -40,13 +40,21 @@ The camelCase `defaultStationId` references stay. They're tests that the strict 
 
 ## Smoke (manual, against your dev stack)
 
-1. Before migrating: `SELECT default_station_id FROM organizations WHERE default_station_id IS NOT NULL LIMIT 3;` shows rows with values (e2e-fixture has one).
-2. `cd apps/api && npm run db:migrate`: it applies `0143_drop-org-default-station` with no error. `\d organizations` no longer lists `default_station_id`.
-3. Restart the API. Sign in, then load the Dashboard, Stations, a station's detail page and Settings → Organization: each renders, with no 5xx in the API log.
-4. Settings → Organization: rename the org and back. Both save.
-5. Delete a throwaway station from `/stations`: it disappears with no error.
-6. `npx portalai org create --env local --owner-email qa@portalsai.io --name "Smoke 1118" --json` returns `{organizationId, stationId}` (Administrate). Then `npx portalai org reset <id> --env local --yes` and `npx portalai org delete <id> --env local --yes` both exit 0.
-7. Settings → Activity still renders past "Default station …" entries; those are audit metadata, not the column.
+**Preflight.** `git checkout chore/1118-drop-org-default-station && git pull --ff-only`, then `npm run dev` (API :3001, web :3000), signed in as the e2e owner in `e2e-fixture`. No core rebuild is needed: no app code changed. `$DB` is `apps/api/.env`'s `DATABASE_URL`.
+
+**Reset (to re-walk on a database that already ran 0143).** Recreate the column with values and forget 0143. The column has no FK, so any text works: `psql "$DB" -c "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS default_station_id text; UPDATE organizations SET default_station_id = 'st-legacy'; DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1795569956037;"` (1795569956037 is 0143's journal `when`).
+
+1. Before migrating, `psql "$DB" -Atc "SELECT count(*) FROM organizations WHERE default_station_id IS NOT NULL"` is above 0.
+2. `cd apps/api && npm run db:migrate` logs `Migrations completed` with no error. `psql "$DB" -Atc "SELECT count(*) FROM information_schema.columns WHERE table_name='organizations' AND column_name='default_station_id'"` is `0`. — backend
+3. Run `npm run db:migrate` again: it completes and does nothing. Then, with `0143` forgotten but the column already gone (just the `DELETE` from Reset), migrate once more: `IF EXISTS` makes it a no-op, with no "column does not exist" error. — backend
+4. `npm run lint:migrations` (repo root) passes, and 0143 counts as acknowledged destructive DDL. — backend
+5. With no restart needed, load the Dashboard, Stations, a station's detail page and Settings → Organization. Each renders, with no 5xx in the API log or the network panel.
+6. Settings → Organization: rename the org to "e2e-fixture smoke" and back. Both save, and Activity lists both renames.
+7. On `/stations`, create "Smoke 1118" and delete it with its card's Delete button: the card disappears and no error shows.
+8. Settings → Activity still renders past `Default station …` entries; they're audit metadata, not the column.
+9. `npx portalai org create --env local --owner-email qa@portalsai.io --name "Smoke 1118" --json` returns `{"organizationId":…,"stationId":…}`, where `stationId` is that org's Administrate. Then `npx portalai org reset <id> --env local --yes` and `npx portalai org delete <id> --env local --yes` both exit 0. — backend
+10. `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` prints nothing. — backend
+11. The release gate: the PR's merge-gate row "prod release carrying #1114 (without this migration) is live" is checked only once GitHub → Releases shows a published release whose notes include #1117 but not #1119, and its `deploy-prod` run (including `verify-login`) is green. — manual
 
 ## Out of scope
 
