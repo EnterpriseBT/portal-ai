@@ -43,7 +43,7 @@ const mockTagList = jest.fn((..._args: unknown[]) => ({
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    // #1070: the page's Tags section and tag filter.
+    // #1115: the Tags dialog's picker.
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
     },
@@ -236,7 +236,7 @@ describe("StationDetailView — attachments (#674)", () => {
 
 // #1063: a member can't list the org's packs (the list mock answers none),
 // so the station read's names are what the chips show.
-// #1070: the page's Tags section reads this station's tags.
+// #1070, #1115: the page's Tags row reads this station's tags.
 describe("StationDetailView — tags (#1070)", () => {
   beforeEach(() => mockStationsGet.mockReset());
 

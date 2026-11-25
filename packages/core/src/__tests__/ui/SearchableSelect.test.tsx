@@ -1021,6 +1021,29 @@ describe("AsyncSearchableSelect option icons (#1115)", () => {
   });
 });
 
+describe("AsyncSearchableSelect non-element icons (#1115)", () => {
+  it("picks an option whose icon is text, leaving its chip without one", async () => {
+    const user = userEvent.setup();
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "star", label: "Starred", icon: "★" }]);
+    render(
+      <AsyncSearchableSelect
+        label="Pick"
+        value={null}
+        onChange={() => {}}
+        onSearch={onSearch}
+      />
+    );
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "★ Starred" }));
+    const chip = screen
+      .getByText("Starred", { selector: ".MuiChip-label" })
+      .closest(".MuiChip-root") as HTMLElement;
+    expect(chip.querySelector(".MuiChip-icon")).toBeNull();
+  });
+});
+
 describe("options with the same label (#986)", () => {
   const SAME_LABEL: SelectOption[] = [
     { value: "region", label: "Enum" },

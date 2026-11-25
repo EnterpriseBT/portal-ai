@@ -56,7 +56,13 @@ export const TagsDialogUI: React.FC<TagsDialogUIProps> = ({
       <Stack spacing={2}>
         <TagChipListUI
           tags={tags}
-          onDelete={(tag) => onUnassign(tag.assignmentId)}
+          onDelete={(tag) => {
+            onUnassign(tag.assignmentId);
+            // The removed chip unmounts once the tags refetch, which would
+            // drop focus to the dialog, where the next Escape closes it.
+            // Move it to the picker first, as clearing a select does (#793).
+            inputRef.current?.focus();
+          }}
         />
         <Box>
           <TagAssignSelectUI

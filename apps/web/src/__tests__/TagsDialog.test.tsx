@@ -76,6 +76,22 @@ describe("TagsDialogUI (#1115)", () => {
     expect(p.onUnassign).toHaveBeenCalledWith("assignment-1");
   });
 
+  it("keeps focus in the dialog when a chip is removed from the keyboard", async () => {
+    const p = props();
+    const { rerender } = render(<TagsDialogUI {...p} />);
+    const picker = screen.getByLabelText("Add tag");
+    await waitFor(() => expect(picker).toHaveFocus());
+    const chip = screen
+      .getByText("Finance")
+      .closest(".MuiChip-root") as HTMLElement;
+    chip.focus();
+    await userEvent.keyboard("{Delete}");
+    expect(p.onUnassign).toHaveBeenCalledWith("assignment-1");
+    // The refetch drops the chip; focus is already on the picker.
+    rerender(<TagsDialogUI {...p} tags={[]} />);
+    expect(screen.getByLabelText("Add tag")).toHaveFocus();
+  });
+
   it("returns focus to the row's Edit pencil when it closes", async () => {
     const p = props();
     const Harness = () => {

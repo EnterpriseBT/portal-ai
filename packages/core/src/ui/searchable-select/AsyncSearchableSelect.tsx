@@ -4,11 +4,11 @@ import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
-import Box from "@mui/material/Box";
 import { useForkRef } from "@mui/material/utils";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
 import { selectOptionKey } from "./option-key.js";
+import { optionChipIcon, renderOptionRow } from "./option-render.js";
 
 export interface AsyncSearchableSelectProps extends SelectBaseProps {
   value: string | null;
@@ -161,11 +161,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       {selectedOption && (
         <Chip
           label={selectedOption?.label ?? value}
-          icon={
-            selectedOption?.icon
-              ? (selectedOption.icon as React.ReactElement)
-              : undefined
-          }
+          icon={optionChipIcon(selectedOption?.icon)}
           aria-describedby={disabled ? undefined : removeHintId}
           onDelete={disabled ? undefined : handleClear}
           size={size}
@@ -197,23 +193,8 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         isOptionEqualToValue={(option, val) => option.value === val.value}
         getOptionLabel={(option) => option.label}
         getOptionKey={selectOptionKey}
-        // An option's icon leads its label, as in MultiSearchableSelect (a
-        // tag's colour dot, #1115).
-        renderOption={(props, option) => {
-          const { key, ...optionProps } =
-            props as React.HTMLAttributes<HTMLLIElement> & { key?: React.Key };
-          return (
-            <Box
-              component="li"
-              key={key}
-              {...optionProps}
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
-            >
-              {option.icon}
-              <span>{option.label}</span>
-            </Box>
-          );
-        }}
+        // An option's icon leads its label (a tag's colour dot, #1115).
+        renderOption={renderOptionRow}
         filterOptions={(x) => x}
         loading={loading}
         // A status, so the wait is announced when the list opens (#793).
