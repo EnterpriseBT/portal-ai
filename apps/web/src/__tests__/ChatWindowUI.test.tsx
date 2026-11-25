@@ -240,6 +240,14 @@ describe("ChatWindowUI", () => {
       expect(props.onSubmit).toHaveBeenCalledWith("hello");
     });
 
+    it("hides Reset when canReset is false (#1127)", () => {
+      render(<ChatWindowUI {...createProps()} canReset={false} />);
+      expect(
+        screen.queryByRole("button", { name: "Reset" })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Exit" })).toBeInTheDocument();
+    });
+
     it("calls onReset when Reset button is clicked", () => {
       const props = createProps();
       render(<ChatWindowUI {...props} />);
@@ -385,6 +393,13 @@ describe("ChatWindowUI", () => {
       const sendIcon = container.querySelector("[data-testid='SendIcon']")!;
       fireEvent.click(sendIcon.closest("button")!);
       expect(props.onSubmit).toHaveBeenCalledWith("hello");
+    });
+
+    it("hides the mobile Reset icon when canReset is false (#1127)", () => {
+      render(<ChatWindowUI {...createProps()} canReset={false} />);
+      expect(
+        screen.queryByRole("button", { name: "Reset" })
+      ).not.toBeInTheDocument();
     });
 
     it("calls onReset on mobile reset icon click", () => {

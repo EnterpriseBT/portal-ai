@@ -255,8 +255,8 @@ portalRouter.get(
       if (stationId) {
         filters.push(eq(portals.stationId, stationId));
       }
-      // #685: portals are per-user; a member sees their own, owners and
-      // admins see every portal in the org (their grants say so).
+      // #685: portals are per-user. #1127: everyone sees their own, owners
+      // and admins included; others' only through an explicit portal grant.
       const set = await PermissionService.loadSet(req.application!.metadata);
       const visibility = set.visibilityPredicate("portal", {
         createdByCol: portals.createdBy,

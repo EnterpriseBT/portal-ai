@@ -67,7 +67,8 @@ export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
         <strong>{station?.name}</strong>?
       </Typography>
       <Typography variant="body2" color="warning.main">
-        All associated portals, their messages, and unpinned results will be
+        All of this station&apos;s portals, including other people&apos;s that
+        you can&apos;t see, their messages, and unpinned results will be
         permanently deleted. Pinned results will be preserved. This action
         cannot be undone.
       </Typography>

@@ -23,10 +23,14 @@ import {
 
 /**
  * #685 slice 3: portals are per-user. The seeded MemberAccess grants
- * read/write/delete on `created_by_caller` portals and owners/admins reach all
- * of them, but the routes only ever checked org scope, so any member could
- * read, rename, reset, post into or delete anyone's portal. Pinned results are
- * how portal output is shared, and are unaffected.
+ * read/write/delete on `created_by_caller` portals, but the routes only ever
+ * checked org scope, so any member could read, rename, reset, post into or
+ * delete anyone's portal. Pinned results are how portal output is shared, and
+ * are unaffected.
+ *
+ * #1127: owners and admins reach their own portals too, not everyone's. Their
+ * `allow * *` covers a personal type only for their own objects; access to
+ * others' portals is an explicit grant that names `portal`.
  */
 
 const OWNER_SUB = "auth0|portal-authz-owner";
@@ -59,6 +63,36 @@ jest.unstable_mockModule("../../../services/analytics.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 const { stations, stationToolpacks, portals, portalMessages } = schema;
+
+/** #1127: an explicit, direct grant on portals for one user. */
+async function grantPortal(
+  db: ReturnType<typeof drizzle>,
+  organizationId: string,
+  userId: string,
+  verbs: string[],
+  resourceId: string | null = null
+): Promise<void> {
+  for (const verb of verbs) {
+    await db.insert(schema.permissionGrants).values({
+      id: generateId(),
+      organizationId,
+      principalType: "user",
+      principalId: userId,
+      effect: "allow",
+      verb,
+      resourceType: "portal",
+      resourceId,
+      condition: null,
+      conditionParam: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+  }
+}
 
 const now = Date.now();
 const base = (createdBy: string) => ({
@@ -174,7 +208,7 @@ describe("Portal authorization (#685)", () => {
     await connection.end();
   });
 
-  it("a member's list shows only their own portals; the owner's shows all", async () => {
+  it("each caller's list shows only their own portals, the owner's included (#1127)", async () => {
     const ownerPortal = await portal(fx.orgId, fx.ownerId, "Owner's");
     const memberPortal = await portal(fx.orgId, fx.memberId, "Member's");
 
@@ -187,12 +221,11 @@ describe("Portal authorization (#685)", () => {
     expect(mine.body.payload.total).toBe(1);
 
     currentSub = OWNER_SUB;
-    const all = await request(app).get("/api/portals");
+    const owners = await request(app).get("/api/portals");
     expect(
-      (all.body.payload.portals as Array<{ id: string }>)
-        .map((p) => p.id)
-        .sort()
-    ).toEqual([ownerPortal, memberPortal].sort());
+      (owners.body.payload.portals as Array<{ id: string }>).map((p) => p.id)
+    ).toEqual([ownerPortal]);
+    expect(owners.body.payload.total).toBe(1);
   });
 
   it("a member gets 404 on every route of the owner's portal, and nothing is written", async () => {
@@ -209,6 +242,92 @@ describe("Portal authorization (#685)", () => {
     const row = await live(id);
     expect(row?.name).toBe("Portal");
     expect(await messageCount(id)).toBe(1);
+  });
+
+  it("#1127: the owner gets 404 on every route of a member's portal, and nothing is written", async () => {
+    const id = await portal(fx.orgId, fx.memberId);
+    currentSub = OWNER_SUB;
+    for (const [label, send] of everyRoute(id)) {
+      const res = await send();
+      expect({ label, status: res.status, code: res.body.code }).toEqual({
+        label,
+        status: 404,
+        code: ApiCode.PORTAL_NOT_FOUND,
+      });
+    }
+    const row = await live(id);
+    expect(row?.name).toBe("Portal");
+    expect(await messageCount(id)).toBe(1);
+  });
+
+  it("#1127: an explicit portal grant reaches others' portals, and only what it grants", async () => {
+    const memberPortal = await portal(fx.orgId, fx.memberId, "Member's");
+    await grantPortal(db, fx.orgId, fx.ownerId, ["read"]);
+    currentSub = OWNER_SUB;
+
+    const list = await request(app).get("/api/portals");
+    expect(
+      (list.body.payload.portals as Array<{ id: string }>).map((p) => p.id)
+    ).toContain(memberPortal);
+    expect(
+      (await request(app).get(`/api/portals/${memberPortal}`)).status
+    ).toBe(200);
+    // Read only: writing is refused (readable, so 403 rather than 404).
+    const post = await request(app)
+      .post(`/api/portals/${memberPortal}/messages`)
+      .send({ message: "hi" });
+    expect(post.status).toBe(403);
+    expect(await messageCount(memberPortal)).toBe(1);
+  });
+
+  it("#1127: an instance grant reaches that one portal only", async () => {
+    const granted = await portal(fx.orgId, fx.memberId, "Granted");
+    const other = await portal(fx.orgId, fx.memberId, "Other");
+    await grantPortal(db, fx.orgId, fx.ownerId, ["read"], granted);
+    currentSub = OWNER_SUB;
+    expect((await request(app).get(`/api/portals/${granted}`)).status).toBe(
+      200
+    );
+    expect((await request(app).get(`/api/portals/${other}`)).status).toBe(404);
+  });
+
+  it("#1127: removing a member deletes their portals and messages, keeps their pins unlinked, and leaves others' portals", async () => {
+    const theirs = await portal(fx.orgId, fx.memberId, "Member's");
+    const ownersPortal = await portal(fx.orgId, fx.ownerId, "Owner's");
+    const [{ stationId }] = await db
+      .select({ stationId: portals.stationId })
+      .from(portals)
+      .where(eq(portals.id, theirs));
+    const pinId = generateId();
+    await db.insert(schema.portalResults).values({
+      id: pinId,
+      organizationId: fx.orgId,
+      stationId,
+      portalId: theirs,
+      name: "Kept pin",
+      type: "text",
+      content: { value: "hello" },
+      definerPrincipalType: "user",
+      definerPrincipalId: fx.memberId,
+      ...base(fx.memberId),
+    } as never);
+
+    currentSub = OWNER_SUB;
+    const res = await request(app).delete(
+      `/api/organization/members/${fx.memberId}`
+    );
+    expect(res.status).toBeLessThan(300);
+
+    expect(await live(theirs)).toBeUndefined();
+    expect(await messageCount(theirs)).toBe(0);
+    const [pin] = await db
+      .select()
+      .from(schema.portalResults)
+      .where(eq(schema.portalResults.id, pinId));
+    expect(pin.deleted).toBeNull();
+    expect(pin.portalId).toBeNull();
+    expect(await live(ownersPortal)).toBeDefined();
+    expect(await messageCount(ownersPortal)).toBe(1);
   });
 
   it("another org's caller gets 404 on every route", async () => {
@@ -243,9 +362,11 @@ describe("Portal authorization (#685)", () => {
   });
 
   it("a posted message is recorded as the caller's, not the portal creator's", async () => {
-    // The owner (who reaches every portal) posts into a member's portal, so
-    // the caller and the creator differ.
+    // The owner, granted write on portals explicitly (#1127: their wildcard
+    // no longer reaches others'), posts into a member's portal, so the caller
+    // and the creator differ.
     const id = await portal(fx.orgId, fx.memberId);
+    await grantPortal(db, fx.orgId, fx.ownerId, ["read", "write"]);
     currentSub = OWNER_SUB;
     await request(app)
       .post(`/api/portals/${id}/messages`)

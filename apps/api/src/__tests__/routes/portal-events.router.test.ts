@@ -316,6 +316,25 @@ describe("authorization (#685)", () => {
   });
 });
 
+describe("a caller who may only read someone else's portal (#1127)", () => {
+  it("never takes the turn lock: it waits and replays the author's answer", async () => {
+    mockGetPortal.mockResolvedValue(pendingTurn);
+    mockAccessLoad.mockResolvedValue({
+      portal: PORTAL,
+      set: { check: mockWriteCheck, can: () => false },
+    });
+    mockWaitForAnswer.mockResolvedValue(ASSISTANT_ROW);
+
+    await request(app).get(STREAM_URL);
+
+    expect(mockAcquire).not.toHaveBeenCalled();
+    expect(mockRelease).not.toHaveBeenCalled();
+    expect(mockStreamResponse).not.toHaveBeenCalled();
+    expect(mockReplayTurn).toHaveBeenCalledTimes(1);
+    expect(mockReplayTurn.mock.calls[0][1]).toEqual(ASSISTANT_ROW);
+  });
+});
+
 // ── The idempotency guarantee ────────────────────────────────────────
 
 describe("concurrent reconnect for the same in-flight turn", () => {

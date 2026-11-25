@@ -203,6 +203,37 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResult.definerPrincipalId).toBe(userId);
     });
 
+    it("#1127: an owner can't pin from another user's portal (404)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      const portal = {
+        ...createPortal(organizationId, station.id),
+        createdBy: "another-user",
+      };
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(
+          createPortalMessage(organizationId, portal.id, "assistant", [
+            { type: "text", content: "Theirs." },
+          ]) as never
+        );
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Not mine" })
+        .expect(404);
+      expect(res.body.code).toBe(ApiCode.PORTAL_NOT_FOUND);
+    });
+
     it("returns 404 for unknown portal", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
@@ -768,6 +799,47 @@ describe("Portal Results Router", () => {
     });
 
     // #640: a reader learns whose access the pin's data shows.
+    it("#1127: says whether the caller can open the source portal", async () => {
+      const { organizationId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      const own = {
+        ...createPortal(organizationId, station.id),
+        createdBy: userId,
+      };
+      const theirs = {
+        ...createPortal(organizationId, station.id),
+        createdBy: "another-user",
+      };
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([own as never, theirs as never]);
+      const fromOwn = createPortalResult(organizationId, station.id, own.id);
+      const fromTheirs = createPortalResult(
+        organizationId,
+        station.id,
+        theirs.id
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values([fromOwn as never, fromTheirs as never]);
+
+      const a = await request(app)
+        .get(`/api/portal-results/${fromOwn.id}`)
+        .expect(200);
+      expect(a.body.payload.portalResult.portalReadable).toBe(true);
+
+      const b = await request(app)
+        .get(`/api/portal-results/${fromTheirs.id}`)
+        .expect(200);
+      expect(b.body.payload.portalResult.portalReadable).toBe(false);
+    });
+
     it("names the definer, and whether the caller is them", async () => {
       const { organizationId, userId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

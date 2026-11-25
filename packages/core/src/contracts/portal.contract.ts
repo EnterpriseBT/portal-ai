@@ -195,9 +195,17 @@ export type PortalResultListResponsePayload = z.infer<
  *  canShare/canWrite/canDelete flags). */
 export const PortalResultGetResponsePayloadSchema = z.object({
   portalResult: withShareableCapabilities(
-    PortalResultSchema.extend(PinDefinerFieldsSchema.shape).extend(
-      FavoriteRowFields
-    )
+    PortalResultSchema.extend(PinDefinerFieldsSchema.shape)
+      .extend(FavoriteRowFields)
+      .extend({
+        /**
+         * #1127: whether the caller can open the pin's source portal. A pin
+         * can be shared with someone who can't read that portal (its
+         * creator's, by default), so the page offers "Open Source Portal"
+         * only when this is true.
+         */
+        portalReadable: z.boolean().optional(),
+      })
   ),
 });
 export type PortalResultGetResponsePayload = z.infer<
