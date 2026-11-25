@@ -44,12 +44,13 @@ import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { decideActionGate } from "../utils/action-gate.util";
 import { toStationAttachmentItems } from "../utils/station-attachments.util";
+import { useObjectTags } from "../utils/use-object-tags.util";
 import {
   ToolPackUtil,
   stationDataSetupFor,
   stationToolpackLabels,
 } from "../utils/tool-packs.util";
-import { TagsSection } from "../components/TagsSection.component";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 
 // ── Station data item component ─────────────────────────────────────
@@ -114,6 +115,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   } = sdk.portals.remove(deleteTarget?.id ?? "");
 
   const deleteStationMutation = sdk.stations.delete(stationId);
+  // #1115: the station's tags, as a metadata row with an Edit dialog.
+  const stationTags = useObjectTags({ type: "station", id: stationId });
 
   const handleEditSubmit = useCallback(
     (body: UpdateStationBody) => {
@@ -303,7 +306,14 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             label: "Created",
                             value: DateFactory.relativeTime(station.created),
                           },
+                          stationTags.metadataItem({
+                            canWrite: station.capabilities.write,
+                            name: station.name,
+                          }),
                         ]}
+                      />
+                      <TagsDialogUI
+                        {...stationTags.dialogProps(station.name)}
                       />
                       <StationAttachmentAlertsUI
                         viewCount={attachments.views.length}
@@ -316,12 +326,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         )}
                       />
                     </PageHeader>
-
-                    {/* #1070: the station's tags */}
-                    <TagsSection
-                      target={{ type: "station", id: station.id }}
-                      canWrite={station.capabilities.write}
-                    />
 
                     {/* Portals Section */}
                     <PageSection

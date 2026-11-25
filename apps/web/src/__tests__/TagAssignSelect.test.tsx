@@ -53,4 +53,24 @@ describe("TagAssignSelectUI (#1070)", () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Add tag")).toBeNull();
   });
+
+  // #1115: the tag dialog focuses the picker through its own ref.
+  it("hands an outer inputRef the search input, and still refocuses after a pick", async () => {
+    const outer = { current: null as HTMLInputElement | null };
+    render(
+      <TagAssignSelectUI
+        onSearch={onSearch()}
+        onAssign={jest.fn()}
+        inputRef={outer}
+      />
+    );
+    expect(outer.current).toBe(screen.getByLabelText("Add tag"));
+    await userEvent.click(screen.getByLabelText("Add tag"));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Finance" })
+    );
+    // The remounted select hands the outer ref its new input.
+    expect(outer.current).toBe(screen.getByLabelText("Add tag"));
+    expect(screen.getByLabelText("Add tag")).toHaveFocus();
+  });
 });

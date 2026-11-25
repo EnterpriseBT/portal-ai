@@ -37,16 +37,14 @@ describe("entityDetailActionGates", () => {
     ]) {
       expect(gate).toEqual({ kind: "allow" });
     }
-    expect(g.canEditTags).toBe(true);
   });
 
-  it("hides entity Edit and tag editing without write on the entity", () => {
+  it("hides entity Edit without write on the entity", () => {
     const g = entityDetailActionGates({
       ...base,
       capabilities: { read: true, write: false, delete: true },
     });
     expect(g.edit).toEqual({ kind: "hide" });
-    expect(g.canEditTags).toBe(false);
     expect(g.delete).toEqual({ kind: "allow" });
   });
 
@@ -77,8 +75,6 @@ describe("entityDetailActionGates", () => {
     // The delete and revalidate routes don't check the flag.
     expect(g.delete).toEqual({ kind: "allow" });
     expect(g.revalidate).toEqual({ kind: "allow" });
-    // Tag assignment checks entity write only.
-    expect(g.canEditTags).toBe(true);
   });
 
   it("disables every locked action with the job reason", () => {

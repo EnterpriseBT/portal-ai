@@ -3,7 +3,7 @@ import { fn } from "@storybook/test";
 
 import type { AssignedEntityTag } from "@portalai/core/contracts";
 
-import { TagsSectionUI } from "../components/TagsSection.component";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 
 const tag = (
   id: string,
@@ -26,12 +26,13 @@ const tag = (
 });
 
 const meta = {
-  title: "Components/TagsSection",
-  component: TagsSectionUI,
-  parameters: { layout: "padded" },
+  title: "Components/TagsDialog",
+  component: TagsDialogUI,
   args: {
+    open: true,
+    onClose: fn(),
+    name: "Sales",
     tags: [tag("t1", "Finance", "#2563EB"), tag("t2", "Q4", null)],
-    gate: { kind: "allow" },
     onAssign: fn(),
     onUnassign: fn(),
     onSearch: async () => [
@@ -39,16 +40,16 @@ const meta = {
       { value: "t4", label: "Archived" },
     ],
   },
-} satisfies Meta<typeof TagsSectionUI>;
+} satisfies Meta<typeof TagsDialogUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A caller with write on the object: removable chips and the picker. */
-export const Editable: Story = {};
+/** The object's tags, removable, and the picker. */
+export const WithTags: Story = {};
 
-/** A caller with write on an untagged object: just the picker. */
-export const EditableEmpty: Story = { args: { tags: [] } };
+/** An untagged object: just the picker. */
+export const NoTags: Story = { args: { tags: [] } };
 
-/** A read-only caller: the chips alone. */
-export const ReadOnly: Story = { args: { gate: { kind: "hide" } } };
+/** A caller who can't read tags (#630). */
+export const NoTagRead: Story = { args: { canReadTags: false } };

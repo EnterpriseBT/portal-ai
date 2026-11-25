@@ -45,6 +45,7 @@ import { useCapabilities } from "../utils/use-capabilities.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
+import { useObjectTags } from "../utils/use-object-tags.util";
 import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
@@ -59,7 +60,7 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
-import { TagsSection } from "../components/TagsSection.component";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 
 const STATUS_COLOR: Record<
@@ -112,6 +113,12 @@ export const ConnectorInstanceView = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { canOnResource } = useCapabilities();
+  // #1115: the connector's tags, as a metadata row with an Edit dialog.
+  // Tagging is metadata, so a running sync or import doesn't pause it.
+  const connectorTags = useObjectTags({
+    type: "connector_instance",
+    id: connectorInstanceId,
+  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -548,16 +555,14 @@ export const ConnectorInstanceView = ({
                           ),
                           variant: "chip",
                         },
+                        connectorTags.metadataItem({
+                          canWrite: ci.capabilities.write,
+                          name: ci.name,
+                        }),
                       ]}
                     />
                   </PageHeader>
-
-                  {/* #1070: the connector's tags. Tagging is metadata, so a
-                      running sync or import doesn't pause it. */}
-                  <TagsSection
-                    target={{ type: "connector_instance", id: ci.id }}
-                    canWrite={ci.capabilities.write}
-                  />
+                  <TagsDialogUI {...connectorTags.dialogProps(ci.name)} />
 
                   {/* Section 2: Entities List */}
                   <PageSection

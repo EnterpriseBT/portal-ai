@@ -14,7 +14,6 @@ import type {
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
-  AssignedEntityTag,
   RunningJobSummary,
   ConnectorEntityImpactResponsePayload,
 } from "@portalai/core/contracts";
@@ -29,7 +28,7 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
-import type { SelectOption } from "@portalai/core/ui";
+import type { MetadataItem } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -40,9 +39,8 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
-import { useTagAssignments } from "../utils/use-tag-assignments.util";
-import { decideActionGate } from "../utils/action-gate.util";
-import { TagsSectionUI } from "../components/TagsSection.component";
+import { useObjectTags } from "../utils/use-object-tags.util";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
@@ -78,12 +76,6 @@ import {
   EntityRecordDataTableUI,
 } from "../components/EntityRecordDataTable.component";
 
-// ── Tag callback defaults ──────────────────────────────────────────
-
-/** Stand-ins for a tag callback the caller didn't pass (stories, tests). */
-const noop = () => undefined;
-const noSearch = async (): Promise<SelectOption[]> => [];
-
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface BidirectionalFieldMappingRef {
@@ -98,17 +90,8 @@ export interface EntityDetailViewUIProps {
   lastSyncAt?: number | null;
   /** Field mappings of type reference-array that have a back-reference configured. */
   bidirectionalFieldMappings?: BidirectionalFieldMappingRef[];
-  /** Tags currently assigned to this entity. */
-  tags?: AssignedEntityTag[];
-  /** Called when a tag is selected for assignment. */
-  onAssignTag?: (entityTagId: string) => void;
-  /** Called when a tag chip's delete icon is clicked. */
-  onUnassignTag?: (assignmentId: string) => void;
-  /** Search callback for the tag assignment autocomplete. */
-  onSearchTags?: (query: string) => Promise<SelectOption[]>;
-  /** #630: whether the caller may `read` tags (drives the tag picker's
-   *  unauthorized panel). Defaults true. */
-  canReadTags?: boolean;
+  /** #1115: the entity's Tags row, appended last to its metadata list. */
+  tagsItem?: MetadataItem;
   /** Whether the connector instance has write capability. */
   isWriteEnabled?: boolean;
   /** Called when user confirms entity deletion. */
@@ -165,11 +148,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   recordCount,
   lastSyncAt,
   bidirectionalFieldMappings,
-  tags,
-  onAssignTag,
-  onUnassignTag,
-  onSearchTags,
-  canReadTags,
+  tagsItem,
   isWriteEnabled,
   onDelete,
   isDeleting,
@@ -340,19 +319,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 variant: "chip",
                 hidden: !isSessionGenerated(entity),
               },
+              ...(tagsItem ? [tagsItem] : []),
             ]}
           />
         </PageHeader>
-
-        {/* Tags */}
-        <TagsSectionUI
-          tags={tags}
-          gate={decideActionGate({ allowed: gates.canEditTags })}
-          onAssign={onAssignTag ?? noop}
-          onUnassign={onUnassignTag ?? noop}
-          onSearch={onSearchTags ?? noSearch}
-          canReadTags={canReadTags}
-        />
 
         {/* Bidirectional consistency warnings */}
         {bidirectionalFieldMappings &&
@@ -573,8 +543,8 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
-  // #1070: the entity's tags, through the hook every taggable type uses.
-  const tagHandle = useTagAssignments({ type: "entity", id: entityId });
+  // #1115: the entity's tags, as a metadata row with an Edit dialog.
+  const entityTags = useObjectTags({ type: "entity", id: entityId });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -786,60 +756,68 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         const isWriteEnabled = instance?.enabledCapabilityFlags?.write === true;
 
         return (
-          <EntityDetailViewUI
-            entity={entity}
-            connectorInstanceName={instance?.name}
-            recordCount={countData?.total}
-            bidirectionalFieldMappings={
-              bidirectionalFieldMappings.length > 0
-                ? bidirectionalFieldMappings
-                : undefined
-            }
-            tags={tagHandle.tags}
-            onAssignTag={tagHandle.onAssign}
-            onUnassignTag={tagHandle.onUnassign}
-            onSearchTags={tagHandle.onSearch}
-            canReadTags={tagHandle.canReadTags}
-            isWriteEnabled={isWriteEnabled}
-            onDelete={handleDelete}
-            isDeleting={deleteMutation.isPending}
-            deleteServerError={toServerError(deleteMutation.error)}
-            deleteImpact={impactQuery.data ?? null}
-            isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpen}
-            deleteDialogOpen={deleteDialogOpen}
-            onOpenDeleteDialog={() => {
-              deleteMutation.reset();
-              setDeleteDialogOpen(true);
-            }}
-            onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
-            onUpdate={handleUpdate}
-            isUpdating={updateMutation.isPending}
-            updateServerError={toServerError(updateMutation.error)}
-            editDialogOpen={editDialogOpen}
-            onOpenEditDialog={() => {
-              updateMutation.reset();
-              setEditDialogOpen(true);
-            }}
-            onCloseEditDialog={() => setEditDialogOpen(false)}
-            createRecordDialogOpen={createRecordDialogOpen}
-            onOpenCreateRecordDialog={() => {
-              createRecordMutation.reset();
-              setCreateRecordDialogOpen(true);
-            }}
-            onCloseCreateRecordDialog={() => setCreateRecordDialogOpen(false)}
-            onCreateRecord={handleCreateRecord}
-            isCreatingRecord={createRecordMutation.isPending}
-            createRecordServerError={toServerError(createRecordMutation.error)}
-            onRevalidate={handleRevalidate}
-            isRevalidating={revalidateMutation.isPending}
-            runningJobs={runningJobs}
-            clearRecordsDialogOpen={clearRecordsDialogOpen}
-            onOpenClearRecordsDialog={() => setClearRecordsDialogOpen(true)}
-            onCloseClearRecordsDialog={() => setClearRecordsDialogOpen(false)}
-            onClearRecords={handleClearRecords}
-            isClearingRecords={clearRecordsMutation.isPending}
-            clearRecordsServerError={toServerError(clearRecordsMutation.error)}
-          />
+          <>
+            <EntityDetailViewUI
+              entity={entity}
+              connectorInstanceName={instance?.name}
+              recordCount={countData?.total}
+              bidirectionalFieldMappings={
+                bidirectionalFieldMappings.length > 0
+                  ? bidirectionalFieldMappings
+                  : undefined
+              }
+              // Tagging needs write on the entity only: no capability flag
+              // or job lock pauses it (#1070).
+              tagsItem={entityTags.metadataItem({
+                canWrite: entity.capabilities.write,
+                name: entity.label,
+              })}
+              isWriteEnabled={isWriteEnabled}
+              onDelete={handleDelete}
+              isDeleting={deleteMutation.isPending}
+              deleteServerError={toServerError(deleteMutation.error)}
+              deleteImpact={impactQuery.data ?? null}
+              isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpen}
+              deleteDialogOpen={deleteDialogOpen}
+              onOpenDeleteDialog={() => {
+                deleteMutation.reset();
+                setDeleteDialogOpen(true);
+              }}
+              onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
+              onUpdate={handleUpdate}
+              isUpdating={updateMutation.isPending}
+              updateServerError={toServerError(updateMutation.error)}
+              editDialogOpen={editDialogOpen}
+              onOpenEditDialog={() => {
+                updateMutation.reset();
+                setEditDialogOpen(true);
+              }}
+              onCloseEditDialog={() => setEditDialogOpen(false)}
+              createRecordDialogOpen={createRecordDialogOpen}
+              onOpenCreateRecordDialog={() => {
+                createRecordMutation.reset();
+                setCreateRecordDialogOpen(true);
+              }}
+              onCloseCreateRecordDialog={() => setCreateRecordDialogOpen(false)}
+              onCreateRecord={handleCreateRecord}
+              isCreatingRecord={createRecordMutation.isPending}
+              createRecordServerError={toServerError(
+                createRecordMutation.error
+              )}
+              onRevalidate={handleRevalidate}
+              isRevalidating={revalidateMutation.isPending}
+              runningJobs={runningJobs}
+              clearRecordsDialogOpen={clearRecordsDialogOpen}
+              onOpenClearRecordsDialog={() => setClearRecordsDialogOpen(true)}
+              onCloseClearRecordsDialog={() => setClearRecordsDialogOpen(false)}
+              onClearRecords={handleClearRecords}
+              isClearingRecords={clearRecordsMutation.isPending}
+              clearRecordsServerError={toServerError(
+                clearRecordsMutation.error
+              )}
+            />
+            <TagsDialogUI {...entityTags.dialogProps(entity.label)} />
+          </>
         );
       }}
     </DataResult>
