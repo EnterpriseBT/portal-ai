@@ -23,7 +23,7 @@
 ## Decision — two core primitives, web compositions, display-only item types
 
 - **`SplitButton` (core, new).**
-  - Shape: a `ButtonGroup` of a `GatedButton` (the main action) and a `GatedIconButton` menu trigger, which has `aria-haspopup="menu"`, `aria-expanded`, `aria-controls` and the `aria-label` "More {label} options". It opens a `MuiMenu` of `ActionMenuItem`s, reusing `ActionsMenu`'s gated-item rendering, and MUI owns the menu's keys.
+  - Shape: a `ButtonGroup` of a `GatedButton` (the main action) and a `GatedIconButton` menu trigger, which has `aria-haspopup="menu"`, `aria-expanded`, `aria-controls` and the `aria-label` "More {label} options". It opens a `GatedMenu` of `ActionMenuItem`s (a new file holding `ActionsMenu`'s gated-item rendering, which `ActionsMenu` now uses too), and MUI owns the menu's keys. Both halves are `GatedButton`s: `ButtonGroup` styles them through context, so the gate's hidden reason doesn't break the group.
   - `gate` and `pending` (through `pendingGate`) apply to the main action. Each menu item keeps its own gate.
   - `layout: "full" | "icon"`, decided by the view as with `MetadataList`. `"icon"` renders the main action as an icon button whose `aria-label` is its label.
   - New `IconName`s: `Add` and `ArrowDropDown`.
@@ -38,12 +38,12 @@
   - `CommandPaletteTriggerUI`: the header search button showing "⌘K" or "Ctrl K" from a prop.
   - `SidebarFavoritesUI`: a disclosure group like `SidebarNavItemUI`'s, with items as `SidebarNavItemUI` links (`aria-current`, `collapsed`). It shows the first `limit` items (default 5), then "Show all (n)", which expands in place. An empty group shows a one-line hint.
 - **Display types, not data contracts.** `utils/launcher-items.util.ts` declares `LauncherItem { id, type, name, href, tags? }` and `favoriteTypeIcon(type)`, which uses the sidebar's icons. The sibling tickets map their data onto it.
-- **Styling.** Theme only. A `MuiButtonGroup` entry in both theme JSONs gives the split button's divider and radius; there's no `sx` in web.
+- **Styling.** No theme change: MUI's `ButtonGroup` already gives the split button its divider and radius. The combobox shell styles its own list, groups and highlight from theme tokens in core; there's no `sx` in web.
 - Not chosen: forking `searchable-select` (it's a popup select over `Autocomplete`'s own list, so it can't hold groups of links), or a hand-written `aria-activedescendant` model (more keyboard code to own than `useAutocomplete` gives for free).
 
 ## Plan — 3 slices (one commit each)
 
-1. **Core primitives.** New: `packages/core/src/ui/SplitButton.tsx`, `Combobox.tsx`, stories `packages/core/src/stories/SplitButton.stories.tsx`, `Combobox.stories.tsx`. Edit: `Icon.tsx` (two icons), `ui/index.ts`, both theme JSONs (`MuiButtonGroup`). Tests: `packages/core/src/__tests__/ui/SplitButton.test.tsx` (main click, gate hide/disable/pending, menu open and arrow/Escape, gated item reason, icon layout, axe closed and open); `Combobox.test.tsx` (arrows and Home/End move `aria-activedescendant`, Enter selects or follows `href`, groups labelled, status text, axe).
+1. **Core primitives.** New: `packages/core/src/ui/SplitButton.tsx`, `Combobox.tsx`, `GatedMenu.tsx`, stories `packages/core/src/stories/SplitButton.stories.tsx`, `Combobox.stories.tsx`. Edit: `ActionsMenu.tsx` (uses `GatedMenu`), `Icon.tsx` (two icons), `ui/index.ts`. Plus `GatedMenu.test.tsx`. Tests: `packages/core/src/__tests__/ui/SplitButton.test.tsx` (main click, gate hide/disable/pending, menu open and arrow/Escape, gated item reason, icon layout, axe closed and open); `Combobox.test.tsx` (arrows and Home/End move `aria-activedescendant`, Enter selects or follows `href`, groups labelled, status text, axe).
 2. **Palette.** New: `apps/web/src/components/CommandPalette.component.tsx`, `CommandPaletteOption.component.tsx`, `CommandPaletteTrigger.component.tsx`, `utils/launcher-items.util.ts`, stories for each. Tests (`apps/web/src/__tests__/`): `CommandPalette.test.tsx` (groups, `#tag` state, loading, no results, teaching empty, gated action reason, Enter on a link and on an action, Escape calls `onClose`, axe open: R6), `CommandPaletteOption.test.tsx`, `CommandPaletteTrigger.test.tsx`, `launcher-items.util.test.ts`.
 3. **Header button and sidebar group.** New: `NewPortalButton.component.tsx`, `SidebarFavorites.component.tsx`, their stories. Tests: `NewPortalButton.test.tsx` (label names the station, menu rows, teaching row, gate and pending, icon layout, axe with menu open); `SidebarFavorites.test.tsx` (cap and "Show all (n)", `aria-current`, collapsed icons with names, disclosure keys, empty hint, axe).
 
