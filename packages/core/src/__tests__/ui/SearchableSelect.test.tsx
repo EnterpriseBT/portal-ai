@@ -989,6 +989,38 @@ describe("AsyncSearchableSelect accessibility (#793)", () => {
 // MUI keys an option by its label unless told otherwise, so two equal labels
 // shared a React key: React logged it, and could drop or duplicate one.
 
+describe("AsyncSearchableSelect option icons (#1115)", () => {
+  it("leads each option, and the picked value's chip, with its icon", async () => {
+    const user = userEvent.setup();
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        {
+          value: "finance",
+          label: "Finance",
+          icon: <span data-testid="icon-finance" />,
+        },
+        { value: "ops", label: "Ops" },
+      ]);
+    render(
+      <AsyncSearchableSelect
+        label="Tag"
+        value={null}
+        onChange={() => {}}
+        onSearch={onSearch}
+      />
+    );
+    await user.click(screen.getByRole("combobox"));
+    const option = await screen.findByRole("option", { name: "Finance" });
+    expect(option).toContainElement(screen.getByTestId("icon-finance"));
+    expect(screen.getByRole("option", { name: "Ops" })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+
+    await user.click(option);
+    expect(screen.getByTestId("icon-finance")).toBeInTheDocument();
+  });
+});
+
 describe("options with the same label (#986)", () => {
   const SAME_LABEL: SelectOption[] = [
     { value: "region", label: "Enum" },

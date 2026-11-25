@@ -48,7 +48,7 @@ describe("TagsMetadataValueUI (#1115)", () => {
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
-  it("reads 'No tags' for a writer when there are none", async () => {
+  it("shows only the Edit button for a writer when there are none", async () => {
     const { container } = render(
       <TagsMetadataValueUI
         tags={[]}
@@ -57,7 +57,7 @@ describe("TagsMetadataValueUI (#1115)", () => {
         name="Sales"
       />
     );
-    expect(screen.getByText("No tags")).toBeInTheDocument();
+    expect(screen.queryByText("No tags")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Edit tags for Sales" })
     ).toBeInTheDocument();

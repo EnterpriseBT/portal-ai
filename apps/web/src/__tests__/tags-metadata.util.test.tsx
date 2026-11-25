@@ -49,7 +49,6 @@ describe("tagsMetadataItem (#1115)", () => {
     const item = tagsMetadataItem(input({ tags: [] }));
     expect(item.hidden).toBe(false);
     render(<>{item.value}</>);
-    expect(screen.getByText("No tags")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Edit tags for Sales" })
     ).toBeInTheDocument();

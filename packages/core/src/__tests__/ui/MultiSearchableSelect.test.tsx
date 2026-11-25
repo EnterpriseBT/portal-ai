@@ -207,6 +207,46 @@ describe("MultiSearchableSelect", () => {
   });
 });
 
+describe("MultiAsyncSearchableSelect option icons (#1115)", () => {
+  it("leads each option, and each picked chip, with its icon", async () => {
+    const user = userEvent.setup();
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        {
+          value: "finance",
+          label: "Finance",
+          icon: <span data-testid="icon-finance" />,
+        },
+        { value: "ops", label: "Ops" },
+      ]);
+    const Harness = () => {
+      const [value, setValue] = React.useState<string[]>([]);
+      return (
+        <MultiAsyncSearchableSelect
+          label="Tags"
+          value={value}
+          onChange={setValue}
+          onSearch={onSearch}
+          debounceMs={0}
+        />
+      );
+    };
+    render(<Harness />);
+    await user.click(screen.getByRole("combobox"));
+    const option = await screen.findByRole("option", { name: "Finance" });
+    expect(option).toContainElement(screen.getByTestId("icon-finance"));
+    expect(screen.getByRole("option", { name: "Ops" })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+
+    await user.click(option);
+    const chip = screen
+      .getByText("Finance", { selector: ".MuiChip-label" })
+      .closest(".MuiChip-root");
+    expect(chip).toContainElement(screen.getByTestId("icon-finance"));
+  });
+});
+
 // ── MultiAsyncSearchableSelect ───────────────────────────────────────────────
 
 describe("MultiAsyncSearchableSelect", () => {

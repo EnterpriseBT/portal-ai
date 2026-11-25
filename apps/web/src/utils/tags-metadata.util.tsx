@@ -21,8 +21,8 @@ export interface TagsMetadataItemInput {
  * MetadataList. Editing needs write on the object and a tag read (the
  * dialog's picker lists tags), so a writer who can't read tags gets no
  * Edit. Hidden while loading, without a tag read, and for a caller who
- * can't edit an object with no tags; a writer with none sees "No tags" so
- * Edit stays reachable.
+ * can't edit an object with no tags; a writer with none sees the row with
+ * just its pencil, so Edit stays reachable.
  */
 export function tagsMetadataItem({
   tags,

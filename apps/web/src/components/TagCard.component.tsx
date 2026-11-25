@@ -2,7 +2,7 @@ import React from "react";
 
 import type { ObjectCapabilities, TagUsage } from "@portalai/core/contracts";
 import { isSessionGenerated, type EntityTag } from "@portalai/core/models";
-import { Box, DetailCard, Typography } from "@portalai/core/ui";
+import { DetailCard, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -10,6 +10,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { decideActionGate } from "../utils/action-gate.util";
 import { formatTagUsage } from "../utils/tag-usage.util";
 import { SessionGeneratedChipUI } from "./SessionGeneratedChip.component";
+import { TagColorDotUI } from "./TagColorDot.component";
 
 export interface TagCardUIProps {
   /** A list row, with the caller's `capabilities` on it (#689). */
@@ -47,18 +48,7 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
       title={tag.name}
       headingLevel={headingLevel}
       icon={
-        tag.color ? (
-          <Box
-            data-testid="tag-color-dot"
-            sx={{
-              width: 16,
-              height: 16,
-              borderRadius: "50%",
-              backgroundColor: tag.color,
-              flexShrink: 0,
-            }}
-          />
-        ) : undefined
+        tag.color ? <TagColorDotUI color={tag.color} size={16} /> : undefined
       }
       actions={actions}
     >

@@ -1,3 +1,5 @@
+import React from "react";
+
 import { jest } from "@jest/globals";
 
 import type { AssignedEntityTag } from "@portalai/core/contracts";
@@ -7,6 +9,8 @@ const { expectNoAxeViolations, render, screen, waitFor } =
   await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TagsDialogUI } = await import("../components/TagsDialog.component");
+const { TagsMetadataValueUI } =
+  await import("../components/TagsMetadataValue.component");
 
 const tag: AssignedEntityTag = {
   id: "tag-1",
@@ -70,6 +74,38 @@ describe("TagsDialogUI (#1115)", () => {
     render(<TagsDialogUI {...p} />);
     await userEvent.click(screen.getByTestId("CancelIcon"));
     expect(p.onUnassign).toHaveBeenCalledWith("assignment-1");
+  });
+
+  it("returns focus to the row's Edit pencil when it closes", async () => {
+    const p = props();
+    const Harness = () => {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <TagsMetadataValueUI
+            tags={p.tags}
+            editGate={{ kind: "allow" }}
+            onEdit={() => setOpen(true)}
+            name="Sales"
+          />
+          <TagsDialogUI {...p} open={open} onClose={() => setOpen(false)} />
+        </>
+      );
+    };
+    render(<Harness />);
+    const edit = screen.getByRole("button", { name: "Edit tags for Sales" });
+
+    await userEvent.click(edit);
+    await waitFor(() => expect(screen.getByLabelText("Add tag")).toHaveFocus());
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(edit).toHaveFocus();
+
+    await userEvent.click(edit);
+    await waitFor(() => expect(screen.getByLabelText("Add tag")).toHaveFocus());
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(edit).toHaveFocus();
   });
 
   it("closes on Done", async () => {

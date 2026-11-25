@@ -10,7 +10,8 @@ describe("TagChipUI (#1070)", () => {
   it("shows the tag's name and colour dot", async () => {
     const { container } = render(<TagChipUI tag={tag} />);
     expect(screen.getByText("Finance")).toBeInTheDocument();
-    expect(screen.getByTestId("tag-color-dot")).toBeInTheDocument();
+    // The chip's icon class carries its margin, so the dot isn't flush left.
+    expect(screen.getByTestId("tag-color-dot")).toHaveClass("MuiChip-icon");
     await expectNoAxeViolations(container);
   });
 

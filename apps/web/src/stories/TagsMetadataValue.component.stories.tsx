@@ -43,7 +43,7 @@ type Story = StoryObj<typeof meta>;
 /** A writer: read-only chips, then Edit. */
 export const Writer: Story = {};
 
-/** A writer on an untagged object: "No tags", then Edit. */
+/** A writer on an untagged object: just the Edit pencil. */
 export const WriterNoTags: Story = { args: { tags: [] } };
 
 /** A reader: the chips alone. */
