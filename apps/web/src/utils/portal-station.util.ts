@@ -55,3 +55,22 @@ export function portalStationLock(unavailable: boolean): {
     reason: unavailable ? STATION_UNAVAILABLE_MESSAGE : null,
   };
 }
+
+/** What the composer says to a caller who may read this portal but not write it (#1127). */
+export const PORTAL_READ_ONLY_MESSAGE =
+  "You can read this portal, but not send messages in it.";
+
+/**
+ * #1127: the composer's lock for a caller granted read, not write, on someone
+ * else's portal. A send or reset would be refused with 403, so the composer
+ * says why instead. Takes the portal's `capabilities.write`.
+ */
+export function portalReadOnlyLock(canWrite: boolean): {
+  locked: boolean;
+  reason: string | null;
+} {
+  return {
+    locked: !canWrite,
+    reason: canWrite ? null : PORTAL_READ_ONLY_MESSAGE,
+  };
+}

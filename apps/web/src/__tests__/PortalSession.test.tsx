@@ -780,6 +780,31 @@ describe("PortalSession (container) via PortalSessionUI", () => {
 
   // #1044: the container reads the station the portal already loads, so the
   // empty conversation offers product help exactly where the pack is.
+  // #1127: a caller granted read, not write, on someone else's portal would
+  // have every send and reset refused; the composer says why and offers no
+  // Reset.
+  it("locks the composer and hides Reset for a read-only caller", async () => {
+    const result = makeQueryResult([]);
+    result.data!.portal.capabilities = {
+      read: true,
+      write: false,
+      delete: false,
+    };
+    mockGetPortal.mockReturnValue(result);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeDisabled();
+    expect(
+      screen.getByText("You can read this portal, but not send messages in it.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reset/i })
+    ).not.toBeInTheDocument();
+  });
+
   it("offers product help when the portal's station has the Help pack", async () => {
     mockGetPortal.mockReturnValue(makeQueryResult([]));
     mockStationData.mockReturnValue({
@@ -890,5 +915,29 @@ describe("PortalSession (container) via PortalSessionUI", () => {
       expect(mockSendMessage).toHaveBeenCalled();
     });
     expect(screen.queryByText(/agent-turn limit/i)).not.toBeInTheDocument();
+  });
+
+  // #1127: the typed message is cleared on submit, so a refused send says so
+  // rather than silently dropping it.
+  it("raises a toast naming the refusal when a send fails", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockSendMessage.mockRejectedValue(
+      Object.assign(
+        new Error("You don't have permission to edit this portal."),
+        { code: "PERMISSION_DENIED", status: 403 }
+      )
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "Hi" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    expect(
+      await screen.findByText("You don't have permission to edit this portal.")
+    ).toBeInTheDocument();
   });
 });
