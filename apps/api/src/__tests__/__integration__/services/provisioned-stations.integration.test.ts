@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import pino from "pino";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { ApplicationService } from "../../../services/application.service.js";
 import { ToolService } from "../../../services/tools.service.js";
@@ -155,11 +155,7 @@ describe("provisioned stations in a portal session — integration (#848)", () =
     };
   }
 
-  it("provisions Administrate and Playground (with the Sandbox), and no default (#1114)", async () => {
-    const [org] = (await d.execute(
-      sql`SELECT default_station_id FROM organizations WHERE id = ${orgId}`
-    )) as unknown as { default_station_id: string | null }[];
-    expect(org.default_station_id).toBeNull();
+  it("provisions Administrate and Playground (with the Sandbox)", async () => {
     expect(administrateId).toBeDefined();
 
     for (const expected of PROVISIONED_STATIONS) {

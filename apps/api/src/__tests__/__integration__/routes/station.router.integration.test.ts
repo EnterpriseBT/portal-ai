@@ -10,7 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -19,7 +19,6 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
-import { atLeast, eventually } from "../utils/eventually.util.js";
 
 const AUTH0_ID = "auth0|station-router-test";
 
@@ -1395,28 +1394,15 @@ describe("Station Router", () => {
   });
 
   describe("DELETE /api/stations/:id", () => {
-    // #935: the audit write runs after the response; poll for `expected`
-    // rows (or let a no-op settle) before reading.
-    const defaultStationAuditRows = async (
-      organizationId: string,
-      expected: number
-    ) => {
-      const read = () =>
-        (db as ReturnType<typeof drizzle>)
-          .select()
-          .from(schema.auditLog)
-          .where(eq(schema.auditLog.organizationId, organizationId))
-          .then((rows) =>
-            rows.filter(
-              (row) =>
-                row.action === "org.update" &&
-                (row.metadata as { field?: string } | null)?.field ===
-                  "defaultStationId"
-            )
-          );
-      if (expected) return eventually(read, atLeast(expected));
+    // The org's org.update audit entries. Audit writes run after the
+    // response, so let any settle before reading.
+    const orgUpdateAuditRows = async (organizationId: string) => {
       await new Promise((r) => setTimeout(r, 300));
-      return read();
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.organizationId, organizationId));
+      return rows.filter((row) => row.action === "org.update");
     };
 
     it("soft-deletes a station", async () => {
@@ -1563,10 +1549,10 @@ describe("Station Router", () => {
       expect(preservedResult.portalId).toBeNull();
     });
 
-    // #1114: there's no default station. A delete leaves the org row alone
-    // (no clear, no org lock, no org.update entry), even when the dormant
-    // default_station_id still names the station.
-    it("leaves the organization alone, even if its old default named the station", async () => {
+    // #1114: a station delete is scoped to the station. It doesn't write the
+    // org row or record an org.update entry (it once cleared the org's default
+    // station), so nothing couples it back to the organization.
+    it("doesn't write the organization or audit an org.update", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -1575,9 +1561,6 @@ describe("Station Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(stations)
         .values(station as never);
-      await (db as ReturnType<typeof drizzle>).execute(
-        sql`UPDATE organizations SET default_station_id = ${station.id} WHERE id = ${organizationId}`
-      );
       const [before] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(organizations)
@@ -1590,11 +1573,7 @@ describe("Station Router", () => {
         .from(organizations)
         .where(eq(organizations.id, organizationId));
       expect(after.updated).toBe(before.updated);
-      const [raw] = (await (db as ReturnType<typeof drizzle>).execute(
-        sql`SELECT default_station_id FROM organizations WHERE id = ${organizationId}`
-      )) as unknown as { default_station_id: string | null }[];
-      expect(raw.default_station_id).toBe(station.id);
-      expect(await defaultStationAuditRows(organizationId, 0)).toHaveLength(0);
+      expect(await orgUpdateAuditRows(organizationId)).toHaveLength(0);
     });
 
     it("returns 404 for unknown station", async () => {

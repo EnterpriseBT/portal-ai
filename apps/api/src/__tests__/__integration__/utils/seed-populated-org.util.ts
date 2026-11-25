@@ -95,12 +95,6 @@ export async function seedPopulatedOrg(
 
   const station = { ...base(now), organizationId: org.id, name: "Station" };
   await db.insert(schema.stations).values(station as never);
-  // #1114: the dormant default_station_id still names a station, so delete
-  // and reset prove they neither need nor touch it. Raw SQL: the column is no
-  // longer in the schema.
-  await db.execute(
-    sql`UPDATE organizations SET default_station_id = ${station.id} WHERE id = ${org.id}`
-  );
 
   const portal = {
     ...base(now),
