@@ -27,7 +27,7 @@ jest.unstable_mockModule("../providers/Auth.provider", () => ({
   AuthContext: React.createContext(mockAuthValue),
 }));
 
-const { renderHook } = await import("@testing-library/react");
+const { renderHook, act } = await import("@testing-library/react");
 const { QueryClient, QueryClientProvider } =
   await import("@tanstack/react-query");
 const {
@@ -36,6 +36,7 @@ const {
   ApiError,
   NETWORK_ERROR_READ_MESSAGE,
   NETWORK_ERROR_WRITE_MESSAGE,
+  WRITE_TIMEOUT_MS,
 } = await import("../utils/api.util");
 const { NETWORK_ERROR_CODE } = await import("../utils/permission-denied.util");
 
@@ -74,6 +75,8 @@ describe("a request with no response (#1121)", () => {
       status: 0,
       message: NETWORK_ERROR_WRITE_MESSAGE,
     });
+    // The browser's own error stays attached for debugging.
+    expect((error as { cause?: unknown }).cause).toBeInstanceOf(TypeError);
     // #753: a write may have landed before the connection dropped.
     expect(NETWORK_ERROR_WRITE_MESSAGE).toMatch(
       /check whether the change saved/
@@ -102,5 +105,58 @@ describe("a request with no response (#1121)", () => {
       .fetchWithAuth("/api/stations")
       .catch((e: unknown) => e);
     expect(error).toBe(abort);
+  });
+
+  it("treats a connection that drops while the body streams the same way", async () => {
+    global.fetch = jest.fn<typeof fetch>(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: () => Promise.reject(new TypeError("network error")),
+        }) as unknown as Response
+    );
+    const { result } = renderHook(() => useAuthFetch());
+    const error = await result.current
+      .fetchWithAuth("/api/stations")
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: NETWORK_ERROR_CODE,
+      message: NETWORK_ERROR_READ_MESSAGE,
+    });
+  });
+
+  it("still reports a timed-out write as REQUEST_TIMEOUT", async () => {
+    jest.useFakeTimers();
+    try {
+      // A fetch that settles only when its signal aborts, as a real one does.
+      global.fetch = jest.fn<typeof fetch>(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener("abort", () => reject(signal.reason));
+          })
+      );
+      const { result } = renderHook(
+        () =>
+          useAuthMutation<unknown, { id: string }>({
+            url: (v) => `/api/stations/${v.id}`,
+            method: "PATCH",
+            body: () => ({ name: "A" }),
+          }),
+        { wrapper }
+      );
+      let error: unknown;
+      await act(async () => {
+        result.current.mutateAsync({ id: "s1" }).catch((e: unknown) => {
+          error = e;
+        });
+        await jest.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS);
+      });
+      expect(error).toMatchObject({ code: "REQUEST_TIMEOUT" });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

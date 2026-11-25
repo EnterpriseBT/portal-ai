@@ -65,10 +65,16 @@ export function serverErrorMessage(error: unknown, fallback?: string): string {
   const text = message?.trim();
   if (isPermissionDenied(code)) return text || PERMISSION_DENIED_MESSAGE;
   if (code === NETWORK_ERROR_CODE && text) {
-    return fallback ? `${fallback} ${text}` : text;
+    if (!fallback) return text;
+    // Some fallbacks end without a stop ("Failed to revoke"), so the two
+    // sentences don't run together.
+    const lead = /[.!?]$/.test(fallback.trimEnd())
+      ? fallback.trimEnd()
+      : `${fallback.trimEnd()}.`;
+    return `${lead} ${text}`;
   }
   // #687: every API 500 answers with the same generic message, so the call
   // site's own fallback ("Couldn't delete the station.") says more.
   if (text === INTERNAL_ERROR_MESSAGE) return fallback ?? DEFAULT_ERROR_MESSAGE;
-  return text || fallback || DEFAULT_ERROR_MESSAGE;
+  return text || (fallback ?? DEFAULT_ERROR_MESSAGE);
 }

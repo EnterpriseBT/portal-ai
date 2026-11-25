@@ -54,7 +54,9 @@ export const LONG_WRITE_TIMEOUT_MS = 300_000;
 export const REQUEST_TIMEOUT_MESSAGE =
   "This is taking longer than expected. It may still finish, so check before trying again.";
 
-/** Shown after the call's own message ("Couldn't load the stations."). */
+/** A read that got no response. A toast shows it after the call's own message
+ *  ("Couldn't load this data."); a surface that shows `error.message` as is
+ *  (a widget's refresh error) shows it alone, so it stands on its own. */
 export const NETWORK_ERROR_READ_MESSAGE =
   "The server couldn't be reached. Check your connection and try again.";
 
@@ -116,6 +118,9 @@ export class ApiError extends Error {
   details?: Record<string, unknown>;
   /** A 429's wait, from `Retry-After` or `details.retryAfterSeconds` (#747). */
   retryAfterSeconds?: number;
+  /** #1121: the error it stands for, such as a NETWORK_ERROR's original
+   *  TypeError, kept for debugging. */
+  cause?: unknown;
 
   constructor(
     message: string,
@@ -172,6 +177,32 @@ async function sendApiRequest<T>(
     headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
   }
 
+  // #1121: a connection that fails before or during the response rejects
+  // with a browser-worded TypeError ("Failed to fetch", "Load failed"). It
+  // becomes one NETWORK_ERROR, worded for a read or a write, with the
+  // original kept as `cause` for debugging. An abort (a timeout or the
+  // caller's own) rejects with a DOMException and passes through for its
+  // handlers.
+  const asNetworkError = (error: unknown): unknown => {
+    if (!(error instanceof TypeError)) return error;
+    const networkError = new ApiError(
+      isRead ? NETWORK_ERROR_READ_MESSAGE : NETWORK_ERROR_WRITE_MESSAGE,
+      NETWORK_ERROR_CODE,
+      0
+    );
+    networkError.cause = error;
+    return networkError;
+  };
+  // The body streams after the headers, so the connection can drop while
+  // it's read too.
+  const readJson = async <B>(): Promise<B> => {
+    try {
+      return (await response.json()) as B;
+    } catch (error) {
+      throw asNetworkError(error);
+    }
+  };
+
   let response: Response;
   try {
     response = await fetch(resolveApiUrl(url), {
@@ -179,20 +210,11 @@ async function sendApiRequest<T>(
       headers,
     });
   } catch (error) {
-    // #1121: no response at all. An abort (a timeout or the caller's own)
-    // rejects with a DOMException and passes through for its handlers.
-    if (error instanceof TypeError) {
-      throw new ApiError(
-        isRead ? NETWORK_ERROR_READ_MESSAGE : NETWORK_ERROR_WRITE_MESSAGE,
-        NETWORK_ERROR_CODE,
-        0
-      );
-    }
-    throw error;
+    throw asNetworkError(error);
   }
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiErrorResponse;
+    const body = await readJson<ApiErrorResponse>();
     const error = new ApiError(
       body.message,
       body.code,
@@ -212,7 +234,7 @@ async function sendApiRequest<T>(
   // gets undefined rather than a JSON parse error for a write that succeeded.
   if (response.status === 204) return undefined as T;
 
-  return response.json() as Promise<T>;
+  return readJson<T>();
 }
 
 /**
