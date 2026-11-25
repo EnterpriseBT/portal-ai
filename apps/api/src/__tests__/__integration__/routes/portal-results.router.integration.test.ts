@@ -203,6 +203,37 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResult.definerPrincipalId).toBe(userId);
     });
 
+    it("#1127: an owner can't pin from another user's portal (404)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      const portal = {
+        ...createPortal(organizationId, station.id),
+        createdBy: "another-user",
+      };
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(
+          createPortalMessage(organizationId, portal.id, "assistant", [
+            { type: "text", content: "Theirs." },
+          ]) as never
+        );
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Not mine" })
+        .expect(404);
+      expect(res.body.code).toBe(ApiCode.PORTAL_NOT_FOUND);
+    });
+
     it("returns 404 for unknown portal", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 

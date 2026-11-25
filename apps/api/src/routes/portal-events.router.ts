@@ -153,9 +153,10 @@ portalEventsRouter.get(
         );
         // #685: the turn answers the pending message, so it runs with its
         // author's data access (who posted it via POST /messages). The
-        // stream caller only claims the turn. An owner/admin who can open any
-        // portal must not answer a member's question with rows the member
-        // can't see, saved into the member's portal.
+        // stream caller only claims the turn. A caller granted access to
+        // others' portals (#1127: an explicit grant; owners/admins no longer
+        // reach them by default) must not answer a member's question with rows
+        // the member can't see, saved into the member's portal.
         const turnUserId = last?.createdBy ?? caller.userId;
 
         // Load station data (re-populates in-memory AlaSQL tables)

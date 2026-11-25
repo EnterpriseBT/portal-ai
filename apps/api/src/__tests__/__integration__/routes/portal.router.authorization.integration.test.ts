@@ -244,6 +244,53 @@ describe("Portal authorization (#685)", () => {
     expect(await messageCount(id)).toBe(1);
   });
 
+  it("#1127: the owner gets 404 on every route of a member's portal, and nothing is written", async () => {
+    const id = await portal(fx.orgId, fx.memberId);
+    currentSub = OWNER_SUB;
+    for (const [label, send] of everyRoute(id)) {
+      const res = await send();
+      expect({ label, status: res.status, code: res.body.code }).toEqual({
+        label,
+        status: 404,
+        code: ApiCode.PORTAL_NOT_FOUND,
+      });
+    }
+    const row = await live(id);
+    expect(row?.name).toBe("Portal");
+    expect(await messageCount(id)).toBe(1);
+  });
+
+  it("#1127: an explicit portal grant reaches others' portals, and only what it grants", async () => {
+    const memberPortal = await portal(fx.orgId, fx.memberId, "Member's");
+    await grantPortal(db, fx.orgId, fx.ownerId, ["read"]);
+    currentSub = OWNER_SUB;
+
+    const list = await request(app).get("/api/portals");
+    expect(
+      (list.body.payload.portals as Array<{ id: string }>).map((p) => p.id)
+    ).toContain(memberPortal);
+    expect(
+      (await request(app).get(`/api/portals/${memberPortal}`)).status
+    ).toBe(200);
+    // Read only: writing is refused (readable, so 403 rather than 404).
+    const post = await request(app)
+      .post(`/api/portals/${memberPortal}/messages`)
+      .send({ message: "hi" });
+    expect(post.status).toBe(403);
+    expect(await messageCount(memberPortal)).toBe(1);
+  });
+
+  it("#1127: an instance grant reaches that one portal only", async () => {
+    const granted = await portal(fx.orgId, fx.memberId, "Granted");
+    const other = await portal(fx.orgId, fx.memberId, "Other");
+    await grantPortal(db, fx.orgId, fx.ownerId, ["read"], granted);
+    currentSub = OWNER_SUB;
+    expect((await request(app).get(`/api/portals/${granted}`)).status).toBe(
+      200
+    );
+    expect((await request(app).get(`/api/portals/${other}`)).status).toBe(404);
+  });
+
   it("another org's caller gets 404 on every route", async () => {
     const id = await portal(fx.orgId, fx.ownerId);
     currentSub = OTHER_SUB;

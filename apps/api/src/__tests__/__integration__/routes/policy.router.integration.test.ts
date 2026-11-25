@@ -211,6 +211,33 @@ describe("/api/policies (#622 slice 3)", () => {
     expect(res.body.code).toBe(ApiCode.RBAC_POLICY_EXCEEDS_BOUNDARY);
   });
 
+  it("#1127: an admin may author grants on others' portals (delegation keeps the wildcard)", async () => {
+    const { orgId } = await seedOrg("admin");
+    await entitleOrg(orgId);
+    const res = await auth(request(app).post("/api/policies")).send(
+      body({
+        name: "Portal readers",
+        statements: [
+          {
+            effect: "allow",
+            verb: "read",
+            resourceType: "portal",
+            resourceId: null,
+            condition: null,
+          },
+          {
+            effect: "allow",
+            verb: "*",
+            resourceType: "portal",
+            resourceId: null,
+            condition: null,
+          },
+        ],
+      })
+    );
+    expect(res.status).toBe(200);
+  });
+
   // Statement shape validity (#630) — the RESOURCE_CAPABILITIES matrix, enforced
   // in PolicyService so BOTH this HTTP path and the rbac_management toolpack (thin
   // wrappers over the same PolicyService.create/update) reject inert statements.
