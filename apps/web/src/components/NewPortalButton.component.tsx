@@ -3,6 +3,12 @@ import React from "react";
 import { Icon, IconName, pendingGate, SplitButton } from "@portalai/core/ui";
 import type { ActionGate, ActionMenuItem } from "@portalai/core/ui";
 
+import {
+  LAUNCHER_SETTLING_REASON,
+  usePortalLauncher,
+} from "../utils/use-portal-launcher.util";
+import { CreatePortalDialog } from "./CreatePortalDialog.component";
+
 export interface NewPortalStation {
   id: string;
   name: string;
@@ -108,5 +114,56 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
       layout={layout}
       size="small"
     />
+  );
+};
+
+export interface NewPortalButtonProps {
+  /** The view decides: the full label, or an icon at narrow widths. */
+  layout?: "full" | "icon";
+}
+
+/**
+ * The header's New portal button, wired (#1075): `usePortalLauncher`
+ * picks the stations, gate and launch, and "Choose station…" opens the
+ * existing CreatePortalDialog through the same create, whose error shows in
+ * its FormAlert (a launch from the button or a favorite toasts instead).
+ * While the main action's station is still being worked out, the main
+ * action waits rather than falling through to the chooser.
+ */
+export const NewPortalButton: React.FC<NewPortalButtonProps> = ({
+  layout = "full",
+}) => {
+  const launcher = usePortalLauncher();
+  const { chooser } = launcher;
+  // Permission first: a caller who can't start portals hears that, not
+  // that a station is loading.
+  const gate: ActionGate =
+    launcher.gate.kind === "allow" && launcher.settling
+      ? { kind: "disable", reason: LAUNCHER_SETTLING_REASON }
+      : launcher.gate;
+
+  return (
+    <>
+      <NewPortalButtonUI
+        station={launcher.station}
+        onLaunch={() =>
+          launcher.station && launcher.launch(launcher.station.id)
+        }
+        pageStation={launcher.pageStation}
+        favoriteStations={launcher.favoriteStations}
+        onLaunchIn={launcher.launch}
+        onChooseStation={chooser.onOpen}
+        gate={gate}
+        pending={launcher.pending}
+        layout={layout}
+      />
+      <CreatePortalDialog
+        open={chooser.open}
+        onClose={chooser.onClose}
+        onSubmit={chooser.onSubmit}
+        isPending={launcher.pending}
+        serverError={chooser.serverError}
+      />
+    </>
   );
 };

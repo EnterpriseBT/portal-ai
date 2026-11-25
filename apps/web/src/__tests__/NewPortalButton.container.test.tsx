@@ -1,0 +1,215 @@
+import { jest } from "@jest/globals";
+
+import type { ActionGate } from "@portalai/core/ui";
+
+type Station = { id: string; name: string };
+
+const NOT_FOUND = { status: 404, code: "STATION_NOT_FOUND", message: "Gone" };
+
+let mockLastPortalStationId: string | undefined;
+let mockReadable: Record<string, Station>;
+// A station that 404'd on a refetch, React Query keeping its old row.
+let mockStale: Record<string, Station>;
+let mockFavorites: Station[];
+let mockFavoritesPending: boolean;
+let mockGate: ActionGate;
+let mockCreateError: { message: string; code: string } | null;
+const mockMutate = jest.fn();
+const mockReset = jest.fn();
+const mockPortalsList = jest.fn();
+
+jest.unstable_mockModule("../api/sdk", () => ({
+  sdk: {
+    stations: {
+      get: (id: string, _params?: unknown, options?: { enabled?: boolean }) => {
+        if (options?.enabled === false) {
+          return { data: undefined, isPending: true, error: null };
+        }
+        if (mockStale[id]) {
+          return {
+            data: { station: mockStale[id] },
+            isPending: false,
+            error: NOT_FOUND,
+          };
+        }
+        const station = mockReadable[id];
+        return station
+          ? { data: { station }, isPending: false, error: null }
+          : { data: undefined, isPending: false, error: NOT_FOUND };
+      },
+      list: (params?: { favorite?: string }) => {
+        if (params?.favorite && mockFavoritesPending) {
+          return { data: undefined, isPending: true, isLoading: true };
+        }
+        return {
+          data: {
+            stations: params?.favorite
+              ? mockFavorites
+              : Object.values(mockReadable),
+            total: 0,
+          },
+          isPending: false,
+          isLoading: false,
+        };
+      },
+    },
+    portals: {
+      list: (params: unknown) => {
+        mockPortalsList(params);
+        return {
+          data: {
+            portals: mockLastPortalStationId
+              ? [{ id: "portal-0", stationId: mockLastPortalStationId }]
+              : [],
+          },
+          isPending: false,
+        };
+      },
+      create: () => ({
+        mutate: mockMutate,
+        reset: mockReset,
+        isPending: false,
+        error: mockCreateError,
+      }),
+    },
+  },
+  queryKeys: { portals: { root: ["portals"] } },
+}));
+
+jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
+  useCreateGate: () => mockGate,
+}));
+
+const { expectNoAxeViolations, render, screen } = await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
+const { NewPortalButton } =
+  await import("../components/NewPortalButton.component");
+
+beforeEach(() => {
+  mockLastPortalStationId = "s-last";
+  mockReadable = {
+    "s-last": { id: "s-last", name: "Ops" },
+    "s-fav": { id: "s-fav", name: "Finance" },
+  };
+  mockStale = {};
+  mockFavorites = [{ id: "s-fav", name: "Finance" }];
+  mockFavoritesPending = false;
+  mockGate = { kind: "allow" };
+  mockCreateError = null;
+  mockMutate.mockReset();
+  mockReset.mockReset();
+  mockPortalsList.mockReset();
+});
+
+const openMenu = async () => {
+  await userEvent.click(
+    screen.getByRole("button", { name: "More ways to start a portal" })
+  );
+  return screen.findByRole("menu");
+};
+
+describe("NewPortalButton (#1075)", () => {
+  it("starts a portal in the last-used station, refreshing portals and toasting a failure", async () => {
+    render(<NewPortalButton />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /^New portal in Ops$/ })
+    );
+    expect(mockMutate).toHaveBeenCalledWith(
+      { stationId: "s-last" },
+      expect.objectContaining({
+        invalidate: [["portals"]],
+        toast: { error: "Couldn't start the portal." },
+      })
+    );
+  });
+
+  it("reads the caller's own last portal, without joining its station", () => {
+    render(<NewPortalButton />);
+    expect(mockPortalsList).toHaveBeenCalledWith(
+      expect.objectContaining({ mine: "true", limit: 1, sortBy: "lastOpened" })
+    );
+    expect(mockPortalsList.mock.calls[0][0]).not.toHaveProperty("include");
+  });
+
+  it("falls back to a favorite when the last-used station can't be read", () => {
+    delete mockReadable["s-last"];
+    render(<NewPortalButton />);
+    expect(
+      screen.getByRole("button", { name: /^New portal in Finance$/ })
+    ).toBeInTheDocument();
+  });
+
+  it("drops a last-used station that 404'd on a refetch, though its old row is cached", () => {
+    mockStale = { "s-last": { id: "s-last", name: "Ops" } };
+    render(<NewPortalButton />);
+    expect(
+      screen.getByRole("button", { name: /^New portal in Finance$/ })
+    ).toBeInTheDocument();
+  });
+
+  it("waits, rather than choosing, while its station is worked out", async () => {
+    mockLastPortalStationId = undefined;
+    mockFavoritesPending = true;
+    render(<NewPortalButton />);
+    const main = screen.getByRole("button", { name: /^New portal$/ });
+    expect(main).toHaveAccessibleDescription("Finding your station…");
+    await userEvent.click(main);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("chooses a station when there's none to use", async () => {
+    mockLastPortalStationId = undefined;
+    mockFavorites = [];
+    render(<NewPortalButton />);
+    await userEvent.click(screen.getByRole("button", { name: /^New portal$/ }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    // Opening clears any failure from another path.
+    expect(mockReset).toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("starts a portal in a favorite from the menu", async () => {
+    const { baseElement } = render(<NewPortalButton />);
+    await openMenu();
+    await expectNoAxeViolations(baseElement);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Finance" }));
+    expect(mockMutate).toHaveBeenCalledWith(
+      { stationId: "s-fav" },
+      expect.anything()
+    );
+  });
+
+  it("shows a Choose station failure in the dialog, not as a toast", async () => {
+    mockCreateError = {
+      message: "Station not found",
+      code: "STATION_NOT_FOUND",
+    };
+    render(<NewPortalButton />);
+    // The failure isn't the dialog's until it's open.
+    expect(screen.queryByText("Station not found")).toBeNull();
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: "Choose station…" })
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Station not found");
+  });
+
+  it("blocks every launch for a caller who may not start portals", async () => {
+    mockGate = { kind: "disable", reason: "Ask for access to start portals" };
+    render(<NewPortalButton />);
+    const main = screen.getByRole("button", { name: /^New portal in Ops$/ });
+    expect(main).toHaveAccessibleDescription("Ask for access to start portals");
+    await userEvent.click(main);
+    await openMenu();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Finance" }));
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("is hidden from a caller who can't see portals", () => {
+    mockGate = { kind: "hide" };
+    render(<NewPortalButton />);
+    expect(screen.queryByRole("button", { name: /New portal/ })).toBeNull();
+  });
+});

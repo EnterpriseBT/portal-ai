@@ -1,5 +1,12 @@
 import { sdk } from "../api/sdk";
 
+/**
+ * The include a station's page reads it with. The station page, a portal's
+ * header and the app header's New portal button (#1075) read the station
+ * through this one query key, so React Query fetches it once.
+ */
+export const STATION_PAGE_INCLUDE = "connectorInstance,curatedView";
+
 /** What the portal says when its station can't be read (#699). */
 export const STATION_UNAVAILABLE_MESSAGE =
   "This portal's station isn't available to you.";
@@ -27,7 +34,7 @@ export function isStationUnavailable(error: unknown): boolean {
 export function usePortalStation(stationId: string | undefined) {
   const query = sdk.stations.get(
     stationId ?? "",
-    { include: "connectorInstance,curatedView" },
+    { include: STATION_PAGE_INCLUDE },
     { enabled: !!stationId }
   );
   const unavailable = !!stationId && isStationUnavailable(query.error);
@@ -36,6 +43,8 @@ export function usePortalStation(stationId: string | undefined) {
     station: unavailable ? null : (query.data?.station ?? null),
     unavailable,
     loadFailed: !!query.error && !unavailable && !query.data,
+    /** Still loading its first answer (#1075); false when there's no id. */
+    pending: !!stationId && query.isPending,
   };
 }
 

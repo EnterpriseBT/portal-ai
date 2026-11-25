@@ -239,7 +239,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Favorite",
     category: GlossaryCategory.Organization,
     definition:
-      "A station, pinned result, view or connector you starred. Favorites are personal: only you see them, and starring needs only access to see the item. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. Deleting an item removes it from everyone's favorites.",
+      "A station, pinned result, view or connector you starred. Favorites are personal: only you see them, and starring needs only access to see the item. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. Favorite stations are also listed in the New portal menu at the top of every page. Deleting an item removes it from everyone's favorites.",
     example:
       "Star the three stations you open every morning, then press Favorites on the Stations page to see just those.",
     relatedTerms: [

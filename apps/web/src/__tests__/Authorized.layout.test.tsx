@@ -1,7 +1,5 @@
 import { jest } from "@jest/globals";
 import React from "react";
-import { render, screen, waitFor, expectNoAxeViolations } from "./test-utils";
-import { AuthorizedLayout } from "../layouts/Authorized.layout";
 
 const mockAuth0Provider = {
   user: { name: "Test User", picture: "https://example.com/pic.jpg" },
@@ -31,9 +29,33 @@ jest.mock("../api/sdk", () => ({
     organizations: {
       current: () => ({ data: undefined }),
     },
+    // #1075: the header's New portal button reads stations and portals.
+    stations: {
+      get: () => ({ data: undefined, isPending: false }),
+      list: () => ({ data: { stations: [] }, isPending: false }),
+    },
+    portals: {
+      list: () => ({ data: { portals: [] }, isPending: false }),
+      create: () => ({
+        mutate: jest.fn(),
+        reset: jest.fn(),
+        isPending: false,
+        error: null,
+      }),
+    },
   },
-  queryKeys: {},
+  queryKeys: { portals: { root: ["portals"] } },
 }));
+
+// #1075: the header's New portal button is gated; here the caller may
+// start portals. An ESM mock, so the modules below import after it.
+jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
+  useCreateGate: () => ({ kind: "allow" }),
+}));
+
+const { render, screen, waitFor, within, expectNoAxeViolations } =
+  await import("./test-utils");
+const { AuthorizedLayout } = await import("../layouts/Authorized.layout");
 
 describe("AuthorizedLayout", () => {
   it("should render children", () => {
@@ -61,6 +83,19 @@ describe("AuthorizedLayout", () => {
       </AuthorizedLayout>
     );
     expect(screen.getByText("Portals AI")).toBeInTheDocument();
+  });
+
+  it("offers New portal in the header (#1075)", () => {
+    render(
+      <AuthorizedLayout>
+        <div>Test Content</div>
+      </AuthorizedLayout>
+    );
+    const banner = screen.getByRole("banner");
+    // No station on this page, no history, no favorites: it chooses.
+    expect(
+      within(banner).getByRole("button", { name: "New portal" })
+    ).toHaveTextContent("New portal");
   });
 
   describe("landmarks (#797)", () => {
@@ -134,6 +169,18 @@ describe("AuthorizedLayout", () => {
           "inert"
         )
       );
+    });
+
+    it("shows New portal as an icon at phone width (#1075)", () => {
+      render(
+        <AuthorizedLayout>
+          <div>Test Content</div>
+        </AuthorizedLayout>
+      );
+      const button = within(screen.getByRole("banner")).getByRole("button", {
+        name: "New portal",
+      });
+      expect(button).not.toHaveTextContent("New portal");
     });
 
     it("leaves main reachable while the drawer is closed", async () => {
