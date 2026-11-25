@@ -251,60 +251,21 @@ describe("EntityDetailViewUI", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("renders assigned tags as chips when tags are provided", () => {
-    const tags = [
-      {
-        id: "tag-1",
-        organizationId: "org-1",
-        name: "Important",
-        color: "#ff0000",
-        description: null,
-        sourcePortalId: null,
-        created: Date.now(),
-        createdBy: "system",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-        assignmentId: "assignment-1",
-      },
-      {
-        id: "tag-2",
-        organizationId: "org-1",
-        name: "Archive",
-        color: null,
-        description: null,
-        sourcePortalId: null,
-        created: Date.now(),
-        createdBy: "system",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-        assignmentId: "assignment-2",
-      },
-    ];
-    render(<EntityDetailViewUI entity={stubEntity} tags={tags} />);
-    expect(screen.getByText("Tags")).toBeInTheDocument();
-    expect(screen.getByText("Important")).toBeInTheDocument();
-    expect(screen.getByText("Archive")).toBeInTheDocument();
-  });
-
-  it("does not render tags section when tags prop is not provided", () => {
-    render(<EntityDetailViewUI entity={stubEntity} />);
-    expect(screen.queryByText("Tags")).not.toBeInTheDocument();
-  });
-
-  it("renders the tag assignment autocomplete when onSearchTags and onAssignTag are provided", () => {
+  // #1115: the container builds the Tags row; the UI appends it last.
+  it("appends the tags row it's given to its metadata list", () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
-        tags={[]}
-        onSearchTags={jest.fn<() => Promise<never[]>>().mockResolvedValue([])}
-        onAssignTag={jest.fn()}
+        tagsItem={{ label: "Tags", value: <span>Important</span> }}
       />
     );
-    expect(screen.getByLabelText("Add tag")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("Important")).toBeInTheDocument();
+  });
+
+  it("renders no tags row when none is given", () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(screen.queryByText("Tags")).not.toBeInTheDocument();
   });
 
   // ── #689: per-object gates ──────────────────────────────────────────
@@ -312,54 +273,13 @@ describe("EntityDetailViewUI", () => {
     ...stubEntity,
     capabilities: { read: true, write: false, delete: false },
   };
-  const oneTag = [
-    {
-      id: "tag-1",
-      organizationId: "org-1",
-      name: "Important",
-      color: null,
-      description: null,
-      sourcePortalId: null,
-      created: Date.now(),
-      createdBy: "system",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      assignmentId: "assignment-1",
-    },
-  ];
 
-  it("shows a read-only entity without Edit, Delete or tag editing", () => {
+  it("shows a read-only entity without Edit or Delete", () => {
     render(
-      <EntityDetailViewUI
-        entity={readOnlyEntity}
-        isWriteEnabled={true}
-        tags={oneTag}
-        onUnassignTag={jest.fn()}
-        onSearchTags={jest.fn<() => Promise<never[]>>().mockResolvedValue([])}
-        onAssignTag={jest.fn()}
-      />
+      <EntityDetailViewUI entity={readOnlyEntity} isWriteEnabled={true} />
     );
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
-    expect(screen.getByText("Important")).toBeInTheDocument();
-    expect(screen.queryByTestId("CancelIcon")).toBeNull();
-    expect(screen.queryByLabelText("Add tag")).toBeNull();
-  });
-
-  it("lets a writer unassign a tag", async () => {
-    const onUnassignTag = jest.fn();
-    render(
-      <EntityDetailViewUI
-        entity={stubEntity}
-        isWriteEnabled={true}
-        tags={oneTag}
-        onUnassignTag={onUnassignTag}
-      />
-    );
-    await userEvent.click(screen.getByTestId("CancelIcon"));
-    expect(onUnassignTag).toHaveBeenCalledWith("assignment-1");
   });
 
   it("keeps entity Delete when the connector's writes are off (the route doesn't check the flag)", async () => {

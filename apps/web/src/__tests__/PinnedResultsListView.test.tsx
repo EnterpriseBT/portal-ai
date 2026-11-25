@@ -12,7 +12,7 @@ const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    // #1070: the page's Tags section and tag filter.
+    // #1070: the list's Tags filter.
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
     },

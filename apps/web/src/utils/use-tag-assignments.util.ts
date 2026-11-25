@@ -10,6 +10,7 @@ import { queryKeys } from "../api/keys";
 import { sdk } from "../api/sdk";
 import { tagAssignmentKeys } from "./tag-invalidation.util";
 import { useCapabilities } from "./use-capabilities.util";
+import { tagSelectOption } from "./tag-select-option.util";
 
 export interface TagAssignmentsHandle {
   /** The object's readable tags; undefined while loading. */
@@ -31,7 +32,7 @@ export function useTagAssignments(target: TagTarget): TagAssignmentsHandle {
   const queryClient = useQueryClient();
   const { mutateAsync: assign } = sdk.tagAssignments.assign(target);
   const { mutate: unassign } = sdk.tagAssignments.unassign(target);
-  const { onSearch } = sdk.entityTags.search();
+  const { onSearch } = sdk.entityTags.search({ mapItem: tagSelectOption });
   const { canOnResource, capabilitiesKnown } = useCapabilities();
 
   const onAssign = useCallback(

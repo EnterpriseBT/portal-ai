@@ -5,6 +5,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
 import { selectOptionKey } from "./option-key.js";
+import { renderOptionChips, renderOptionRow } from "./option-render.js";
 
 export interface MultiAsyncSearchableSelectProps extends SelectBaseProps {
   value: string[];
@@ -142,6 +143,10 @@ export const MultiAsyncSearchableSelect: React.FC<
       disabled={disabled}
       size={size}
       fullWidth={fullWidth}
+      // Each option's icon leads its label and its picked chip (a tag's
+      // colour dot in a Tags filter, #1115).
+      renderOption={renderOptionRow}
+      renderTags={renderOptionChips(size)}
       renderInput={(params) => (
         <TextField
           {...params}

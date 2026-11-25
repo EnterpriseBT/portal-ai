@@ -214,7 +214,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do tags work?",
     answer:
-      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page, then add or remove a tag from an object's page, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on. In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions.",
+      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page. An object's page lists its tags in a Tags row; its pencil button opens a dialog where you add or remove them, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on. In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: [
       "Tag",

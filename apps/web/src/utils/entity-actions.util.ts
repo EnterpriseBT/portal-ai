@@ -23,8 +23,6 @@ export interface EntityDetailActionGates {
   createRecord: ActionGate;
   clearRecords: ActionGate;
   revalidate: ActionGate;
-  /** Tag assign/unassign need entity write, and nothing else. */
-  canEditTags: boolean;
 }
 
 /** The first transient reason that applies, in order; null when none. */
@@ -76,7 +74,6 @@ export function entityDetailActionGates({
       allowed: capabilities.write,
       blocked: firstReason(lockedReason, isRevalidating && "Re-validating…"),
     }),
-    canEditTags: capabilities.write,
   };
 }
 

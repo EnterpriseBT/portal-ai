@@ -11,6 +11,7 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
+import type { MetadataItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import { ContentBlockRenderer } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
@@ -32,9 +33,10 @@ import { toServerError } from "../utils/api.util";
 import { pinDataRefusal, type PinDataRefusal } from "../utils/pin-data.util";
 import { useToast } from "../utils/toast.context";
 import type { PortalResultPayload } from "../api/portal-results.api";
-import { TagsSection } from "../components/TagsSection.component";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { pinDeleteKeys } from "../utils/delete-invalidation.util";
+import { useObjectTags } from "../utils/use-object-tags.util";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -110,8 +112,8 @@ export interface PinnedResultDetailUIProps {
   /** The server's wording for the refusal, which knows whether the viewer is
    *  the definer. Falls back to the built-in notice. */
   dataRefusalMessage?: string | null;
-  /** #1070: the pin's Tags section, rendered under its header. */
-  tagsSection?: React.ReactNode;
+  /** #1115: the pin's Tags row, appended last to its metadata list. */
+  tagsItem?: MetadataItem;
   /** #1072: the control beside the pin's name (its favorite star). */
   titleAction?: React.ReactNode;
 }
@@ -131,7 +133,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   definerName = null,
   dataRefusal = null,
   dataRefusalMessage = null,
-  tagsSection,
+  tagsItem,
   titleAction,
 }) => {
   const contentBlock = toContentBlock(result);
@@ -229,11 +231,10 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               ...(showDefiner
                 ? [{ label: "Data", value: `As ${definerName} sees it` }]
                 : []),
+              ...(tagsItem ? [tagsItem] : []),
             ]}
           />
         </PageHeader>
-
-        {tagsSection}
 
         <PageSection variant="outlined" data-testid="result-content">
           {refusal ? (
@@ -271,6 +272,8 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   const toast = useToast();
 
   const renameMutation = sdk.portalResults.rename(portalResultId);
+  // #1115: the pin's tags, as a metadata row with an Edit dialog.
+  const pinTags = useObjectTags({ type: "pin", id: portalResultId });
   const removeMutation = sdk.portalResults.remove();
 
   // #789: each dialog stays open until its request succeeds; a failure shows
@@ -411,13 +414,12 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
                   isFavorite={payload?.portalResult.isFavorite ?? false}
                 />
               }
-              tagsSection={
-                <TagsSection
-                  target={{ type: "pin", id: portalResult.id }}
-                  canWrite={capabilities?.write ?? false}
-                />
-              }
+              tagsItem={pinTags.metadataItem({
+                canWrite: capabilities?.write ?? false,
+                name: portalResult.name,
+              })}
             />
+            <TagsDialogUI {...pinTags.dialogProps(portalResult.name)} />
             {renameOpen && (
               <RenamePinnedResultDialog
                 key={portalResult.name}

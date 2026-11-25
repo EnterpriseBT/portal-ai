@@ -22,7 +22,7 @@ let renamePending = false;
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    // #1070: the page's Tags section and tag filter.
+    // #1115: the Tags dialog's picker.
     organizations: { current: () => ({ data: undefined }) },
     entityTags: {
       search: () => ({ onSearch: async () => [], labelMap: {} }),
@@ -141,15 +141,19 @@ const defaultProps = {
 };
 
 describe("PinnedResultDetailUI", () => {
-  // #1070: the container fills the Tags slot; the UI places it.
-  it("renders the tags section it's given", () => {
+  // #1115: the container builds the Tags row; the UI appends it last.
+  it("appends the tags row it's given to its metadata list", () => {
     render(
       <PinnedResultDetailUI
         {...defaultProps}
-        tagsSection={<div data-testid="tags-section" />}
+        tagsItem={{
+          label: "Tags",
+          value: <span data-testid="tags-row">Finance</span>,
+        }}
       />
     );
-    expect(screen.getByTestId("tags-section")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByTestId("tags-row")).toBeInTheDocument();
   });
 
   // #1072: the container fills the star slot; the UI puts it by the h1.

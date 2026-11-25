@@ -1,5 +1,7 @@
 import React from "react";
 
+import { useForkRef } from "@mui/material";
+
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 
@@ -11,6 +13,8 @@ export interface TagAssignSelectUIProps {
   /** #630: false when the caller can't `read` tags — shows an unauthorized
    *  panel in place of the picker. Defaults true. */
   canRead?: boolean;
+  /** Receives the search input too, e.g. for a dialog's auto-focus. */
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 /**
@@ -26,9 +30,13 @@ export const TagAssignSelectUI: React.FC<TagAssignSelectUIProps> = ({
   onSearch,
   onAssign,
   canRead = true,
+  inputRef: outerRef,
 }) => {
   const [picks, setPicks] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  // Our own ref refocuses after a pick; an outer one (a dialog's
+  // auto-focus) gets the same element.
+  const setInput = useForkRef(inputRef, outerRef);
 
   React.useEffect(() => {
     if (picks > 0) inputRef.current?.focus();
@@ -52,7 +60,7 @@ export const TagAssignSelectUI: React.FC<TagAssignSelectUIProps> = ({
       value={null}
       onChange={handleChange}
       onSearch={onSearch}
-      inputRef={inputRef}
+      inputRef={setInput}
       label="Add tag"
       placeholder="Search tags…"
       size="small"

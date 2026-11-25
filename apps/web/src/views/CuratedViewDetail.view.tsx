@@ -19,6 +19,7 @@ import {
   Stack,
   StatusMessage,
 } from "@portalai/core/ui";
+import type { MetadataItem } from "@portalai/core/ui";
 import CircularProgress from "@mui/material/CircularProgress";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -40,9 +41,10 @@ import { decideActionGate } from "../utils/action-gate.util";
 import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { freshData } from "../utils/query-result.util";
-import { TagsSection } from "../components/TagsSection.component";
+import { TagsDialogUI } from "../components/TagsDialog.component";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
+import { useObjectTags } from "../utils/use-object-tags.util";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
@@ -66,8 +68,8 @@ export interface CuratedViewDetailUIProps {
   onEdit: () => void;
   onDelete: () => void;
   onNavigate: (href: string) => void;
-  /** #1070: the view's Tags section, rendered under its details. */
-  tagsSection?: React.ReactNode;
+  /** #1115: the view's Tags row, appended last to its metadata list. */
+  tagsItem?: MetadataItem;
   /** #1072: the control beside the view's name (its favorite star). */
   titleAction?: React.ReactNode;
 }
@@ -85,7 +87,7 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
   onEdit,
   onDelete,
   onNavigate,
-  tagsSection,
+  tagsItem,
   titleAction,
 }) => {
   // #688: what this caller may do to this view.
@@ -203,10 +205,9 @@ export const CuratedViewDetailUI: React.FC<CuratedViewDetailUIProps> = ({
               variant: "chip",
               hidden: !isSessionGenerated(view),
             },
+            ...(tagsItem ? [tagsItem] : []),
           ]}
         />
-
-        {tagsSection}
 
         <PageSection title="Records" icon={<Icon name={IconName.Layers} />}>
           {paginationToolbar}
@@ -228,6 +229,8 @@ export const CuratedViewDetail: React.FC = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const viewResult = sdk.curatedViews.get(viewId);
+  // #1115: the view's tags, as a metadata row with an Edit dialog.
+  const viewTags = useObjectTags({ type: "curated_view", id: viewId });
   // #678: the caller's readable projected columns, captured from the records
   // response. They drive the table, its column picker and the advanced filter
   // builder; paging and filters are remembered per view.
@@ -346,13 +349,12 @@ export const CuratedViewDetail: React.FC = () => {
             isFavorite={view.isFavorite ?? false}
           />
         }
-        tagsSection={
-          <TagsSection
-            target={{ type: "curated_view", id: view.id }}
-            canWrite={view.capabilities.write}
-          />
-        }
+        tagsItem={viewTags.metadataItem({
+          canWrite: view.capabilities.write,
+          name: view.label,
+        })}
       />
+      <TagsDialogUI {...viewTags.dialogProps(view.label)} />
       <CuratedViewEditorDialog
         // #688: only the write-gated Edit button opens it. `open` isn't gated on
         // capabilities itself: a save refused with a 403 refetches the view
