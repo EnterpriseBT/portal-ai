@@ -25,6 +25,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import ShareIcon from "@mui/icons-material/IosShare";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
+import { STATION_PAGE_INCLUDE } from "../utils/portal-station.util";
 import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
@@ -63,7 +64,7 @@ interface StationDataItemProps {
 const StationDataItem: React.FC<StationDataItemProps> = ({ id, children }) => {
   // #674: both attachment kinds, each with canRead.
   const res = sdk.stations.get(id, {
-    include: "connectorInstance,curatedView",
+    include: STATION_PAGE_INCLUDE,
   });
   return <>{children(res)}</>;
 };

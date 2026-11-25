@@ -186,18 +186,24 @@ export class Repository<
       .where(conditions)
       .$dynamic();
     if (opts.orderBy) {
-      const { column: orderCol, direction = "asc" } = opts.orderBy;
+      const {
+        column: orderCol,
+        direction = "asc",
+        nulls = "last",
+      } = opts.orderBy;
       const orderFn = direction === "desc" ? desc : asc;
       const clauses: (SQL | ReturnType<typeof asc>)[] = [];
-      if (orderCol instanceof Column) {
+      const dir = direction === "desc" ? sql`DESC` : sql`ASC`;
+      const nullsAt = nulls === "first" ? sql`NULLS FIRST` : sql`NULLS LAST`;
+      if (orderCol instanceof Column && orderCol.notNull) {
+        // A NOT NULL column keeps the plain order its index serves.
         clauses.push(orderFn(orderCol));
       } else {
-        // Raw SQL expression — wrap with direction and push NULLs to end
-        clauses.push(
-          direction === "desc"
-            ? sql`${orderCol} DESC NULLS LAST`
-            : sql`${orderCol} ASC NULLS LAST`
-        );
+        // A nullable column, or a raw expression, places its NULLs as asked
+        // (last by default) in both directions. Postgres would otherwise put
+        // them first in a DESC sort, so a never-opened portal led a
+        // "lastOpened desc" list (#1075).
+        clauses.push(sql`${orderCol} ${dir} ${nullsAt}`);
       }
       // #433: a unique trailing tiebreaker. Without it, ties come back in an
       // undefined order and paginating over an undefined order repeats and

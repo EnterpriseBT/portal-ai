@@ -309,6 +309,68 @@ describe("Portal Router", () => {
       expect(names[1]).toBe("Older");
     });
 
+    it("#1075: puts never-opened portals last in a lastOpened desc sort", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+      const opened = createPortal(organizationId, station.id, {
+        name: "Opened",
+        lastOpened: now,
+      });
+      const neverOpened = createPortal(organizationId, station.id, {
+        name: "Never opened",
+        lastOpened: null,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([neverOpened as never, opened as never]);
+
+      const res = await request(app)
+        .get("/api/portals?sortBy=lastOpened&sortOrder=desc&limit=1")
+        .expect(200);
+      expect(
+        res.body.payload.portals.map((p: { name: string }) => p.name)
+      ).toEqual(["Opened"]);
+    });
+
+    it("#1075: mine=true returns only the caller's own portals", async () => {
+      const { organizationId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const station = createStation(organizationId);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+      const own = createPortal(organizationId, station.id, {
+        name: "Mine",
+        createdBy: userId,
+      });
+      const other = createPortal(organizationId, station.id, {
+        name: "Someone else's",
+        createdBy: "another-user",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([own as never, other as never]);
+
+      // The seeded caller is the org's owner, whose grants list both.
+      const all = await request(app).get("/api/portals").expect(200);
+      expect(all.body.payload.portals).toHaveLength(2);
+
+      const mine = await request(app).get("/api/portals?mine=true").expect(200);
+      expect(
+        mine.body.payload.portals.map((p: { name: string }) => p.name)
+      ).toEqual(["Mine"]);
+      expect(mine.body.payload.total).toBe(1);
+    });
+
+    it("#1075: rejects a mine value other than true", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      await request(app).get("/api/portals?mine=yes").expect(400);
+    });
+
     it("attaches stationName when include=station", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

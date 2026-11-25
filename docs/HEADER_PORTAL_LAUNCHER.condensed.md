@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#1075](https://github.com/EnterpriseBT/portal-ai/issues/1075) · Feature · **small / condensed** (discovery + spec + plan + smoke in one doc). Epic [#1084](https://github.com/EnterpriseBT/portal-ai/issues/1084), branch `feat/1075-header-portal-launcher` → `epic/launcher`.
 
-**Why.** A portal starts only from the dashboard's "Launch New Portal" or a station page's "Open Portal". This mounts #1122's `NewPortalButtonUI` in the app header through a container, so any authorized page can start one. Web only, plus Help copy in core.
+**Why.** A portal starts only from the dashboard's "Launch New Portal" or a station page's "Open Portal". This mounts #1122's `NewPortalButtonUI` in the app header through a container, so any authorized page can start one. Mostly web, plus Help copy and a list-query field in core, and two API changes found in code review (below).
 
 ## Current shape
 
@@ -20,7 +20,7 @@
 
 ## Decision — which station the main click uses
 
-The ticket's "the org's default station" no longer exists. Chosen with the user: **the page's station, else the station of the caller's last-opened portal, else the first favorite station (by name), else none** (the button reads "New portal" and the main click opens "Choose station…"). The last-used station is read from one `portals.list` row (`limit: 1`, `lastOpened desc`, `include: "station"`) and confirmed with `sdk.stations.get(id)`; a deleted or now-unreadable station (404) falls through to the next source, with no error shown. The issue's criterion "if the default station is deleted or unreadable" becomes "if the last-used station is deleted or unreadable".
+The ticket's "the org's default station" no longer exists. Chosen with the user: **the page's station, else the station of the caller's last-opened portal, else the first favorite station (by name), else none** (the button reads "New portal" and the main click opens "Choose station…"). The last-used station is read from one `portals.list` row (`limit: 1`, `lastOpened desc`, `mine: "true"`) and confirmed through `usePortalStation`, which treats a 404 as gone even after a refetch that keeps the old row; a deleted or now-unreadable station falls through to the next source, with no error shown. While any source is loading, the main action waits ("Finding your station…") rather than falling through to the chooser. The issue's criterion "if the default station is deleted or unreadable" becomes "if the last-used station is deleted or unreadable".
 
 ## Decision — wiring
 
@@ -33,6 +33,10 @@ The ticket's "the org's default station" no longer exists. Chosen with the user:
   - `launch(stationId)`: `sdk.portals.create().mutate({ stationId }, { invalidate: [queryKeys.portals.root], toast: { error: "Couldn't start the portal." } })`, then navigate to `/portals/{id}` in `onSuccess`;
   - `pending`.
 - A failure from the main click or a favorite is a toast through `serverErrorMessage` (the `toast` option), and one from "Choose station…" shows in the dialog's `FormAlert`. `portals.create` gains `onPermissionDenied: { invalidate: () => [queryKeys.portals.root] }`.
+- **One create:** the launch and the chooser share one `portals.create`, so a double click across them still sends one request; opening the chooser resets it, and only a chooser submit's error shows in its `FormAlert`.
+- **API (from code review):**
+  - The portal list takes `mine=true` (the caller's own portals only), so "last used" is the caller's even when their grants let them see others'. #1127 separately makes portals creator-only by default.
+  - The base repository sorts a nullable column with its NULLs last in both directions (and honours `orderBy.nulls`), as CLAUDE.md's ordering rule says. A never-opened portal (`lastOpened` null) no longer leads a `lastOpened desc` list, the dashboard's Recent portals included.
 - **Layout:** the container goes before `ThemeSwitcher` with `layout={isMobile ? "icon" : "full"}`.
 - **Docs:** Getting Started's "Open a portal" step and the FAQ "How do I start asking questions about my data?" say the header's New portal button (in the station you're on, the one you used last, or a favorite) and Choose station…. Favorites' FAQ and glossary entries mention that starring a station adds it to that menu.
 
@@ -40,6 +44,7 @@ The ticket's "the org's default station" no longer exists. Chosen with the user:
 
 **Files**
 - New: `apps/web/src/utils/use-portal-launcher.util.ts`.
+- Edit (review): `packages/core/src/contracts/portal.contract.ts` (`mine`), `apps/api/src/routes/portal.router.ts` (the filter and its OpenAPI parameter), `apps/api/src/db/repositories/base.repository.ts` (NULLs last), `apps/web/src/utils/portal-station.util.ts` (`STATION_PAGE_INCLUDE`, `pending`), `views/StationDetail.view.tsx` (the shared include).
 - Edit: `components/NewPortalButton.component.tsx` (the container), `layouts/Authorized.layout.tsx`, `api/portals.api.ts` (`onPermissionDenied`), `utils/getting-started.util.ts`, and in core `packages/core/src/content/faq.util.ts` and `glossary.util.ts`.
 
 **Tests** (`cd apps/web && npm run test:unit -- --testPathPattern <names>`; core: `cd packages/core && npm run test:unit -- --testPathPattern 'faq|glossary|help'`)
@@ -51,6 +56,7 @@ The ticket's "the org's default station" no longer exists. Chosen with the user:
   - "Choose station…" opens the dialog, and a create error shows in its `FormAlert`;
   - a `disable` gate blocks every launch; a refreshed favorites list updates the menu;
   - axe with the menu open.
+- API (`cd apps/api && npm run test:integration -- --testPathPattern portal.router.integration`): never-opened portals sort last; `mine=true` returns only the caller's; a bad `mine` is a 400.
 - Edit `Authorized.layout.test.tsx`, `AuthorizedUI.test.tsx`, `Authorized.return-to.test.tsx`: the sdk mocks gain `stations.list`/`get` and `portals.list`/`create`; the button shows in the header (icon only on mobile).
 
 ## Smoke (manual, against your dev stack)

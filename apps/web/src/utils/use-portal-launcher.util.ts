@@ -1,22 +1,34 @@
-import { useCallback } from "react";
+import { useState } from "react";
 
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import type { CreatePortalBody } from "@portalai/core/contracts";
 import type { ActionGate } from "@portalai/core/ui";
 
 import { queryKeys, sdk } from "../api/sdk";
+import { toServerError, type ServerError } from "./api.util";
+import { usePortalStation } from "./portal-station.util";
 import { useCreateGate } from "./use-create-gate.util";
 import type { NewPortalStation } from "../components/NewPortalButton.component";
-
-/** The include the station page reads with, so its query is shared. */
-export const STATION_PAGE_INCLUDE = "connectorInstance,curatedView";
 
 /** How many favorite stations the menu lists. */
 export const FAVORITE_STATIONS_LIMIT = 20;
 
-/** The station a path belongs to: `/stations/:id` and anything under it. */
+/** The main action's reason while its station is still being worked out. */
+export const LAUNCHER_SETTLING_REASON = "Finding your station…";
+
+/**
+ * The station a path belongs to: `/stations/:id` and anything under it. A
+ * malformed escape in the address isn't a station, rather than an error in
+ * the header on every page.
+ */
 export function stationIdFromPath(pathname: string): string | undefined {
   const match = /^\/stations\/([^/]+)/.exec(pathname);
-  return match ? decodeURIComponent(match[1]) : undefined;
+  if (!match) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -41,25 +53,44 @@ export function pickLaunchStation({
   return lastStation ?? favoriteStations[0] ?? null;
 }
 
+const asStation = (
+  row: { id: string; name: string } | null
+): NewPortalStation | null => (row ? { id: row.id, name: row.name } : null);
+
 export interface PortalLauncher {
   /** The station the main click starts a portal in, or null to choose. */
   station: NewPortalStation | null;
   /** The current page's station, on a station's page. */
   pageStation: NewPortalStation | null;
   favoriteStations: NewPortalStation[];
+  /** The main action's station is still being worked out. */
+  settling: boolean;
   gate: ActionGate;
+  /** A create is in flight, from any of the launcher's paths. */
   pending: boolean;
   /** Starts a portal in the station and opens it; a failure toasts. */
   launch: (stationId: string) => void;
+  /** "Choose station…": the dialog's state, sharing the one create. */
+  chooser: {
+    open: boolean;
+    onOpen: () => void;
+    onClose: () => void;
+    onSubmit: (body: CreatePortalBody) => void;
+    serverError: ServerError | null;
+  };
 }
 
 /**
  * The header's New portal launcher (#1075): which stations to offer, the
- * gate, and the launch. The main click's station is, in order: the page's
- * station; the station of the caller's last-opened portal, if they can
- * still read it (a deleted or unshared one 404s and is skipped); their
- * first favorite station; else none, so the click chooses. #1114 removed
- * the org's default station, which this replaces.
+ * gate, and the launch. The main click's station is, in order:
+ * - the page's station;
+ * - the station of the caller's own last-opened portal (`mine=true`), if
+ *   they can still read it (a deleted or unshared one 404s and is skipped,
+ *   even after a refetch that keeps the old data);
+ * - their first favorite station;
+ * - else none, so the click chooses.
+ * #1114 removed the org's default station, which this replaces. One create
+ * serves every path, so a double click across them still sends one request.
  */
 export function usePortalLauncher(): PortalLauncher {
   const navigate = useNavigate();
@@ -68,31 +99,17 @@ export function usePortalLauncher(): PortalLauncher {
   // above every page anyway.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const pageStationId = stationIdFromPath(pathname);
-
-  const pageQuery = sdk.stations.get(
-    pageStationId ?? "",
-    { include: STATION_PAGE_INCLUDE },
-    { enabled: Boolean(pageStationId) }
-  );
-  const pageRow = pageStationId ? pageQuery.data?.station : undefined;
-  const pageStation = pageRow ? { id: pageRow.id, name: pageRow.name } : null;
+  const page = usePortalStation(pageStationId);
 
   const recent = sdk.portals.list({
     limit: 1,
     offset: 0,
     sortBy: "lastOpened",
     sortOrder: "desc",
-    include: "station",
+    mine: "true",
   });
   const lastStationId = recent.data?.portals[0]?.stationId;
-  // Confirms the last-used station is still readable; a 404 is final, so
-  // it isn't retried before falling through.
-  const lastQuery = sdk.stations.get(lastStationId ?? "", undefined, {
-    enabled: Boolean(lastStationId),
-    retry: false,
-  });
-  const lastRow = lastStationId ? lastQuery.data?.station : undefined;
-  const lastStation = lastRow ? { id: lastRow.id, name: lastRow.name } : null;
+  const last = usePortalStation(lastStationId);
 
   const favorites = sdk.stations.list({
     favorite: "true",
@@ -106,44 +123,64 @@ export function usePortalLauncher(): PortalLauncher {
     name: row.name,
   }));
 
-  const gate = useCreateGate("portal", "Ask for access to start portals");
-  const create = sdk.portals.create();
-
-  const launch = useCallback(
-    (stationId: string) => {
-      create.mutate(
-        { stationId },
-        {
-          invalidate: [queryKeys.portals.root],
-          toast: { error: "Couldn't start the portal." },
-          onSuccess: (data) => {
-            navigate({ to: `/portals/${data.portal.id}` });
-          },
-        }
-      );
-    },
-    [create, navigate]
-  );
-
-  // A query that's disabled reads as pending, so each counts only when
-  // it's enabled.
+  const pageStation = asStation(page.station);
   const settling =
-    (Boolean(pageStationId) && pageQuery.isPending) ||
-    recent.isPending ||
-    (Boolean(lastStationId) && lastQuery.isPending);
+    page.pending || recent.isPending || last.pending || favorites.isPending;
   const station = pickLaunchStation({
     pageStation,
-    lastStation,
+    lastStation: asStation(last.station),
     favoriteStations,
     settling,
   });
+
+  const gate = useCreateGate("portal", "Ask for access to start portals");
+
+  const create = sdk.portals.create();
+  const [chooserOpen, setChooserOpen] = useState(false);
+
+  // Plain functions: the React Compiler memoizes them, and the mutation's
+  // result object changes every render, so a hand-written useCallback over
+  // it never held (#1075 code review).
+  const start = (body: CreatePortalBody, fromChooser: boolean) => {
+    create.mutate(body, {
+      invalidate: [queryKeys.portals.root],
+      // The chooser shows a failure in its FormAlert; elsewhere, a toast.
+      ...(fromChooser
+        ? {}
+        : { toast: { error: "Couldn't start the portal." } }),
+      onSuccess: (data) => {
+        setChooserOpen(false);
+        navigate({ to: `/portals/${data.portal.id}` });
+      },
+    });
+  };
+  const launch = (stationId: string) => start({ stationId }, false);
+  const onSubmit = (body: CreatePortalBody) => start(body, true);
+  // A failure from another path mustn't greet the dialog when it opens.
+  const onOpen = () => {
+    create.reset();
+    setChooserOpen(true);
+  };
+  const onClose = () => {
+    create.reset();
+    setChooserOpen(false);
+  };
 
   return {
     station,
     pageStation,
     favoriteStations,
+    settling,
     gate,
     pending: create.isPending,
     launch,
+    chooser: {
+      open: chooserOpen,
+      onOpen,
+      onClose,
+      onSubmit,
+      // Only a chooser submit's error is the dialog's to show.
+      serverError: chooserOpen ? toServerError(create.error) : null,
+    },
   };
 }

@@ -79,4 +79,9 @@ describe("stationIdFromPath (#1075)", () => {
     expect(stationIdFromPath("/views/abc")).toBeUndefined();
     expect(stationIdFromPath("/")).toBeUndefined();
   });
+
+  it("isn't a station for a malformed escape, rather than throwing", () => {
+    expect(stationIdFromPath("/stations/%E0%A4%A")).toBeUndefined();
+    expect(stationIdFromPath("/stations/a%20b")).toBe("a b");
+  });
 });

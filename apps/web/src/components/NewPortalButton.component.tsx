@@ -1,13 +1,12 @@
-import React, { useCallback, useState } from "react";
+import React from "react";
 
-import { useNavigate } from "@tanstack/react-router";
 import { Icon, IconName, pendingGate, SplitButton } from "@portalai/core/ui";
 import type { ActionGate, ActionMenuItem } from "@portalai/core/ui";
-import type { CreatePortalBody } from "@portalai/core/contracts";
 
-import { queryKeys, sdk } from "../api/sdk";
-import { toServerError } from "../utils/api.util";
-import { usePortalLauncher } from "../utils/use-portal-launcher.util";
+import {
+  LAUNCHER_SETTLING_REASON,
+  usePortalLauncher,
+} from "../utils/use-portal-launcher.util";
 import { CreatePortalDialog } from "./CreatePortalDialog.component";
 
 export interface NewPortalStation {
@@ -126,34 +125,22 @@ export interface NewPortalButtonProps {
 /**
  * The header's New portal button, wired (#1075): `usePortalLauncher`
  * picks the stations, gate and launch, and "Choose station…" opens the
- * existing CreatePortalDialog, whose create error shows in its FormAlert
- * (a launch from the button or a favorite toasts instead).
+ * existing CreatePortalDialog through the same create, whose error shows in
+ * its FormAlert (a launch from the button or a favorite toasts instead).
+ * While the main action's station is still being worked out, the main
+ * action waits rather than falling through to the chooser.
  */
 export const NewPortalButton: React.FC<NewPortalButtonProps> = ({
   layout = "full",
 }) => {
   const launcher = usePortalLauncher();
-  const navigate = useNavigate();
-  const [chooserOpen, setChooserOpen] = useState(false);
-  const chooseMutation = sdk.portals.create();
-
-  const handleChooserClose = useCallback(() => {
-    chooseMutation.reset();
-    setChooserOpen(false);
-  }, [chooseMutation]);
-
-  const handleChooserSubmit = useCallback(
-    (body: CreatePortalBody) => {
-      chooseMutation.mutate(body, {
-        invalidate: [queryKeys.portals.root],
-        onSuccess: (data) => {
-          setChooserOpen(false);
-          navigate({ to: `/portals/${data.portal.id}` });
-        },
-      });
-    },
-    [chooseMutation, navigate]
-  );
+  const { chooser } = launcher;
+  // Permission first: a caller who can't start portals hears that, not
+  // that a station is loading.
+  const gate: ActionGate =
+    launcher.gate.kind === "allow" && launcher.settling
+      ? { kind: "disable", reason: LAUNCHER_SETTLING_REASON }
+      : launcher.gate;
 
   return (
     <>
@@ -165,17 +152,17 @@ export const NewPortalButton: React.FC<NewPortalButtonProps> = ({
         pageStation={launcher.pageStation}
         favoriteStations={launcher.favoriteStations}
         onLaunchIn={launcher.launch}
-        onChooseStation={() => setChooserOpen(true)}
-        gate={launcher.gate}
-        pending={launcher.pending || chooseMutation.isPending}
+        onChooseStation={chooser.onOpen}
+        gate={gate}
+        pending={launcher.pending}
         layout={layout}
       />
       <CreatePortalDialog
-        open={chooserOpen}
-        onClose={handleChooserClose}
-        onSubmit={handleChooserSubmit}
-        isPending={chooseMutation.isPending}
-        serverError={toServerError(chooseMutation.error)}
+        open={chooser.open}
+        onClose={chooser.onClose}
+        onSubmit={chooser.onSubmit}
+        isPending={launcher.pending}
+        serverError={chooser.serverError}
       />
     </>
   );
