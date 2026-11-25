@@ -43,6 +43,17 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
   transformOrigin = { vertical: "top", horizontal: "right" },
 }) => {
   const reasonIdBase = useId();
+  // #1122: each item's section heading id, found in one pass. A section is
+  // a run of adjacent items; a name used again later starts a new run with
+  // its own heading, so each item points at its own run's heading.
+  const sectionIds: (string | undefined)[] = [];
+  let runId: string | undefined;
+  items.forEach((item, index) => {
+    if (index === 0 || items[index - 1].section !== item.section) {
+      runId = item.section ? `${reasonIdBase}-section-${index}` : undefined;
+    }
+    sectionIds.push(runId);
+  });
   return (
     <MuiMenu
       anchorEl={anchorEl}
@@ -72,15 +83,7 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
         // by it, so it's read as "Finance Close, Favorite stations".
         const sectionStart =
           index === 0 || items[index - 1].section !== item.section;
-        const sectionIndex = items.findIndex(
-          (other, i) =>
-            other.section === item.section &&
-            (i === 0 || items[i - 1].section !== item.section) &&
-            i <= index
-        );
-        const sectionId = item.section
-          ? `${reasonIdBase}-section-${sectionIndex}`
-          : undefined;
+        const sectionId = sectionIds[index];
         const lead: React.ReactNode[] = [];
         if (sectionStart && index > 0) {
           lead.push(<Divider key={`divider-${index}`} />);
@@ -97,7 +100,9 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
             </ListSubheader>
           );
         }
-        const key = `${item.section ?? ""}:${item.label}`;
+        // Labels aren't unique (two favorite stations named "Sales"), so an
+        // item without an id is keyed by its place.
+        const key = item.id ?? `${index}:${item.label}`;
         if (item.hint) {
           return [
             ...lead,

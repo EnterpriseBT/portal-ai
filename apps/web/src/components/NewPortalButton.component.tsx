@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Icon, IconName, SplitButton } from "@portalai/core/ui";
+import { Icon, IconName, pendingGate, SplitButton } from "@portalai/core/ui";
 import type { ActionGate, ActionMenuItem } from "@portalai/core/ui";
 
 export interface NewPortalStation {
@@ -32,7 +32,7 @@ export interface NewPortalButtonUIProps {
  * favorite stations (or how to add some) and "Choose station…".
  *
  * A gate that blocks the main action blocks every launch in the menu too,
- * since all of them create a portal.
+ * since all of them create a portal, and so does a launch in flight.
  */
 export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
   station,
@@ -45,16 +45,22 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
   pending = false,
   layout = "full",
 }) => {
-  const itemGate =
+  // Every launch in the menu follows the main action: blocked by the same
+  // gate, and by a launch already in flight, so a second click can't start
+  // a second portal (#1122).
+  const itemGate: ActionGate | undefined =
     gate && (gate.kind === "disable" || gate.kind === "upsell")
       ? gate
-      : undefined;
+      : pending
+        ? pendingGate(true, "Starting…")
+        : undefined;
   const star = <Icon name={IconName.Star} fontSize="small" color="favorite" />;
 
   const menuItems: ActionMenuItem[] = [
     ...(pageStation
       ? [
           {
+            id: `page:${pageStation.id}`,
             label: `New portal in ${pageStation.name}`,
             section: "On this page",
             onClick: () => onLaunchIn(pageStation.id),
@@ -64,6 +70,8 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
       : []),
     ...(favoriteStations.length > 0
       ? favoriteStations.map((favorite) => ({
+          // Station names needn't be unique; ids keep the rows apart.
+          id: `favorite:${favorite.id}`,
           label: favorite.name,
           section: "Favorite stations",
           icon: star,
@@ -72,13 +80,19 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
         }))
       : [
           {
+            id: "favorites-hint",
             label: "Star a station to add it here",
             section: "Favorite stations",
             hint: true,
             onClick: () => undefined,
           },
         ]),
-    { label: "Choose station…", onClick: onChooseStation, gate: itemGate },
+    {
+      id: "choose",
+      label: "Choose station…",
+      onClick: onChooseStation,
+      gate: itemGate,
+    },
   ];
 
   return (

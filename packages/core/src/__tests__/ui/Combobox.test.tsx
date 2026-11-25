@@ -139,6 +139,98 @@ describe("Combobox (#1122)", () => {
     expect(onKeyDown).toHaveLastReturnedWith(false);
   });
 
+  it("keeps the query when an option is picked", async () => {
+    const onInputChange = jest.fn();
+    const onNew = jest.fn();
+    render(
+      <Combobox
+        options={options(onNew)}
+        inputValue="new"
+        onInputChange={onInputChange}
+        label="Search"
+        statusText=""
+      />
+    );
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.keyboard("{Enter}");
+    expect(onNew).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("option", { name: "Sales Ops" }));
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps two options with one label apart", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const followed: string[] = [];
+      const Link = React.forwardRef<
+        HTMLAnchorElement,
+        React.AnchorHTMLAttributes<HTMLAnchorElement>
+      >(({ onClick, ...props }, ref) => (
+        <a
+          ref={ref}
+          {...props}
+          onClick={(event) => {
+            onClick?.(event);
+            event.preventDefault();
+            followed.push(props.href ?? "");
+          }}
+        />
+      ));
+      render(
+        <Harness
+          linkComponent={Link}
+          opts={[
+            {
+              id: "station",
+              label: "Finance",
+              group: "Results",
+              href: "/stations/1",
+            },
+            {
+              id: "view",
+              label: "Finance",
+              group: "Results",
+              href: "/views/1",
+            },
+          ]}
+        />
+      );
+      expect(screen.getAllByRole("option", { name: "Finance" })).toHaveLength(
+        2
+      );
+      await userEvent.click(screen.getByRole("combobox"));
+      await userEvent.keyboard("{ArrowDown}{Enter}");
+      expect(followed).toEqual(["/views/1"]);
+      expect(
+        consoleError.mock.calls.filter((args) =>
+          args.some((a) => String(a).includes("same key"))
+        )
+      ).toHaveLength(0);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("pads its empty content and shows a footer", () => {
+    render(
+      <Combobox
+        options={[]}
+        inputValue=""
+        onInputChange={jest.fn()}
+        label="Search"
+        statusText=""
+        emptyContent="Nothing here"
+        footer={<span>esc close</span>}
+      />
+    );
+    expect(screen.getByText("Nothing here")).toHaveClass("ComboboxEmpty");
+    expect(screen.getByText("esc close").parentElement).toHaveClass(
+      "ComboboxFooter"
+    );
+  });
+
   it("passes typing to the caller", async () => {
     const onInputChange = jest.fn();
     render(

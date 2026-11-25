@@ -6,6 +6,9 @@ import type { ActionGate } from "./ActionGate.js";
 import { GatedMenu } from "./GatedMenu.js";
 
 export interface ActionMenuItem {
+  /** Unique among the menu's items; its React key. Labels needn't be unique
+   *  (two favorite stations named "Sales"), so lists of objects pass one. */
+  id?: string;
   /** Display label for the menu item. */
   label: string;
   /** Optional icon rendered before the label. Accepts any React node. */

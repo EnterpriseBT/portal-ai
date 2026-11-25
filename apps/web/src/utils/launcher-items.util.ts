@@ -63,19 +63,25 @@ export const launcherTypeNoun = (type: LauncherItemType): string =>
 /**
  * The groups as combobox options, in order. An entry appearing in two
  * groups (a favorite that's also recent) gets an id per group, so each
- * row is distinct. Empty groups are dropped.
+ * row is distinct. Actions the caller may not see (`hide`) are dropped
+ * here, so the announced count matches the rows shown; empty groups drop
+ * out with them.
  */
 export function paletteOptions(groups: PaletteGroup[]): PaletteOption[] {
   return groups.flatMap((group) =>
-    group.entries.map((entry) => ({
-      id: `${group.label}:${entry.kind}:${entry.id}`,
-      label: entry.kind === "item" ? entry.name : entry.label,
-      group: group.label,
-      entry,
-      ...(entry.kind === "item"
-        ? { href: entry.href }
-        : { onSelect: entry.onSelect, gate: entry.gate }),
-    }))
+    group.entries
+      .filter(
+        (entry) => !(entry.kind === "action" && entry.gate?.kind === "hide")
+      )
+      .map((entry) => ({
+        id: `${group.label}:${entry.kind}:${entry.id}`,
+        label: entry.kind === "item" ? entry.name : entry.label,
+        group: group.label,
+        entry,
+        ...(entry.kind === "item"
+          ? { href: entry.href }
+          : { onSelect: entry.onSelect, gate: entry.gate }),
+      }))
   );
 }
 

@@ -7,6 +7,7 @@ const { expectNoAxeViolations, render, screen, waitFor } =
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CommandPaletteUI } =
   await import("../components/CommandPalette.component");
+const { RouterLink } = await import("../components/RouterLink.component");
 
 const groups = (onNew = jest.fn()): PaletteGroup[] => [
   {
@@ -42,6 +43,7 @@ const props = (overrides = {}) => ({
   query: "",
   onQueryChange: jest.fn(),
   groups: groups(),
+  linkComponent: RouterLink,
   ...overrides,
 });
 
@@ -129,6 +131,45 @@ describe("CommandPaletteUI (#1122)", () => {
       screen.getByText(/Star stations, pinned results/)
     ).toBeInTheDocument();
     await expectNoAxeViolations(screen.getByRole("dialog"));
+  });
+
+  it("counts only the rows it shows, leaving out hidden actions", () => {
+    render(
+      <CommandPaletteUI
+        {...props({
+          groups: [
+            {
+              label: "Actions",
+              entries: [
+                {
+                  kind: "action",
+                  id: "a",
+                  label: "New portal",
+                  onSelect: jest.fn(),
+                },
+                {
+                  kind: "action",
+                  id: "b",
+                  label: "Invite",
+                  onSelect: jest.fn(),
+                  gate: { kind: "hide" },
+                },
+              ],
+            },
+          ],
+        })}
+      />
+    );
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("1 result");
+  });
+
+  it("keeps the query when a row is picked", async () => {
+    const p = props({ query: "new" });
+    render(<CommandPaletteUI {...p} />);
+    await waitFor(() => expect(screen.getByRole("combobox")).toHaveFocus());
+    await userEvent.keyboard("{Enter}");
+    expect(p.onQueryChange).not.toHaveBeenCalled();
   });
 
   it("renders nothing when closed", () => {

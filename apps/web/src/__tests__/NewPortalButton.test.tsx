@@ -99,11 +99,31 @@ describe("NewPortalButtonUI (#1122)", () => {
     expect(p.onLaunchIn).not.toHaveBeenCalled();
   });
 
-  it("says it's starting while a launch runs", () => {
-    render(<NewPortalButtonUI {...props({ pending: true })} />);
+  it("blocks every launch, menu included, while one is starting", async () => {
+    const p = props({ pending: true });
+    render(<NewPortalButtonUI {...p} />);
     expect(
       screen.getByRole("button", { name: "New portal in Sales Ops" })
     ).toHaveAccessibleDescription("Starting…");
+    await openMenu();
+    const favorite = screen.getByRole("menuitem", { name: "Finance Close" });
+    expect(favorite).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(favorite);
+    expect(p.onLaunchIn).not.toHaveBeenCalled();
+  });
+
+  it("keeps two favorite stations with one name apart", async () => {
+    const p = props({
+      favoriteStations: [
+        { id: "a", name: "Sales" },
+        { id: "b", name: "Sales" },
+      ],
+    });
+    render(<NewPortalButtonUI {...p} />);
+    await openMenu();
+    const [, second] = screen.getAllByRole("menuitem", { name: "Sales" });
+    await userEvent.click(second);
+    expect(p.onLaunchIn).toHaveBeenCalledWith("b");
   });
 
   it("is icons only, named by its label, at narrow widths", async () => {

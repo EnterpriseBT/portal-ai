@@ -97,4 +97,71 @@ describe("GatedMenu (#1122)", () => {
     await userEvent.keyboard("{Enter}");
     expect(onChoose).toHaveBeenCalledTimes(1);
   });
+
+  it("keys items by id, so same-named items stay distinct", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const first = jest.fn();
+      const second = jest.fn();
+      const anchor = document.createElement("button");
+      document.body.appendChild(anchor);
+      render(
+        <GatedMenu
+          anchorEl={anchor}
+          open
+          onClose={jest.fn()}
+          items={[
+            {
+              id: "s1",
+              label: "Sales",
+              section: "Favorite stations",
+              onClick: first,
+            },
+            {
+              id: "s2",
+              label: "Sales",
+              section: "Favorite stations",
+              onClick: second,
+            },
+          ]}
+        />
+      );
+      const [, b] = screen.getAllByRole("menuitem", { name: "Sales" });
+      await userEvent.click(b);
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(first).not.toHaveBeenCalled();
+      expect(
+        consoleError.mock.calls.filter((args) =>
+          args.some((a) => String(a).includes("same key"))
+        )
+      ).toHaveLength(0);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("describes each run of a repeated section by its own heading", () => {
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    render(
+      <GatedMenu
+        anchorEl={anchor}
+        open
+        onClose={jest.fn()}
+        items={[
+          { label: "A", section: "Group", onClick: jest.fn() },
+          { label: "B", onClick: jest.fn() },
+          { label: "C", section: "Group", onClick: jest.fn() },
+        ]}
+      />
+    );
+    const a = screen.getByRole("menuitem", { name: "A" });
+    const c = screen.getByRole("menuitem", { name: "C" });
+    expect(a.getAttribute("aria-describedby")).not.toBe(
+      c.getAttribute("aria-describedby")
+    );
+    expect(c).toHaveAccessibleDescription("Group");
+  });
 });

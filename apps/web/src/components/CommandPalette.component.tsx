@@ -5,7 +5,6 @@ import {
   Combobox,
   Kbd,
   Modal,
-  Stack,
   Typography,
 } from "@portalai/core/ui";
 
@@ -31,8 +30,12 @@ export interface CommandPaletteUIProps {
   groups: PaletteGroup[];
   /** A search is in flight. */
   loading?: boolean;
-  /** Renders object rows as router links; core can't import the router. */
-  linkComponent?: React.ElementType;
+  /**
+   * Renders object rows as router links (the app's `RouterLink`); core
+   * can't import the router. Required: a plain `<a>` would reload the app
+   * on every pick.
+   */
+  linkComponent: React.ElementType;
 }
 
 const HINTS: [string, string][] = [
@@ -63,26 +66,23 @@ export const CommandPaletteUI: React.FC<CommandPaletteUIProps> = ({
   const options = paletteOptions(groups);
   const searching = query.trim() !== "";
 
+  // The combobox pads its empty content and footer (the theme's job, not
+  // this component's), so these are plain text.
   let emptyContent: React.ReactNode;
   if (loading) {
     emptyContent = (
-      <Stack direction="row" spacing={1} alignItems="center" padding={2}>
-        <CircularProgress size={16} aria-label="Loading results" />
-        <Typography color="text.secondary">Searching…</Typography>
-      </Stack>
+      <>
+        <CircularProgress size={12} aria-label="Loading results" /> Searching…
+      </>
     );
   } else if (searching) {
-    emptyContent = (
-      <Typography color="text.secondary" padding={2}>
-        Nothing matches “{query}”.
-      </Typography>
-    );
+    emptyContent = <>Nothing matches “{query}”.</>;
   } else {
     emptyContent = (
-      <Typography color="text.secondary" padding={2}>
+      <>
         Star stations, pinned results, views and connectors to reach them here,
         or type to search. Start with # to search by tag.
-      </Typography>
+      </>
     );
   }
 
@@ -105,17 +105,7 @@ export const CommandPaletteUI: React.FC<CommandPaletteUIProps> = ({
           <CommandPaletteOptionUI entry={option.entry} />
         )}
         emptyContent={emptyContent}
-        linkComponent={linkComponent}
-        inputRef={inputRef}
-      />
-      <Stack
-        direction="row"
-        spacing={2}
-        useFlexGap
-        flexWrap="wrap"
-        paddingTop={1}
-      >
-        {HINTS.map(([key, action]) => (
+        footer={HINTS.map(([key, action]) => (
           <Typography
             key={action}
             component="span"
@@ -125,7 +115,9 @@ export const CommandPaletteUI: React.FC<CommandPaletteUIProps> = ({
             <Kbd>{key}</Kbd> {action}
           </Typography>
         ))}
-      </Stack>
+        linkComponent={linkComponent}
+        inputRef={inputRef}
+      />
     </Modal>
   );
 };

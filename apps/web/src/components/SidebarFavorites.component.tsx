@@ -80,9 +80,8 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
           variant="caption"
           color="text.secondary"
           component="p"
-          paddingLeft={6}
-          paddingRight={3}
-          paddingY={1}
+          // Indented with the entries; the theme holds the metrics.
+          className="SidebarFavorites-hint"
         >
           Star a station, pinned result, view or connector to keep it here.
         </Typography>

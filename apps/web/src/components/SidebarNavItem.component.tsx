@@ -92,16 +92,13 @@ export const SidebarNavItemUI = ({
       aria-label={collapsed ? label : undefined}
       selected={selected}
       onClick={handleClick}
-      sx={(theme) => ({
-        height: indented ? 40 : 48,
-        paddingX: theme.spacing(3),
-        ...(indented && { paddingLeft: theme.spacing(6) }),
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-      })}
+      // The row's metrics live in the theme (#1122): `SidebarNavItem`, and
+      // `SidebarNavItem-nested` for an entry a level below.
+      className={
+        indented ? "SidebarNavItem SidebarNavItem-nested" : "SidebarNavItem"
+      }
     >
-      <ListItemIcon sx={{ minWidth: "auto" }}>
+      <ListItemIcon>
         <Icon
           name={icon}
           color={iconColor}

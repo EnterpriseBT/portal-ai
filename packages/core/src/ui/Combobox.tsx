@@ -44,8 +44,10 @@ export interface ComboboxProps<T extends ComboboxOption = ComboboxOption> {
   statusText: string;
   /** The option's content. Defaults to its label. */
   renderOption?: (option: T) => React.ReactNode;
-  /** Rendered in place of the list when there are no options. */
+  /** Rendered, padded, in place of the list when there are no options. */
   emptyContent?: React.ReactNode;
+  /** Rendered below the list, set off by a rule (a palette's key hints). */
+  footer?: React.ReactNode;
   /** Renders link options; core can't import the app's router. */
   linkComponent?: React.ElementType;
   inputRef?: React.Ref<HTMLInputElement>;
@@ -90,6 +92,15 @@ const COMBOBOX_SX = {
   "& .ComboboxOption.Mui-focused": { bgcolor: "action.hover" },
   "& .ComboboxOption.Mui-focusVisible": { bgcolor: "action.selected" },
   "& .ComboboxOption[aria-disabled='true']": { cursor: "default" },
+  "& .ComboboxEmpty": { p: 2, color: "text.secondary" },
+  "& .ComboboxFooter": {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 2,
+    pt: 1,
+    borderTop: 1,
+    borderColor: "divider",
+  },
 } as const;
 
 /**
@@ -112,6 +123,7 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
   statusText,
   renderOption,
   emptyContent,
+  footer,
   linkComponent,
   inputRef,
 }: ComboboxProps<T>) {
@@ -134,8 +146,10 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
     value: null,
     inputValue,
     onInputChange: (_event, value, reason) => {
-      // "reset" is the hook putting a picked option's label in the box.
-      if (reason !== "reset") onInputChange(value);
+      // Only the user's typing (or clearing) changes the query. The hook
+      // also writes a picked option's label ("selectOption"), a reset or a
+      // blur into the box, which would replace the search with that label.
+      if (reason === "input" || reason === "clear") onInputChange(value);
     },
     onChange: (event, option) => {
       if (!option) return;
@@ -149,16 +163,19 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
         // clicks the highlighted link, which the link then handles.
         if (event.type === "keydown") {
           const index = visible.indexOf(option);
-          const node = document.querySelector<HTMLElement>(
-            `[id="${id}-option-${index}"]`
-          );
-          node?.click();
+          const root = (event.target as HTMLElement).closest(".Combobox");
+          root
+            ?.querySelector<HTMLElement>(`[data-option-index="${index}"]`)
+            ?.click();
         }
         return;
       }
       option.onSelect?.();
     },
     getOptionLabel: (option) => option.label,
+    // Keyed by id: two options may share a label ("Finance" the station
+    // and the view), and a label key would let React mix up their rows.
+    getOptionKey: (option) => option.id,
     isOptionEqualToValue: (option, value) => option.id === value.id,
     getOptionDisabled: (option) => option.gate?.kind === "disable",
     // A disabled option stays reachable, so its reason can be read.
@@ -227,9 +244,6 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
     );
   };
 
-  // Each option's index in the flat list, which the hook's ids use.
-  const flatIndex = (option: T) => visible.indexOf(option);
-
   return (
     <Box
       {...getRootProps({
@@ -254,12 +268,14 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
       />
       <StatusMessage visuallyHidden message={statusText} />
       {visible.length === 0 ? (
-        emptyContent
+        <div className="ComboboxEmpty">{emptyContent}</div>
       ) : (
         <Box component="ul" {...getListboxProps()} className="ComboboxList">
           {groupedOptions.map((group) => {
-            const items = group.options.map((option) =>
-              renderOne(option, flatIndex(option))
+            // A group's `index` is its first option's place in the flat
+            // list, which the hook's option ids use.
+            const items = group.options.map((option, i) =>
+              renderOne(option, group.index + i)
             );
             if (!grouped) return items;
             const headingId = `${id}-group-${group.key}`;
@@ -280,6 +296,7 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
           })}
         </Box>
       )}
+      {footer && <div className="ComboboxFooter">{footer}</div>}
     </Box>
   );
 }
