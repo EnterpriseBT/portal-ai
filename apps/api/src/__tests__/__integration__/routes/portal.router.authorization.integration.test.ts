@@ -291,6 +291,45 @@ describe("Portal authorization (#685)", () => {
     expect((await request(app).get(`/api/portals/${other}`)).status).toBe(404);
   });
 
+  it("#1127: removing a member deletes their portals and messages, keeps their pins unlinked, and leaves others' portals", async () => {
+    const theirs = await portal(fx.orgId, fx.memberId, "Member's");
+    const ownersPortal = await portal(fx.orgId, fx.ownerId, "Owner's");
+    const [{ stationId }] = await db
+      .select({ stationId: portals.stationId })
+      .from(portals)
+      .where(eq(portals.id, theirs));
+    const pinId = generateId();
+    await db.insert(schema.portalResults).values({
+      id: pinId,
+      organizationId: fx.orgId,
+      stationId,
+      portalId: theirs,
+      name: "Kept pin",
+      type: "text",
+      content: { value: "hello" },
+      definerPrincipalType: "user",
+      definerPrincipalId: fx.memberId,
+      ...base(fx.memberId),
+    } as never);
+
+    currentSub = OWNER_SUB;
+    const res = await request(app).delete(
+      `/api/organization/members/${fx.memberId}`
+    );
+    expect(res.status).toBeLessThan(300);
+
+    expect(await live(theirs)).toBeUndefined();
+    expect(await messageCount(theirs)).toBe(0);
+    const [pin] = await db
+      .select()
+      .from(schema.portalResults)
+      .where(eq(schema.portalResults.id, pinId));
+    expect(pin.deleted).toBeNull();
+    expect(pin.portalId).toBeNull();
+    expect(await live(ownersPortal)).toBeDefined();
+    expect(await messageCount(ownersPortal)).toBe(1);
+  });
+
   it("another org's caller gets 404 on every route", async () => {
     const id = await portal(fx.orgId, fx.ownerId);
     currentSub = OTHER_SUB;

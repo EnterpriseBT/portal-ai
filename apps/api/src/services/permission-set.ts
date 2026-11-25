@@ -156,7 +156,9 @@ export class PermissionSet {
 
   /**
    * The permissions boundary (#621): a granter can only *give away* access they
-   * themselves hold. Each `verb` a share materializes must be within THIS (the
+   * themselves hold. (Policy authoring differs for personal types, #1127: see
+   * {@link assertStatementsWithinBoundary}. Portals aren't shareable, so this
+   * share-flow check never meets one.) Each `verb` a share materializes must be within THIS (the
    * granter's) set on the target object; the first one that isn't throws
    * `RBAC_GRANT_EXCEEDS_BOUNDARY`. Deny grants are always in-boundary
    * (restricting is safe). Called on the granter's resolved set at share time.
@@ -193,6 +195,12 @@ export class PermissionSet {
    *   on it. Instance statements ignore `condition` (the object pins ownership).
    *
    * The first uncovered probe throws `RBAC_POLICY_EXCEEDS_BOUNDARY`.
+   *
+   * #1127: probes resolve in `delegation` mode, so a wildcard keeps covering
+   * personal types here: whoever holds `* *` may author portal grants beyond
+   * their own (narrowed) access, themselves included. That is the one place a
+   * granter hands out access they don't hold: the default keeps portals
+   * private, and widening it is an explicit, recorded policy.
    */
   async assertStatementsWithinBoundary(
     statements: EffectiveStatement[],

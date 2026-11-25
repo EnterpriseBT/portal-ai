@@ -121,15 +121,25 @@ portalEventsRouter.get(
 
       // Pending user turn. Claim it so a concurrent reconnect can't fire a
       // second Anthropic call for the same turn (cross-instance via Redis).
+      // #1127: only a caller who may write the portal claims it. One with
+      // read-only access to someone else's portal (an explicit grant) must
+      // not take the lock, even briefly, or the author's own stream could
+      // find it held and give up waiting; a reader waits and replays instead.
+      const canRunTurn = callerSet.can(
+        "resource.write",
+        PortalAccessService.object(accessible)
+      );
       const pendingUserMessageId = last?.id ?? "unknown";
       const lockKey = PortalTurnGuardService.turnLockKey(
         portalId,
         pendingUserMessageId
       );
-      const acquired = await PortalTurnGuardService.acquireTurnLock(lockKey);
+      const acquired =
+        canRunTurn && (await PortalTurnGuardService.acquireTurnLock(lockKey));
 
-      // #504: another connection is already generating this turn. Wait,
-      // bounded, for its persisted answer and replay it — don't re-generate.
+      // #504: another connection is already generating this turn (or, #1127,
+      // this caller only reads it). Wait, bounded, for its persisted answer
+      // and replay it — don't re-generate.
       if (!acquired) {
         sse = new SseUtil(res);
         const answer = await PortalTurnGuardService.waitForAnswer(portalId);

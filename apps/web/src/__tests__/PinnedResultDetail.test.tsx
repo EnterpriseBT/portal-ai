@@ -137,6 +137,8 @@ const defaultProps = {
   onDeleteClick: jest.fn(),
   onUnpin: jest.fn(),
   onOpenPortal: jest.fn(),
+  // #1127: the viewer can open the source portal (their own, or granted).
+  canOpenPortal: true,
   onNavigate: jest.fn(),
 };
 
@@ -386,6 +388,13 @@ describe("PinnedResultDetailUI", () => {
     render(<PinnedResultDetailUI {...defaultProps} onUnpin={onUnpin} />);
     fireEvent.click(screen.getByTestId("unpin-btn"));
     expect(onUnpin).toHaveBeenCalled();
+  });
+
+  it("#1127: hides Open Source Portal when the viewer can't open that portal", () => {
+    render(<PinnedResultDetailUI {...defaultProps} canOpenPortal={false} />);
+    expect(
+      screen.queryByRole("menuitem", { name: /Open Source Portal/i })
+    ).not.toBeInTheDocument();
   });
 
   it("should not render Open Source Portal button when portalId is null", () => {

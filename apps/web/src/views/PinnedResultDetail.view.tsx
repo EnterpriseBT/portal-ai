@@ -103,6 +103,9 @@ export interface PinnedResultDetailUIProps {
    *  are disabled until it settles (#789). */
   removing?: boolean;
   onOpenPortal: (portalId: string, messageId: string | null) => void;
+  /** #1127: the viewer can open the pin's source portal (a shared pin's
+   *  portal is its creator's), so "Open Source Portal" leads somewhere. */
+  canOpenPortal?: boolean;
   onNavigate: (href: string) => void;
   /** #640: whose access the pin's data shows, named only when the viewer
    *  isn't them. */
@@ -129,6 +132,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   onUnpin,
   removing = false,
   onOpenPortal,
+  canOpenPortal = false,
   onNavigate,
   definerName = null,
   dataRefusal = null,
@@ -190,7 +194,9 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
               onClick: () => onShareClick?.(),
               gate: decideActionGate({ allowed: canShare && !!onShareClick }),
             },
-            ...(result.portalId
+            // #1127: only when the viewer can open it; a shared pin's portal
+            // is its creator's, and a dead link is a bug (#684).
+            ...(result.portalId && canOpenPortal
               ? [
                   {
                     label: "Open Source Portal",
@@ -403,6 +409,7 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               onUnpin={handleUnpin}
               removing={removeMutation.isPending}
               onOpenPortal={handleOpenPortal}
+              canOpenPortal={payload?.portalResult.portalReadable ?? false}
               onNavigate={handleNavigate}
               definerName={definerName}
               dataRefusal={dataRefusal}

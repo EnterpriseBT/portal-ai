@@ -656,10 +656,23 @@ portalResultsRouter.get(
           )
         );
       }
-      const [definer, isFavorite] = await Promise.all([
+      const [definer, isFavorite, sourcePortal] = await Promise.all([
         PinDefinerService.describe(portalResult, ctx.userId),
         FavoriteService.isFavorite(ctx, "pin", id),
+        portalResult.portalId
+          ? DbService.repository.portals.findById(portalResult.portalId)
+          : Promise.resolve(undefined),
       ]);
+      // #1127: whether the caller can open the source portal, by the same
+      // check the portal routes run (a shared pin's portal is its creator's).
+      const portalReadable =
+        !!sourcePortal &&
+        sourcePortal.organizationId === organizationId &&
+        set.can("resource.read", {
+          type: "portal",
+          id: sourcePortal.id,
+          createdBy: sourcePortal.createdBy,
+        });
       // #688: capabilities replace the #621 canShare/canWrite/canDelete flags.
       return HttpService.success<PortalResultGetResponsePayload>(res, {
         portalResult: {
@@ -667,6 +680,7 @@ portalResultsRouter.get(
           ...definer,
           capabilities: ObjectCapabilitiesService.for(set, "pin", portalResult),
           isFavorite,
+          portalReadable,
         } as unknown as PortalResultGetResponsePayload["portalResult"],
       });
     } catch (error) {
