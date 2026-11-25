@@ -178,11 +178,11 @@ export function recentVisitsKey(organizationId: string, userSub: string): string
 export function recordVisit(list: RecentVisit[], visit: RecentVisit): RecentVisit[]; // dedupe by type+id, newest first, cap 20
 export function pruneVisits(list: RecentVisit[], readable: Set<string>): RecentVisit[]; // keep `${type}:${id}` in set
 export function useRecentVisits(): { visits: RecentVisit[]; record: (v: Omit<RecentVisit, "visitedAt">) => void; prune: (readable: Set<string>) => void };
-export function useRecordRecentVisit(type: RecentVisit["type"], id: string | undefined, loaded: boolean): void;
+export function useRecordRecentVisit(type: RecentVisit["type"], object: { id: string; organizationId: string } | null | undefined): void;
 ```
 
-- **Storage.** It goes through `useStorage` with a validator; any storage failure reads as `[]`. The user key is Auth0's `user.sub`, and the org is `sdk.organizations.current()`'s id. Until both are known it doesn't read or write.
-- **Recording.** `useRecordRecentVisit` records once per id, when `loaded` is true. It's called by the detail containers for station, pin, view, connector and entity (`StationDetail`, `PinnedResultDetail`, `CuratedViewDetail`, `ConnectorInstance` and `EntityDetail`) after their GET succeeds, so a 404 is never recorded.
+- **Storage.** A small store on `useSyncExternalStore` (not `useStorage`, which reads its key once and doesn't sync between hook instances). Every storage access is wrapped, and any failure reads as `[]`. The user key is Auth0's `user.sub` from `AuthContext`. The palette reads under `sdk.organizations.current()`'s id; until both are known it doesn't read or write.
+- **Recording.** `useRecordRecentVisit` records the loaded object under the object's own `organizationId`, so a detail view needs no extra query. It's called by `StationDetail`, `PinnedResultDetail`, `CuratedViewDetail`, `ConnectorInstance` and `EntityDetail` with their GET's row; a 404 has no row, so it never records.
 
 ### Web — `apps/web/src/utils/use-debounced-value.util.ts` (new)
 

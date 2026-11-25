@@ -45,6 +45,7 @@ import { TagsDialogUI } from "../components/TagsDialog.component";
 import { FavoriteToggle } from "../components/FavoriteToggle.component";
 import { curatedViewDeleteKeys } from "../utils/delete-invalidation.util";
 import { useObjectTags } from "../utils/use-object-tags.util";
+import { useRecordRecentVisit } from "../utils/use-recent-visits.util";
 
 type CuratedView = CuratedViewGetResponsePayload["curatedView"];
 type RecordRow = CuratedViewRecordsResponsePayload["records"][number];
@@ -229,6 +230,8 @@ export const CuratedViewDetail: React.FC = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const viewResult = sdk.curatedViews.get(viewId);
+  // #1076: the palette's Recent.
+  useRecordRecentVisit("curated_view", viewResult.data?.curatedView);
   // #1115: the view's tags, as a metadata row with an Edit dialog.
   const viewTags = useObjectTags({ type: "curated_view", id: viewId });
   // #678: the caller's readable projected columns, captured from the records
