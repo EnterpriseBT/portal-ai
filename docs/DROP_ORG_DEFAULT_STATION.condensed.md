@@ -36,7 +36,7 @@ The camelCase `defaultStationId` references stay. They're tests that the strict 
 - `npm run lint:migrations` (root) passes with the reason.
 - `cd apps/api && npm run test:integration -- --testPathPattern "station.router|application.service|provisioned-stations|reset.service|organization-delete"`; the integration CI run migrates a fresh database through 0143.
 - `cd packages/admin-cli && npm run test`.
-- `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` is empty (phase docs describe the column, so `docs/` is excluded).
+- `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` finds only the Helm README's upgrade note (phase docs describe the column, so `docs/` is excluded).
 
 ## Smoke (manual, against your dev stack)
 
@@ -53,7 +53,7 @@ The camelCase `defaultStationId` references stay. They're tests that the strict 
 7. On `/stations`, create "Smoke 1118" and delete it with its card's Delete button: the card disappears and no error shows.
 8. Settings → Activity still renders past `Default station …` entries; they're audit metadata, not the column.
 9. `npx portalai org create --env local --owner-email qa@portalsai.io --name "Smoke 1118" --json` returns `{"organizationId":…,"stationId":…}`, where `stationId` is that org's Administrate. Then `npx portalai org reset <id> --env local --yes` and `npx portalai org delete <id> --env local --yes` both exit 0. — backend
-10. `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` prints nothing. — backend
+10. `git grep -n default_station_id -- ':!apps/api/drizzle' ':!docs'` prints only the Helm README's upgrade note (`deploy/helm/portalai/README.md`), which is documentation. No code or test names the column. — backend
 11. The release gate: the PR's merge-gate row "prod release carrying #1114 (without this migration) is live" is checked only once GitHub → Releases shows a published release whose notes include #1117 but not #1119, and its `deploy-prod` run (including `verify-login`) is green. — manual
 
 ## Out of scope
