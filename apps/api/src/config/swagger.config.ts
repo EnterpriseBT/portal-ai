@@ -2266,6 +2266,11 @@ const options: swaggerJsdoc.Options = {
                   },
                 },
                 viewerIsDefiner: { type: "boolean" },
+                portalReadable: {
+                  type: "boolean",
+                  description:
+                    "#1127: on the single-pin GET, whether the caller can open the pin's source portal (a shared pin's portal is its creator's).",
+                },
               },
             },
             withCapabilitiesRef(true),

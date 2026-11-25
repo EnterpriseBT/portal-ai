@@ -27,6 +27,8 @@ import { users } from "../db/schema/users.table.js";
 import { userRole } from "../db/schema/user-role.table.js";
 import { roles } from "../db/schema/roles.table.js";
 import { userGroup } from "../db/schema/user-group.table.js";
+import { portals } from "../db/schema/portals.table.js";
+import { portalResults } from "../db/schema/portal-results.table.js";
 import { DbService } from "./db.service.js";
 import { AuditService } from "./audit.service.js";
 import { Auth0Service } from "./auth0.service.js";
@@ -590,7 +592,7 @@ export class SeatService {
       }
       // #1072: the membership and the member's favorites in this org go in
       // one transaction, so a removed member never keeps a favorite here and a
-      // re-invite starts with none.
+      // re-invite starts with none. #1127: their portals go with them.
       await DbService.transaction(async (tx) => {
         await DbService.repository.organizationUsers.softDelete(
           target.id,
@@ -602,6 +604,40 @@ export class SeatService {
           target.userId,
           tx
         );
+        // #1127: a portal is private to its creator, so once they leave
+        // nobody can open or manage it. Delete theirs as a portal delete
+        // does: pins are kept but unlinked, messages go, the portal is
+        // soft-deleted.
+        const theirPortals = await DbService.repository.portals.findMany(
+          and(
+            eq(portals.organizationId, orgId),
+            eq(portals.createdBy, target.userId)
+          ),
+          {},
+          tx
+        );
+        if (theirPortals.length > 0) {
+          const portalIds = theirPortals.map((p) => p.id);
+          await tx
+            .update(portalResults)
+            .set({
+              portalId: null,
+              updated: Date.now(),
+              updatedBy: caller.userId,
+            })
+            .where(inArray(portalResults.portalId, portalIds));
+          for (const portalId of portalIds) {
+            await DbService.repository.portalMessages.deleteByPortal(
+              portalId,
+              tx
+            );
+          }
+          await DbService.repository.portals.softDeleteMany(
+            portalIds,
+            caller.userId,
+            tx
+          );
+        }
       });
       // #620: tombstone the member's role assignments along with the membership.
       await DbService.repository.userRole.removeAllForUser(

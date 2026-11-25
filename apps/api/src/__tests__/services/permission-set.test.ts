@@ -5,7 +5,9 @@ import { SEED_SYSTEM_POLICIES } from "../../services/seed.service.js";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { SystemUtilities } from "../../utils/system.util.js";
-import { stations } from "../../db/schema/index.js";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { portals, stations } from "../../db/schema/index.js";
 import type { PermissionContext } from "../../services/permission.service.js";
 import type { PermissionStatementSelect } from "../../db/schema/zod.js";
 
@@ -42,6 +44,16 @@ const obj = (createdBy: string, id = "st-1") => ({
   id,
   createdBy,
 });
+
+const portalOf = (createdBy: string | null, id = "po-1") => ({
+  type: "portal",
+  id,
+  createdBy,
+});
+
+/** A predicate rendered to SQL text and its bound values (#1127). */
+const render = (pred: SQL | undefined) =>
+  pred ? new PgDialect().sqlToQuery(pred) : undefined;
 
 describe("PermissionSet — evaluation (spec cases 3–6, 12)", () => {
   it("deny beats allow regardless of specificity (case 3)", () => {
@@ -238,6 +250,33 @@ describe("PermissionSet — switch parity (spec case 8)", () => {
     ["resource.write", own, { owner: true, admin: true, member: true }],
     ["resource.write", other, { owner: true, admin: true, member: false }],
     ["resource.write", system, { owner: true, admin: true, member: false }],
+    // #1127: a portal is personal. Owners and admins reach their own (and
+    // system-created ones, as members do), not other users'.
+    [
+      "resource.read",
+      portalOf("user-1"),
+      { owner: true, admin: true, member: true },
+    ],
+    [
+      "resource.read",
+      portalOf("user-2"),
+      { owner: false, admin: false, member: false },
+    ],
+    [
+      "resource.read",
+      portalOf(SYSTEM),
+      { owner: true, admin: true, member: true },
+    ],
+    [
+      "resource.write",
+      portalOf("user-2"),
+      { owner: false, admin: false, member: false },
+    ],
+    [
+      "resource.delete",
+      portalOf("user-2"),
+      { owner: false, admin: false, member: false },
+    ],
   ];
 
   const sets = {
@@ -667,5 +706,156 @@ describe("PermissionSet — explicit unknown creator (#731)", () => {
     ]);
     expect(set.can("resource.read", unknown("st-1"))).toBe(false);
     expect(set.isDenied("read", "station", unknown("st-1"))).toBe(true);
+  });
+});
+
+// ── #1127: personal types (portal) ────────────────────────────────────
+
+describe("PermissionSet — personal types (#1127)", () => {
+  const portalCols = { createdByCol: portals.createdBy, idCol: portals.id };
+  const stationCols = { createdByCol: stations.createdBy, idCol: stations.id };
+  const ownerSet = (...extra: PermissionStatementSelect[]) =>
+    new PermissionSet(ctx("owner"), [
+      S({ verb: "*", resourceType: "*" }),
+      ...extra,
+    ]);
+  const adminSet = () =>
+    new PermissionSet(ctx("admin"), [
+      S({ verb: "*", resourceType: "*" }),
+      S({ effect: "deny", verb: "manage", resourceType: "billing" }),
+      S({ effect: "deny", verb: "delete", resourceType: "org" }),
+    ]);
+
+  it("an owner's wildcard reaches its own portals, not another user's", () => {
+    const set = ownerSet();
+    expect(set.can("resource.read", portalOf("user-1"))).toBe(true);
+    expect(set.can("resource.write", portalOf("user-1"))).toBe(true);
+    expect(set.can("resource.read", portalOf("user-2"))).toBe(false);
+    expect(set.can("resource.delete", portalOf("user-2"))).toBe(false);
+  });
+
+  it("an admin's wildcard does the same", () => {
+    const set = adminSet();
+    expect(set.can("resource.read", portalOf("user-1"))).toBe(true);
+    expect(set.can("resource.read", portalOf("user-2"))).toBe(false);
+  });
+
+  it("the wildcard is unchanged for every other type", () => {
+    const set = ownerSet();
+    expect(set.can("resource.read", obj("user-2"))).toBe(true);
+    expect(set.visibilityPredicate("station", stationCols)).toBeUndefined();
+  });
+
+  it("an owner's portal list is its own and system-created portals", () => {
+    const query = render(ownerSet().visibilityPredicate("portal", portalCols));
+    expect(query).toBeDefined();
+    expect(query!.params).toEqual(expect.arrayContaining(["user-1", SYSTEM]));
+    expect(query!.params).not.toContain("user-2");
+  });
+
+  it("an explicit unconditional portal grant reaches everyone's", () => {
+    const set = ownerSet(S({ verb: "read", resourceType: "portal" }));
+    expect(set.can("resource.read", portalOf("user-2"))).toBe(true);
+    expect(set.visibilityPredicate("portal", portalCols)).toBeUndefined();
+  });
+
+  it("an instance portal grant reaches that portal only", () => {
+    const set = ownerSet(
+      S({ verb: "read", resourceType: "portal", resourceId: "po-9" })
+    );
+    expect(set.can("resource.read", portalOf("user-2", "po-9"))).toBe(true);
+    expect(set.can("resource.read", portalOf("user-2", "po-8"))).toBe(false);
+    expect(
+      render(set.visibilityPredicate("portal", portalCols))!.params
+    ).toEqual(expect.arrayContaining(["user-1", "po-9"]));
+  });
+
+  it("a conditioned wildcard keeps its condition", () => {
+    const set = new PermissionSet(ctx("member"), [
+      S({ verb: "read", resourceType: "*", condition: "created_by_system" }),
+    ]);
+    expect(set.can("resource.read", portalOf(SYSTEM))).toBe(true);
+    expect(set.can("resource.read", portalOf("user-1"))).toBe(false);
+  });
+
+  it("a wildcard deny still denies a portal in full", () => {
+    const set = new PermissionSet(ctx("owner"), [
+      S({ verb: "read", resourceType: "portal" }),
+      S({ effect: "deny", verb: "read", resourceType: "*" }),
+    ]);
+    expect(set.can("resource.read", portalOf("user-1"))).toBe(false);
+    expect(set.can("resource.read", portalOf("user-2"))).toBe(false);
+  });
+
+  it("a portal with an unknown creator isn't reached by the wildcard", () => {
+    expect(ownerSet().can("resource.read", portalOf(null))).toBe(false);
+  });
+
+  it("canPerformAny still says the owner can read some portal", () => {
+    expect(ownerSet().canPerformAny("read", "portal")).toBe(true);
+  });
+
+  describe("authoring (delegation keeps the wildcard)", () => {
+    const resolver =
+      (map: Record<string, string | null>) =>
+      async (_rt: string, rid: string): Promise<string | null> =>
+        rid in map ? map[rid] : null;
+    const noObjects = resolver({});
+    const boundary = { code: ApiCode.RBAC_POLICY_EXCEEDS_BOUNDARY };
+
+    it("an owner may author an unconditional portal grant", async () => {
+      await expect(
+        ownerSet().assertStatementsWithinBoundary(
+          [S({ verb: "read", resourceType: "portal" })],
+          noObjects
+        )
+      ).resolves.toBeUndefined();
+    });
+
+    it("an admin may author read portal and * portal", async () => {
+      await expect(
+        adminSet().assertStatementsWithinBoundary(
+          [
+            S({ verb: "read", resourceType: "portal" }),
+            S({ verb: "*", resourceType: "portal" }),
+          ],
+          noObjects
+        )
+      ).resolves.toBeUndefined();
+    });
+
+    it("an owner may grant on another user's portal instance", async () => {
+      await expect(
+        ownerSet().assertStatementsWithinBoundary(
+          [S({ verb: "read", resourceType: "portal", resourceId: "po-2" })],
+          resolver({ "po-2": "user-2" })
+        )
+      ).resolves.toBeUndefined();
+    });
+
+    it("a member still can't author an unconditional portal grant", async () => {
+      const member = new PermissionSet(ctx("member"), [
+        S({
+          verb: "read",
+          resourceType: "portal",
+          condition: "created_by_caller",
+        }),
+      ]);
+      await expect(
+        member.assertStatementsWithinBoundary(
+          [S({ verb: "read", resourceType: "portal" })],
+          noObjects
+        )
+      ).rejects.toMatchObject(boundary);
+    });
+
+    it("an owner may still author allow * *", async () => {
+      await expect(
+        ownerSet().assertStatementsWithinBoundary(
+          [S({ verb: "*", resourceType: "*" })],
+          noObjects
+        )
+      ).resolves.toBeUndefined();
+    });
   });
 });

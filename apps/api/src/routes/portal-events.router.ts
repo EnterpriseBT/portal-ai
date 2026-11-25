@@ -121,15 +121,25 @@ portalEventsRouter.get(
 
       // Pending user turn. Claim it so a concurrent reconnect can't fire a
       // second Anthropic call for the same turn (cross-instance via Redis).
+      // #1127: only a caller who may write the portal claims it. One with
+      // read-only access to someone else's portal (an explicit grant) must
+      // not take the lock, even briefly, or the author's own stream could
+      // find it held and give up waiting; a reader waits and replays instead.
+      const canRunTurn = callerSet.can(
+        "resource.write",
+        PortalAccessService.object(accessible)
+      );
       const pendingUserMessageId = last?.id ?? "unknown";
       const lockKey = PortalTurnGuardService.turnLockKey(
         portalId,
         pendingUserMessageId
       );
-      const acquired = await PortalTurnGuardService.acquireTurnLock(lockKey);
+      const acquired =
+        canRunTurn && (await PortalTurnGuardService.acquireTurnLock(lockKey));
 
-      // #504: another connection is already generating this turn. Wait,
-      // bounded, for its persisted answer and replay it — don't re-generate.
+      // #504: another connection is already generating this turn (or, #1127,
+      // this caller only reads it). Wait, bounded, for its persisted answer
+      // and replay it — don't re-generate.
       if (!acquired) {
         sse = new SseUtil(res);
         const answer = await PortalTurnGuardService.waitForAnswer(portalId);
@@ -153,9 +163,10 @@ portalEventsRouter.get(
         );
         // #685: the turn answers the pending message, so it runs with its
         // author's data access (who posted it via POST /messages). The
-        // stream caller only claims the turn. An owner/admin who can open any
-        // portal must not answer a member's question with rows the member
-        // can't see, saved into the member's portal.
+        // stream caller only claims the turn. A caller granted access to
+        // others' portals (#1127: an explicit grant; owners/admins no longer
+        // reach them by default) must not answer a member's question with rows
+        // the member can't see, saved into the member's portal.
         const turnUserId = last?.createdBy ?? caller.userId;
 
         // Load station data (re-populates in-memory AlaSQL tables)

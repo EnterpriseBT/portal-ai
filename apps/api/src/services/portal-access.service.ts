@@ -3,8 +3,10 @@
  * the portal SSE routes alike, so both apply one rule.
  *
  * Portals are per-user: the seeded MemberAccess grants read/write/delete on
- * `created_by_caller` portals, and owners/admins (`* *`) reach all of them.
- * Pinned results are how portal output is shared.
+ * `created_by_caller` portals, and owners/admins reach their own too (#1127:
+ * their `* *` covers a personal type only for their own objects). Access to
+ * others' portals is an explicit grant naming `portal`. Pinned results are how
+ * portal output is shared.
  *
  * - Missing, another org's, or unreadable: 404 `PORTAL_NOT_FOUND` (unreadable
  *   == absent, so an id reveals nothing).

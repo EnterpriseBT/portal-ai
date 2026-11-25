@@ -54,7 +54,8 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Update lastOpened when the portal view is visited, only for a caller who
-  // may write it (#690: an owner/admin viewing someone else's portal doesn't).
+  // may write it (#690: a caller granted read on someone else's portal, #1127,
+  // doesn't).
   // #783: an effect reads the promise, not per-call callbacks. Under
   // StrictMode the effect runs twice: one timestamp per visit makes the second
   // run's body identical, so it joins the first request (one PATCH), and the

@@ -136,6 +136,22 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
     ],
   },
   {
+    symptom: "A portal link says “Portal not found”",
+    cause:
+      "Portals are private: only the person who started a portal can open it, unless someone has been granted access to portals. A link to someone else's portal answers “not found”, as does one to a portal that was deleted, whose station was deleted, or whose creator left the organization.",
+    fix: "Ask the portal's creator to pin the result you need and share the pin with you. To open other people's portals, ask for access to portals (a policy granting read on portals).",
+    related: [
+      { surface: "glossary", title: "Portal" },
+      { surface: "glossary", title: "Portal Result" },
+    ],
+    aliases: [
+      "portal not found",
+      "can't open a portal",
+      "someone else's portal",
+      "portal link doesn't work",
+    ],
+  },
+  {
     symptom: "Something couldn't reach the server",
     cause:
       "The app got no answer from the server: your connection dropped, or the service was briefly unavailable. A change may still have been saved if the connection dropped after it was sent.",

@@ -33,9 +33,12 @@ import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
 import {
+  portalReadOnlyLock,
   portalStationLock,
   usePortalStation,
 } from "../utils/portal-station.util";
+import { serverErrorMessage } from "../utils/permission-denied.util";
+import { useToast } from "../utils/toast.context";
 import { useElapsed } from "../utils/use-elapsed.util";
 import {
   PortalMessage,
@@ -288,6 +291,9 @@ export interface PortalSessionUIProps {
   activeToolElapsedSeconds?: number;
   /** #1044: the portal's station has the Help pack attached. */
   helpAvailable?: boolean;
+  /** #1127: false for a caller who may read this portal but not write it;
+   *  hides Reset (the composer's lock carries the reason). */
+  canWrite?: boolean;
 }
 
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
@@ -311,6 +317,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   activeToolLabel = null,
   activeToolElapsedSeconds,
   helpAvailable = false,
+  canWrite = true,
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
@@ -322,6 +329,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       disabled={isStreaming || chatLocked}
       isStreaming={isStreaming}
       lockedReason={chatLocked ? chatLockReason : null}
+      canReset={canWrite}
       statusStrip={
         activeToolLabel ? (
           <ToolActivityStrip
@@ -455,6 +463,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const tierSlug = usageData?.tier.tier;
   const showUpgrade = tierSlug !== "pro" && tierSlug !== "enterprise";
   const resetMessages = sdk.portals.resetMessages(portalId);
+  const toast = useToast();
 
   // On session open: scroll to the target message (if opened from a pinned
   // result) or to the bottom of the feed. Runs once per portalId + first
@@ -557,11 +566,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     } catch (err) {
       // Remove the optimistic message if the send failed.
       streamActions.removeLocalMessage(optimisticId);
-      // #498: the turn-ceiling denial gets its own friendly surface; every
-      // other failure keeps the existing (silent-rollback) behavior.
+      // #498: the turn-ceiling denial gets its own friendly surface.
       const serverError = toServerError(err as ApiError);
       if (serverError?.code === "AGENT_TURN_LIMITED") {
         setTurnLimitNotice({ message: serverError.message, showUpgrade });
+      } else {
+        // #1127: any other refusal says so; the typed message was cleared,
+        // so a silent rollback lost it with no explanation.
+        toast.error(serverErrorMessage(err, "Couldn't send your message."));
       }
       return;
     }
@@ -580,7 +592,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const stationLock = portalStationLock(portalStation.unavailable);
   const helpAvailable =
     portalStation.station?.enabledToolpacks?.includes(HELP_PACK_SLUG) ?? false;
-  const chatLock = jobLock.locked ? jobLock : stationLock;
+  // #1127: a caller granted read, not write, on someone else's portal can't
+  // send at all. It's the most durable reason, so it wins over both.
+  const canWrite = portalQuery.data?.portal.capabilities.write ?? true;
+  const readOnlyLock = portalReadOnlyLock(canWrite);
+  const chatLock = readOnlyLock.locked
+    ? readOnlyLock
+    : jobLock.locked
+      ? jobLock
+      : stationLock;
 
   // #279 — the newest open tool step is the one the user is shown; when it
   // closes, the one before it becomes current again. Indexed rather than
@@ -613,6 +633,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       activeToolLabel={activeStep ? toolPhaseLabel(activeStep.toolName) : null}
       activeToolElapsedSeconds={activeToolElapsedSeconds}
       helpAvailable={helpAvailable}
+      canWrite={canWrite}
     />
   );
 };

@@ -355,7 +355,28 @@ describe("Portal Router", () => {
         .insert(portals)
         .values([own as never, other as never]);
 
-      // The seeded caller is the org's owner, whose grants list both.
+      // #1127: the owner's role reaches only their own portals; an explicit
+      // grant on portals lists the other one too, which `mine` then drops.
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.permissionGrants)
+        .values({
+          id: generateId(),
+          organizationId,
+          principalType: "user",
+          principalId: userId,
+          effect: "allow",
+          verb: "read",
+          resourceType: "portal",
+          resourceId: null,
+          condition: null,
+          conditionParam: null,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
       const all = await request(app).get("/api/portals").expect(200);
       expect(all.body.payload.portals).toHaveLength(2);
 

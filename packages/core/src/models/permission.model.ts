@@ -254,6 +254,18 @@ export const RESOURCE_PERMISSION_TYPES = [
 export const OWNERSHIPLESS_RESOURCE_TYPES = [
   "page",
 ] as const satisfies readonly PermissionResourceType[];
+
+/**
+ * #1127: types a wildcard resource (`*`) allow covers only for the caller's
+ * own objects (and system-created ones, as members already read). A role's
+ * `allow * *` reaches the caller's own portals, not every user's; a statement
+ * that names the type applies as written, so access to others' portals is an
+ * explicit grant. Authoring (the policy boundary) still treats the wildcard as
+ * covering them, so whoever holds `* *` can grant that access.
+ */
+export const PERSONAL_RESOURCE_TYPES = [
+  "portal",
+] as const satisfies readonly PermissionResourceType[];
 export const ResourcePermissionTypeSchema = z.enum(RESOURCE_PERMISSION_TYPES);
 export type ResourcePermissionType = z.infer<
   typeof ResourcePermissionTypeSchema

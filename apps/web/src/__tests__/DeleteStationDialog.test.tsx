@@ -68,7 +68,7 @@ describe("DeleteStationDialog", () => {
     render(<DeleteStationDialog {...defaultProps} />);
     expect(
       screen.getByText(
-        /All associated portals, their messages, and unpinned results/
+        /All of this station's portals, including other people's that you can't see, their messages, and unpinned results/
       )
     ).toBeInTheDocument();
   });

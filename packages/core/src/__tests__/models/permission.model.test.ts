@@ -11,6 +11,8 @@ import {
   PermissionGrantSchema,
   PermissionGrantModelFactory,
   SHAREABLE_RESOURCE_TYPES,
+  PERSONAL_RESOURCE_TYPES,
+  DATA_RESOURCE_TYPES,
   POLICY_PRINCIPAL_TYPES,
   GroupSchema,
   GroupModelFactory,
@@ -694,5 +696,14 @@ describe("objects and parts (#829)", () => {
     expect(isContainedType("entity")).toBe(true);
     expect(isContainedType("entity_record")).toBe(false);
     expect(isContainedType("toString")).toBe(false);
+  });
+});
+
+describe("PERSONAL_RESOURCE_TYPES (#1127)", () => {
+  it("is just portal, a data type", () => {
+    expect(PERSONAL_RESOURCE_TYPES).toEqual(["portal"]);
+    for (const t of PERSONAL_RESOURCE_TYPES) {
+      expect(DATA_RESOURCE_TYPES as readonly string[]).toContain(t);
+    }
   });
 });

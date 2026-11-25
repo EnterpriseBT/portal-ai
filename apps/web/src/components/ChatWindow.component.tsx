@@ -48,6 +48,9 @@ export interface ChatWindowUIProps {
   /** #690: why input is locked (a running bulk job). Shown under the input
    *  and as Submit's tooltip, so the disabled composer says why. */
   lockedReason?: string | null;
+  /** #1127: false hides Reset, for a caller who can read the conversation but
+   *  not change it. */
+  canReset?: boolean;
   children?: React.ReactNode;
   /**
    * Transient status pinned just above the composer (#279 — the tool activity
@@ -69,6 +72,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
       disabled,
       isStreaming = disabled,
       lockedReason = null,
+      canReset = true,
       children,
       statusStrip,
     },
@@ -332,13 +336,15 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                     />
                   </span>
                 </Tooltip>
-                <Tooltip title="Reset">
-                  <IconButton
-                    icon={IconName.Refresh}
-                    onClick={onReset}
-                    aria-label="Reset"
-                  />
-                </Tooltip>
+                {canReset && (
+                  <Tooltip title="Reset">
+                    <IconButton
+                      icon={IconName.Refresh}
+                      onClick={onReset}
+                      aria-label="Reset"
+                    />
+                  </Tooltip>
+                )}
                 <Tooltip title={lockedReason ?? "Submit"}>
                   <span>
                     <IconButton
@@ -370,9 +376,11 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                 >
                   Cancel
                 </Button>
-                <Button variant="outlined" onClick={onReset}>
-                  Reset
-                </Button>
+                {canReset && (
+                  <Button variant="outlined" onClick={onReset}>
+                    Reset
+                  </Button>
+                )}
                 <Tooltip title={lockedReason ?? ""}>
                   <span>
                     <Button
