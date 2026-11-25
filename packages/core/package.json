@@ -66,7 +66,7 @@
     "build:ts": "tsc --project tsconfig.build.json",
     "build:scss": "sass src/assets/scss:dist/styles --no-source-map",
     "build:assets": "cp -r src/assets/fonts dist/fonts && cp -r src/assets/themes dist/themes && mkdir -p dist/assets/icons && cp -r src/assets/icons dist/assets/",
-    "storybook": "storybook dev -p 7006 --no-open",
+    "storybook": "storybook dev -p 7006 --host 0.0.0.0 --no-open",
     "build-storybook": "storybook build",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
