@@ -2,6 +2,8 @@ import React, { useId } from "react";
 import MuiMenu from "@mui/material/Menu";
 import type { MenuProps } from "@mui/material/Menu";
 import MuiMenuItem from "@mui/material/MenuItem";
+import Divider from "@mui/material/Divider";
+import ListSubheader from "@mui/material/ListSubheader";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Tooltip from "@mui/material/Tooltip";
@@ -52,12 +54,62 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
       // (MUI would put `id` on the popover around it).
       slotProps={{
         list: {
+          // #793: a gated item stays reachable from the keyboard, so its
+          // reason can be read. MenuList skips aria-disabled items without
+          // this.
+          disabledItemsFocusable: true,
           ...(id ? { id } : {}),
           ...(labelledBy ? { "aria-labelledby": labelledBy } : {}),
         },
       }}
     >
-      {items.map((item, index) => {
+      {items.flatMap((item, index) => {
+        // #1122: a new section starts with a divider (but not at the top)
+        // and its heading. Neither is focusable: MUI's MenuList skips them.
+        // A menu may hold only items, groups and separators, and MenuList
+        // walks sibling elements, so the heading isn't a group label: it's
+        // visual (aria-hidden), and each item in the section is described
+        // by it, so it's read as "Finance Close, Favorite stations".
+        const sectionStart =
+          index === 0 || items[index - 1].section !== item.section;
+        const sectionIndex = items.findIndex(
+          (other, i) =>
+            other.section === item.section &&
+            (i === 0 || items[i - 1].section !== item.section) &&
+            i <= index
+        );
+        const sectionId = item.section
+          ? `${reasonIdBase}-section-${sectionIndex}`
+          : undefined;
+        const lead: React.ReactNode[] = [];
+        if (sectionStart && index > 0) {
+          lead.push(<Divider key={`divider-${index}`} />);
+        }
+        if (sectionStart && item.section) {
+          lead.push(
+            <ListSubheader
+              key={`section-${index}`}
+              id={sectionId}
+              aria-hidden
+              disableSticky
+            >
+              {item.section}
+            </ListSubheader>
+          );
+        }
+        const key = `${item.section ?? ""}:${item.label}`;
+        if (item.hint) {
+          return [
+            ...lead,
+            <MuiMenuItem
+              key={key}
+              aria-disabled="true"
+              aria-describedby={sectionId}
+            >
+              <ListItemText>{item.label}</ListItemText>
+            </MuiMenuItem>,
+          ];
+        }
         const gate = item.gate;
         const disabled = gate?.kind === "disable";
         const upsell = gate?.kind === "upsell" ? gate : null;
@@ -69,12 +121,14 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
         const reasonId = reason ? `${reasonIdBase}-${index}` : undefined;
         const entry = (
           <MuiMenuItem
-            key={item.label}
+            key={key}
             // aria-disabled, not MUI's `disabled` (pointer-events: none
             // would block the tooltip that says why). The theme gives it
             // its look (a11yComponents, #793).
             aria-disabled={disabled ? "true" : undefined}
-            aria-describedby={reasonId}
+            aria-describedby={
+              [sectionId, reasonId].filter(Boolean).join(" ") || undefined
+            }
             onClick={() => {
               if (disabled) return;
               onClose();
@@ -103,18 +157,21 @@ export const GatedMenu: React.FC<GatedMenuProps> = ({
             )}
           </MuiMenuItem>
         );
-        return gate?.kind === "disable" || gate?.kind === "upsell" ? (
-          <Tooltip
-            key={item.label}
-            title={gate.reason}
-            describeChild
-            placement="left"
-          >
-            {entry}
-          </Tooltip>
-        ) : (
-          entry
-        );
+        return [
+          ...lead,
+          gate?.kind === "disable" || gate?.kind === "upsell" ? (
+            <Tooltip
+              key={key}
+              title={gate.reason}
+              describeChild
+              placement="left"
+            >
+              {entry}
+            </Tooltip>
+          ) : (
+            entry
+          ),
+        ];
       })}
     </MuiMenu>
   );

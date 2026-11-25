@@ -19,6 +19,16 @@ export interface ActionMenuItem {
    * disabled item must say why.)
    */
   gate?: ActionGate;
+  /**
+   * The heading it's listed under (#1122). Adjacent items share a section;
+   * a divider (and the heading, when set) starts each new one.
+   */
+  section?: string;
+  /**
+   * A line that teaches rather than acts ("Star a station to add it
+   * here"): listed and focusable so it's read, but it does nothing.
+   */
+  hint?: boolean;
   /** MUI color applied to the label text (e.g. "error" for destructive actions). */
   color?: "inherit" | "error" | "primary" | "secondary";
 }

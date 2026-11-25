@@ -88,7 +88,13 @@ export const SidebarNavItemUI = ({
       <ListItemIcon sx={{ minWidth: "auto" }}>
         <Icon name={icon} />
       </ListItemIcon>
-      {!collapsed && <ListItemText primary={label} />}
+      {/* A long name (a favorite's, #1122) truncates rather than wraps. */}
+      {!collapsed && (
+        <ListItemText
+          primary={label}
+          slotProps={{ primary: { noWrap: true } }}
+        />
+      )}
       {hasChildren && !collapsed && (
         <Icon name={open ? IconName.ExpandLess : IconName.ExpandMore} />
       )}
