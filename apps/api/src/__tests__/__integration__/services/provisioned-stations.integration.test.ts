@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import pino from "pino";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
+import { ApplicationService } from "../../../services/application.service.js";
 import { ToolService } from "../../../services/tools.service.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { EntitlementService } from "../../../services/entitlement.service.js";
@@ -154,12 +155,12 @@ describe("provisioned stations in a portal session — integration (#848)", () =
     };
   }
 
-  it("provisions Administrate as the default and Playground with the Sandbox", async () => {
-    const [org] = await d
-      .select()
-      .from(schema.organizations)
-      .where(eq(schema.organizations.id, orgId));
-    expect(org.defaultStationId).toBe(administrateId);
+  it("provisions Administrate and Playground (with the Sandbox), and no default (#1114)", async () => {
+    const [org] = (await d.execute(
+      sql`SELECT default_station_id FROM organizations WHERE id = ${orgId}`
+    )) as unknown as { default_station_id: string | null }[];
+    expect(org.default_station_id).toBeNull();
+    expect(administrateId).toBeDefined();
 
     for (const expected of PROVISIONED_STATIONS) {
       const station = await stationNamed(expected.name);
@@ -184,6 +185,20 @@ describe("provisioned stations in a portal session — integration (#848)", () =
         expected.attachSandbox ? [sandboxId] : []
       );
     }
+  });
+
+  // #1114: `portalai org create --json` reports stationIds[0] as `stationId`.
+  it("provisioning returns Administrate's id first", async () => {
+    const result = await ApplicationService.provisionOrganizationFor(ownerId, {
+      name: "Second org",
+    });
+    const [first] = await d
+      .select()
+      .from(schema.stations)
+      .where(eq(schema.stations.id, result.stationIds[0]!));
+    expect(first?.name).toBe(PROVISIONED_STATIONS[0]!.name);
+    expect(first?.organizationId).toBe(result.organization.id);
+    expect(result.stationIds).toHaveLength(PROVISIONED_STATIONS.length);
   });
 
   it("a pack the tier lacks is attached all the same and reported as unentitled", async () => {

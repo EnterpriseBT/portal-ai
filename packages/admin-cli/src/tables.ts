@@ -27,7 +27,6 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   timezone: text("timezone").notNull(),
   ownerUserId: text("owner_user_id").notNull(),
-  defaultStationId: text("default_station_id"),
   tier: text("tier").notNull().default("standard"),
   // #259: needed by the org set-tier Stripe-desync guard (and surfaced by
   // `org get`). A live subscription drives the tier, so set-tier must see it.
@@ -61,15 +60,7 @@ export const tiers = pgTable("tiers", {
   slug: text("slug").notNull(),
 });
 
-/** #936: subset — what org update needs to validate a default station and
- *  name it in the audit entry. */
-export const stations = pgTable("stations", {
-  ...base,
-  organizationId: text("organization_id").notNull(),
-  name: text("name").notNull(),
-});
-
-/** #936: org update records the app's `org.update` entries (#907, #935). */
+/** #936: org update records the app's `org.update` entry (#907). */
 export const auditLog = pgTable("audit_log", {
   ...base,
   organizationId: text("organization_id").notNull(),

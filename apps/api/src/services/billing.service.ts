@@ -548,7 +548,7 @@ export class BillingService {
     // #939: one checkout at a time per org, for the whole read-Stripe →
     // expire → create sequence; otherwise two tabs each find nothing and
     // each mint a payable session. A transaction-scoped advisory lock, not
-    // the org row lock, so renames and default-station writes don't wait on
+    // the org row lock, so renames don't wait on
     // it — except on a first checkout, where storing the customer id
     // row-locks the org until the session call returns (about a second). The transaction commits whatever it wrote: a Stripe failure is
     // returned, not thrown, so a new customer id persists (D7) and a retry

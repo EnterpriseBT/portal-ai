@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, inArray, type SQL } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 
 import { StationModelFactory } from "@portalai/core/models";
 import { isBuiltinToolpackSlug } from "@portalai/core/registries";
@@ -29,9 +29,8 @@ import type { PermissionSet } from "../services/permission-set.js";
 import type { ReplacePacksPayload } from "../db/repositories/station-toolpacks.repository.js";
 import { AuditService } from "../services/audit.service.js";
 import { auditContextFromRequest } from "../utils/audit-context.util.js";
-import { OrganizationUpdateService } from "../services/organization-update.service.js";
 import { EntitlementService } from "../services/entitlement.service.js";
-import { organizations, portalResults } from "../db/schema/index.js";
+import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { invalidPayload } from "../utils/zod-issue.util.js";
 
@@ -1156,7 +1155,7 @@ stationRouter.delete(
       // #621: deleting a station requires resource.delete — its creator (own),
       // or owner/admin. A read-write grantee cannot delete a shared station.
       // #713: one the caller can't read answers 404, like its GET.
-      const station = ObjectAccessService.loadForVerb(
+      ObjectAccessService.loadForVerb(
         await PermissionService.loadSet(ctx),
         organizationId,
         "station",
@@ -1165,18 +1164,7 @@ stationRouter.delete(
         () => new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
       );
 
-      const clearedDefault = await DbService.transaction(async (tx) => {
-        // #907: take the org row lock first. A default-station PATCH holds it
-        // while it checks the station and writes the default, so the two
-        // serialize: either the PATCH sees this delete and refuses, or this
-        // delete's clear below sees the default the PATCH wrote. Without it the
-        // clear could match nothing and the default dangle on a deleted
-        // station.
-        await DbService.repository.organizations.findByIdForUpdate(
-          organizationId,
-          tx
-        );
-
+      await DbService.transaction(async (tx) => {
         const stationPortals = await DbService.repository.portals.findByStation(
           id,
           {},
@@ -1208,23 +1196,10 @@ stationRouter.delete(
           );
         }
 
-        // #935: the station's name as of its delete, for the clear's audit
-        // entry: locked here, so a rename can't land between this and the
-        // soft delete below.
-        const deleting = await DbService.repository.stations.findByIdForUpdate(
-          id,
-          tx
-        );
-
-        // Clear the org's defaultStationId if it points to this station
-        const cleared = await DbService.repository.organizations.updateWhere(
-          and(
-            eq(organizations.id, organizationId),
-            eq(organizations.defaultStationId, id)
-          ) as SQL,
-          { defaultStationId: null },
-          tx
-        );
+        // Lock the station row for the length of the delete, so a concurrent
+        // favorite (#1072) either commits first and is swept below, or waits
+        // and then finds the station gone.
+        await DbService.repository.stations.findByIdForUpdate(id, tx);
 
         // #674: the station's attachments go with it (soft delete, like the
         // station row). #1064: its tool pack rows too; they used to outlive it.
@@ -1257,9 +1232,7 @@ stationRouter.delete(
           tx,
           deletedAt
         );
-        // #1072: and every user's favorites of it. The row is already locked
-        // (findByIdForUpdate above), so a star either committed first and is
-        // swept here, or waits and then finds the station gone.
+        // #1072: and every user's favorites of it, under the row lock above.
         await DbService.repository.favorites.hardDeleteByTargets(
           "station",
           [id],
@@ -1272,21 +1245,8 @@ stationRouter.delete(
           tx,
           deletedAt
         );
-        return cleared.length > 0
-          ? { name: deleting?.name ?? station.name }
-          : null;
       });
       logger.info({ id }, "Station soft-deleted");
-
-      // #935: the automatic clear is a default-station change like any other,
-      // attributed to whoever deleted the station. Post-commit, fail-open.
-      if (clearedDefault) {
-        void OrganizationUpdateService.auditDefaultStationChange(
-          auditContextFromRequest(req),
-          organizationId,
-          { from: id, to: null, fromName: clearedDefault.name, toName: null }
-        );
-      }
 
       return HttpService.success(res, { id });
     } catch (error) {

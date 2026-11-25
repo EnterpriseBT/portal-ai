@@ -514,8 +514,7 @@ export class ApplicationService {
   /** Provision a full organization for an EXISTING user (#190 — the
    *  portalai CLI's `org create` / `seed org` path). Same transaction body
    *  the webhook uses: org + owner membership + system column definitions +
-   *  the Sandbox instance + the provisioned stations (#848) and their packs +
-   *  defaultStationId. */
+   *  the Sandbox instance + the provisioned stations (#848) and their packs. */
   static async provisionOrganizationFor(
     userId: string,
     opts: { name?: string } = {}
@@ -526,6 +525,7 @@ export class ApplicationService {
   }
 
   /** CLI seam (#190): resolve an existing user by email, then provision. */
+
   static async createOrganizationForEmail(email: string, name: string) {
     const user = await DbService.repository.users.findByEmail(email);
     if (!user) {
@@ -860,7 +860,11 @@ export class ApplicationService {
       tx
     );
 
-    await ApplicationService.provisionOrganizationWorkspace(createdOrg.id, tx);
+    const { stationIds } =
+      await ApplicationService.provisionOrganizationWorkspace(
+        createdOrg.id,
+        tx
+      );
 
     // #620: assign the owner their role via the user_role join (the seeded
     // roles were created by provisionOrganizationWorkspace above). Deterministic
@@ -878,8 +882,7 @@ export class ApplicationService {
       tx
     );
 
-    // #848: provisioning set the org's default station, so hand back the row
-    // as stored rather than a patched copy of the one created above.
+    // Hand back the row as stored rather than a copy of the one created above.
     const organization = await DbService.repository.organizations.findById(
       createdOrg.id,
       tx
@@ -895,13 +898,14 @@ export class ApplicationService {
     return {
       organization,
       organizationUser: createdOrgUser,
+      stationIds,
     };
   }
 
   /**
    * The scaffolding every organization gets: system column definitions, the
    * RBAC system roles and policies, a Sandbox connector instance, and the
-   * {@link PROVISIONED_STATIONS} (#848): Administrate, the default, with the
+   * {@link PROVISIONED_STATIONS} (#848): Administrate, with the
    * access tools and no data; and Playground, with the Sandbox and the packs
    * to build, share and query entities and views. Both also carry the Help
    * pack (#1044).
@@ -919,11 +923,14 @@ export class ApplicationService {
    *
    * Tier entitlement is deliberately not checked: a pack the plan lacks is
    * attached all the same and shows as inactive (#284).
+   *
+   * Returns the created stations' ids in {@link PROVISIONED_STATIONS} order,
+   * so `stationIds[0]` is Administrate (#1114: `db:create-org` reports it).
    */
   static async provisionOrganizationWorkspace(
     organizationId: string,
     tx: Parameters<Parameters<typeof DbService.transaction>[0]>[0]
-  ): Promise<void> {
+  ): Promise<{ stationIds: string[] }> {
     const systemId = SystemUtilities.id.system;
 
     // ── System column definitions ────────────────────────────────────
@@ -969,7 +976,6 @@ export class ApplicationService {
 
     // ── Provisioned stations (#848) ────────────────────────────────
     const stationIds: string[] = [];
-    let defaultStationId: string | null = null;
     for (const provisioned of PROVISIONED_STATIONS) {
       const stationModel = new StationModelFactory().create(systemId).update({
         organizationId,
@@ -982,7 +988,6 @@ export class ApplicationService {
         tx
       );
       stationIds.push(createdStation.id);
-      if (provisioned.isDefault) defaultStationId = createdStation.id;
 
       await DbService.repository.stationToolpacks.replaceForStation(
         createdStation.id,
@@ -1006,21 +1011,14 @@ export class ApplicationService {
       }
     }
 
-    // Set defaultStationId on organization
-    await DbService.repository.organizations.update(
-      organizationId,
-      { defaultStationId },
-      tx
-    );
-
     logger.info(
       {
         organizationId,
         connectorInstanceId: createdInstance.id,
         stationIds,
-        defaultStationId,
       },
       "Organization workspace provisioned"
     );
+    return { stationIds };
   }
 }

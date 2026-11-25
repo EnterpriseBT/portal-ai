@@ -8,7 +8,6 @@ import type {
   CreateStationBody,
   UpdateStationBody,
 } from "@portalai/core/contracts";
-import type { OrganizationUpdateResponse } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -49,16 +48,6 @@ export const stations = {
       url: `/api/stations/${encodeURIComponent(id)}`,
       method: "PATCH",
       onPermissionDenied: { invalidate: () => [queryKeys.stations.root] },
-    }),
-
-  setDefault: (orgId: string) =>
-    useAuthMutation<
-      OrganizationUpdateResponse,
-      { defaultStationId: string | null }
-    >({
-      url: `/api/organization/${encodeURIComponent(orgId)}`,
-      method: "PATCH",
-      onPermissionDenied: { invalidate: () => [queryKeys.organizations.root] },
     }),
 
   delete: (id: string) =>

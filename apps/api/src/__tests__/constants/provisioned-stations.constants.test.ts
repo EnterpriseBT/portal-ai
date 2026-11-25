@@ -5,11 +5,17 @@ import { isBuiltinToolpackSlug } from "@portalai/core/registries";
 import { PROVISIONED_STATIONS } from "../../constants/provisioned-stations.constants.js";
 
 // #848: the stations every new or reset org gets. Provisioning loops over
-// this list, so its shape is the contract: one default, real pack slugs, and
-// the two stations the help content names.
+// this list, so its shape is the contract: real pack slugs, and the two
+// stations the help content names. #1114: there's no default station.
 describe("PROVISIONED_STATIONS (#848)", () => {
-  it("has exactly one default station", () => {
-    expect(PROVISIONED_STATIONS.filter((s) => s.isDefault)).toHaveLength(1);
+  it("marks no station as a default (#1114)", () => {
+    for (const station of PROVISIONED_STATIONS) {
+      expect(station).not.toHaveProperty("isDefault");
+    }
+  });
+
+  it("lists Administrate first, the station `org create` reports (#1114)", () => {
+    expect(PROVISIONED_STATIONS[0]!.name).toBe("Administrate");
   });
 
   it("gives every station a unique name within the limit and a description", () => {
@@ -35,9 +41,11 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     }
   });
 
-  it("keeps the default station free of data", () => {
-    const [defaultStation] = PROVISIONED_STATIONS.filter((s) => s.isDefault);
-    expect(defaultStation.attachSandbox).toBe(false);
+  it("keeps Administrate free of data", () => {
+    const administrate = PROVISIONED_STATIONS.find(
+      (s) => s.name === "Administrate"
+    )!;
+    expect(administrate.attachSandbox).toBe(false);
   });
 
   it("Administrate's description covers members and tags, and doesn't promise custom access on every plan (#847, #1071)", () => {
@@ -60,13 +68,12 @@ describe("PROVISIONED_STATIONS (#848)", () => {
     );
   });
 
-  it("is Administrate (the default) and Playground", () => {
+  it("is Administrate and Playground", () => {
     expect(
       PROVISIONED_STATIONS.map((s) => ({
         name: s.name,
         builtinSlugs: [...s.builtinSlugs],
         attachSandbox: s.attachSandbox,
-        isDefault: s.isDefault,
       }))
     ).toEqual([
       {
@@ -78,7 +85,6 @@ describe("PROVISIONED_STATIONS (#848)", () => {
           "help",
         ],
         attachSandbox: false,
-        isDefault: true,
       },
       {
         name: "Playground",
@@ -89,7 +95,6 @@ describe("PROVISIONED_STATIONS (#848)", () => {
           "help",
         ],
         attachSandbox: true,
-        isDefault: false,
       },
     ]);
   });

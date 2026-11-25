@@ -381,14 +381,22 @@ describe("FAQ describes station scoping (#848)", () => {
     expect(a).toMatch(/tags \(create, edit, delete and apply tags\)/);
   });
 
-  // The default station of a new organization has no data by design, so the
+  // A new organization's Administrate station has no data by design, so the
   // data answers send the reader to a data station instead of telling them to
   // attach data to whichever station they are on.
+  // #1114: there's no org-wide default station any more.
+  it("no FAQ answer mentions a default station", () => {
+    for (const entry of FAQ_ENTRIES) {
+      expect(entry.answer).not.toMatch(/default station/i);
+      expect(entry.relatedGlossaryTerms ?? []).not.toContain("Default Station");
+    }
+  });
+
   it("the first-questions answer starts from a station set up for data", () => {
     const a = answer("How do I start asking questions about my data?");
     expect(a).toMatch(/^From a station set up for your data/);
     expect(a).toContain(
-      "A new organization's default station, Administrate, is for managing members, access and tags and has no data: use Playground or a station of your own."
+      "A new organization's Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own."
     );
   });
 
@@ -397,7 +405,7 @@ describe("FAQ describes station scoping (#848)", () => {
       "Why are the assistant's answers vague or missing my data?"
     );
     expect(a).toMatch(
-      /^First check the station is set up for data\. A new organization's default station, Administrate, manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it\./
+      /^First check the station is set up for data\. A new organization's Administrate station manages members, access and tags and has no data by design: open Playground or another data station rather than attaching data to it\./
     );
     // The rest of the diagnosis is unchanged.
     expect(a).toMatch(/view attached and shared with you/i);

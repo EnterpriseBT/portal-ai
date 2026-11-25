@@ -92,7 +92,6 @@ describe("GLOSSARY_ENTRIES", () => {
     "Job",
     "Job Status",
     "Organization",
-    "Default Station",
     // Billing (#176)
     "Subscription Plan",
     "Billing Portal",
@@ -518,12 +517,12 @@ describe("GLOSSARY_ENTRIES describe station scoping (#848)", () => {
     expect(toolPack.relatedTerms).toContain("Station");
   });
 
-  it("Default Station says a new organization's default is Administrate", () => {
-    const { definition } = find("Default Station");
-    expect(definition).toMatch(
-      /New organizations start with Administrate as the default/
-    );
-    expect(definition).toMatch(/set a different one from the Stations page/);
+  // #1114: the org-wide default station is gone, so no entry names it.
+  it("no entry names a default station", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      expect(entry.term).not.toBe("Default Station");
+      expect(entry.relatedTerms ?? []).not.toContain("Default Station");
+    }
   });
 
   it("no entry still names the retired My Station", () => {

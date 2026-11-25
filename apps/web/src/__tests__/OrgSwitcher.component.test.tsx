@@ -25,7 +25,6 @@ const org = (id: string, name: string, isCurrent: boolean): UserMembership => ({
     name,
     timezone: "UTC",
     ownerUserId: "u-1",
-    defaultStationId: null,
     tier: "standard",
     stripeCustomerId: null,
     stripeSubscriptionId: null,

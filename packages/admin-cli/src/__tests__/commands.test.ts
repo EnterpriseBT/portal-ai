@@ -178,10 +178,10 @@ describe("org update — the Stripe name step", () => {
       },
     ],
     [
-      "a station-only change",
+      "a timezone-only change",
       {
         org: { id: "o-1", name: "Acme", stripeCustomerId: "cus_1" },
-        changes: { defaultStationId: { from: "a", to: "b" } },
+        changes: { timezone: { from: "UTC", to: "Europe/London" } },
       },
     ],
   ])("no stripe step for %s", async (_label, result) => {

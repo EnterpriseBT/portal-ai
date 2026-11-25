@@ -23,8 +23,11 @@ const isStationId = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
 /** #935: the stations are named as they were when the change was recorded.
- *  Every write captures the names, so a missing one is only an odd or legacy
- *  entry, which reads a neutral "a station" rather than guessing why. */
+ *  Every write captured the names, so a missing one is only an odd or legacy
+ *  entry, which reads a neutral "a station" rather than guessing why.
+ *
+ *  #1114 removed the default station: nothing writes these entries any more,
+ *  but past ones still render in Settings → Activity. */
 function defaultStationSummary(
   metadata: Record<string, unknown>
 ): string | null {

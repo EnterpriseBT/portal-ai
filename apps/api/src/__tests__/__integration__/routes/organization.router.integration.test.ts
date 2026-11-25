@@ -207,8 +207,6 @@ describe("Organization Router", () => {
         "member.role.assign": true,
         "member.invite": true,
         "member.remove": true,
-        // #690: derived from class write on station (the default-station PATCH).
-        "station.default.set": true,
         // #689: derived from class write / delete on entity_record.
       });
     });
@@ -336,7 +334,6 @@ describe("Organization Router", () => {
       timezone: "UTC",
       ownerUserId: userId,
       tier: "standard",
-      defaultStationId: null,
       created: Date.now(),
       createdBy: "SYSTEM_TEST",
       updated: null,
@@ -439,7 +436,6 @@ describe("Organization Router", () => {
         timezone: "UTC",
         ownerUserId: strangerUserId,
         tier: "standard",
-        defaultStationId: null,
         created: Date.now(),
         createdBy: "SYSTEM_TEST",
         updated: null,
@@ -561,7 +557,6 @@ describe("Organization Router", () => {
         timezone: "UTC",
         ownerUserId: strangerId,
         tier: "standard",
-        defaultStationId: null,
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,

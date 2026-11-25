@@ -43,7 +43,6 @@
   "src/__tests__/CuratedViewsView.test.tsx": 1.9,
   "src/__tests__/DashboardView.test.tsx": 1.2,
   "src/__tests__/DataResult.test.tsx": 0.9,
-  "src/__tests__/DefaultStationMeta.test.tsx": 1.8,
   "src/__tests__/DeleteAccessItemDialog.test.tsx": 1.7,
   "src/__tests__/DeleteColumnDefinitionDialog.test.tsx": 2.1,
   "src/__tests__/DeleteConnectorEntityDialog.test.tsx": 2,

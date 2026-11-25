@@ -164,14 +164,8 @@ describe("stations.api", () => {
     });
   });
 
-  describe("setDefault", () => {
-    it("sends PATCH to /api/organization/:orgId with defaultStationId payload", () => {
-      stations.setDefault("org-456");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/organization/org-456",
-        method: "PATCH",
-        onPermissionDenied: { invalidate: expect.any(Function) },
-      });
-    });
+  // #1114: the default station is gone, and with it the SDK call that set it.
+  it("has no setDefault", () => {
+    expect("setDefault" in stations).toBe(false);
   });
 });

@@ -34,7 +34,6 @@ import {
   auditLog,
   organizations,
   organizationUsers,
-  stations,
   tiers,
   users,
 } from "./tables.js";
@@ -53,20 +52,12 @@ export interface ListUsersOptions {
   offset?: number;
 }
 
-export type OrgPatch = Partial<
-  Pick<Organization, "name" | "timezone" | "defaultStationId">
->;
+export type OrgPatch = Partial<Pick<Organization, "name" | "timezone">>;
 
 /** #936: what an org update actually changed (fields whose value moved). */
 export interface OrgChanges {
   name?: { from: string; to: string };
   timezone?: { from: string; to: string };
-  defaultStationId?: {
-    from: string | null;
-    to: string | null;
-    fromName: string | null;
-    toName: string | null;
-  };
 }
 
 export interface OrgUpdateResult {
@@ -80,9 +71,8 @@ export interface AdminStore {
   /** Live org by id → ADMIN_NOT_FOUND otherwise. */
   getOrg(id: string): Promise<Organization>;
   /** Patch a live org, stamping updated/updatedBy. #936: in one transaction
-   *  with the org row locked; a new default station must be a live station in
-   *  the org (else ADMIN_NOT_FOUND); a changed name or default station records
-   *  the app's `org.update` entry. Returns what changed. */
+   *  with the org row locked; a changed name records the app's `org.update`
+   *  entry. Returns what changed. */
   updateOrg(
     id: string,
     patch: OrgPatch,
@@ -203,34 +193,6 @@ export function createAdminStore(
         if (!current)
           throw new AdminNotFoundError(`Organization ${id} not found`);
 
-        const stationName = async (stationId: string | null) => {
-          if (!stationId) return null;
-          const [row] = await tx
-            .select({ name: stations.name })
-            .from(stations)
-            .where(
-              and(
-                eq(stations.id, stationId),
-                eq(stations.organizationId, id),
-                isNull(stations.deleted)
-              )
-            )
-            .limit(1);
-          return row?.name ?? null;
-        };
-
-        // A new default must be a live station in this org, as the app's
-        // PATCH requires; the CLI used to write any id.
-        let toName: string | null = null;
-        if (patch.defaultStationId) {
-          toName = await stationName(patch.defaultStationId);
-          if (toName === null) {
-            throw new AdminNotFoundError(
-              `Station ${patch.defaultStationId} not found in organization ${id}`
-            );
-          }
-        }
-
         // What would actually change; a no-op writes nothing, so the row
         // isn't stamped as edited by an operator who changed nothing.
         const changes: OrgChanges = {};
@@ -238,15 +200,6 @@ export function createAdminStore(
           changes.name = { from: current.name, to: patch.name };
         if (patch.timezone !== undefined && patch.timezone !== current.timezone)
           changes.timezone = { from: current.timezone, to: patch.timezone };
-        const from = current.defaultStationId ?? null;
-        const to = patch.defaultStationId ?? null;
-        if (patch.defaultStationId !== undefined && to !== from)
-          changes.defaultStationId = {
-            from,
-            to,
-            fromName: await stationName(from),
-            toName,
-          };
         if (Object.keys(changes).length === 0)
           return { org: current as Organization, changes };
 
@@ -257,15 +210,11 @@ export function createAdminStore(
           .returning();
         const org = row as Organization;
 
-        // The same entries the app records (#907 name, #935 default station),
-        // committed with the change, attributed to the operator's user when
-        // their session sub matches one.
+        // The same entry the app records (#907 name), committed with the
+        // change, attributed to the operator's user when their session sub
+        // matches one.
         const audited = [
           changes.name && { field: "name", ...changes.name },
-          changes.defaultStationId && {
-            field: "defaultStationId",
-            ...changes.defaultStationId,
-          },
         ].filter(Boolean) as Record<string, unknown>[];
         if (audited.length > 0) {
           const [operatorUser] = await tx

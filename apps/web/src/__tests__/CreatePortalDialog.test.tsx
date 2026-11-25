@@ -2,41 +2,19 @@ import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, pressEnter, expectNoAxeViolations } =
   await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 
 // Mock the sdk modules to avoid real API calls in the dialog
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    organizations: {
-      current: () => ({
-        data: {
-          organization: {
-            id: "org-1",
-            name: "Test Org",
-            timezone: "UTC",
-            ownerUserId: "user-1",
-            defaultStationId: "station-default",
-            created: 1710000000000,
-            createdBy: "user-1",
-            updated: null,
-            updatedBy: null,
-            deleted: null,
-            deletedBy: null,
-          },
-        },
-        error: null,
-        isLoading: false,
-        isError: false,
-        isSuccess: true,
-      }),
-    },
     stations: {
       list: () => ({
         data: {
           stations: [
             {
-              id: "station-default",
+              id: "station-1",
               organizationId: "org-1",
-              name: "Default Station",
+              name: "Sales Station",
               toolPacks: ["data_query"],
               created: 1710000000000,
               createdBy: "user-1",
@@ -157,12 +135,38 @@ describe("CreatePortalDialog", () => {
     expect(screen.queryByText("New Portal")).not.toBeInTheDocument();
   });
 
+  // #1114: there's no org default to fall back on, so nothing is preselected.
+  it("opens with no station selected", async () => {
+    render(<MockedCreatePortalDialog {...defaultProps} />);
+    const field = await screen.findByLabelText(/Station/);
+    expect(field).toHaveValue("");
+  });
+
+  it("won't create without a station, and says why", async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn();
+    render(<MockedCreatePortalDialog {...defaultProps} onSubmit={onSubmit} />);
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(await screen.findByText("Station is required")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Station/)).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+  });
+
   // #789: Enter in the station field creates, exactly like Create.
-  it("creates on a real Enter in the station field", async () => {
+  it("creates the picked station on a real Enter in the station field", async () => {
+    const user = userEvent.setup();
     const onSubmit = jest.fn();
     render(<MockedCreatePortalDialog {...defaultProps} onSubmit={onSubmit} />);
     const field = await screen.findByLabelText(/Station/);
-    await pressEnter(field);
+    await user.click(field);
+    await user.click(
+      await screen.findByRole("option", { name: "Other Station" })
+    );
+    await pressEnter(screen.getByLabelText(/Station/));
     expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({ stationId: "station-2" });
   });
 });

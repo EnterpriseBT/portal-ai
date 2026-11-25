@@ -70,37 +70,22 @@ describe("OrganizationUpdateService.apply (#907)", () => {
     } as never);
     await db
       .update(schema.organizations)
-      .set({ name: "Acme", defaultStationId: stationId })
+      .set({ name: "Acme" })
       .where(eq(schema.organizations.id, orgId));
   });
 
-  it("writes a name alone, leaving the default station, and returns the replaced name", async () => {
-    const { organization, previousName, previousDefaultStationId } =
+  it("renames and returns the replaced name", async () => {
+    const { organization, previousName } =
       await OrganizationUpdateService.apply(
         orgId,
         { name: "Acme Corp" },
         userId
       );
     expect(previousName).toBe("Acme");
-    // #935: the default it replaced (here unchanged) comes back too; its name
-    // is only read when the patch touches the default.
-    expect(previousDefaultStationId).toBe(stationId);
     expect(organization.name).toBe("Acme Corp");
-    expect(organization.defaultStationId).toBe(stationId);
     expect(organization.updatedBy).toBe(userId);
-  });
-
-  it("writes a station alone, leaving the name, and returns the replaced station's name", async () => {
-    const { organization, previousDefaultStationName } =
-      await OrganizationUpdateService.apply(
-        orgId,
-        { defaultStationId: null },
-        userId
-      );
-    expect(organization.name).toBe("Acme");
-    expect(organization.defaultStationId).toBeNull();
-    // #935: read under the row lock, for the audit entry.
-    expect(previousDefaultStationName).toBe("Default station");
+    // #1114: the row no longer carries a default station.
+    expect(organization).not.toHaveProperty("defaultStationId");
   });
 
   it("answers 404 for a deleted organization", async () => {

@@ -91,16 +91,12 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const navigate = useNavigate();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
-  const orgResult = sdk.organizations.current();
-  const defaultStationId =
-    orgResult.data?.organization.defaultStationId ?? null;
   // #284: one read drives both the attached-pack chips and the edit picker.
   const {
     entitledSlugs: entitledBuiltinSlugs,
     isEntitled,
     customPacksEntitled,
   } = useBuiltinEntitlements();
-  const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -132,8 +128,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleDeleteStation = useCallback(() => {
     deleteStationMutation.mutate(undefined, {
-      // Its portals go with it, their pins lose their portal link, and the
-      // org's default station may have been this one (#1041).
+      // Its portals go with it, and their pins lose their portal link (#1041).
       invalidate: stationDeleteKeys(),
       // The confirm dialog has no FormAlert, so a failure (e.g. a 403 or a
       // job lock) must surface as a toast rather than fail silently (#621).
@@ -307,11 +302,6 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           {
                             label: "Created",
                             value: DateFactory.relativeTime(station.created),
-                          },
-                          {
-                            label: "Organization Default",
-                            value: "Yes",
-                            hidden: !isDefaultStation,
                           },
                         ]}
                       />

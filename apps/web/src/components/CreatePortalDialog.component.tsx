@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import {
   CreatePortalBodySchema,
   type CreatePortalBody,
-  type OrganizationGetResponse,
   type StationListResponsePayload,
 } from "@portalai/core/contracts";
 import { GatedButton, Modal, pendingGate, Stack } from "@portalai/core/ui";
@@ -15,7 +14,6 @@ import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
 
 // ── Station option type ─────────────────────────────────────────────
@@ -28,7 +26,6 @@ interface StationOption {
 // ── Station picker ──────────────────────────────────────────────────
 
 interface StationPickerProps {
-  defaultStationId: string | null;
   selected: string | null;
   onChange: (stationId: string | null) => void;
   error?: string;
@@ -36,7 +33,6 @@ interface StationPickerProps {
 }
 
 const StationPicker: React.FC<StationPickerProps> = ({
-  defaultStationId,
   selected,
   onChange,
   error,
@@ -58,10 +54,9 @@ const StationPicker: React.FC<StationPickerProps> = ({
           label: s.name,
         }));
 
-        // Auto-select default station on first render
-        const effectiveSelected = selected ?? defaultStationId;
+        // #1114: nothing is preselected; the caller picks a station.
         const selectedOption =
-          options.find((o) => o.value === effectiveSelected) ?? null;
+          options.find((o) => o.value === selected) ?? null;
 
         return (
           <Autocomplete
@@ -110,9 +105,6 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
   const [stationId, setStationId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const stationRef = useDialogAutoFocus(open);
-  const [orgDefaultStationId, setOrgDefaultStationId] = useState<string | null>(
-    null
-  );
 
   React.useEffect(() => {
     if (open) {
@@ -121,13 +113,11 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
     }
   }, [open]);
 
-  const effectiveStationId = stationId ?? orgDefaultStationId;
-  const error =
-    touched && !effectiveStationId ? "Station is required" : undefined;
+  const error = touched && !stationId ? "Station is required" : undefined;
 
   const handleSubmit = () => {
     setTouched(true);
-    const body = { stationId: effectiveStationId ?? "" };
+    const body = { stationId: stationId ?? "" };
     const result = CreatePortalBodySchema.safeParse(body);
     if (!result.success) {
       requestAnimationFrame(() => focusFirstInvalidField());
@@ -168,35 +158,15 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       }
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
-        <OrgData>
-          {(orgResult) => (
-            <DataResult results={{ org: orgResult }}>
-              {(data) => {
-                const org = data.org as unknown as OrganizationGetResponse;
-                const defaultId = org.organization.defaultStationId;
-
-                // Sync org default into local state for submit logic
-                if (defaultId !== orgDefaultStationId) {
-                  // Use a timeout to avoid setState during render
-                  setTimeout(() => setOrgDefaultStationId(defaultId), 0);
-                }
-
-                return (
-                  <StationPicker
-                    defaultStationId={defaultId}
-                    selected={stationId}
-                    inputRef={stationRef}
-                    onChange={(id) => {
-                      setStationId(id);
-                      setTouched(true);
-                    }}
-                    error={error}
-                  />
-                );
-              }}
-            </DataResult>
-          )}
-        </OrgData>
+        <StationPicker
+          selected={stationId}
+          inputRef={stationRef}
+          onChange={(id) => {
+            setStationId(id);
+            setTouched(true);
+          }}
+          error={error}
+        />
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>

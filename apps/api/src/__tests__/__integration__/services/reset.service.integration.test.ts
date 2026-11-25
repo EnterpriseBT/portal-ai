@@ -26,7 +26,7 @@ import {
 } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { ResetService } from "../../../services/reset.service.js";
 import { PROVISIONED_STATIONS } from "../../../constants/provisioned-stations.constants.js";
@@ -42,7 +42,7 @@ type Db = ReturnType<typeof drizzle>;
 
 /**
  * Reset re-runs `ApplicationService.provisionOrganizationWorkspace`, which
- * needs the `sandbox` connector definition to build the default station.
+ * needs the `sandbox` connector definition to build the Playground station.
  * Without this row provisioning warns and skips, and the scaffolding
  * assertions below would pass vacuously.
  */
@@ -292,7 +292,9 @@ describe("ResetService integration tests (#295)", () => {
       expect(colDefs).toHaveLength(0);
     });
 
-    it("keeps the org row and points it at the new station (case 6)", async () => {
+    // #1114: the org row survives the reset; there's no default station to
+    // re-point, and a stale default_station_id is left alone (nothing reads it).
+    it("keeps the org row and re-provisions its stations (case 6)", async () => {
       const [org] = await db
         .select()
         .from(schema.organizations)
@@ -300,21 +302,14 @@ describe("ResetService integration tests (#295)", () => {
       expect(org).toBeDefined();
       expect(org.deleted).toBeNull();
 
-      // Nulled mid-cascade to break the org ↔ station cycle, then set to
-      // the re-provisioned station — not left null, which is what the
-      // smoke walk caught.
-      expect(org.defaultStationId).not.toBeNull();
-      expect(org.defaultStationId).not.toBe(target.stationId);
-
-      const [station] = await db
+      const reprovisioned = await db
         .select()
         .from(schema.stations)
-        .where(eq(schema.stations.id, org.defaultStationId as string));
-      expect(station.organizationId).toBe(target.orgId);
-      // #848: the default is the provisioned default station, as on a new org.
-      expect(station.name).toBe(
-        PROVISIONED_STATIONS.find((p) => p.isDefault)!.name
+        .where(eq(schema.stations.organizationId, target.orgId));
+      expect(reprovisioned.map((s) => s.name).sort()).toEqual(
+        PROVISIONED_STATIONS.map((p) => p.name).sort()
       );
+      expect(reprovisioned.map((s) => s.id)).not.toContain(target.stationId);
     });
 
     it("keeps the owner's membership and drops the rest (case 7)", async () => {
@@ -331,11 +326,12 @@ describe("ResetService integration tests (#295)", () => {
     });
 
     it("leaves the control org fully intact (case 8)", async () => {
-      const [org] = await db
-        .select()
-        .from(schema.organizations)
-        .where(eq(schema.organizations.id, control.orgId));
-      expect(org.defaultStationId).toBe(control.stationId);
+      // The control org's dormant default_station_id (set by the fixture) is
+      // untouched: the reset is scoped to its own org (#1114: nothing reads it).
+      const [org] = (await db.execute(
+        sql`SELECT default_station_id FROM organizations WHERE id = ${control.orgId}`
+      )) as unknown as { default_station_id: string | null }[];
+      expect(org.default_station_id).toBe(control.stationId);
 
       const wideCols = await db
         .select()

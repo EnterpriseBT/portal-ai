@@ -536,8 +536,6 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
       "member.role.assign": { verb: "manage", resourceType: "member" },
       "member.invite": { verb: "invite", resourceType: "member" },
       "member.remove": { verb: "delete", resourceType: "member" },
-      // #690: derived; granted by class `write station` (the org PATCH's rule).
-      "station.default.set": { verb: "write", resourceType: "station" },
     };
     for (const action of CALLER_CAPABILITY_ACTIONS) {
       const { verb, resourceType } = CAPABILITY_PAIRS[action];
@@ -548,6 +546,11 @@ describe("RESOURCE_CAPABILITIES — statement validity matrix (#630)", () => {
         )
       ).toBe(true);
     }
+  });
+
+  // #1114: the default station is gone, and with it its derived capability.
+  it("has no station.default.set caller capability", () => {
+    expect(CALLER_CAPABILITY_ACTIONS).not.toContain("station.default.set");
   });
 
   it("org takes write (rename, #907) and delete", () => {

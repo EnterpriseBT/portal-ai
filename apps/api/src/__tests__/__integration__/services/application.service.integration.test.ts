@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { User } from "@portalai/core/models";
@@ -266,21 +267,20 @@ describe("ApplicationService Integration Tests", () => {
       }
     });
 
-    it("sets defaultStationId to the default provisioned station (#848)", async () => {
+    // #1114: there's no org-wide default station any more.
+    it("provisions Administrate and Playground without writing a default station", async () => {
       const owner = createOwner();
 
       const result = await provisionTestOrg(owner);
 
-      const orgsRepo = new Repository(organizations);
-      const found = await orgsRepo.findById(result.organization.id, db);
-
       const created = await orgStations(result.organization.id);
-      const defaultName = PROVISIONED_STATIONS.find((s) => s.isDefault)!.name;
-      const station = created.find((s) => s.name === defaultName);
-
-      expect(station).toBeDefined();
-      expect(found?.defaultStationId).toBe(station?.id);
-      expect(result.organization.defaultStationId).toBe(station?.id);
+      expect(created.map((s) => s.name).sort()).toEqual(
+        PROVISIONED_STATIONS.map((s) => s.name).sort()
+      );
+      const [row] = (await db.execute(
+        sql`SELECT default_station_id FROM organizations WHERE id = ${result.organization.id}`
+      )) as unknown as { default_station_id: string | null }[];
+      expect(row.default_station_id).toBeNull();
     });
 
     it("fails, and leaves no organization behind, when the sandbox definition does not exist (#848)", async () => {

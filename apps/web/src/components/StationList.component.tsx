@@ -5,7 +5,6 @@ import type {
   StationListRequestQuery,
   StationListResponsePayload,
 } from "@portalai/core/contracts";
-import type { OrganizationGetResponse } from "@portalai/core/contracts";
 import {
   CardList,
   DetailCard,
@@ -21,10 +20,7 @@ import { FavoriteToggle } from "./FavoriteToggle.component";
 import { FavoritesEmptyResults } from "./FavoritesEmptyResults.component";
 import { emptyListHelp } from "../utils/empty-list-help.util";
 import { RouterLink } from "./RouterLink.component";
-import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
-import StarIcon from "@mui/icons-material/Star";
-import StarOutlineIcon from "@mui/icons-material/StarOutline";
 
 import DataResult from "./DataResult.component";
 import { SyncTotal } from "./SyncTotal.component";
@@ -55,19 +51,6 @@ export const StationDataList: React.FC<StationDataListProps> = ({
   return <>{children(res)}</>;
 };
 
-// ── Organization data component ─────────────────────────────────────
-
-interface OrgDataProps {
-  children: (
-    data: ReturnType<typeof sdk.organizations.current>
-  ) => React.ReactNode;
-}
-
-export const OrgData: React.FC<OrgDataProps> = ({ children }) => {
-  const res = sdk.organizations.current();
-  return <>{children(res)}</>;
-};
-
 // ── Station card (pure UI) ──────────────────────────────────────────
 
 /** A station list row: the station plus the caller's capabilities on it. */
@@ -77,11 +60,6 @@ export interface StationCardUIProps {
   station: StationRow;
   /** #1072: a control beside the name (the favorite star). */
   titleAction?: React.ReactNode;
-  isDefault: boolean;
-  /** #690: the caller may change the org's default station
-   *  (`station.default.set`, owner/admin). */
-  canSetDefault: boolean;
-  onSetDefault: (station: Station) => void;
   onDelete: (station: Station) => void;
   /**
    * Built-in pack slugs the org's tier includes (#284). Chips for packs
@@ -101,9 +79,6 @@ export interface StationCardUIProps {
 export const StationCardUI: React.FC<StationCardUIProps> = ({
   station,
   titleAction,
-  isDefault,
-  canSetDefault,
-  onSetDefault,
   onDelete,
   entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
   customPacksEntitled = true,
@@ -112,16 +87,6 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   // #1063: the station read names its packs; one map per station.
   const packLabels = stationToolpackLabels(station.toolpacks);
   const actions: ActionSuiteItem[] = [
-    ...(!isDefault
-      ? [
-          {
-            label: "Set as default",
-            icon: <StarOutlineIcon />,
-            onClick: () => onSetDefault(station),
-            gate: decideActionGate({ allowed: canSetDefault }),
-          },
-        ]
-      : []),
     {
       label: "Delete",
       icon: <DeleteIcon />,
@@ -144,20 +109,6 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
     >
       <MetadataList
         items={[
-          {
-            label: "Status",
-            value: (
-              <Chip
-                label="Default"
-                size="small"
-                color="primary"
-                icon={<StarIcon />}
-                data-testid="default-badge"
-              />
-            ),
-            variant: "chip",
-            hidden: !isDefault,
-          },
           {
             label: "Description",
             value: station.description ?? "",
@@ -207,10 +158,6 @@ export interface StationListUIProps {
    * nothing is starred and says how to star a station.
    */
   favoritesOnly?: boolean;
-  defaultStationId: string | null;
-  /** #690: see {@link StationCardUIProps.canSetDefault}. */
-  canSetDefault: boolean;
-  onSetDefault: (station: Station) => void;
   onDelete: (station: Station) => void;
   /** When true, shows a "no results" message instead of the full empty state. */
   hasActiveFilters?: boolean;
@@ -233,9 +180,6 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   stations,
   renderTitleAction,
   favoritesOnly,
-  defaultStationId,
-  canSetDefault,
-  onSetDefault,
   onDelete,
   hasActiveFilters,
   entitledBuiltinSlugs,
@@ -261,9 +205,6 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           key={station.id}
           station={station}
           titleAction={renderTitleAction?.(station)}
-          isDefault={station.id === defaultStationId}
-          canSetDefault={canSetDefault}
-          onSetDefault={onSetDefault}
           onDelete={onDelete}
           entitledBuiltinSlugs={entitledBuiltinSlugs}
           customPacksEntitled={customPacksEntitled}
@@ -278,7 +219,6 @@ export const StationListUI: React.FC<StationListUIProps> = ({
 export interface StationListConnectedProps {
   query: StationListRequestQuery;
   setTotal: (t: number) => void;
-  onSetDefault: (station: Station) => void;
   hasActiveFilters?: boolean;
   /** #1072: see {@link StationListUIProps.favoritesOnly}. */
   favoritesOnly?: boolean;
@@ -288,7 +228,6 @@ export interface StationListConnectedProps {
 export const StationListConnected: React.FC<StationListConnectedProps> = ({
   query,
   setTotal,
-  onSetDefault,
   onDelete,
   hasActiveFilters,
   favoritesOnly,
@@ -297,45 +236,33 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   const { entitledSlugs: entitledBuiltinSlugs, customPacksEntitled } =
     useBuiltinEntitlements();
   return (
-    <OrgData>
-      {(orgResult) => (
-        <StationDataList query={query}>
-          {(listResult) => (
-            <SyncTotal total={listResult.data?.total} setTotal={setTotal}>
-              <DataResult results={{ list: listResult, org: orgResult }}>
-                {(data) => {
-                  const list =
-                    data.list as unknown as StationListResponsePayload;
-                  const org = data.org as unknown as OrganizationGetResponse;
-                  return (
-                    <StationListUI
-                      stations={list.stations}
-                      defaultStationId={org.organization.defaultStationId}
-                      // #690: fails closed while unknown.
-                      canSetDefault={
-                        org.capabilities?.["station.default.set"] ?? false
-                      }
-                      onSetDefault={onSetDefault}
-                      onDelete={onDelete}
-                      hasActiveFilters={hasActiveFilters}
-                      favoritesOnly={favoritesOnly}
-                      renderTitleAction={(station) => (
-                        <FavoriteToggle
-                          target={{ type: "station", id: station.id }}
-                          name={station.name}
-                          isFavorite={station.isFavorite ?? false}
-                        />
-                      )}
-                      entitledBuiltinSlugs={entitledBuiltinSlugs}
-                      customPacksEntitled={customPacksEntitled}
+    <StationDataList query={query}>
+      {(listResult) => (
+        <SyncTotal total={listResult.data?.total} setTotal={setTotal}>
+          <DataResult results={{ list: listResult }}>
+            {(data) => {
+              const list = data.list as unknown as StationListResponsePayload;
+              return (
+                <StationListUI
+                  stations={list.stations}
+                  onDelete={onDelete}
+                  hasActiveFilters={hasActiveFilters}
+                  favoritesOnly={favoritesOnly}
+                  renderTitleAction={(station) => (
+                    <FavoriteToggle
+                      target={{ type: "station", id: station.id }}
+                      name={station.name}
+                      isFavorite={station.isFavorite ?? false}
                     />
-                  );
-                }}
-              </DataResult>
-            </SyncTotal>
-          )}
-        </StationDataList>
+                  )}
+                  entitledBuiltinSlugs={entitledBuiltinSlugs}
+                  customPacksEntitled={customPacksEntitled}
+                />
+              );
+            }}
+          </DataResult>
+        </SyncTotal>
       )}
-    </OrgData>
+    </StationDataList>
   );
 };

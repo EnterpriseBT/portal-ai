@@ -10,7 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -1498,51 +1498,6 @@ describe("Station Router", () => {
       expect(keptRows.map((r) => r.deleted)).toEqual([null]);
     });
 
-    // #907: a default-station PATCH locks the org row, sees the station live
-    // and writes it as the default. A delete that ran its clear while that
-    // write was uncommitted matched nothing, so the default dangled on a
-    // deleted station. The delete now waits for the org row lock first.
-    it("waits for a default-station write holding the org row, then clears it", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-      const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
-
-      const writer = postgres(process.env.DATABASE_URL!, { max: 1 });
-      let settled = false;
-      let deletion!: Promise<request.Response>;
-      try {
-        await writer.begin(async (tx) => {
-          // What the PATCH does under OrganizationUpdateService.apply.
-          await tx`select id from organizations where id = ${organizationId} for update`;
-          await tx`update organizations set default_station_id = ${station.id} where id = ${organizationId}`;
-
-          deletion = request(app)
-            .delete(`/api/stations/${station.id}`)
-            .then((res) => {
-              settled = true;
-              return res;
-            });
-          await new Promise((r) => setTimeout(r, 500));
-          expect(settled).toBe(false);
-        });
-      } finally {
-        await writer.end();
-      }
-
-      const res = await deletion;
-      expect(res.status).toBe(200);
-      const [org] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(organizations)
-        .where(eq(organizations.id, organizationId));
-      expect(org.defaultStationId).toBeNull();
-    });
-
     it("soft-deletes portals, hard-deletes messages, and detaches pinned results", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
@@ -1608,80 +1563,48 @@ describe("Station Router", () => {
       expect(preservedResult.portalId).toBeNull();
     });
 
-    it("clears org defaultStationId when the default station is deleted", async () => {
-      const { organizationId, userId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
-
-      // Set this station as the org default
-      await (db as ReturnType<typeof drizzle>)
-        .update(organizations)
-        .set({ defaultStationId: station.id } as never)
-        .where(eq(organizations.id, organizationId));
-
-      await request(app).delete(`/api/stations/${station.id}`).expect(200);
-
-      const [org] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(organizations)
-        .where(eq(organizations.id, organizationId));
-      expect(org.defaultStationId).toBeNull();
-
-      // #935: the automatic clear is audited, attributed to the deleter.
-      const rows = await defaultStationAuditRows(organizationId, 1);
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({
-        userId,
-        action: "org.update",
-        targetType: "organization",
-        targetId: organizationId,
-        metadata: {
-          field: "defaultStationId",
-          from: station.id,
-          to: null,
-          fromName: station.name,
-          toName: null,
-        },
-      });
-    });
-
-    it("does not clear org defaultStationId when a non-default station is deleted", async () => {
+    // #1114: there's no default station. A delete leaves the org row alone
+    // (no clear, no org lock, no org.update entry), even when the dormant
+    // default_station_id still names the station.
+    it("leaves the organization alone, even if its old default named the station", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
-
-      const defaultStation = createStation(organizationId);
-      const otherStation = createStation(organizationId);
+      const station = createStation(organizationId);
       await (db as ReturnType<typeof drizzle>)
         .insert(stations)
-        .values([defaultStation as never, otherStation as never]);
-
-      await (db as ReturnType<typeof drizzle>)
-        .update(organizations)
-        .set({ defaultStationId: defaultStation.id } as never)
-        .where(eq(organizations.id, organizationId));
-
-      await request(app).delete(`/api/stations/${otherStation.id}`).expect(200);
-
-      const [org] = await (db as ReturnType<typeof drizzle>)
+        .values(station as never);
+      await (db as ReturnType<typeof drizzle>).execute(
+        sql`UPDATE organizations SET default_station_id = ${station.id} WHERE id = ${organizationId}`
+      );
+      const [before] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(organizations)
         .where(eq(organizations.id, organizationId));
-      expect(org.defaultStationId).toBe(defaultStation.id);
+
+      await request(app).delete(`/api/stations/${station.id}`).expect(200);
+
+      const [after] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, organizationId));
+      expect(after.updated).toBe(before.updated);
+      const [raw] = (await (db as ReturnType<typeof drizzle>).execute(
+        sql`SELECT default_station_id FROM organizations WHERE id = ${organizationId}`
+      )) as unknown as { default_station_id: string | null }[];
+      expect(raw.default_station_id).toBe(station.id);
       expect(await defaultStationAuditRows(organizationId, 0)).toHaveLength(0);
     });
 
     it("returns 404 for unknown station", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app).delete(`/api/stations/${generateId()}`).expect(404);
+      const res = await request(app)
+        .get(`/api/stations/${generateId()}`)
+        .expect(404);
+
+      expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
     });
   });
 });
