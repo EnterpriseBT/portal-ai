@@ -477,6 +477,10 @@ export const ROUTE_AUTHORIZATION: Record<string, RouteAuthorization> = {
     reason:
       "public marketing config (public tiers, prices, contacts); no tenant data, mounted before jwtCheck",
   },
+  "GET /api/search": {
+    kind: "authorized",
+    by: "org filter + visibilityPredicate per type, readable tags only (#1076)",
+  },
   "GET /api/rbac/objects": {
     kind: "authorized",
     by: "customRbac entitlement + member.role.assign + org filter + visibilityPredicate per type",

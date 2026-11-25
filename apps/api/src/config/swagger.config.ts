@@ -58,6 +58,7 @@ import {
   GroupMembersResponseSchema,
   MemberGroupsSetRequestSchema,
   RbacObjectSearchResponseSchema,
+  SearchResponsePayloadSchema,
   InviteCreateRequestSchema,
   AcceptInvitationRequestSchema,
   AcceptInvitationResponseSchema,
@@ -484,6 +485,7 @@ const orgDeleteSchemas: Record<string, unknown> = {
     RbacObjectSearchResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+  SearchResponse: z.toJSONSchema(SearchResponsePayloadSchema, JSON_SCHEMA_OPTS),
   InviteCreateRequest: z.toJSONSchema(
     InviteCreateRequestSchema,
     JSON_SCHEMA_OPTS
@@ -2472,6 +2474,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Profile",
         description: "User profile and authentication endpoints",
+      },
+      {
+        name: "Search",
+        description: "The command palette's read-scoped search (#1076)",
       },
       {
         name: "Connector Definitions",

@@ -403,6 +403,14 @@ export function ilikeContains(column: SQLWrapper, term: string): SQL {
   return sql`${column} ILIKE ${"%" + escapeLike(term) + "%"} ESCAPE '\\'`;
 }
 
+/**
+ * A "starts with" match: case-insensitive, `term` matched literally. The
+ * command palette's prefix ranking and `#tag` match (#1076) use it.
+ */
+export function ilikeStartsWith(column: SQLWrapper, term: string): SQL {
+  return sql`${column} ILIKE ${escapeLike(term) + "%"} ESCAPE '\\'`;
+}
+
 function buildTypedArrayCondition(
   colRef: SQL,
   operator: FilterOperator,
