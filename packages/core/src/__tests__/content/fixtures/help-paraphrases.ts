@@ -98,6 +98,15 @@ export const HELP_PARAPHRASES: readonly { query: string; expect: string }[] = [
     query: "the import worked but nothing showed up",
     expect: "troubleshooting:an-import-finished-but-no-records-appeared",
   },
+  // #1121: the browser's raw text, which the app used to show.
+  {
+    query: "it says failed to fetch",
+    expect: "troubleshooting:something-couldn-t-reach-the-server",
+  },
+  {
+    query: "network error when saving",
+    expect: "troubleshooting:something-couldn-t-reach-the-server",
+  },
   {
     query: "entity is locked by a job",
     expect: "troubleshooting:actions-are-paused-because-a-job-is-running",

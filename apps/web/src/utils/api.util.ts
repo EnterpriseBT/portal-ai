@@ -15,6 +15,7 @@ import { useAuth } from "../providers/Auth.provider";
 import { handleAuthError } from "./auth-error.util";
 import {
   isPermissionDenied,
+  NETWORK_ERROR_CODE,
   serverErrorMessage,
 } from "./permission-denied.util";
 import { useToast } from "./toast.context";
@@ -52,6 +53,15 @@ export const LONG_WRITE_TIMEOUT_MS = 300_000;
  *  it, so the copy says to check before retrying. */
 export const REQUEST_TIMEOUT_MESSAGE =
   "This is taking longer than expected. It may still finish, so check before trying again.";
+
+/** Shown after the call's own message ("Couldn't load the stations."). */
+export const NETWORK_ERROR_READ_MESSAGE =
+  "The server couldn't be reached. Check your connection and try again.";
+
+/** A write's request may have been applied before the connection dropped
+ *  (#753), so, like a timeout, the copy doesn't claim nothing was saved. */
+export const NETWORK_ERROR_WRITE_MESSAGE =
+  "The server couldn't be reached. Check your connection, then check whether the change saved before trying again.";
 
 /**
  * A signal that aborts after `ms`, or when `outer` aborts. Built from an
@@ -162,10 +172,24 @@ async function sendApiRequest<T>(
     headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
   }
 
-  const response = await fetch(resolveApiUrl(url), {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(resolveApiUrl(url), {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    // #1121: no response at all. An abort (a timeout or the caller's own)
+    // rejects with a DOMException and passes through for its handlers.
+    if (error instanceof TypeError) {
+      throw new ApiError(
+        isRead ? NETWORK_ERROR_READ_MESSAGE : NETWORK_ERROR_WRITE_MESSAGE,
+        NETWORK_ERROR_CODE,
+        0
+      );
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     const body = (await response.json()) as ApiErrorResponse;

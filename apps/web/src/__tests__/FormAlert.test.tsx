@@ -88,6 +88,23 @@ describe("FormAlert", () => {
   });
 });
 
+describe("FormAlert with no response from the server (#1121)", () => {
+  it("shows the reason alone, with its code, not a generic lead", () => {
+    render(
+      <FormAlert
+        serverError={{
+          message: "The server couldn't be reached. Check your connection.",
+          code: "NETWORK_ERROR",
+        }}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /^The server couldn't be reached\. Check your connection\. \(NETWORK_ERROR\)$/
+    );
+    expect(screen.queryByText(/Something went wrong/)).toBeNull();
+  });
+});
+
 describe("FormAlert accessibility", () => {
   it("has no axe violations", async () => {
     const { container } = render(
