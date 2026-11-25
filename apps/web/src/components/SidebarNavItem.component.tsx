@@ -34,6 +34,18 @@ export interface SidebarNavItemUIProps {
   onToggle?: () => void;
   onClose?: () => void;
   selected?: boolean;
+  /**
+   * The icon's colour, from the theme (#1122). Nav items stay neutral; the
+   * Favorites group's star takes `favorite` so it stands out, and its
+   * entries take `primary`.
+   */
+  iconColor?: "favorite" | "primary";
+  /**
+   * An entry inside a group (a favorite under Favorites): indented, with a
+   * smaller icon, so it reads as a level below the nav items. Collapsed to
+   * icons, it isn't indented.
+   */
+  nested?: boolean;
 }
 
 export const SidebarNavItemUI = ({
@@ -48,7 +60,10 @@ export const SidebarNavItemUI = ({
   onToggle,
   onClose,
   selected = false,
+  iconColor,
+  nested = false,
 }: SidebarNavItemUIProps) => {
+  const indented = nested && !collapsed;
   const hasChildren = Boolean(children) || Boolean(items?.length);
 
   const handleClick = () => {
@@ -78,15 +93,20 @@ export const SidebarNavItemUI = ({
       selected={selected}
       onClick={handleClick}
       sx={(theme) => ({
-        height: 48,
+        height: indented ? 40 : 48,
         paddingX: theme.spacing(3),
+        ...(indented && { paddingLeft: theme.spacing(6) }),
         display: "flex",
         alignItems: "center",
         gap: theme.spacing(2),
       })}
     >
       <ListItemIcon sx={{ minWidth: "auto" }}>
-        <Icon name={icon} />
+        <Icon
+          name={icon}
+          color={iconColor}
+          fontSize={indented ? "small" : undefined}
+        />
       </ListItemIcon>
       {/* A long name (a favorite's, #1122) truncates rather than wraps. */}
       {!collapsed && (

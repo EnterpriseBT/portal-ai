@@ -51,6 +51,8 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
         href={item.href}
         collapsed={collapsed}
         selected={item.href === activeHref}
+        iconColor="primary"
+        nested
       />
     ));
 
@@ -67,6 +69,7 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
   return (
     <SidebarNavItemUI
       icon={IconName.Star}
+      iconColor="favorite"
       label="Favorites"
       collapsed={false}
       open={open}
@@ -77,7 +80,8 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
           variant="caption"
           color="text.secondary"
           component="p"
-          paddingX={3}
+          paddingLeft={6}
+          paddingRight={3}
           paddingY={1}
         >
           Star a station, pinned result, view or connector to keep it here.
@@ -91,6 +95,7 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
               icon={showAll ? IconName.ExpandLess : IconName.ExpandMore}
               label={showAll ? "Show fewer" : `Show all (${items.length})`}
               collapsed={false}
+              nested
               onClick={() => setShowAll((all) => !all)}
             />
           )}

@@ -40,6 +40,15 @@ describe("SidebarFavoritesUI (#1122)", () => {
     );
     await expectNoAxeViolations(container);
 
+    // The group's star is the favorite colour; its entries, a level below
+    // the nav items, have smaller primary-coloured icons.
+    expect(toggle.querySelector("svg")).toHaveClass("MuiSvgIcon-colorFavorite");
+    const entryIcon = screen
+      .getByRole("link", { name: "Favorite 1" })
+      .querySelector("svg");
+    expect(entryIcon).toHaveClass("MuiSvgIcon-colorPrimary");
+    expect(entryIcon).toHaveClass("MuiSvgIcon-fontSizeSmall");
+
     await userEvent.click(
       screen.getByRole("button", { name: "Show all (12)" })
     );
@@ -80,6 +89,13 @@ describe("SidebarFavoritesUI (#1122)", () => {
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(8);
     expect(links[0]).toHaveAccessibleName("Favorite 1");
+    // Collapsed to icons, entries keep their colour at full size.
+    expect(links[0].querySelector("svg")).toHaveClass(
+      "MuiSvgIcon-colorPrimary"
+    );
+    expect(links[0].querySelector("svg")).not.toHaveClass(
+      "MuiSvgIcon-fontSizeSmall"
+    );
     expect(screen.queryByText("Favorite 1")).toBeNull();
     await expectNoAxeViolations(container);
   });
