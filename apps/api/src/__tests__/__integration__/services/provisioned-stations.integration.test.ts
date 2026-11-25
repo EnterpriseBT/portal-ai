@@ -187,14 +187,18 @@ describe("provisioned stations in a portal session — integration (#848)", () =
     }
   });
 
-  // #1114: `portalai org create --json` reports this as `stationId`.
-  it("finds the org's Administrate station for org create's output", async () => {
-    expect(await ApplicationService.administrateStationId(orgId)).toBe(
-      administrateId
-    );
-    expect(
-      await ApplicationService.administrateStationId("no-such-org")
-    ).toBeNull();
+  // #1114: `portalai org create --json` reports stationIds[0] as `stationId`.
+  it("provisioning returns Administrate's id first", async () => {
+    const result = await ApplicationService.provisionOrganizationFor(ownerId, {
+      name: "Second org",
+    });
+    const [first] = await d
+      .select()
+      .from(schema.stations)
+      .where(eq(schema.stations.id, result.stationIds[0]!));
+    expect(first?.name).toBe(PROVISIONED_STATIONS[0]!.name);
+    expect(first?.organizationId).toBe(result.organization.id);
+    expect(result.stationIds).toHaveLength(PROVISIONED_STATIONS.length);
   });
 
   it("a pack the tier lacks is attached all the same and reported as unentitled", async () => {

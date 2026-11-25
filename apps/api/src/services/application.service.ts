@@ -12,7 +12,6 @@ import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { organizations } from "../db/schema/organizations.table.js";
 import { users } from "../db/schema/users.table.js";
-import { stations } from "../db/schema/stations.table.js";
 import { db } from "../db/client.js";
 import type {
   DbClient,
@@ -526,24 +525,6 @@ export class ApplicationService {
   }
 
   /** CLI seam (#190): resolve an existing user by email, then provision. */
-  /**
-   * #1114: the org's provisioned Administrate station (the first entry of
-   * PROVISIONED_STATIONS, system-created), or null when it's been deleted.
-   * `portalai org create --json` reports it as `stationId`.
-   */
-  static async administrateStationId(
-    organizationId: string
-  ): Promise<string | null> {
-    const [administrate] = await DbService.repository.stations.findMany(
-      and(
-        eq(stations.organizationId, organizationId),
-        eq(stations.name, PROVISIONED_STATIONS[0]!.name),
-        eq(stations.createdBy, SystemUtilities.id.system),
-        isNull(stations.deleted)
-      )
-    );
-    return administrate?.id ?? null;
-  }
 
   static async createOrganizationForEmail(email: string, name: string) {
     const user = await DbService.repository.users.findByEmail(email);
@@ -879,7 +860,11 @@ export class ApplicationService {
       tx
     );
 
-    await ApplicationService.provisionOrganizationWorkspace(createdOrg.id, tx);
+    const { stationIds } =
+      await ApplicationService.provisionOrganizationWorkspace(
+        createdOrg.id,
+        tx
+      );
 
     // #620: assign the owner their role via the user_role join (the seeded
     // roles were created by provisionOrganizationWorkspace above). Deterministic
@@ -913,6 +898,7 @@ export class ApplicationService {
     return {
       organization,
       organizationUser: createdOrgUser,
+      stationIds,
     };
   }
 
@@ -937,11 +923,14 @@ export class ApplicationService {
    *
    * Tier entitlement is deliberately not checked: a pack the plan lacks is
    * attached all the same and shows as inactive (#284).
+   *
+   * Returns the created stations' ids in {@link PROVISIONED_STATIONS} order,
+   * so `stationIds[0]` is Administrate (#1114: `db:create-org` reports it).
    */
   static async provisionOrganizationWorkspace(
     organizationId: string,
     tx: Parameters<Parameters<typeof DbService.transaction>[0]>[0]
-  ): Promise<void> {
+  ): Promise<{ stationIds: string[] }> {
     const systemId = SystemUtilities.id.system;
 
     // ── System column definitions ────────────────────────────────────
@@ -1030,5 +1019,6 @@ export class ApplicationService {
       },
       "Organization workspace provisioned"
     );
+    return { stationIds };
   }
 }

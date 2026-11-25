@@ -248,10 +248,20 @@ describe("provisionOrganizationFor (the shared transaction body)", () => {
     expect(repos.users.create).not.toHaveBeenCalled();
   });
 
-  it("provisionOrganizationWorkspace resolves to nothing (#848)", async () => {
+  // #1114: `db:create-org` reports stationIds[0] (Administrate) as stationId.
+  it("provisionOrganizationWorkspace returns its station ids in PROVISIONED_STATIONS order", async () => {
     await expect(
       ApplicationService.provisionOrganizationWorkspace("org-9", "TX" as never)
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      stationIds: PROVISIONED_STATIONS.map((_, i) => `st-${i + 1}`),
+    });
+  });
+
+  it("provisionOrganizationFor hands back the provisioned station ids (#1114)", async () => {
+    const result = await ApplicationService.provisionOrganizationFor("u-77");
+    expect(result.stationIds).toEqual(
+      PROVISIONED_STATIONS.map((_, i) => `st-${i + 1}`)
+    );
   });
 
   it("missing sandbox definition → throws and creates no instance, station or link (#848)", async () => {

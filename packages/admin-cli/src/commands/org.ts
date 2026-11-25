@@ -74,10 +74,7 @@ function validatePatch(patch: OrgPatch): OrgPatch {
       parsed.error.issues[0]?.message ?? "Invalid organization update"
     );
   }
-  return {
-    ...patch,
-    ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-  };
+  return { ...patch, name: parsed.data.name };
 }
 
 export async function orgUpdate(
