@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
-import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { User } from "@portalai/core/models";
@@ -268,7 +267,7 @@ describe("ApplicationService Integration Tests", () => {
     });
 
     // #1114: there's no org-wide default station any more.
-    it("provisions Administrate and Playground without writing a default station", async () => {
+    it("provisions Administrate and Playground", async () => {
       const owner = createOwner();
 
       const result = await provisionTestOrg(owner);
@@ -277,10 +276,6 @@ describe("ApplicationService Integration Tests", () => {
       expect(created.map((s) => s.name).sort()).toEqual(
         PROVISIONED_STATIONS.map((s) => s.name).sort()
       );
-      const [row] = (await db.execute(
-        sql`SELECT default_station_id FROM organizations WHERE id = ${result.organization.id}`
-      )) as unknown as { default_station_id: string | null }[];
-      expect(row.default_station_id).toBeNull();
     });
 
     it("fails, and leaves no organization behind, when the sandbox definition does not exist (#848)", async () => {

@@ -227,25 +227,6 @@ describe("updateOrg — audit_log", () => {
     expect(row.updatedBy).toBeNull();
   });
 
-  // #1114: the column stays in the database this release; the CLI neither
-  // reads nor writes it.
-  it("leaves a stale default_station_id alone", async () => {
-    await t.db.execute(
-      sql`UPDATE organizations SET default_station_id = 'st-old' WHERE id = 'o-1'`
-    );
-    await store.updateOrg("o-1", { name: "Acme Corp" }, "actor-1");
-    const res = (await t.db.execute(
-      sql`SELECT default_station_id FROM organizations WHERE id = 'o-1'`
-    )) as unknown as
-      | { rows: { default_station_id: string }[] }
-      | { default_station_id: string }[];
-    const row = Array.isArray(res) ? res[0] : res.rows[0];
-    expect(row.default_station_id).toBe("st-old");
-    expect((await entries()).map((r) => r.metadata)).toEqual([
-      expect.objectContaining({ field: "name" }),
-    ]);
-  });
-
   it("the actor is the operator's user id when their sub matches a user", async () => {
     await t.db
       .insert(users)

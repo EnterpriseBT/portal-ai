@@ -21,7 +21,6 @@ CREATE TABLE organizations (
   name text NOT NULL,
   timezone text NOT NULL,
   owner_user_id text NOT NULL,
-  default_station_id text,
   tier text NOT NULL DEFAULT 'standard',
   stripe_customer_id text,
   stripe_subscription_id text,

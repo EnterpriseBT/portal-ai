@@ -1,0 +1,5 @@
+-- #1118: the contract half of #1114's expand/contract. Nothing has read or
+-- written this column since #1114 (PR #1117), which shipped in an earlier
+-- release, so no running task selects it when this applies.
+-- destructive-ok: column unread since #1114 (PR #1117)
+ALTER TABLE "organizations" DROP COLUMN "default_station_id";

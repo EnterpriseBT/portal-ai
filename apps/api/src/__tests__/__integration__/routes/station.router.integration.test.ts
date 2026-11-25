@@ -10,7 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -1564,9 +1564,8 @@ describe("Station Router", () => {
     });
 
     // #1114: there's no default station. A delete leaves the org row alone
-    // (no clear, no org lock, no org.update entry), even when the dormant
-    // default_station_id still names the station.
-    it("leaves the organization alone, even if its old default named the station", async () => {
+    // (no org lock, no org.update entry).
+    it("leaves the organization alone", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -1575,9 +1574,6 @@ describe("Station Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(stations)
         .values(station as never);
-      await (db as ReturnType<typeof drizzle>).execute(
-        sql`UPDATE organizations SET default_station_id = ${station.id} WHERE id = ${organizationId}`
-      );
       const [before] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(organizations)
@@ -1590,10 +1586,6 @@ describe("Station Router", () => {
         .from(organizations)
         .where(eq(organizations.id, organizationId));
       expect(after.updated).toBe(before.updated);
-      const [raw] = (await (db as ReturnType<typeof drizzle>).execute(
-        sql`SELECT default_station_id FROM organizations WHERE id = ${organizationId}`
-      )) as unknown as { default_station_id: string | null }[];
-      expect(raw.default_station_id).toBe(station.id);
       expect(await defaultStationAuditRows(organizationId, 0)).toHaveLength(0);
     });
 
