@@ -169,19 +169,19 @@ async function orgRoleFields(userId: string, organizationId: string) {
  *             schema:
  *               $ref: '#/components/schemas/OrganizationUpdateResponse'
  *       400:
- *         description: Invalid payload — no field, an unknown key, or a blank or over-long name (ORGANIZATION_INVALID_PAYLOAD)
+ *         description: Invalid payload — a missing, blank or over-long name, or an unknown key (ORGANIZATION_INVALID_PAYLOAD)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       403:
- *         description: The caller lacks the permission a sent field needs (PERMISSION_DENIED)
+ *         description: The caller lacks org.write (PERMISSION_DENIED)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
- *         description: Not the caller's organization (ORGANIZATION_NOT_FOUND), or the station isn't in it (STATION_NOT_FOUND)
+ *         description: Not the caller's organization (ORGANIZATION_NOT_FOUND)
  *         content:
  *           application/json:
  *             schema:
