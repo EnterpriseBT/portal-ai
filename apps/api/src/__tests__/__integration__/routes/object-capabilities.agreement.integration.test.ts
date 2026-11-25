@@ -494,13 +494,23 @@ describe("Object capabilities agree with the mutation routes (#688)", () => {
       const systems = await t.seed(db, fx, SYSTEM);
 
       currentSub = OWNER_SUB;
-      for (const s of [owners, members, systems]) {
+      // #1127: a portal is personal, so the owner's wildcard doesn't reach a
+      // member's: no row in the list, and the GET is 404.
+      const personal = t.name === "portal";
+      const ownerReaches = personal
+        ? [owners, systems]
+        : [owners, members, systems];
+      for (const s of ownerReaches) {
         expect((await listRow(t, s))?.capabilities).toEqual(ALL(t.shareable));
         const one = await request(app).get(t.getPath(s));
         expect(one.status).toBe(200);
         expect(t.getRow(one.body.payload).capabilities).toEqual(
           ALL(t.shareable)
         );
+      }
+      if (personal) {
+        expect(await listRow(t, members)).toBeUndefined();
+        expect((await request(app).get(t.getPath(members))).status).toBe(404);
       }
 
       currentSub = MEMBER_SUB;

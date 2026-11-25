@@ -7,7 +7,7 @@ This spec pins the permission-engine rule behind [#1127](https://github.com/Ente
 1. **An engine rule, not a data change.** `SEED_SYSTEM_POLICIES`, the stored statements and every org's roles are unchanged. There's no migration and no backfill.
 2. **Personal types.** `PERSONAL_RESOURCE_TYPES = ["portal"]` in core is the single list.
 3. **Allows only.** The narrowing applies to **allow** statements whose `resourceType` is `*`. A wildcard **deny** still denies personal types in full, because restricting is safe.
-4. **Narrowed to the caller's own.** An unconditional wildcard allow on a personal type acts as `created_by_caller`. A wildcard allow carrying `created_by_caller` or `created_by_system` is unchanged.
+4. **Narrowed to the caller's own.** An unconditional wildcard allow on a personal type covers the caller's own objects and system-created ones (refined in implementation: covering system-created ones matches what MemberAccess already grants, so an owner never reaches less than a member). Other users' objects stay out. A wildcard allow carrying `created_by_caller` or `created_by_system` is unchanged.
 5. **Explicit statements apply as written.** That covers `allow read portal` (class-level, unconditional), `allow read portal:<id>` and conditioned portal statements. This is how an admin grants access to others' portals.
 6. **Delegation keeps the wildcard.** The authoring boundary (`assertStatementsWithinBoundary`) resolves *without* the narrowing. An author holding `* *` (owner, admin, or a custom wildcard policy) may author portal statements beyond their own access, including granting themselves.
 7. **The share-flow boundary is unchanged.** `assertWithinBoundary` keeps its access check, and portals aren't shareable (`grant.service.ts:156`) anyway.
@@ -87,8 +87,8 @@ So for `portal`, an owner's `* *` contributes `createdBy = caller`, not "unrestr
 
 | Caller's statements | `can(resource.read, portal by caller)` | `can(…, portal by other)` | `visibilityPredicate("portal")` | Author `allow read portal` |
 |---|---|---|---|---|
-| FullAccess `allow * *` | allow | **deny** (404 at routes) | `createdBy = caller` | in boundary |
-| AdminAccess `allow * *` + 2 denies | allow | **deny** | `createdBy = caller` | in boundary |
+| FullAccess `allow * *` | allow | **deny** (404 at routes) | `createdBy = caller OR = system` | in boundary |
+| AdminAccess `allow * *` + 2 denies | allow | **deny** | `createdBy = caller OR = system` | in boundary |
 | MemberAccess (portal `created_by_caller`) | allow | deny | `createdBy = caller` | rejected (unchanged) |
 | + custom `allow read portal` | allow | **allow** | `undefined` (all) | — |
 | + `allow read portal:<id>` (other's) | allow | allow for `<id>` only | `createdBy = caller OR id IN (<id>)` | — |
