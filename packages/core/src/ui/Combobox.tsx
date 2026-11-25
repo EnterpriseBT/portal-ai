@@ -19,6 +19,12 @@ export interface ComboboxOption {
   /** An action: picking the option calls it. */
   onSelect?: () => void;
   /**
+   * Read after the option's name (`aria-describedby`), not as part of it.
+   * Defaults to a `disable` or `upsell` gate's reason, so a row can show
+   * the reason visually (marked `aria-hidden`) without it joining the name.
+   */
+  description?: string;
+  /**
    * An action's gate (#688). `disable` and `upsell` keep the option
    * reachable (so its reason can be read) but picking a `disable` one does
    * nothing; `hide` drops it.
@@ -173,6 +179,25 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
   const renderOne = (option: T, index: number) => {
     const { key, ...optionProps } = getOptionProps({ option, index });
     const content = renderOption ? renderOption(option) : option.label;
+    const gate = option.gate;
+    const description =
+      option.description ??
+      (gate?.kind === "disable" || gate?.kind === "upsell"
+        ? gate.reason
+        : undefined);
+    const descriptionId = description
+      ? `${id}-option-${index}-description`
+      : undefined;
+    const body = (
+      <>
+        {content}
+        {description && (
+          <span id={descriptionId} hidden>
+            {description}
+          </span>
+        )}
+      </>
+    );
     if (option.href) {
       const Link = linkComponent ?? "a";
       return (
@@ -181,16 +206,23 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
             component={Link}
             href={option.href}
             {...(optionProps as React.HTMLAttributes<HTMLElement>)}
+            aria-describedby={descriptionId}
             className="ComboboxOption"
           >
-            {content}
+            {body}
           </Box>
         </li>
       );
     }
     return (
-      <Box component="li" key={key} {...optionProps} className="ComboboxOption">
-        {content}
+      <Box
+        component="li"
+        key={key}
+        {...optionProps}
+        aria-describedby={descriptionId}
+        className="ComboboxOption"
+      >
+        {body}
       </Box>
     );
   };
@@ -199,7 +231,20 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
   const flatIndex = (option: T) => visible.indexOf(option);
 
   return (
-    <Box {...getRootProps()} className="Combobox" sx={COMBOBOX_SX}>
+    <Box
+      {...getRootProps({
+        // Escape belongs to the host (a Modal closes on it). The hook would
+        // otherwise claim it to close a list that never closes here, and a
+        // Modal ignores an Escape that's already been handled.
+        onKeyDown: (
+          event: React.KeyboardEvent & { defaultMuiPrevented?: boolean }
+        ) => {
+          if (event.key === "Escape") event.defaultMuiPrevented = true;
+        },
+      })}
+      className="Combobox"
+      sx={COMBOBOX_SX}
+    >
       <InputBase
         fullWidth
         inputRef={setInputRef}

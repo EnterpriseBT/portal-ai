@@ -26,6 +26,7 @@ export * from "./ActionsMenu.js";
 export * from "./GatedMenu.js";
 export * from "./SplitButton.js";
 export * from "./Combobox.js";
+export * from "./Kbd.js";
 export * from "./ActionGate.js";
 export * from "./GatedButton.js";
 export * from "./GatedIconButton.js";

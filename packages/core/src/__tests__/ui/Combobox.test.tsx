@@ -80,6 +80,13 @@ describe("Combobox (#1122)", () => {
     expect(active()).toHaveTextContent("New portal");
   });
 
+  it("describes a gated option by its reason, outside its name", () => {
+    render(<Harness opts={options()} />);
+    const gated = screen.getByRole("option", { name: "Invite a member" });
+    expect(gated).toHaveAttribute("aria-disabled", "true");
+    expect(gated).toHaveAccessibleDescription("Needs member.invite");
+  });
+
   it("runs an action option on Enter, and not a disabled one", async () => {
     const onNew = jest.fn();
     const opts = options(onNew);
@@ -118,6 +125,18 @@ describe("Combobox (#1122)", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByText("Nothing matches")).toBeInTheDocument();
     expect(screen.getByRole("combobox")).not.toHaveAttribute("aria-controls");
+  });
+
+  it("leaves Escape to its host", async () => {
+    const onKeyDown = jest.fn((event: KeyboardEvent) => event.defaultPrevented);
+    render(
+      <div onKeyDown={(e) => onKeyDown(e.nativeEvent)}>
+        <Harness opts={options()} />
+      </div>
+    );
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.keyboard("{Escape}");
+    expect(onKeyDown).toHaveLastReturnedWith(false);
   });
 
   it("passes typing to the caller", async () => {

@@ -93,7 +93,8 @@ const Playground = ({
           />
           <span>{option.label}</span>
           {option.gate?.kind === "disable" && (
-            <Typography variant="caption" color="text.secondary">
+            // The shell reads the reason as the option's description.
+            <Typography variant="caption" color="text.secondary" aria-hidden>
               {option.gate.reason}
             </Typography>
           )}
