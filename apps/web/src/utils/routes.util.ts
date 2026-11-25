@@ -202,3 +202,27 @@ export function parseHelpAnchor(
 export function helpAnchorHash(anchor: HelpAnchor): string {
   return `${HELP_ANCHOR_PREFIX[anchor.surface]}${anchor.slug}`;
 }
+
+/**
+ * #1076: an index page's `?create=<kind>`, which opens its create dialog (the
+ * command palette links there). Fails open: an unknown value is dropped, and
+ * the page opens normally.
+ */
+export function normalizeCreateSearch<K extends string>(
+  search: Record<string, unknown>,
+  allowed: readonly K[]
+): { create?: K } {
+  const raw = search.create;
+  return typeof raw === "string" && (allowed as readonly string[]).includes(raw)
+    ? { create: raw as K }
+    : {};
+}
+
+/** #1076: the connector workflows a `?create=` link can open on /connectors. */
+export const CONNECTOR_CREATE_KINDS = [
+  "file-upload",
+  "google-sheets",
+  "microsoft-excel",
+  "rest-api",
+  "sandbox",
+] as const;

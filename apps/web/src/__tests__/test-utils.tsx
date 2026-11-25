@@ -35,11 +35,11 @@ const defaultAuth: NormalizedAuth = {
   logout: () => {},
 };
 
-const createTestRouter = () => {
+const createTestRouter = (initialEntry = "/") => {
   const rootRoute = createRootRoute();
   return createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
     context: { queryClient: new QueryClient() },
   });
 };
@@ -47,6 +47,8 @@ const createTestRouter = () => {
 interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   queryClient?: QueryClient;
   auth?: Partial<NormalizedAuth>;
+  /** The router's starting location, e.g. "/stations?create=station" (#1076). */
+  initialEntry?: string;
 }
 
 function renderWithProviders(
@@ -54,10 +56,11 @@ function renderWithProviders(
   {
     queryClient = new QueryClient(),
     auth,
+    initialEntry,
     ...options
   }: CustomRenderOptions = {}
 ) {
-  const testRouter = createTestRouter();
+  const testRouter = createTestRouter(initialEntry);
   const authValue: NormalizedAuth = { ...defaultAuth, ...auth };
 
   function Wrapper({ children }: { children: React.ReactNode }) {

@@ -3,10 +3,8 @@ import React from "react";
 import { Icon, IconName, pendingGate, SplitButton } from "@portalai/core/ui";
 import type { ActionGate, ActionMenuItem } from "@portalai/core/ui";
 
-import {
-  LAUNCHER_SETTLING_REASON,
-  usePortalLauncher,
-} from "../utils/use-portal-launcher.util";
+import { LAUNCHER_SETTLING_REASON } from "../utils/use-portal-launcher.util";
+import { usePortalLauncherContext } from "../utils/portal-launcher.context";
 import { CreatePortalDialog } from "./CreatePortalDialog.component";
 
 export interface NewPortalStation {
@@ -123,7 +121,8 @@ export interface NewPortalButtonProps {
 }
 
 /**
- * The header's New portal button, wired (#1075): `usePortalLauncher`
+ * The header's New portal button, wired (#1075): the shell's launcher
+ * (`PortalLauncherProvider`, #1076, shared with the command palette)
  * picks the stations, gate and launch, and "Choose station…" opens the
  * existing CreatePortalDialog through the same create, whose error shows in
  * its FormAlert (a launch from the button or a favorite toasts instead).
@@ -133,7 +132,7 @@ export interface NewPortalButtonProps {
 export const NewPortalButton: React.FC<NewPortalButtonProps> = ({
   layout = "full",
 }) => {
-  const launcher = usePortalLauncher();
+  const launcher = usePortalLauncherContext();
   const { chooser } = launcher;
   // Permission first: a caller who can't start portals hears that, not
   // that a station is loading.

@@ -15,6 +15,7 @@ import { useLayout } from "../utils";
 import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
 import { MAIN_CONTENT_ID, SkipLinks } from "../components/SkipLinks.component";
 import { useRouteAnnouncer } from "../utils/route-announcer.util";
+import { PortalLauncherProvider } from "../providers/PortalLauncher.provider";
 
 export const AuthorizedLayout = ({
   children,
@@ -24,74 +25,77 @@ export const AuthorizedLayout = ({
   const { isMobileExpanded, isMobile } = useLayout();
   useRouteAnnouncer();
   return (
-    <Box display="flex" flexDirection="column" height={"100vh"}>
-      <SkipLinks />
-      <AppBar position="static" sx={{ paddingY: 1 }}>
-        <Toolbar
-          sx={{
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <ButtonGroup sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {isMobile && <SidebarNavToggle />}
-            <Link
-              to="/"
-              style={{
-                textDecoration: "none",
-                color: "inherit",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              {/* The brand looks like a heading but isn't one: the page's h1
-                  is its first heading (#797). */}
-              <Typography
-                variant="h3"
-                component="span"
-                color="inherit"
-                margin="auto"
+    // #1076: one launcher for the header button and the command palette.
+    <PortalLauncherProvider>
+      <Box display="flex" flexDirection="column" height={"100vh"}>
+        <SkipLinks />
+        <AppBar position="static" sx={{ paddingY: 1 }}>
+          <Toolbar
+            sx={{
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <ButtonGroup sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              {isMobile && <SidebarNavToggle />}
+              <Link
+                to="/"
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                }}
               >
-                Portals AI
-              </Typography>
-            </Link>
-          </ButtonGroup>
-
-          <Box display="flex" alignItems="center" gap={1}>
-            {/* #1075: start a portal from any page; an icon at phone width. */}
-            <NewPortalButton layout={isMobile ? "icon" : "full"} />
-            <ButtonGroup>
-              <ThemeSwitcher />
-              <HeaderMenu />
+                {/* The brand looks like a heading but isn't one: the page's h1
+                  is its first heading (#797). */}
+                <Typography
+                  variant="h3"
+                  component="span"
+                  color="inherit"
+                  margin="auto"
+                >
+                  Portals AI
+                </Typography>
+              </Link>
             </ButtonGroup>
+
+            <Box display="flex" alignItems="center" gap={1}>
+              {/* #1075: start a portal from any page; an icon at phone width. */}
+              <NewPortalButton layout={isMobile ? "icon" : "full"} />
+              <ButtonGroup>
+                <ThemeSwitcher />
+                <HeaderMenu />
+              </ButtonGroup>
+            </Box>
+          </Toolbar>
+        </AppBar>
+        <Box display="flex" position="relative" flex={1} minHeight={0}>
+          <SidebarNav />
+          <Box
+            component="main"
+            id={MAIN_CONTENT_ID}
+            tabIndex={-1}
+            // Behind the open mobile drawer the page is dimmed and blocks the
+            // pointer; inert takes it out of the Tab order too (#797).
+            inert={isMobileExpanded || undefined}
+            flex={1}
+            overflow="auto"
+            sx={(theme) => ({
+              // Focus lands here from the skip link; the page, not the
+              // container, shows where the user is.
+              "&:focus": { outline: "none" },
+              background: isMobileExpanded
+                ? theme.darken(theme.palette.background.default, 0.2)
+                : theme.palette.background.default,
+              pointerEvents: isMobileExpanded ? "none" : "auto",
+              padding: theme.spacing(3),
+            })}
+          >
+            {children}
           </Box>
-        </Toolbar>
-      </AppBar>
-      <Box display="flex" position="relative" flex={1} minHeight={0}>
-        <SidebarNav />
-        <Box
-          component="main"
-          id={MAIN_CONTENT_ID}
-          tabIndex={-1}
-          // Behind the open mobile drawer the page is dimmed and blocks the
-          // pointer; inert takes it out of the Tab order too (#797).
-          inert={isMobileExpanded || undefined}
-          flex={1}
-          overflow="auto"
-          sx={(theme) => ({
-            // Focus lands here from the skip link; the page, not the
-            // container, shows where the user is.
-            "&:focus": { outline: "none" },
-            background: isMobileExpanded
-              ? theme.darken(theme.palette.background.default, 0.2)
-              : theme.palette.background.default,
-            pointerEvents: isMobileExpanded ? "none" : "auto",
-            padding: theme.spacing(3),
-          })}
-        >
-          {children}
         </Box>
       </Box>
-    </Box>
+    </PortalLauncherProvider>
   );
 };

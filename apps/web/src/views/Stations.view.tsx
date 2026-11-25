@@ -7,12 +7,13 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Button,
+  GatedButton,
   Icon,
   IconName,
   PageHeader,
   Stack,
 } from "@portalai/core/ui";
+import type { ActionGate } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -30,11 +31,16 @@ import { toServerError } from "../utils/api.util";
 import { stationDeleteKeys } from "../utils/delete-invalidation.util";
 import { useTagFilter } from "../utils/use-tag-filter.util";
 import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
+import { useCreateGate } from "../utils/use-create-gate.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCreateParam } from "../utils/use-create-param.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
 export interface StationsViewUIProps {
   onCreateStation: () => void;
+  /** #1076: New Station is gated like every other create (#708). */
+  createGate: ActionGate;
   onDelete: (station: Station) => void;
   /** #1070: the list's Tags filter, built by the container. */
   tagFilter: FilterConfig;
@@ -42,6 +48,7 @@ export interface StationsViewUIProps {
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
+  createGate,
   onDelete,
   tagFilter,
 }) => {
@@ -69,13 +76,16 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
           title="Stations"
           icon={<Icon name={IconName.SatelliteAlt} />}
           primaryAction={
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={onCreateStation}
-            >
-              New Station
-            </Button>
+            createGate.kind === "hide" ? undefined : (
+              <GatedButton
+                gate={createGate}
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onCreateStation}
+              >
+                New Station
+              </GatedButton>
+            )
           }
         />
 
@@ -119,6 +129,17 @@ export const StationsView: React.FC = () => {
   const handleOpenCreate = useCallback(() => {
     setCreateOpen(true);
   }, []);
+  const createGate = useCreateGate(
+    "station",
+    "Ask for access to create stations"
+  );
+  const { capabilitiesKnown } = useCapabilities();
+  // #1076: `?create=station`, the command palette's New station.
+  useCreateParam({
+    gate: createGate,
+    ready: capabilitiesKnown,
+    onOpen: handleOpenCreate,
+  });
 
   const handleCreateClose = useCallback(() => {
     setCreateOpen(false);
@@ -158,6 +179,7 @@ export const StationsView: React.FC = () => {
     <>
       <StationsViewUI
         onCreateStation={handleOpenCreate}
+        createGate={createGate}
         onDelete={handleOpenDelete}
         tagFilter={tagFilter}
       />
