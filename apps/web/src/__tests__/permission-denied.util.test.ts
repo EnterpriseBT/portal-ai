@@ -5,6 +5,7 @@
  */
 import {
   isPermissionDenied,
+  NETWORK_ERROR_CODE,
   PERMISSION_DENIED_MESSAGE,
   serverErrorMessage,
 } from "../utils/permission-denied.util";
@@ -62,5 +63,41 @@ describe("serverErrorMessage (#711)", () => {
   it("recognises only PERMISSION_DENIED as a denial", () => {
     expect(isPermissionDenied("PERMISSION_DENIED")).toBe(true);
     expect(isPermissionDenied("INSUFFICIENT_ROLE")).toBe(false);
+  });
+});
+
+describe("serverErrorMessage for a request with no response (#1121)", () => {
+  const networkError = {
+    code: NETWORK_ERROR_CODE,
+    message: "The server couldn't be reached. Check your connection.",
+  };
+
+  it("leads with the caller's own message, then the reason", () => {
+    expect(serverErrorMessage(networkError, "Couldn't add the tag.")).toBe(
+      "Couldn't add the tag. The server couldn't be reached. Check your connection."
+    );
+  });
+
+  it("ends a fallback with no stop before adding the reason", () => {
+    expect(serverErrorMessage(networkError, "Failed to revoke")).toBe(
+      "Failed to revoke. The server couldn't be reached. Check your connection."
+    );
+  });
+
+  it("shows the reason alone when the caller gave no message", () => {
+    expect(serverErrorMessage(networkError)).toBe(
+      "The server couldn't be reached. Check your connection."
+    );
+  });
+
+  it("leaves other errors as they were", () => {
+    expect(
+      serverErrorMessage({ code: "STATION_NOT_FOUND", message: "Gone" }, "F")
+    ).toBe("Gone");
+    expect(serverErrorMessage({ code: "X", message: "" })).toBe(
+      "Something went wrong."
+    );
+    // An empty fallback still means "show nothing", as before.
+    expect(serverErrorMessage({ code: "X", message: "" }, "")).toBe("");
   });
 });

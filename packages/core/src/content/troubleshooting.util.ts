@@ -135,6 +135,19 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
       "message limit reached",
     ],
   },
+  {
+    symptom: "Something couldn't reach the server",
+    cause:
+      "The app got no answer from the server: your connection dropped, or the service was briefly unavailable. A change may still have been saved if the connection dropped after it was sent.",
+    fix: "Check your connection, then reload the page to see the current state. Check whether your change saved before trying it again, so you don't make it twice.",
+    aliases: [
+      "failed to fetch",
+      "network error",
+      "server couldn't be reached",
+      "connection lost",
+      "offline",
+    ],
+  },
 ];
 
 /**
