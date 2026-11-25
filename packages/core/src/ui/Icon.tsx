@@ -53,6 +53,8 @@ import PushPinIcon from "@mui/icons-material/PushPin";
 import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ExtensionIcon from "@mui/icons-material/Extension";
+import AddIcon from "@mui/icons-material/Add";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import PortalIcon from "../assets/icons/portal.svg";
 
 export enum IconName {
@@ -110,6 +112,8 @@ export enum IconName {
   HelpOutline = "help_outline",
   Extension = "extension",
   Portal = "portal",
+  Add = "add",
+  ArrowDropDown = "arrow_drop_down",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -230,6 +234,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <HelpOutlineIcon ref={ref} {...props} />;
       case IconName.Extension:
         return <ExtensionIcon ref={ref} {...props} />;
+      case IconName.Add:
+        return <AddIcon ref={ref} {...props} />;
+      case IconName.ArrowDropDown:
+        return <ArrowDropDownIcon ref={ref} {...props} />;
       case IconName.Portal:
         return (
           <MuiSvgIcon ref={ref} {...props}>

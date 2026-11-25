@@ -147,6 +147,9 @@ export const Modal: React.FC<ModalProps> = ({
     <>
       {showHeader && (
         <DialogTitle
+          // With no visible title the row only makes room for the controls,
+          // so it isn't a heading: an empty h2 is a heading with no name.
+          {...(title ? {} : { component: "div" })}
           sx={{
             display: "flex",
             alignItems: "center",

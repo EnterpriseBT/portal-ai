@@ -34,6 +34,18 @@ export interface SidebarNavItemUIProps {
   onToggle?: () => void;
   onClose?: () => void;
   selected?: boolean;
+  /**
+   * The icon's colour, from the theme (#1122). Nav items stay neutral; the
+   * Favorites group's star takes `favorite` so it stands out, and its
+   * entries take `primary`.
+   */
+  iconColor?: "favorite" | "primary";
+  /**
+   * An entry inside a group (a favorite under Favorites): indented, with a
+   * smaller icon, so it reads as a level below the nav items. Collapsed to
+   * icons, it isn't indented.
+   */
+  nested?: boolean;
 }
 
 export const SidebarNavItemUI = ({
@@ -48,7 +60,10 @@ export const SidebarNavItemUI = ({
   onToggle,
   onClose,
   selected = false,
+  iconColor,
+  nested = false,
 }: SidebarNavItemUIProps) => {
+  const indented = nested && !collapsed;
   const hasChildren = Boolean(children) || Boolean(items?.length);
 
   const handleClick = () => {
@@ -77,18 +92,26 @@ export const SidebarNavItemUI = ({
       aria-label={collapsed ? label : undefined}
       selected={selected}
       onClick={handleClick}
-      sx={(theme) => ({
-        height: 48,
-        paddingX: theme.spacing(3),
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-      })}
+      // The row's metrics live in the theme (#1122): `SidebarNavItem`, and
+      // `SidebarNavItem-nested` for an entry a level below.
+      className={
+        indented ? "SidebarNavItem SidebarNavItem-nested" : "SidebarNavItem"
+      }
     >
-      <ListItemIcon sx={{ minWidth: "auto" }}>
-        <Icon name={icon} />
+      <ListItemIcon>
+        <Icon
+          name={icon}
+          color={iconColor}
+          fontSize={indented ? "small" : undefined}
+        />
       </ListItemIcon>
-      {!collapsed && <ListItemText primary={label} />}
+      {/* A long name (a favorite's, #1122) truncates rather than wraps. */}
+      {!collapsed && (
+        <ListItemText
+          primary={label}
+          slotProps={{ primary: { noWrap: true } }}
+        />
+      )}
       {hasChildren && !collapsed && (
         <Icon name={open ? IconName.ExpandLess : IconName.ExpandMore} />
       )}

@@ -14,7 +14,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,scss}\" \"!src/routeTree.gen.ts\"",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist .turbo node_modules",
-    "storybook": "storybook dev -p 7007 --no-open",
+    "storybook": "storybook dev -p 7007 --host 0.0.0.0 --no-open",
     "build-storybook": "storybook build",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "rm -f jest-unit-report.json && NODE_OPTIONS='--experimental-vm-modules --max-old-space-size=4096' jest${WEB_UNIT_SHARD:+ --shard=$WEB_UNIT_SHARD --json --outputFile=jest-unit-report.json}",

@@ -28,6 +28,17 @@ describe("Modal Component", () => {
       expect(screen.getByText("Modal content")).toBeInTheDocument();
     });
 
+    it("has no empty heading when it has no visible title (#1122)", async () => {
+      render(
+        <Modal {...untitled}>
+          <p>Modal content</p>
+        </Modal>
+      );
+      const dialog = screen.getByRole("dialog", { name: "Test dialog" });
+      expect(screen.queryByRole("heading")).toBeNull();
+      await expectNoAxeViolations(dialog);
+    });
+
     it("should not render content when closed", () => {
       render(
         <Modal {...untitled} open={false}>

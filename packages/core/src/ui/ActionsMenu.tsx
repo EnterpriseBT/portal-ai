@@ -1,15 +1,14 @@
-import React, { useId, useState } from "react";
-import MuiMenu from "@mui/material/Menu";
-import MuiMenuItem from "@mui/material/MenuItem";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
-import Tooltip from "@mui/material/Tooltip";
+import React, { useState } from "react";
 
 import { IconButton } from "./IconButton.js";
-import { Icon, IconName } from "./Icon.js";
+import { IconName } from "./Icon.js";
 import type { ActionGate } from "./ActionGate.js";
+import { GatedMenu } from "./GatedMenu.js";
 
 export interface ActionMenuItem {
+  /** Unique among the menu's items; its React key. Labels needn't be unique
+   *  (two favorite stations named "Sales"), so lists of objects pass one. */
+  id?: string;
   /** Display label for the menu item. */
   label: string;
   /** Optional icon rendered before the label. Accepts any React node. */
@@ -23,6 +22,16 @@ export interface ActionMenuItem {
    * disabled item must say why.)
    */
   gate?: ActionGate;
+  /**
+   * The heading it's listed under (#1122). Adjacent items share a section;
+   * a divider (and the heading, when set) starts each new one.
+   */
+  section?: string;
+  /**
+   * A line that teaches rather than acts ("Star a station to add it
+   * here"): listed and focusable so it's read, but it does nothing.
+   */
+  hint?: boolean;
   /** MUI color applied to the label text (e.g. "error" for destructive actions). */
   color?: "inherit" | "error" | "primary" | "secondary";
 }
@@ -44,7 +53,6 @@ export const ActionsMenu: React.FC<ActionsMenuProps> = ({
   ariaLabel = "More actions",
 }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const reasonIdBase = useId();
   const open = Boolean(anchorEl);
   const visible = visibleActionItems(items);
 
@@ -69,73 +77,12 @@ export const ActionsMenu: React.FC<ActionsMenuProps> = ({
         onClick={handleOpen}
         size="small"
       />
-      <MuiMenu
+      <GatedMenu
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        {visible.map((item, index) => {
-          const gate = item.gate;
-          const disabled = gate?.kind === "disable";
-          const upsell = gate?.kind === "upsell" ? gate : null;
-          const reason =
-            disabled || upsell ? (gate as { reason: string }).reason : null;
-          // #793: the reason is the item's description, not only its
-          // tooltip. A hidden element inside the item: aria-describedby
-          // reads it, and hidden text doesn't join the item's name.
-          const reasonId = reason ? `${reasonIdBase}-${index}` : undefined;
-          const entry = (
-            <MuiMenuItem
-              key={item.label}
-              // aria-disabled, not MUI's `disabled` (pointer-events: none
-              // would block the tooltip that says why). The theme gives it
-              // its look (a11yComponents, #793).
-              aria-disabled={disabled ? "true" : undefined}
-              aria-describedby={reasonId}
-              onClick={() => {
-                if (disabled) return;
-                handleClose();
-                if (upsell) upsell.onUpgrade();
-                else item.onClick();
-              }}
-            >
-              {(item.icon || upsell) && (
-                <ListItemIcon>
-                  {upsell ? (
-                    <Icon name={IconName.Lock} fontSize="small" />
-                  ) : (
-                    item.icon
-                  )}
-                </ListItemIcon>
-              )}
-              <ListItemText
-                sx={item.color ? { color: `${item.color}.main` } : undefined}
-              >
-                {item.label}
-              </ListItemText>
-              {reason && (
-                <span id={reasonId} hidden>
-                  {reason}
-                </span>
-              )}
-            </MuiMenuItem>
-          );
-          return gate?.kind === "disable" || gate?.kind === "upsell" ? (
-            <Tooltip
-              key={item.label}
-              title={gate.reason}
-              describeChild
-              placement="left"
-            >
-              {entry}
-            </Tooltip>
-          ) : (
-            entry
-          );
-        })}
-      </MuiMenu>
+        items={visible}
+      />
     </>
   );
 };
