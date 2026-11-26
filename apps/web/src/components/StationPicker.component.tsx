@@ -1,12 +1,13 @@
 import React, { useId, useState } from "react";
 
-import { Icon, IconName } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+
+import { Icon, IconName } from "@portalai/core/ui";
 
 /** A station the start box can start a portal in. */
 export interface StationOption {

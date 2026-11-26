@@ -178,6 +178,19 @@ describe("BrowseByTagUI", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("clears a selected tag that's no longer listed", () => {
+    const onSelectTag = jest.fn();
+    render(
+      <BrowseByTagUI
+        tags={tags}
+        selectedTagId="gone"
+        onSelectTag={onSelectTag}
+      />
+    );
+    expect(onSelectTag).toHaveBeenCalledWith(null);
+    expect(screen.queryByRole("list", { name: /^Tagged/ })).toBeNull();
+  });
+
   it("shows a teaching empty state", async () => {
     const { container } = render(
       <BrowseByTagUI tags={[]} selectedTagId={null} onSelectTag={jest.fn()} />

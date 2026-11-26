@@ -22,7 +22,7 @@ export const NeedsAttentionUI: React.FC<NeedsAttentionUIProps> = ({ jobs }) => {
       <EmptyState
         icon={<Icon name={IconName.CheckCircle} />}
         title="All clear"
-        description="No failed or stalled jobs need you right now."
+        description="No jobs are failed, stalled or waiting on you."
       />
     );
   }

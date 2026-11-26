@@ -1,4 +1,4 @@
-import React, { useId } from "react";
+import React, { useEffect, useId } from "react";
 
 import {
   Box,
@@ -74,6 +74,13 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
   matchesFiltered = false,
 }) => {
   const listId = useId();
+  const selected = tags.find((t) => t.tag.id === selectedTagId)?.tag ?? null;
+
+  // A selected tag that's no longer listed (deleted, or no longer readable)
+  // isn't a selection: say so, so the container stops paging its matches.
+  useEffect(() => {
+    if (selectedTagId !== null && selected === null) onSelectTag(null);
+  }, [selectedTagId, selected, onSelectTag]);
 
   if (tags.length === 0) {
     return (
@@ -85,7 +92,6 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
     );
   }
 
-  const selected = tags.find((t) => t.tag.id === selectedTagId)?.tag ?? null;
   const handleToggle = (tagId: string) =>
     onSelectTag(tagId === selectedTagId ? null : tagId);
 

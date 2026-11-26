@@ -376,9 +376,11 @@ describe("ThemeProvider Component", () => {
         const root = theme.components?.MuiChip?.styleOverrides?.root as
           | Record<string, { color?: string }>
           | undefined;
-        expect(root?.["&.MuiChip-colorDefault .MuiChip-icon"]?.color).toBe(
-          theme.palette.text.secondary
-        );
+        expect(
+          root?.[
+            "&.MuiChip-colorDefault .MuiChip-icon:not([class*='MuiSvgIcon-color'])"
+          ]?.color
+        ).toBe(theme.palette.text.secondary);
       }
     );
 

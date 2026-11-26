@@ -94,6 +94,42 @@ describe("StartBoxUI", () => {
     });
   });
 
+  it("never sends a default station that isn't in the list", async () => {
+    const onStart = jest.fn();
+    render(<StartBoxUI {...props({ onStart, initialStationId: "gone" })} />);
+    expect(
+      screen.getByRole("button", { name: "Pick a station" })
+    ).toBeInTheDocument();
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).not.toHaveBeenCalled();
+    expect(start()).toHaveAccessibleDescription("Pick a station to start");
+  });
+
+  it("picks up a default that arrives after mount, until the user picks", async () => {
+    const onStart = jest.fn();
+    const { rerender } = render(
+      <StartBoxUI {...props({ onStart, initialStationId: null })} />
+    );
+    rerender(<StartBoxUI {...props({ onStart, initialStationId: "s1" })} />);
+    expect(
+      screen.getByRole("button", { name: /Finance Close, station/ })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Finance Close, station/ })
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /Field Inspections/ })
+    );
+    // A later default doesn't override the user's pick.
+    rerender(<StartBoxUI {...props({ onStart, initialStationId: "s1" })} />);
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledWith({
+      prompt: "Top accounts",
+      stationId: "s2",
+    });
+  });
+
   it("doesn't start again while pending", async () => {
     const onStart = jest.fn();
     render(<StartBoxUI {...props({ onStart, pending: true })} />);

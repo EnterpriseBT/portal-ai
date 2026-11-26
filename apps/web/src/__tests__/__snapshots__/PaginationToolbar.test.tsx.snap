@@ -285,7 +285,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
     class="MuiBox-root css-1mcghfl"
   >
     <div
-      class="MuiButtonBase-root MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-deletable MuiChip-deletableColorDefault MuiChip-filledDefault css-1wbohv5-MuiButtonBase-root-MuiChip-root"
+      class="MuiButtonBase-root MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-deletable MuiChip-deletableColorDefault MuiChip-filledDefault css-zslac7-MuiButtonBase-root-MuiChip-root"
       role="button"
       tabindex="0"
     >
@@ -307,7 +307,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       </svg>
     </div>
     <div
-      class="MuiButtonBase-root MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-deletable MuiChip-deletableColorDefault MuiChip-filledDefault css-1wbohv5-MuiButtonBase-root-MuiChip-root"
+      class="MuiButtonBase-root MuiChip-root MuiChip-filled MuiChip-sizeSmall MuiChip-colorDefault MuiChip-deletable MuiChip-deletableColorDefault MuiChip-filledDefault css-zslac7-MuiButtonBase-root-MuiChip-root"
       role="button"
       tabindex="0"
     >

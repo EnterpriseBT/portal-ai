@@ -8,7 +8,9 @@ const tag = { id: "t1", name: "Finance", color: "#2e7d32" };
 
 describe("TagCountChipUI", () => {
   it("is a toggle named by the tag and its count", async () => {
-    const { container } = render(<TagCountChipUI tag={tag} count={14} />);
+    const { container } = render(
+      <TagCountChipUI tag={tag} count={14} onToggle={jest.fn()} />
+    );
     const chip = screen.getByRole("button", { name: "Finance (14)" });
     expect(chip).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("tag-color-dot")).toBeInTheDocument();
@@ -34,6 +36,12 @@ describe("TagCountChipUI", () => {
     expect(chip).toHaveAttribute("aria-controls", "matches");
     await userEvent.click(chip);
     expect(onToggle).toHaveBeenCalledWith("t1");
+  });
+
+  it("is a plain label, not a toggle, with nothing to handle a press", () => {
+    render(<TagCountChipUI tag={tag} count={14} />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("Finance (14)")).toBeInTheDocument();
   });
 
   it("has no dot without a colour", () => {

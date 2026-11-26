@@ -33,8 +33,9 @@ export const TagCountChipUI: React.FC<TagCountChipUIProps> = ({
     color={selected ? "primary" : "default"}
     icon={tag.color ? <TagColorDotUI color={tag.color} /> : undefined}
     label={`${tag.name} (${count})`}
-    onClick={() => onToggle?.(tag.id)}
-    aria-pressed={selected}
-    aria-controls={selected ? controls : undefined}
+    // A toggle only when something handles it; otherwise a plain label.
+    onClick={onToggle ? () => onToggle(tag.id) : undefined}
+    aria-pressed={onToggle ? selected : undefined}
+    aria-controls={onToggle && selected ? controls : undefined}
   />
 );
