@@ -23,6 +23,8 @@ export type PortalResultsListParams = {
   include?: string;
   /** #1070: comma-separated tag ids; pins carrying any of them. */
   tagIds?: string;
+  /** #1072: only the caller's favorites. */
+  favorite?: "true";
 };
 
 /** #688: the list and GET are typed by the core contracts; each pin carries

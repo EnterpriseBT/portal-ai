@@ -25,6 +25,7 @@ const meta = {
     collapsed: false,
     open: true,
     onToggle: fn(),
+    onNavigate: fn(),
     activeHref: "/portal-results/p1",
   },
   decorators: [

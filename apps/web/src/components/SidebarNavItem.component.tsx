@@ -35,6 +35,12 @@ export interface SidebarNavItemUIProps {
   onClose?: () => void;
   selected?: boolean;
   /**
+   * What a selected link's `aria-current` says (#1077): `page` (the
+   * default) when it's the page itself, `true` when it's the section the
+   * page is under, so a favorite for that page can be the one current page.
+   */
+  current?: "page" | "true";
+  /**
    * The icon's colour, from the theme (#1122). Nav items stay neutral; the
    * Favorites group's star takes `favorite` so it stands out, and its
    * entries take `primary`.
@@ -62,6 +68,7 @@ export const SidebarNavItemUI = ({
   selected = false,
   iconColor,
   nested = false,
+  current = "page",
 }: SidebarNavItemUIProps) => {
   const indented = nested && !collapsed;
   const hasChildren = Boolean(children) || Boolean(items?.length);
@@ -79,7 +86,12 @@ export const SidebarNavItemUI = ({
     ? {
         component: Link,
         to: href,
-        "aria-current": selected ? ("page" as const) : undefined,
+        // The router's Link marks itself aria-current="page" whenever its
+        // route is active, by default for every page under it too, which
+        // would override `current`. Exact matching leaves pages under it to
+        // `current` ("true" for a section, #1077).
+        activeOptions: { exact: true },
+        "aria-current": selected ? current : undefined,
       }
     : hasChildren
       ? { "aria-expanded": open }
@@ -169,6 +181,7 @@ export const SidebarNavItem = ({
   items,
   onClick,
   selected,
+  current,
 }: Omit<
   SidebarNavItemUIProps,
   "collapsed" | "open" | "onToggle" | "onClose"
@@ -187,6 +200,7 @@ export const SidebarNavItem = ({
       onClose={() => setOpen(false)}
       onClick={onClick}
       selected={selected}
+      current={current}
       items={items}
     >
       {children}

@@ -8,6 +8,8 @@ import {
 } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { SidebarNav, SidebarNavUI } from "../components/SidebarNav.component";
+import { SidebarNavItemUI } from "../components/SidebarNavItem.component";
+import { IconName } from "@portalai/core/ui";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 
@@ -205,6 +207,55 @@ describe("Version dialog", () => {
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+  });
+});
+
+describe("SidebarNav Favorites (#1077)", () => {
+  afterEach(() => localStorage.clear());
+
+  it("mounts the Favorites group below the main items", () => {
+    localStorage.setItem("sidebar-state", JSON.stringify("expanded"));
+    render(<SidebarNav />);
+    const favorites = screen.getByRole("button", { name: "Favorites" });
+    const dashboard = screen.getAllByRole("link")[0];
+    expect(
+      dashboard.compareDocumentPosition(favorites) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("marks a section 'true' and a page 'page' (one current page per nav)", () => {
+    render(
+      <nav aria-label="Primary">
+        <SidebarNavItemUI
+          icon={IconName.Star}
+          label="Stations"
+          href="/stations"
+          collapsed={false}
+          selected
+          current="true"
+        />
+        <SidebarNavItemUI
+          icon={IconName.Star}
+          label="Sales"
+          href="/stations/s1"
+          collapsed={false}
+          selected
+          nested
+        />
+      </nav>,
+      // On the favorite's page, where the router's Link counts as active
+      // for Stations too.
+      { initialEntry: "/stations/s1" }
+    );
+    expect(screen.getByRole("link", { name: "Stations" })).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+    expect(screen.getByRole("link", { name: "Sales" })).toHaveAttribute(
+      "aria-current",
+      "page"
     );
   });
 });
