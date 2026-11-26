@@ -59,7 +59,7 @@ export const ACTIONS: PaletteGroup = {
     {
       kind: "action",
       id: "new-portal",
-      label: "New portal in Finance Close",
+      label: "Open Portal in Finance Close",
       onSelect: fn(),
     },
     { kind: "action", id: "new-station", label: "New station", onSelect: fn() },

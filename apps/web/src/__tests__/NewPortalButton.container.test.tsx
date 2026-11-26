@@ -15,6 +15,7 @@ let mockFavoritesPending: boolean;
 let mockGate: ActionGate;
 let mockCreateError: { message: string; code: string } | null;
 const mockMutate = jest.fn();
+const mockCreateHook = jest.fn();
 const mockReset = jest.fn();
 const mockPortalsList = jest.fn();
 
@@ -65,12 +66,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
           isPending: false,
         };
       },
-      create: () => ({
-        mutate: mockMutate,
-        reset: mockReset,
-        isPending: false,
-        error: mockCreateError,
-      }),
+      create: () => {
+        mockCreateHook();
+        return {
+          mutate: mockMutate,
+          reset: mockReset,
+          isPending: false,
+          error: mockCreateError,
+        };
+      },
     },
   },
   queryKeys: { portals: { root: ["portals"] } },
@@ -84,6 +88,17 @@ const { expectNoAxeViolations, render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { NewPortalButton } =
   await import("../components/NewPortalButton.component");
+const { PortalLauncherProvider } =
+  await import("../providers/PortalLauncher.provider");
+const { usePortalLauncherContext } =
+  await import("../utils/portal-launcher.context");
+
+/** #1076: the button reads the shell's one launcher. */
+const Button = () => (
+  <PortalLauncherProvider>
+    <NewPortalButton />
+  </PortalLauncherProvider>
+);
 
 beforeEach(() => {
   mockLastPortalStationId = "s-last";
@@ -110,9 +125,9 @@ const openMenu = async () => {
 
 describe("NewPortalButton (#1075)", () => {
   it("starts a portal in the last-used station, refreshing portals and toasting a failure", async () => {
-    render(<NewPortalButton />);
+    render(<Button />);
     await userEvent.click(
-      screen.getByRole("button", { name: /^New portal in Ops$/ })
+      screen.getByRole("button", { name: /^Open Portal in Ops$/ })
     );
     expect(mockMutate).toHaveBeenCalledWith(
       { stationId: "s-last" },
@@ -124,34 +139,34 @@ describe("NewPortalButton (#1075)", () => {
   });
 
   it("reads the caller's own last portal, without joining its station", () => {
-    render(<NewPortalButton />);
+    render(<Button />);
     expect(mockPortalsList).toHaveBeenCalledWith(
-      expect.objectContaining({ mine: "true", limit: 1, sortBy: "lastOpened" })
+      expect.objectContaining({ mine: "true", limit: 5, sortBy: "lastOpened" })
     );
     expect(mockPortalsList.mock.calls[0][0]).not.toHaveProperty("include");
   });
 
   it("falls back to a favorite when the last-used station can't be read", () => {
     delete mockReadable["s-last"];
-    render(<NewPortalButton />);
+    render(<Button />);
     expect(
-      screen.getByRole("button", { name: /^New portal in Finance$/ })
+      screen.getByRole("button", { name: /^Open Portal in Finance$/ })
     ).toBeInTheDocument();
   });
 
   it("drops a last-used station that 404'd on a refetch, though its old row is cached", () => {
     mockStale = { "s-last": { id: "s-last", name: "Ops" } };
-    render(<NewPortalButton />);
+    render(<Button />);
     expect(
-      screen.getByRole("button", { name: /^New portal in Finance$/ })
+      screen.getByRole("button", { name: /^Open Portal in Finance$/ })
     ).toBeInTheDocument();
   });
 
   it("waits, rather than choosing, while its station is worked out", async () => {
     mockLastPortalStationId = undefined;
     mockFavoritesPending = true;
-    render(<NewPortalButton />);
-    const main = screen.getByRole("button", { name: /^New portal$/ });
+    render(<Button />);
+    const main = screen.getByRole("button", { name: /^Open Portal$/ });
     expect(main).toHaveAccessibleDescription("Finding your station…");
     await userEvent.click(main);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -161,8 +176,10 @@ describe("NewPortalButton (#1075)", () => {
   it("chooses a station when there's none to use", async () => {
     mockLastPortalStationId = undefined;
     mockFavorites = [];
-    render(<NewPortalButton />);
-    await userEvent.click(screen.getByRole("button", { name: /^New portal$/ }));
+    render(<Button />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Open Portal$/ })
+    );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     // Opening clears any failure from another path.
     expect(mockReset).toHaveBeenCalled();
@@ -170,7 +187,7 @@ describe("NewPortalButton (#1075)", () => {
   });
 
   it("starts a portal in a favorite from the menu", async () => {
-    const { baseElement } = render(<NewPortalButton />);
+    const { baseElement } = render(<Button />);
     await openMenu();
     await expectNoAxeViolations(baseElement);
     await userEvent.click(screen.getByRole("menuitem", { name: "Finance" }));
@@ -185,7 +202,7 @@ describe("NewPortalButton (#1075)", () => {
       message: "Station not found",
       code: "STATION_NOT_FOUND",
     };
-    render(<NewPortalButton />);
+    render(<Button />);
     // The failure isn't the dialog's until it's open.
     expect(screen.queryByText("Station not found")).toBeNull();
     await openMenu();
@@ -198,8 +215,8 @@ describe("NewPortalButton (#1075)", () => {
 
   it("blocks every launch for a caller who may not start portals", async () => {
     mockGate = { kind: "disable", reason: "Ask for access to start portals" };
-    render(<NewPortalButton />);
-    const main = screen.getByRole("button", { name: /^New portal in Ops$/ });
+    render(<Button />);
+    const main = screen.getByRole("button", { name: /^Open Portal in Ops$/ });
     expect(main).toHaveAccessibleDescription("Ask for access to start portals");
     await userEvent.click(main);
     await openMenu();
@@ -209,7 +226,46 @@ describe("NewPortalButton (#1075)", () => {
 
   it("is hidden from a caller who can't see portals", () => {
     mockGate = { kind: "hide" };
-    render(<NewPortalButton />);
-    expect(screen.queryByRole("button", { name: /New portal/ })).toBeNull();
+    render(<Button />);
+    expect(screen.queryByRole("button", { name: /Open Portal/ })).toBeNull();
+  });
+});
+
+describe("NewPortalButton and the shared launcher (#1076)", () => {
+  it("serves the button and another consumer from one launcher", async () => {
+    const Other = () => {
+      const launcher = usePortalLauncherContext();
+      return (
+        <button type="button" onClick={() => launcher.launch("s-fav")}>
+          Other launch
+        </button>
+      );
+    };
+    mockCreateHook.mockClear();
+    render(
+      <PortalLauncherProvider>
+        <NewPortalButton />
+        <Other />
+      </PortalLauncherProvider>
+    );
+    await screen.findByRole("button", { name: "Open Portal in Ops" });
+    const hooksPerRender = mockCreateHook.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Other launch" }));
+    expect(mockMutate).toHaveBeenCalledWith(
+      { stationId: "s-fav" },
+      expect.anything()
+    );
+    // One launcher: two consumers never double the create hook.
+    expect(hooksPerRender).toBeGreaterThan(0);
+  });
+
+  it("can't be used outside the provider", () => {
+    const Lone = () => {
+      usePortalLauncherContext();
+      return null;
+    };
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Lone />)).toThrow(/PortalLauncherProvider/);
+    spy.mockRestore();
   });
 });

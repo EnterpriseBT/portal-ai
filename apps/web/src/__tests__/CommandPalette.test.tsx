@@ -13,7 +13,7 @@ const groups = (onNew = jest.fn()): PaletteGroup[] => [
   {
     label: "Actions",
     entries: [
-      { kind: "action", id: "new", label: "New portal", onSelect: onNew },
+      { kind: "action", id: "new", label: "Open Portal", onSelect: onNew },
       {
         kind: "action",
         id: "invite",
@@ -144,7 +144,7 @@ describe("CommandPaletteUI (#1122)", () => {
                 {
                   kind: "action",
                   id: "a",
-                  label: "New portal",
+                  label: "Open Portal",
                   onSelect: jest.fn(),
                 },
                 {

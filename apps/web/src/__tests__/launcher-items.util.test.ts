@@ -6,6 +6,9 @@ const {
   launcherTypeNoun,
   paletteOptions,
   paletteStatusText,
+  parsePaletteQuery,
+  toLauncherItem,
+  RESULT_GROUP_LABEL,
 } = await import("../utils/launcher-items.util");
 
 describe("launcher items (#1122)", () => {
@@ -74,5 +77,72 @@ describe("launcher items (#1122)", () => {
     expect(paletteStatusText(0, false)).toBe("No results");
     expect(paletteStatusText(1, false)).toBe("1 result");
     expect(paletteStatusText(8, false)).toBe("8 results");
+  });
+
+  it("gives portals an icon, a noun and a heading (#1076)", () => {
+    expect(LAUNCHER_TYPE_ICON.portal).toBe(IconName.Portal);
+    expect(launcherTypeNoun("portal")).toBe("portal");
+    expect(RESULT_GROUP_LABEL.portal).toBe("Portals");
+    expect(RESULT_GROUP_LABEL.pin).toBe("Pinned results");
+  });
+
+  it("reads the palette's text as home, a search or a tag search (#1076)", () => {
+    expect(parsePaletteQuery("")).toEqual({ mode: "home" });
+    expect(parsePaletteQuery("   ")).toEqual({ mode: "home" });
+    expect(parsePaletteQuery(" sales ops ")).toEqual({
+      mode: "search",
+      text: "sales ops",
+    });
+    expect(parsePaletteQuery("#finance")).toEqual({
+      mode: "tag",
+      text: "finance",
+    });
+    expect(parsePaletteQuery(" #  fin ")).toEqual({ mode: "tag", text: "fin" });
+    expect(parsePaletteQuery("#")).toEqual({ mode: "tag", text: "" });
+  });
+
+  it("links each result type to its detail page (#1076)", () => {
+    const routes = {
+      station: "/stations/x 1",
+      pin: "/portal-results/x 1",
+      curated_view: "/views/x 1",
+      connector_instance: "/connectors/x 1",
+      entity: "/entities/x 1",
+      portal: "/portals/x 1",
+    } as const;
+    for (const [type, path] of Object.entries(routes)) {
+      const item = toLauncherItem({
+        type: type as keyof typeof routes,
+        id: "x 1",
+        name: "X",
+        tags: [{ id: "t", name: "Fin", color: null }],
+      });
+      expect(item.href).toBe(path.replace(" ", "%20"));
+      expect(item.tags).toEqual([{ id: "t", name: "Fin", color: null }]);
+    }
+  });
+
+  it("passes a link action's href and gate through (#1076)", () => {
+    const gate = { kind: "disable" as const, reason: "Ask for access" };
+    const [option] = paletteOptions([
+      {
+        label: "Actions",
+        entries: [
+          {
+            kind: "action",
+            id: "new-station",
+            label: "New station",
+            href: "/stations?create=station",
+            gate,
+          },
+        ],
+      },
+    ]);
+    expect(option).toMatchObject({
+      href: "/stations?create=station",
+      gate,
+      label: "New station",
+    });
+    expect(option.onSelect).toBeUndefined();
   });
 });

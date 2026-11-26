@@ -50,6 +50,13 @@ export interface ComboboxProps<T extends ComboboxOption = ComboboxOption> {
   footer?: React.ReactNode;
   /** Renders link options; core can't import the app's router. */
   linkComponent?: React.ElementType;
+  /**
+   * Called when a link option is followed in place, by click or Enter, and
+   * not on a Ctrl/⌘/Shift/Alt-click, which opens a new tab or window. A host that
+   * should close on any pick calls its close here (#1076): a link to the
+   * page you're already on changes no location, so nothing else would.
+   */
+  onFollowLink?: (option: T) => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }
 
@@ -72,7 +79,16 @@ const COMBOBOX_SX = {
     m: 0,
     p: 0,
   },
-  "& .ComboboxList": { maxHeight: 400, overflowY: "auto", py: 1 },
+  // `position: relative` makes the list its options' offsetParent: the
+  // hook scrolls the highlighted option into view by its offsetTop, which
+  // otherwise counts from an outer box (a dialog), so wrapping from the last
+  // option to the first scrolled past it, under the input (#1076).
+  "& .ComboboxList": {
+    position: "relative",
+    maxHeight: 400,
+    overflowY: "auto",
+    py: 1,
+  },
   "& .ComboboxGroupLabel": {
     typography: "overline",
     color: "text.secondary",
@@ -125,6 +141,7 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
   emptyContent,
   footer,
   linkComponent,
+  onFollowLink,
   inputRef,
 }: ComboboxProps<T>) {
   const id = useId();
@@ -215,7 +232,11 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
         )}
       </>
     );
-    if (option.href) {
+    // #1076: a gated link isn't a link, so a click can't follow it; picking
+    // it still runs the gate (an upsell's onUpgrade, a disable's nothing).
+    const gated =
+      option.gate?.kind === "disable" || option.gate?.kind === "upsell";
+    if (option.href && !gated) {
       const Link = linkComponent ?? "a";
       return (
         <li key={key} role="none">
@@ -223,6 +244,21 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
             component={Link}
             href={option.href}
             {...(optionProps as React.HTMLAttributes<HTMLElement>)}
+            onClick={(event: React.MouseEvent<HTMLElement>) => {
+              (optionProps as React.HTMLAttributes<HTMLElement>).onClick?.(
+                event
+              );
+              // A modified or non-primary click opens a new tab or window,
+              // so the page (and the palette) stays: only a plain follow
+              // reports.
+              const newContext =
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0;
+              if (!newContext) onFollowLink?.(option);
+            }}
             aria-describedby={descriptionId}
             className="ComboboxOption"
           >

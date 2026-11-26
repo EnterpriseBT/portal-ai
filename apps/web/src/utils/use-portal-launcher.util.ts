@@ -6,6 +6,7 @@ import type { ActionGate } from "@portalai/core/ui";
 
 import { queryKeys, sdk } from "../api/sdk";
 import { toServerError, type ServerError } from "./api.util";
+import { RECENT_PORTALS_PARAMS } from "./portal-launcher.context";
 import { usePortalStation } from "./portal-station.util";
 import { useCreateGate } from "./use-create-gate.util";
 import type { NewPortalStation } from "../components/NewPortalButton.component";
@@ -81,7 +82,7 @@ export interface PortalLauncher {
 }
 
 /**
- * The header's New portal launcher (#1075): which stations to offer, the
+ * The header's Open Portal launcher (#1075): which stations to offer, the
  * gate, and the launch. The main click's station is, in order:
  * - the page's station;
  * - the station of the caller's own last-opened portal (`mine=true`), if
@@ -101,13 +102,7 @@ export function usePortalLauncher(): PortalLauncher {
   const pageStationId = stationIdFromPath(pathname);
   const page = usePortalStation(pageStationId);
 
-  const recent = sdk.portals.list({
-    limit: 1,
-    offset: 0,
-    sortBy: "lastOpened",
-    sortOrder: "desc",
-    mine: "true",
-  });
+  const recent = sdk.portals.list(RECENT_PORTALS_PARAMS);
   const lastStationId = recent.data?.portals[0]?.stationId;
   const last = usePortalStation(lastStationId);
 

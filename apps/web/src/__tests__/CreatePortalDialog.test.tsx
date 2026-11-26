@@ -71,9 +71,9 @@ describe("CreatePortalDialog", () => {
     jest.clearAllMocks();
   });
 
-  it("should render 'New Portal' title", () => {
+  it("should render 'Open Portal' title", () => {
     render(<MockedCreatePortalDialog {...defaultProps} />);
-    expect(screen.getByText("New Portal")).toBeInTheDocument();
+    expect(screen.getByText("Open Portal")).toBeInTheDocument();
   });
 
   it("has no axe violations when open (#793)", async () => {
@@ -97,9 +97,9 @@ describe("CreatePortalDialog", () => {
     expect(screen.getByLabelText(/Station/)).toBeInTheDocument();
   });
 
-  it("should show 'Creating...' and disable buttons when pending", () => {
+  it("should show 'Opening…' and disable buttons when pending", () => {
     render(<MockedCreatePortalDialog {...defaultProps} isPending={true} />);
-    expect(screen.getByRole("button", { name: "Creating..." })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Opening…" })).toHaveAttribute(
       "aria-disabled",
       "true"
     );
@@ -132,7 +132,7 @@ describe("CreatePortalDialog", () => {
 
   it("should not render content when open is false", () => {
     render(<MockedCreatePortalDialog {...defaultProps} open={false} />);
-    expect(screen.queryByText("New Portal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Portal")).not.toBeInTheDocument();
   });
 
   // #1114: there's no org default to fall back on, so nothing is preselected.
@@ -146,7 +146,7 @@ describe("CreatePortalDialog", () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn();
     render(<MockedCreatePortalDialog {...defaultProps} onSubmit={onSubmit} />);
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByRole("button", { name: "Open portal" }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByText("Station is required")).toBeInTheDocument();
     expect(screen.getByLabelText(/Station/)).toHaveAttribute(

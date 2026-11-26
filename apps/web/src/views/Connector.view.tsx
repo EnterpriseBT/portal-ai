@@ -25,6 +25,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { sdk } from "../api/sdk";
 import { connectorInstanceDeleteKeys } from "../utils/delete-invalidation.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { useConnectorCreateParam } from "../utils/use-connector-create-param.util";
 import { UnauthorizedState } from "../components/UnauthorizedState.component";
 import {
   ConnectorDefinitionCardUI,
@@ -127,6 +128,14 @@ export const ConnectorView = () => {
     setSelectedSlug(cd.slug);
     setWorkflowOpen(true);
   }, []);
+
+  // #1076: `?create=<workflow slug>`, the command palette's Import a file.
+  useConnectorCreateParam({
+    canReadCatalog,
+    capabilitiesKnown,
+    hasWorkflow: (slug) => !!WORKFLOW_REGISTRY[slug],
+    onConnect: handleConnect,
+  });
 
   const handleCloseWorkflow = useCallback(() => {
     setWorkflowOpen(false);

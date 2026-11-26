@@ -32,6 +32,27 @@ describe("CommandPaletteOptionUI (#1122)", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("names a portal row's type (#1076)", () => {
+    render(
+      <ul role="listbox" aria-label="Results">
+        <li role="option" aria-selected="false">
+          <CommandPaletteOptionUI
+            entry={{
+              kind: "item",
+              id: "p1",
+              type: "portal",
+              name: "Q4 questions",
+              href: "/portals/p1",
+            }}
+          />
+        </li>
+      </ul>
+    );
+    expect(screen.getByRole("option")).toHaveTextContent(
+      "Q4 questions· portal"
+    );
+  });
+
   it("shows a gated action's reason, hidden from assistive tech", () => {
     render(
       <CommandPaletteOptionUI

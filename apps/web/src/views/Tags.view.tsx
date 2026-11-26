@@ -35,6 +35,9 @@ import {
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
+import { useCapabilities } from "../utils/use-capabilities.util";
+import { useCreateParam } from "../utils/use-create-param.util";
+import { TAG_CREATE_KINDS } from "../utils/routes.util";
 import { tagCatalogChangeKeys } from "../utils/tag-invalidation.util";
 
 // ── Data list component ─────────────────────────────────────────────
@@ -180,6 +183,14 @@ export const TagsView: React.FC = () => {
     setEditingTag(null);
     setFormOpen(true);
   }, []);
+  const { capabilitiesKnown } = useCapabilities();
+  // #1076: `?create=tag`, the command palette's New tag.
+  useCreateParam({
+    allowed: TAG_CREATE_KINDS,
+    gate: createGate,
+    ready: capabilitiesKnown,
+    onOpen: handleOpenCreate,
+  });
 
   // Edit
   const handleOpenEdit = useCallback((tag: EntityTag) => {

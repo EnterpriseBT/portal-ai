@@ -245,4 +245,119 @@ describe("Combobox (#1122)", () => {
     await userEvent.type(screen.getByRole("combobox"), "s");
     expect(onInputChange).toHaveBeenCalledWith("s");
   });
+
+  it("doesn't render a gated link option as a link (#1076)", async () => {
+    const onUpgrade = jest.fn();
+    render(
+      <Harness
+        opts={[
+          {
+            id: "new-station",
+            label: "New station",
+            group: "Actions",
+            href: "/stations?create=station",
+            gate: {
+              kind: "disable",
+              reason: "Ask for access to create stations",
+            },
+          },
+          {
+            id: "new-view",
+            label: "New view",
+            group: "Actions",
+            href: "/views?create=view",
+            gate: { kind: "upsell", reason: "Upgrade for views", onUpgrade },
+          },
+          {
+            id: "st-1",
+            label: "Sales Ops",
+            group: "Favorites",
+            href: "/stations/1",
+          },
+        ]}
+      />
+    );
+    expect(screen.queryByRole("link", { name: /New station/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /New view/ })).toBeNull();
+    expect(screen.getByRole("option", { name: "New station" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(screen.getByRole("option", { name: "Sales Ops" })).toHaveAttribute(
+      "href",
+      "/stations/1"
+    );
+    await userEvent.click(screen.getByRole("option", { name: "New view" }));
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a followed link, by click and by Enter (#1076)", async () => {
+    const onFollowLink = jest.fn();
+    const Link = React.forwardRef<
+      HTMLAnchorElement,
+      React.AnchorHTMLAttributes<HTMLAnchorElement>
+    >(({ onClick, ...props }, ref) => (
+      <a
+        ref={ref}
+        {...props}
+        onClick={(event) => {
+          onClick?.(event);
+          event.preventDefault();
+        }}
+      />
+    ));
+    const Followed = () => {
+      const [value, setValue] = React.useState("");
+      return (
+        <Combobox
+          options={options()}
+          inputValue={value}
+          onInputChange={setValue}
+          label="Search"
+          statusText=""
+          linkComponent={Link}
+          onFollowLink={onFollowLink}
+        />
+      );
+    };
+    const clicked = render(<Followed />);
+    await userEvent.click(screen.getByRole("option", { name: "Finance" }));
+    expect(onFollowLink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "st-2" })
+    );
+    clicked.unmount();
+    render(<Followed />);
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(onFollowLink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "st-1" })
+    );
+    onFollowLink.mockClear();
+    // A Ctrl/⌘-click opens a new tab: the page stays, so nothing reports.
+    const user = userEvent.setup();
+    await user.keyboard("{Control>}");
+    await user.click(screen.getByRole("option", { name: "Finance" }));
+    await user.keyboard("{/Control}{Meta>}");
+    await user.click(screen.getByRole("option", { name: "Finance" }));
+    await user.keyboard("{/Meta}");
+    expect(onFollowLink).not.toHaveBeenCalled();
+  });
+
+  it("is its options' offsetParent, so a wrap to the top scrolls to it (#1076)", () => {
+    // The hook scrolls the highlighted option into view by its offsetTop;
+    // measured from an outer box, a wrap from last to first hid the first
+    // option under the input. jsdom has no layout, so this pins the cause.
+    render(
+      <Combobox
+        options={options()}
+        inputValue=""
+        onInputChange={() => {}}
+        label="Search"
+        statusText=""
+      />
+    );
+    expect(window.getComputedStyle(screen.getByRole("listbox")).position).toBe(
+      "relative"
+    );
+  });
 });

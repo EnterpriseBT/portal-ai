@@ -224,7 +224,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Tag",
     category: GlossaryCategory.Organization,
     definition:
-      "A color-coded label you attach to entities, stations, pinned results, connectors and views to group them and filter their lists. With the Tags tool pack, the assistant can create, edit and delete tags and add or remove them on objects in a portal session, with your permissions.",
+      "A color-coded label you attach to entities, stations, pinned results, connectors and views to group them and filter their lists. In the command palette, type # and a tag's name to find everything carrying it. With the Tags tool pack, the assistant can create, edit and delete tags and add or remove them on objects in a portal session, with your permissions.",
     example:
       'Tag the stations, views and connectors your finance team uses with a green "Finance" tag, then filter each list to it in one click.',
     relatedTerms: [
@@ -239,7 +239,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Favorite",
     category: GlossaryCategory.Organization,
     definition:
-      "A station, pinned result, view or connector you starred. Favorites are personal: only you see them, and starring needs only access to see the item. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. Favorite stations are also listed in the New portal menu at the top of every page. Deleting an item removes it from everyone's favorites.",
+      "A station, pinned result, view or connector you starred. Favorites are personal: only you see them, and starring needs only access to see the item. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. Favorite stations are also listed in the Open Portal menu at the top of every page, and every favorite is listed first in the command palette. Deleting an item removes it from everyone's favorites.",
     example:
       "Star the three stations you open every morning, then press Favorites on the Stations page to see just those.",
     relatedTerms: [
@@ -250,6 +250,24 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "Tag",
     ],
     aliases: ["star", "starred", "favourite"],
+  },
+  {
+    term: "Command Palette",
+    category: GlossaryCategory.System,
+    definition:
+      "The search box at the top of every page, also opened with ⌘K on a Mac or Ctrl+K elsewhere. It lists your favorites, your latest portals, the items you opened recently and actions such as starting a portal or a new station, and finds stations, pinned results, views, connectors, entities and your portals by name. Start with # to find items by tag. It only ever shows what you have access to.",
+    example:
+      "Press Ctrl+K, type “q3” and press Enter to open the Q3 orders view, or type #finance to see everything tagged Finance.",
+    relatedTerms: ["Favorite", "Tag", "Station", "Portal"],
+    aliases: [
+      "search",
+      "quick search",
+      "keyboard shortcut",
+      "ctrl k",
+      "cmd k",
+      "command k",
+      "quick actions",
+    ],
   },
   {
     term: "Overlap Preview",

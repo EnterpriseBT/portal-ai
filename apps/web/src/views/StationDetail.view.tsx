@@ -26,6 +26,7 @@ import ShareIcon from "@mui/icons-material/IosShare";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
 import { STATION_PAGE_INCLUDE } from "../utils/portal-station.util";
+import { useRecordRecentVisit } from "../utils/use-recent-visits.util";
 import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
@@ -91,6 +92,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   stationId,
 }) => {
   const navigate = useNavigate();
+  // #1076: the palette's Recent. The same read (and key) as the page's.
+  const stationRead = sdk.stations.get(stationId, {
+    include: STATION_PAGE_INCLUDE,
+  });
+  useRecordRecentVisit("station", stationRead.data?.station);
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
   // #284: one read drives both the attached-pack chips and the edit picker.

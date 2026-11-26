@@ -29,7 +29,7 @@ jest.mock("../api/sdk", () => ({
     organizations: {
       current: () => ({ data: undefined }),
     },
-    // #1075: the header's New portal button reads stations and portals.
+    // #1075: the header's Open Portal button reads stations and portals.
     stations: {
       get: () => ({ data: undefined, isPending: false }),
       list: () => ({ data: { stations: [] }, isPending: false }),
@@ -47,7 +47,7 @@ jest.mock("../api/sdk", () => ({
   queryKeys: { portals: { root: ["portals"] } },
 }));
 
-// #1075: the header's New portal button is gated; here the caller may
+// #1075: the header's Open Portal button is gated; here the caller may
 // start portals. An ESM mock, so the modules below import after it.
 jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
   useCreateGate: () => ({ kind: "allow" }),
@@ -55,6 +55,7 @@ jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
 
 const { render, screen, waitFor, within, expectNoAxeViolations } =
   await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { AuthorizedLayout } = await import("../layouts/Authorized.layout");
 
 describe("AuthorizedLayout", () => {
@@ -85,7 +86,7 @@ describe("AuthorizedLayout", () => {
     expect(screen.getByText("Portals AI")).toBeInTheDocument();
   });
 
-  it("offers New portal in the header (#1075)", () => {
+  it("offers Open Portal in the header (#1075)", () => {
     render(
       <AuthorizedLayout>
         <div>Test Content</div>
@@ -94,8 +95,54 @@ describe("AuthorizedLayout", () => {
     const banner = screen.getByRole("banner");
     // No station on this page, no history, no favorites: it chooses.
     expect(
-      within(banner).getByRole("button", { name: "New portal" })
-    ).toHaveTextContent("New portal");
+      within(banner).getByRole("button", { name: "Open Portal" })
+    ).toHaveTextContent("Open Portal");
+  });
+
+  describe("command palette (#1076)", () => {
+    const renderPage = () =>
+      render(
+        <AuthorizedLayout>
+          <div>Test Content</div>
+        </AuthorizedLayout>
+      );
+
+    it("puts the search box before Open Portal in the header", () => {
+      renderPage();
+      const buttons = within(screen.getByRole("banner"))
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
+      const search = buttons.findIndex((n) => n.includes("Search or run…"));
+      const portal = buttons.findIndex((n) => n.includes("Open Portal"));
+      expect(search).toBeGreaterThanOrEqual(0);
+      expect(search).toBeLessThan(portal);
+    });
+
+    it("opens from the header's search box", async () => {
+      renderPage();
+      await userEvent.click(
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: /Search or run…/,
+        })
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Search and actions" })
+      ).toBeInTheDocument();
+    });
+
+    it("opens with Ctrl+K, and Ctrl+K closes it", async () => {
+      renderPage();
+      await userEvent.keyboard("{Control>}k{/Control}");
+      expect(
+        await screen.findByRole("dialog", { name: "Search and actions" })
+      ).toBeInTheDocument();
+      await userEvent.keyboard("{Control>}k{/Control}");
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Search and actions" })
+        ).toBeNull()
+      );
+    });
   });
 
   describe("landmarks (#797)", () => {
@@ -171,16 +218,28 @@ describe("AuthorizedLayout", () => {
       );
     });
 
-    it("shows New portal as an icon at phone width (#1075)", () => {
+    it("shows Open Portal as an icon at phone width (#1075)", () => {
       render(
         <AuthorizedLayout>
           <div>Test Content</div>
         </AuthorizedLayout>
       );
       const button = within(screen.getByRole("banner")).getByRole("button", {
-        name: "New portal",
+        name: "Open Portal",
       });
-      expect(button).not.toHaveTextContent("New portal");
+      expect(button).not.toHaveTextContent("Open Portal");
+    });
+
+    it("shows the palette's search box as an icon at phone width (#1076)", () => {
+      render(
+        <AuthorizedLayout>
+          <div>Test Content</div>
+        </AuthorizedLayout>
+      );
+      const trigger = within(screen.getByRole("banner")).getByRole("button", {
+        name: "Search or run…",
+      });
+      expect(trigger).not.toHaveTextContent("Search or run…");
     });
 
     it("leaves main reachable while the drawer is closed", async () => {

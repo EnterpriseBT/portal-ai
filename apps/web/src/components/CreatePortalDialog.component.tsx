@@ -132,7 +132,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       submitDisabled={isPending}
       open={open}
       onClose={onClose}
-      title="New Portal"
+      title="Open Portal"
       maxWidth="sm"
       fullWidth
       onSubmit={handleSubmit}
@@ -152,7 +152,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
             onClick={handleSubmit}
             gate={pendingGate(isPending)}
           >
-            {isPending ? "Creating..." : "Create"}
+            {isPending ? "Opening…" : "Open portal"}
           </GatedButton>
         </Stack>
       }

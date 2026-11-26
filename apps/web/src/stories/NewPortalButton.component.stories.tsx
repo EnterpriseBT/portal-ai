@@ -3,7 +3,7 @@ import { fn } from "@storybook/test";
 
 import { NewPortalButtonUI } from "../components/NewPortalButton.component";
 
-/** #1122: the header's New portal split button, from props. */
+/** #1122: the header's Open Portal split button, from props. */
 const meta = {
   title: "Launcher/NewPortalButton",
   component: NewPortalButtonUI,
