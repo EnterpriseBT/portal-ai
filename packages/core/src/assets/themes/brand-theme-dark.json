@@ -933,6 +933,22 @@
             "&:hover": {
               "backgroundColor": "rgba(139,111,224,0.24)"
             }
+          },
+          "&.SidebarNavItem": {
+            "height": 48,
+            "paddingLeft": 24,
+            "paddingRight": 24,
+            "display": "flex",
+            "alignItems": "center",
+            "gap": 16,
+            "& .MuiListItemIcon-root": {
+              "minWidth": "auto"
+            }
+          },
+          "&.SidebarNavItem-nested": {
+            "height": 40,
+            "paddingLeft": 48,
+            "contain": "inline-size"
           }
         }
       }
@@ -1051,6 +1067,17 @@
           },
           "&.Mui-completed": {
             "color": "#9898b8"
+          }
+        }
+      }
+    },
+    "MuiList": {
+      "styleOverrides": {
+        "root": {
+          "& .SidebarFavorites-hint": {
+            "display": "block",
+            "contain": "inline-size",
+            "padding": "8px 24px 8px 48px"
           }
         }
       }

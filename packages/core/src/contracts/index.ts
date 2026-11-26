@@ -133,3 +133,6 @@ export * from "./sso-discovery.contract.js";
 export * from "./connector-config.contract.js";
 export * from "./help-block.contract.js";
 export * from "./invitation-block.contract.js";
+
+// #1076: the command palette search.
+export * from "./search.contract.js";

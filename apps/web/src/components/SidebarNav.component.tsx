@@ -11,6 +11,7 @@ import type { NavPageId } from "@portalai/core/models";
 import { NAV_PAGE_IDS } from "@portalai/core/models";
 import { useLayout } from "../utils";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { SidebarFavorites } from "./SidebarFavorites.component";
 import { SidebarNavItem } from "./SidebarNavItem.component";
 import { SidebarVersionCaptionUI } from "./SidebarVersionCaption.component";
 import { useRouter } from "@tanstack/react-router";
@@ -289,6 +290,7 @@ export const SidebarNav = () => {
             label="Help"
             href={ApplicationRoute.Help}
             selected={pathname.startsWith(ApplicationRoute.Help)}
+            current={pathname === ApplicationRoute.Help ? "page" : "true"}
             onClick={handleClick}
           />
           <SidebarNavItem
@@ -340,10 +342,17 @@ export const SidebarNav = () => {
               ? pathname === item.route
               : pathname.startsWith(item.route)
           }
+          // #1077: on a page under the section (a station's page), the
+          // section is the current *section*, so a favorite for that page
+          // is the one current page in the nav.
+          current={pathname === item.route ? "page" : "true"}
           href={item.route}
           onClick={handleClick}
         />
       ))}
+      {/* #1077: the caller's favorites, below the main items; the drawer
+          scrolls them with the nav as one region. */}
+      <SidebarFavorites collapsed={isCollapsed} onNavigate={handleClick} />
     </SidebarNavUI>
   );
 };

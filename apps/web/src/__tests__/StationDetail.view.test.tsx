@@ -397,3 +397,40 @@ describe("StationDetailView — delete refreshes what cascades (#1041, #1114)", 
     expect(options.invalidate).not.toContainEqual(["organizations"]);
   });
 });
+
+describe("StationDetailView — Recent (#1076)", () => {
+  const auth = {
+    session: {
+      user: { sub: "auth0|ada", name: "Ada" },
+      isAuthenticated: true,
+      isLoading: false,
+      error: undefined,
+    },
+  };
+  const KEY = "portalai-recent:org-1:auth0|ada";
+
+  beforeEach(() => {
+    mockStationsGet.mockReset();
+    localStorage.clear();
+  });
+
+  it("records the station once it loads", () => {
+    mockStationsGet.mockReturnValue(payload([], []));
+    render(<StationDetailView stationId="st-1" />, { auth });
+    expect(JSON.parse(localStorage.getItem(KEY) ?? "[]")).toEqual([
+      expect.objectContaining({ type: "station", id: "st-1" }),
+    ]);
+  });
+
+  it("records nothing when the station doesn't load", () => {
+    mockStationsGet.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isSuccess: false,
+      error: Object.assign(new Error("Station not found"), { status: 404 }),
+    });
+    render(<StationDetailView stationId="st-1" />, { auth });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+});

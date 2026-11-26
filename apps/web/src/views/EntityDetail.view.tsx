@@ -39,6 +39,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
+import { useRecordRecentVisit } from "../utils/use-recent-visits.util";
 import { useObjectTags } from "../utils/use-object-tags.util";
 import { TagsDialogUI } from "../components/TagsDialog.component";
 import { SessionGeneratedChipUI } from "../components/SessionGeneratedChip.component";
@@ -552,6 +553,8 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const [clearRecordsDialogOpen, setClearRecordsDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
+  // #1076: the palette's Recent.
+  useRecordRecentVisit("entity", entityResult.data?.connectorEntity);
   const connectorInstanceId =
     entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
   const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {

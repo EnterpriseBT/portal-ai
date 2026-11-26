@@ -25,6 +25,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { decideActionGate } from "../utils/action-gate.util";
+import { useRecordRecentVisit } from "../utils/use-recent-visits.util";
 import { DeletePinnedResultDialog } from "../components/DeletePinnedResultDialog.component";
 import { RenamePinnedResultDialog } from "../components/RenamePinnedResultDialog.component";
 import { ShareDialog } from "../components/ShareDialog.component";
@@ -379,6 +380,8 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   const resultQuery = sdk.portalResults.get(portalResultId);
   const payload = resultQuery.data as PortalResultPayload | undefined;
   const portalResult = payload?.portalResult as PortalResult | undefined;
+  // #1076: the palette's Recent.
+  useRecordRecentVisit("pin", portalResult);
   // #688: the caller's capabilities on this pin (missing → fail closed).
   const capabilities = payload?.portalResult.capabilities;
   const [shareOpen, setShareOpen] = useState(false);

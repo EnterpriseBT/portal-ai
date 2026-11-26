@@ -29,6 +29,11 @@ export const PortalListRequestQuerySchema = PaginationRequestQuerySchema.extend(
     sortBy: z.enum(["created", "lastOpened"]).optional().default("created"),
     stationId: z.string().optional(),
     include: z.string().optional(),
+    /**
+     * #1075: only the caller's own portals, even for a caller whose grants
+     * let them see others' (the launcher's "last used" station).
+     */
+    mine: z.literal("true").optional(),
   }
 );
 

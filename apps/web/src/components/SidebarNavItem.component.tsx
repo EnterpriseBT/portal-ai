@@ -34,6 +34,24 @@ export interface SidebarNavItemUIProps {
   onToggle?: () => void;
   onClose?: () => void;
   selected?: boolean;
+  /**
+   * What a selected link's `aria-current` says (#1077): `page` (the
+   * default) when it's the page itself, `true` when it's the section the
+   * page is under, so a favorite for that page can be the one current page.
+   */
+  current?: "page" | "true";
+  /**
+   * The icon's colour, from the theme (#1122). Nav items stay neutral; the
+   * Favorites group's star takes `favorite` so it stands out, and its
+   * entries take `primary`.
+   */
+  iconColor?: "favorite" | "primary";
+  /**
+   * An entry inside a group (a favorite under Favorites): indented, with a
+   * smaller icon, so it reads as a level below the nav items. Collapsed to
+   * icons, it isn't indented.
+   */
+  nested?: boolean;
 }
 
 export const SidebarNavItemUI = ({
@@ -48,7 +66,11 @@ export const SidebarNavItemUI = ({
   onToggle,
   onClose,
   selected = false,
+  iconColor,
+  nested = false,
+  current = "page",
 }: SidebarNavItemUIProps) => {
+  const indented = nested && !collapsed;
   const hasChildren = Boolean(children) || Boolean(items?.length);
 
   const handleClick = () => {
@@ -64,7 +86,12 @@ export const SidebarNavItemUI = ({
     ? {
         component: Link,
         to: href,
-        "aria-current": selected ? ("page" as const) : undefined,
+        // The router's Link marks itself aria-current="page" whenever its
+        // route is active, by default for every page under it too, which
+        // would override `current`. Exact matching leaves pages under it to
+        // `current` ("true" for a section, #1077).
+        activeOptions: { exact: true },
+        "aria-current": selected ? current : undefined,
       }
     : hasChildren
       ? { "aria-expanded": open }
@@ -77,18 +104,26 @@ export const SidebarNavItemUI = ({
       aria-label={collapsed ? label : undefined}
       selected={selected}
       onClick={handleClick}
-      sx={(theme) => ({
-        height: 48,
-        paddingX: theme.spacing(3),
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-      })}
+      // The row's metrics live in the theme (#1122): `SidebarNavItem`, and
+      // `SidebarNavItem-nested` for an entry a level below.
+      className={
+        indented ? "SidebarNavItem SidebarNavItem-nested" : "SidebarNavItem"
+      }
     >
-      <ListItemIcon sx={{ minWidth: "auto" }}>
-        <Icon name={icon} />
+      <ListItemIcon>
+        <Icon
+          name={icon}
+          color={iconColor}
+          fontSize={indented ? "small" : undefined}
+        />
       </ListItemIcon>
-      {!collapsed && <ListItemText primary={label} />}
+      {/* A long name (a favorite's, #1122) truncates rather than wraps. */}
+      {!collapsed && (
+        <ListItemText
+          primary={label}
+          slotProps={{ primary: { noWrap: true } }}
+        />
+      )}
       {hasChildren && !collapsed && (
         <Icon name={open ? IconName.ExpandLess : IconName.ExpandMore} />
       )}
@@ -146,6 +181,7 @@ export const SidebarNavItem = ({
   items,
   onClick,
   selected,
+  current,
 }: Omit<
   SidebarNavItemUIProps,
   "collapsed" | "open" | "onToggle" | "onClose"
@@ -164,6 +200,7 @@ export const SidebarNavItem = ({
       onClose={() => setOpen(false)}
       onClick={onClick}
       selected={selected}
+      current={current}
       items={items}
     >
       {children}

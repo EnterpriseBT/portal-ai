@@ -8,7 +8,9 @@ import {
   SettingsTab,
   helpAnchorHash,
   helpTabIndexFromSearch,
+  normalizeCreateSearch,
   normalizeHelpSearch,
+  CONNECTOR_CREATE_KINDS,
   parseHelpAnchor,
   settingsTabIndexFromSearch,
 } from "../utils/routes.util";
@@ -222,5 +224,22 @@ describe("helpAnchorHash", () => {
       expect(hash.startsWith("#")).toBe(false);
       expect(parseHelpAnchor(hash)).toEqual(anchor);
     }
+  });
+});
+
+describe("normalizeCreateSearch (#1076)", () => {
+  it("keeps an allowed create value", () => {
+    expect(normalizeCreateSearch({ create: "station" }, ["station"])).toEqual({
+      create: "station",
+    });
+    expect(
+      normalizeCreateSearch({ create: "file-upload" }, CONNECTOR_CREATE_KINDS)
+    ).toEqual({ create: "file-upload" });
+  });
+
+  it("drops an unknown, missing or non-string value", () => {
+    expect(normalizeCreateSearch({ create: "view" }, ["station"])).toEqual({});
+    expect(normalizeCreateSearch({}, ["station"])).toEqual({});
+    expect(normalizeCreateSearch({ create: 1 }, ["station"])).toEqual({});
   });
 });

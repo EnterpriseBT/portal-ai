@@ -70,3 +70,28 @@ describe("PinnedResultDetailView (container) — page heading (#982)", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("PinnedResultDetailView (container) — Recent (#1076)", () => {
+  it("records nothing for a pin that doesn't load", () => {
+    localStorage.clear();
+    resultQuery = {
+      ...base,
+      isError: true,
+      error: new Error("Portal result not found"),
+    };
+    render(<PinnedResultDetailView portalResultId="pr-1" />, {
+      auth: {
+        session: {
+          user: { sub: "auth0|ada", name: "Ada" },
+          isAuthenticated: true,
+          isLoading: false,
+          error: undefined,
+        },
+      },
+    });
+    const recentKeys = Object.keys(localStorage).filter((k) =>
+      k.startsWith("portalai-recent:")
+    );
+    expect(recentKeys).toEqual([]);
+  });
+});

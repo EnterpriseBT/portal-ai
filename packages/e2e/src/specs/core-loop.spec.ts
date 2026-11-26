@@ -110,7 +110,12 @@ test("a new org walks the core loop", async ({ page }) => {
   });
 
   await test.step("open a portal on it", async () => {
-    await page.getByRole("button", { name: "Open Portal" }).click();
+    // The station page's own button: the header's split button is "Open
+    // Portal in <station>" once the station loads (#1075).
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Open Portal" })
+      .click();
     await page.waitForURL(/\/portals\/[0-9a-f-]{36}/);
     await expect(
       page.getByPlaceholder(/ask a question, visualize your data/i)

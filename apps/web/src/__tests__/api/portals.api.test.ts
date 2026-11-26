@@ -61,11 +61,18 @@ describe("portals.api", () => {
   });
 
   describe("create", () => {
-    it("sends POST to /api/portals", () => {
+    it("sends POST to /api/portals, refreshing portals on a refusal", () => {
       portals.create();
       expect(mockUseAuthMutation).toHaveBeenCalledWith({
         url: "/api/portals",
+        onPermissionDenied: { invalidate: expect.any(Function) },
       });
+      const config = mockUseAuthMutation.mock.calls[0][0] as {
+        onPermissionDenied: { invalidate: () => unknown };
+      };
+      expect(config.onPermissionDenied.invalidate()).toEqual([
+        queryKeys.portals.root,
+      ]);
     });
   });
 

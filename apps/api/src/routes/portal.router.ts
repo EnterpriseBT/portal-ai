@@ -205,6 +205,12 @@ portalRouter.post(
  *         schema:
  *           type: string
  *         description: Filter portals by station ID
+ *       - in: query
+ *         name: mine
+ *         schema:
+ *           type: string
+ *           enum: ["true"]
+ *         description: Only the caller's own portals, even when their grants let them see others'
  *     responses:
  *       200:
  *         description: Portals retrieved successfully
@@ -247,13 +253,17 @@ portalRouter.get(
       );
     }
     try {
-      const { limit, offset, sortOrder, sortBy, stationId, include } =
+      const { limit, offset, sortOrder, sortBy, stationId, include, mine } =
         parsedQuery.data;
-      const { organizationId } = req.application!.metadata;
+      const { organizationId, userId } = req.application!.metadata;
 
       const filters: SQL[] = [eq(portals.organizationId, organizationId)];
       if (stationId) {
         filters.push(eq(portals.stationId, stationId));
+      }
+      // #1075: the caller's own, whatever else their grants let them see.
+      if (mine) {
+        filters.push(eq(portals.createdBy, userId));
       }
       // #685: portals are per-user. #1127: everyone sees their own, owners
       // and admins included; others' only through an explicit portal grant.

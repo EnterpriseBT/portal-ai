@@ -10,6 +10,7 @@ import type { EntityGroupListRequestQuery } from "@portalai/core/contracts";
 import type { EntityGroupMemberOverlapRequestQuery } from "@portalai/core/contracts";
 import type { EntityGroupResolveRequestQuery } from "@portalai/core/contracts";
 import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
+import type { SearchRequestQuery } from "@portalai/core/contracts";
 import type { CuratedViewListRequestQuery } from "@portalai/core/contracts";
 import type { CuratedViewRecordsRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
@@ -171,6 +172,11 @@ export const queryKeys = {
     ) => [...queryKeys.entityGroups.root, "memberOverlap", id, params] as const,
     resolve: (id: string, params?: EntityGroupResolveRequestQuery) =>
       [...queryKeys.entityGroups.root, "resolve", id, params] as const,
+  },
+  search: {
+    root: ["search"] as const,
+    query: (params: SearchRequestQuery) =>
+      [...queryKeys.search.root, params] as const,
   },
   entityTags: {
     root: ["entityTags"] as const,

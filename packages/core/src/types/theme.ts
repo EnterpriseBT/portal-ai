@@ -130,6 +130,13 @@ declare module "@mui/material/IconButton" {
   }
 }
 
+// #1122: an icon can take it too (a favorite station's star in a menu).
+declare module "@mui/material/SvgIcon" {
+  interface SvgIconPropsColorOverrides {
+    favorite: true;
+  }
+}
+
 // Update the Typography's variant prop options
 declare module "@mui/material/Typography" {
   interface TypographyPropsVariantOverrides {

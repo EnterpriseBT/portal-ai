@@ -49,7 +49,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
             startIcon={<Icon name={IconName.Portal} />}
             onClick={onNewPortal}
           >
-            Launch New Portal
+            Open Portal
           </Button>
         }
       >

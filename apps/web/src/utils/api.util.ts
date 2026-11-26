@@ -304,8 +304,12 @@ export const useAuthQuery = <T>(
       // #747: hand react-query's signal over only while reads are paused, so
       // a query whose page goes away stops waiting and never sends. Reading
       // `context.signal` opts that query into abort-on-unmount, which every
-      // other query must not change into.
-      const signal = apiReadPauseRemainingMs() > 0 ? context.signal : undefined;
+      // other query must not change into. #1076: a query that declares
+      // `meta: { abortable: true }` (the palette's search) always gets it,
+      // so a superseded search is aborted when its key changes.
+      const abortable = queryOptions?.meta?.abortable === true;
+      const signal =
+        abortable || apiReadPauseRemainingMs() > 0 ? context.signal : undefined;
       const response = await fetchWithAuth<ApiSuccessResponse<T>>(
         url,
         signal ? { ...options, signal } : options

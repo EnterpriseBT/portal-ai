@@ -102,6 +102,8 @@ export enum ApiCode {
   GRANT_NOT_FOUND = "GRANT_NOT_FOUND",
   /** #745: a `GET /api/grants` query that fails its schema. 400. */
   GRANT_INVALID_QUERY = "GRANT_INVALID_QUERY",
+  // #1076: the command palette search.
+  SEARCH_INVALID_QUERY = "SEARCH_INVALID_QUERY",
   /** A custom policy statement grants access the author doesn't hold (#622). 403. */
   RBAC_POLICY_EXCEEDS_BOUNDARY = "RBAC_POLICY_EXCEEDS_BOUNDARY",
   /** A policy statement is not a meaningful (verb × resource × scope) combination

@@ -41,6 +41,9 @@ export const portals = {
   create: () =>
     useAuthMutation<PortalCreateResponsePayload, CreatePortalBody>({
       url: "/api/portals",
+      // #1075: a refusal means the caller's portal permissions changed under
+      // them; refetching re-renders the launchers' gates from them.
+      onPermissionDenied: { invalidate: () => [queryKeys.portals.root] },
     }),
 
   sendMessage: (portalId: string) =>

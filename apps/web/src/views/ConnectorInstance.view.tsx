@@ -46,6 +46,7 @@ import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
 import { useObjectTags } from "../utils/use-object-tags.util";
+import { useRecordRecentVisit } from "../utils/use-recent-visits.util";
 import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
@@ -261,6 +262,11 @@ export const ConnectorInstanceView = ({
   // key as `ConnectorInstanceDataItem` below — React Query dedups, so
   // this isn't a second network round-trip.
   const instanceQueryForSlug = sdk.connectorInstances.get(connectorInstanceId);
+  // #1076: the palette's Recent.
+  useRecordRecentVisit(
+    "connector_instance",
+    instanceQueryForSlug.data?.connectorInstance
+  );
   const definitionSlug =
     instanceQueryForSlug.data?.connectorInstance.connectorDefinition?.slug ??
     "";

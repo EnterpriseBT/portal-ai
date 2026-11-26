@@ -31,6 +31,7 @@ import { portalResults } from "./portal-results.api";
 import { portalSql } from "./portal-sql.api";
 import { portals } from "./portals.api";
 import { sse } from "./sse.api";
+import { search } from "./search.api";
 import { stations } from "./stations.api";
 import { toolpacks } from "./toolpacks.api";
 import { apiConnector } from "./api-connector.api";
@@ -76,6 +77,7 @@ export interface Sdk {
   readonly portalSql: typeof portalSql;
   readonly portals: typeof portals;
   readonly sse: typeof sse;
+  readonly search: typeof search;
   readonly stations: typeof stations;
   readonly toolpacks: typeof toolpacks;
   readonly apiConnector: typeof apiConnector;
@@ -115,6 +117,7 @@ export const sdk: Sdk = {
   portalSql,
   portals,
   sse,
+  search,
   stations,
   toolpacks,
   apiConnector,
