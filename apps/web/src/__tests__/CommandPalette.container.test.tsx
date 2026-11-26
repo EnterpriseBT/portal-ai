@@ -27,6 +27,9 @@ const off = () => query(undefined, { isSuccess: false });
 let mockFavorites: Result[] = [];
 let mockRefs: Result[] = [];
 let mockRefsError = false;
+let mockRefsPlaceholder = false;
+let mockPortalsError = false;
+const mockPortalParams: unknown[] = [];
 let mockResults: Result[] = [];
 let mockResultsError = false;
 let mockTagged: {
@@ -51,16 +54,25 @@ jest.unstable_mockModule("../api/sdk", () => ({
         }
         if (params.tag !== undefined) return query(mockTagged);
         if (params.refs !== undefined) {
-          return mockRefsError
-            ? query(undefined, { isError: true, isSuccess: false })
-            : query({ results: mockRefs });
+          if (mockRefsError) {
+            return query(undefined, { isError: true, isSuccess: false });
+          }
+          return query(
+            { results: mockRefs },
+            { isPlaceholderData: mockRefsPlaceholder }
+          );
         }
         return query({ results: mockFavorites });
       },
     },
     portals: {
-      list: (_p: unknown, opts: { enabled?: boolean }) =>
-        opts?.enabled === false ? off() : query({ portals: mockPortals }),
+      list: (p: unknown, opts: { enabled?: boolean }) => {
+        if (opts?.enabled === false) return off();
+        mockPortalParams.push(p);
+        return mockPortalsError
+          ? query(undefined, { isError: true, isSuccess: false })
+          : query({ portals: mockPortals });
+      },
     },
     entityTags: {
       list: (_p: unknown, opts: { enabled?: boolean }) =>
@@ -80,7 +92,7 @@ const { expectNoAxeViolations, render, screen, waitFor, act } =
 const userEvent = (await import("@testing-library/user-event")).default;
 const { CommandPalette } =
   await import("../components/CommandPalette.component");
-const { PortalLauncherContext } =
+const { PortalLauncherContext, RECENT_PORTALS_PARAMS } =
   await import("../utils/portal-launcher.context");
 const { recentVisitsKey } = await import("../utils/use-recent-visits.util");
 
@@ -123,9 +135,12 @@ const result = (type: string, id: string, name: string): Result => ({
   tags: [],
 });
 
-const renderPalette = (onClose = jest.fn()) => {
+const renderPalette = (
+  onClose = jest.fn(),
+  value: typeof launcher = launcher
+) => {
   const view = render(
-    <PortalLauncherContext.Provider value={launcher}>
+    <PortalLauncherContext.Provider value={value}>
       <CommandPalette open onClose={onClose} />
     </PortalLauncherContext.Provider>,
     { auth }
@@ -153,6 +168,9 @@ beforeEach(() => {
   mockFavorites = [result("station", "s-fav", "Favorite station")];
   mockRefs = [];
   mockRefsError = false;
+  mockRefsPlaceholder = false;
+  mockPortalsError = false;
+  mockPortalParams.length = 0;
   mockResults = [];
   mockResultsError = false;
   mockTagged = { results: [], matchedTags: [] };
@@ -335,5 +353,73 @@ describe("CommandPalette (container, #1076)", () => {
     ).toBeInTheDocument();
     expect(groupNames()).toEqual(["Actions"]);
     await expectNoAxeViolations(screen.getByRole("dialog"));
+  });
+
+  // ── #1076 code review ──
+
+  it("clears the search when the shell closes it, however it closes", async () => {
+    mockResults = [result("station", "s1", "Sales")];
+    const palette = (open: boolean) => (
+      <PortalLauncherContext.Provider value={launcher}>
+        <CommandPalette open={open} onClose={jest.fn()} />
+      </PortalLauncherContext.Provider>
+    );
+    const { rerender } = render(palette(true), { auth });
+    await typeQuery("sal");
+    await waitFor(() => expect(groupNames()).toContain("Stations"));
+    // ⌘K closes through the shell's toggle, never through onClose.
+    rerender(palette(false));
+    mockSearchCalls.length = 0;
+    rerender(palette(true));
+    expect(await screen.findByRole("combobox")).toHaveValue("");
+    await waitFor(() => expect(groupNames()).toContain("Actions"));
+    expect(groupNames()).not.toContain("Stations");
+    expect(mockSearchCalls.filter((p) => p.q !== undefined)).toEqual([]);
+  });
+
+  it("blocks the launch actions while a launch is in flight", async () => {
+    renderPalette(jest.fn(), { ...launcher, pending: true });
+    const option = await screen.findByRole("option", {
+      name: /Open Portal in Finance/,
+    });
+    expect(option).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(option);
+    expect(launch).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("option", { name: /Open Portal: choose station…/ })
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("keeps showing Recent while new refs load, without pruning", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        { type: "station", id: "new", visitedAt: 3 },
+        { type: "curated_view", id: "v1", visitedAt: 2 },
+      ])
+    );
+    // The previous refs' results, held while the new ones load.
+    mockRefs = [result("curated_view", "v1", "Q3 orders")];
+    mockRefsPlaceholder = true;
+    renderPalette();
+    expect(
+      await screen.findByRole("option", { name: /Q3 orders/ })
+    ).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toHaveLength(2);
+  });
+
+  it("says so when a home group fails to load", async () => {
+    mockPortalsError = true;
+    renderPalette();
+    expect(
+      await screen.findByText("Couldn’t load everything here. Try again.")
+    ).toBeInTheDocument();
+    expect(groupNames()).toContain("Actions");
+  });
+
+  it("reads recent portals through the launcher's own query", async () => {
+    renderPalette();
+    await waitFor(() => expect(groupNames()).toContain("Actions"));
+    expect(mockPortalParams).toContainEqual(RECENT_PORTALS_PARAMS);
   });
 });

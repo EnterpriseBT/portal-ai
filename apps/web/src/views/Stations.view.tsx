@@ -34,6 +34,7 @@ import { FAVORITE_FILTER } from "../utils/favorite-filter.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useCreateParam } from "../utils/use-create-param.util";
+import { STATION_CREATE_KINDS } from "../utils/routes.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -136,6 +137,7 @@ export const StationsView: React.FC = () => {
   const { capabilitiesKnown } = useCapabilities();
   // #1076: `?create=station`, the command palette's New station.
   useCreateParam({
+    allowed: STATION_CREATE_KINDS,
     gate: createGate,
     ready: capabilitiesKnown,
     onOpen: handleOpenCreate,

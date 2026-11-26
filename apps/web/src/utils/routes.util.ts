@@ -218,6 +218,12 @@ export function normalizeCreateSearch<K extends string>(
     : {};
 }
 
+/** #1076: each index page's `?create=` kinds (route and page share them). */
+export const STATION_CREATE_KINDS = ["station"] as const;
+export const VIEW_CREATE_KINDS = ["view"] as const;
+export const ENTITY_CREATE_KINDS = ["entity"] as const;
+export const TAG_CREATE_KINDS = ["tag"] as const;
+
 /** #1076: the connector workflows a `?create=` link can open on /connectors. */
 export const CONNECTOR_CREATE_KINDS = [
   "file-upload",

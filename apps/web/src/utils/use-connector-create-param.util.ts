@@ -5,6 +5,7 @@ import type { ConnectorDefinition } from "@portalai/core/models";
 import { sdk } from "../api/sdk";
 import { useCreateGate } from "./use-create-gate.util";
 import { useCreateParam } from "./use-create-param.util";
+import { CONNECTOR_CREATE_KINDS } from "./routes.util";
 
 /**
  * #1076: the connectors page's `?create=<workflow slug>` (the command
@@ -41,6 +42,7 @@ export function useConnectorCreateParam({
     "Ask for access to connect data"
   );
   useCreateParam({
+    allowed: CONNECTOR_CREATE_KINDS,
     gate,
     ready:
       capabilitiesKnown &&

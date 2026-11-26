@@ -34,6 +34,7 @@ import { decideActionGate } from "../utils/action-gate.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { useCapabilities } from "../utils/use-capabilities.util";
 import { useCreateParam } from "../utils/use-create-param.util";
+import { VIEW_CREATE_KINDS } from "../utils/routes.util";
 import { toServerError } from "../utils/api.util";
 import { CuratedViewEditorDialog } from "../components/CuratedViewEditorDialog.component";
 import { DeleteCuratedViewDialog } from "../components/DeleteCuratedViewDialog.component";
@@ -239,6 +240,7 @@ export const CuratedViews: React.FC = () => {
   const { capabilitiesKnown } = useCapabilities();
   // #1076: `?create=view`, the command palette's New view.
   useCreateParam({
+    allowed: VIEW_CREATE_KINDS,
     gate: createGate,
     ready: capabilitiesKnown,
     onOpen: () => setCreateOpen(true),

@@ -141,7 +141,7 @@ describe("NewPortalButton (#1075)", () => {
   it("reads the caller's own last portal, without joining its station", () => {
     render(<Button />);
     expect(mockPortalsList).toHaveBeenCalledWith(
-      expect.objectContaining({ mine: "true", limit: 1, sortBy: "lastOpened" })
+      expect.objectContaining({ mine: "true", limit: 5, sortBy: "lastOpened" })
     );
     expect(mockPortalsList.mock.calls[0][0]).not.toHaveProperty("include");
   });

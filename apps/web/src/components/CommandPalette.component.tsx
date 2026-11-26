@@ -8,8 +8,10 @@ import {
   IconName,
   Kbd,
   Modal,
+  pendingGate,
   StatusMessage,
   Typography,
+  type ActionGate,
 } from "@portalai/core/ui";
 import {
   SEARCH_RESULT_TYPES,
@@ -34,7 +36,10 @@ import {
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { useDebouncedValue } from "../utils/use-debounced-value.util";
 import { useRecentVisits } from "../utils/use-recent-visits.util";
-import { usePortalLauncherContext } from "../utils/portal-launcher.context";
+import {
+  RECENT_PORTALS_PARAMS,
+  usePortalLauncherContext,
+} from "../utils/portal-launcher.context";
 import { useCreateGate } from "../utils/use-create-gate.util";
 
 export interface CommandPaletteUIProps {
@@ -161,30 +166,39 @@ export interface CommandPaletteProps {
 
 const SEARCH_DEBOUNCE_MS = 200;
 const RECENT_SHOWN = 8;
-const RECENT_PORTALS = 5;
 const TAG_SUGGESTIONS = 8;
+const SEARCH_FAILED = "Couldn’t search. Try again.";
 
 /**
  * The command palette, wired (#1076). Home shows Actions, Favorites, the
- * caller's 5 latest portals and other recent items; typing searches every readable object type (one request per
- * 200 ms pause, the superseded one aborted); `#text` searches by tag, and
- * `#` alone suggests tags. Actions are gated like their page buttons, and
- * Open Portal goes through the shell's one launcher. Any navigation closes it.
+ * caller's 5 latest portals and other recent items; typing searches every
+ * readable object type (one request per 200 ms pause, the superseded one
+ * aborted); `#text` searches by tag, and `#` alone suggests tags. Actions
+ * are gated like their page buttons, and Open Portal goes through the
+ * shell's one launcher. Any navigation closes it, and closing it by any
+ * path (Escape, ⌘K, a pick) clears the search.
  */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   open,
   onClose,
 }) => {
   const [query, setQuery] = React.useState("");
-  const debounced = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  // Closing clears the search however it closes (the shell's ⌘K toggle
+  // never calls onClose). Adjusted while rendering, React's pattern for
+  // state that follows a prop.
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setQuery("");
+  }
+  // A cleared search lands at once rather than after the debounce, so a
+  // reopened palette never shows (or re-sends) the previous search.
+  const debounced = useDebouncedValue(query, SEARCH_DEBOUNCE_MS, {
+    immediate: query === "",
+  });
   const parsed = parsePaletteQuery(debounced);
   const home = parsed.mode === "home";
   const tagMode = parsed.mode === "tag";
-
-  const handleClose = () => {
-    setQuery("");
-    onClose();
-  };
 
   // Any navigation closes the palette: a picked link, a create's
   // `?create=` link, or a portal the launcher opened.
@@ -193,10 +207,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   React.useEffect(() => {
     if (href === lastHref.current) return;
     lastHref.current = href;
-    if (open) {
-      setQuery("");
-      onClose();
-    }
+    if (open) onClose();
   }, [href, open, onClose]);
 
   // ── Data, one query per mode, each only while the palette is open ──
@@ -207,16 +218,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { refs },
     { enabled: open && home && refs !== "" }
   );
-  const recentPortals = sdk.portals.list(
-    {
-      limit: RECENT_PORTALS,
-      offset: 0,
-      sortBy: "lastOpened",
-      sortOrder: "desc",
-      mine: "true",
-    },
-    { enabled: open && home }
-  );
+  // The launcher's own query (same key), so the two share one request.
+  const recentPortals = sdk.portals.list(RECENT_PORTALS_PARAMS, {
+    enabled: open && home,
+  });
   const results = sdk.search.query(
     { q: parsed.mode === "search" ? parsed.text : "" },
     { enabled: open && parsed.mode === "search" }
@@ -243,6 +248,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     if (!recentData) return;
     prune(new Set(recentData.results.map((r) => `${r.type}:${r.id}`)));
   }, [recentData, prune]);
+  // Recent shows in the stored order from whatever has loaded, the previous
+  // refs' results included, so a new visit doesn't blank the group while
+  // its refs load; the new item joins when they do.
+  const hydrated = new Map(
+    (recent.data?.results ?? []).map((r) => [`${r.type}:${r.id}`, r])
+  );
+  const recentResults =
+    refs === ""
+      ? []
+      : visits.flatMap((v) => {
+          const hit = hydrated.get(`${v.type}:${v.id}`);
+          return hit ? [hit] : [];
+        });
 
   // ── Actions ──
   const launcher = usePortalLauncherContext();
@@ -264,6 +282,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   );
   const tagGate = useCreateGate("tag", "Ask for access to create tags");
 
+  // A launch already in flight (from here or the header) blocks another,
+  // like the header's menu; permission is heard first.
+  const launchGate: ActionGate =
+    launcher.gate.kind === "allow" && launcher.pending
+      ? pendingGate(true, "Starting…")
+      : launcher.gate;
   const launchStations = [
     ...(launcher.station ? [launcher.station] : []),
     ...launcher.favoriteStations.filter((s) => s.id !== launcher.station?.id),
@@ -274,9 +298,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: `new-portal:${station.id}`,
         label: `Open Portal in ${station.name}`,
         icon: IconName.Portal,
-        gate: launcher.gate,
+        gate: launchGate,
         onSelect: () => {
-          handleClose();
+          onClose();
           launcher.launch(station.id);
         },
       })
@@ -285,9 +309,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       id: "choose-station",
       label: "Open Portal: choose station…",
       icon: IconName.Portal,
-      gate: launcher.gate,
+      gate: launchGate,
       onSelect: () => {
-        handleClose();
+        onClose();
         launcher.chooser.onOpen();
       },
     },
@@ -331,7 +355,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // ── Groups ──
   const groups: PaletteGroup[] = [];
-  let active: { isLoading: boolean; isError: boolean } | undefined;
+  let loading = false;
+  let errorMessage: string | null = null;
   if (home) {
     // The caller's latest portals, newest first, so an existing chat opens
     // in one step; other recent items follow, newest first.
@@ -347,10 +372,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       { label: "Recent portals", entries: recentPortalEntries },
       {
         label: "Recent",
-        entries: items(recentData?.results.slice(0, RECENT_SHOWN)),
+        entries: items(recentResults.slice(0, RECENT_SHOWN)),
       }
     );
-    active = favorites;
+    loading = favorites.isLoading;
+    // Any home group that failed says so, rather than just not showing.
+    if (favorites.isError || recent.isError || recentPortals.isError) {
+      errorMessage = "Couldn’t load everything here. Try again.";
+    }
   } else if (parsed.mode === "search") {
     groups.push({ label: "Actions", entries: actionEntries(parsed.text) });
     for (const type of SEARCH_RESULT_TYPES) {
@@ -359,7 +388,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         entries: items(results.data?.results.filter((r) => r.type === type)),
       });
     }
-    active = results;
+    loading = results.isLoading;
+    if (results.isError) errorMessage = SEARCH_FAILED;
   } else if (parsed.text === "") {
     groups.push({
       label: "Tags",
@@ -372,7 +402,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         })
       ),
     });
-    active = tagSuggestions;
+    loading = tagSuggestions.isLoading;
+    if (tagSuggestions.isError) errorMessage = SEARCH_FAILED;
   } else {
     const matched = tagged.data?.matchedTags ?? [];
     groups.push({
@@ -382,18 +413,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           : `Tagged “${parsed.text}…”`,
       entries: items(tagged.data?.results),
     });
-    active = tagged;
+    loading = tagged.isLoading;
+    if (tagged.isError) errorMessage = SEARCH_FAILED;
   }
 
   return (
     <CommandPaletteUI
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       query={query}
       onQueryChange={setQuery}
       groups={groups.filter((g) => g.entries.length > 0)}
-      loading={!!active?.isLoading}
-      errorMessage={active?.isError ? "Couldn’t search. Try again." : null}
+      loading={loading}
+      errorMessage={errorMessage}
       linkComponent={RouterLink}
     />
   );

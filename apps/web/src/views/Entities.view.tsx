@@ -40,6 +40,7 @@ import { connectorEntityDeleteKeys } from "../utils/delete-invalidation.util";
 import { toServerError } from "../utils/api.util";
 import { useCreateGate } from "../utils/use-create-gate.util";
 import { useCreateParam } from "../utils/use-create-param.util";
+import { ENTITY_CREATE_KINDS } from "../utils/routes.util";
 import { TagChipListUI } from "../components/TagChipList.component";
 import { useTagFilter } from "../utils/use-tag-filter.util";
 
@@ -231,6 +232,7 @@ export const EntitiesView: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   // #1076: `?create=entity`, the command palette's New entity.
   useCreateParam({
+    allowed: ENTITY_CREATE_KINDS,
     gate: createGate,
     ready: capabilitiesKnown,
     onOpen: () => setCreateOpen(true),

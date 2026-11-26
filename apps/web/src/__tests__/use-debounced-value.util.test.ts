@@ -21,3 +21,22 @@ describe("useDebouncedValue (#1076)", () => {
     expect(result.current).toBe("abc");
   });
 });
+
+describe("useDebouncedValue immediate (#1076 code review)", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("passes an immediate value through at once and drops the pending one", () => {
+    const { result, rerender } = renderHook(
+      ({ value, immediate }) => useDebouncedValue(value, 200, { immediate }),
+      { initialProps: { value: "sal", immediate: false } }
+    );
+    rerender({ value: "sales", immediate: false });
+    rerender({ value: "", immediate: true });
+    expect(result.current).toBe("");
+    rerender({ value: "x", immediate: false });
+    expect(result.current).toBe("");
+    act(() => jest.advanceTimersByTime(200));
+    expect(result.current).toBe("x");
+  });
+});

@@ -332,5 +332,14 @@ describe("Combobox (#1122)", () => {
     expect(onFollowLink).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "st-1" })
     );
+    onFollowLink.mockClear();
+    // A Ctrl/⌘-click opens a new tab: the page stays, so nothing reports.
+    const user = userEvent.setup();
+    await user.keyboard("{Control>}");
+    await user.click(screen.getByRole("option", { name: "Finance" }));
+    await user.keyboard("{/Control}{Meta>}");
+    await user.click(screen.getByRole("option", { name: "Finance" }));
+    await user.keyboard("{/Meta}");
+    expect(onFollowLink).not.toHaveBeenCalled();
   });
 });

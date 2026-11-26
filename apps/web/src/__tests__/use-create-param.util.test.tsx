@@ -19,7 +19,7 @@ const setup = async (entry: string) => {
   await router.load();
   const onOpen = jest.fn();
   const Harness = ({ gate, ready }: { gate: Gate; ready: boolean }) => {
-    useCreateParam({ gate, ready, onOpen });
+    useCreateParam({ allowed: ["station"], gate, ready, onOpen });
     return null;
   };
   const view = (gate: Gate, ready = true) => (
@@ -73,5 +73,12 @@ describe("useCreateParam (#1076)", () => {
     );
     await waitFor(() => expect(onOpen).toHaveBeenCalledWith("station"));
     await waitFor(() => expect(searchOf(router).create).toBeUndefined());
+  });
+
+  it("drops a value the page doesn't offer without opening (#1076 code review)", async () => {
+    const { router, onOpen, view } = await setup("/stations?create=bogus");
+    render(view({ kind: "allow" }));
+    await waitFor(() => expect(searchOf(router).create).toBeUndefined());
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

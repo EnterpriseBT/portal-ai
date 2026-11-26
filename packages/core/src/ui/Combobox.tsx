@@ -51,7 +51,8 @@ export interface ComboboxProps<T extends ComboboxOption = ComboboxOption> {
   /** Renders link options; core can't import the app's router. */
   linkComponent?: React.ElementType;
   /**
-   * Called when a link option is followed, by click or Enter. A host that
+   * Called when a link option is followed in place, by click or Enter, and
+   * not on a Ctrl/⌘/Shift/Alt-click, which opens a new tab or window. A host that
    * should close on any pick calls its close here (#1076): a link to the
    * page you're already on changes no location, so nothing else would.
    */
@@ -238,7 +239,16 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
               (optionProps as React.HTMLAttributes<HTMLElement>).onClick?.(
                 event
               );
-              onFollowLink?.(option);
+              // A modified or non-primary click opens a new tab or window,
+              // so the page (and the palette) stays: only a plain follow
+              // reports.
+              const newContext =
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0;
+              if (!newContext) onFollowLink?.(option);
             }}
             aria-describedby={descriptionId}
             className="ComboboxOption"

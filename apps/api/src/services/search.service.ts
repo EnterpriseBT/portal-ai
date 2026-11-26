@@ -1,6 +1,6 @@
 /**
  * The command palette's search (#1076), `GET /api/search`. One permission
- * load per request, then one bounded query per object type. Every type is
+ * load per request, then one bounded query per object type, run in turn. Every type is
  * filtered by org, not deleted, and the same `visibilityPredicate` its list
  * route applies, so a search never returns what that list wouldn't (an
  * agreement test holds the two together). Modes:
@@ -302,38 +302,43 @@ export class SearchService {
     });
   }
 
-  /** Runs one query per type, attaches readable tags, keeps type order. */
+  /**
+   * Runs one query per type, attaches readable tags, keeps type order. The
+   * queries run one after another, never in parallel: the API's 10-connection
+   * pool is shared with every route and the workers, so a search holds at
+   * most one connection at a time however fast someone types (#1076 code
+   * review).
+   */
   private static async collect(
     set: PermissionSet,
     types: readonly SearchResultType[],
     query: (type: SearchResultType) => Promise<Row[]>
   ): Promise<SearchResult[]> {
-    const perType = await Promise.all(
-      types.map(async (type) => {
-        const rows = await query(type);
-        const tagType = SEARCH_TYPE_CONFIG[type].tagType;
-        const tags =
-          tagType && rows.length > 0
-            ? await TagAssignmentService.tagsForTargets(
-                set,
-                tagType,
-                rows.map((r) => r.id)
-              )
-            : undefined;
-        return rows.map(
-          (row): SearchResult => ({
-            type,
-            id: row.id,
-            name: row.name,
-            tags: (tags?.get(row.id) ?? []).map((tag) => ({
-              id: tag.id,
-              name: tag.name,
-              color: tag.color ?? null,
-            })),
-          })
-        );
-      })
-    );
-    return perType.flat();
+    const results: SearchResult[] = [];
+    for (const type of types) {
+      const rows = await query(type);
+      const tagType = SEARCH_TYPE_CONFIG[type].tagType;
+      const tags =
+        tagType && rows.length > 0
+          ? await TagAssignmentService.tagsForTargets(
+              set,
+              tagType,
+              rows.map((r) => r.id)
+            )
+          : undefined;
+      for (const row of rows) {
+        results.push({
+          type,
+          id: row.id,
+          name: row.name,
+          tags: (tags?.get(row.id) ?? []).map((tag) => ({
+            id: tag.id,
+            name: tag.name,
+            color: tag.color ?? null,
+          })),
+        });
+      }
+    }
+    return results;
   }
 }

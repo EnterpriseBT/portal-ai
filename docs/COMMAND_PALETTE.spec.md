@@ -102,7 +102,7 @@ export class SearchService {
 - **`refs` mode.** Group the refs by type, then for each type run `inArray(idCol, ids)` plus the base filter. Results come back in the request's order, and an id the caller can't read (or that is deleted or in another org) is absent, with no error.
 - **Tags on results.** `TagAssignmentService.tagsForTargets(set, tagType, ids)` per taggable type with results; a portal gets `[]`.
 - **Result order.** Types in `SEARCH_RESULT_TYPES` order, each type's rows in its own order (`refs` excepted).
-- Types are queried with `Promise.all`.
+- Types are queried one after another, never in parallel, so a search holds at most one of the shared pool's connections at a time (code review).
 
 ### API — `apps/api/src/routes/search.router.ts` (new), mounted `protectedRouter.use("/search", searchRouter)`
 
