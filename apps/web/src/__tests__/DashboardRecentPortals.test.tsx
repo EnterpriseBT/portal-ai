@@ -43,7 +43,11 @@ describe("DashboardRecentPortalsUI", () => {
   it("shows a teaching empty state", async () => {
     const { container } = render(<DashboardRecentPortalsUI portals={[]} />);
     expect(screen.getByText("No portals yet")).toBeInTheDocument();
-    expect(screen.getByText(/Ask a question above/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The ones you open most recently show here/)
+    ).toBeInTheDocument();
+    // It names no control the page may not have yet (#1079, #1080).
+    expect(screen.queryByText(/Ask a question above/)).not.toBeInTheDocument();
     await expectNoAxeViolations(container);
   });
 
@@ -78,5 +82,41 @@ describe("DashboardRecentPortalsUI", () => {
       />
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("shows when a portal was last opened, falling back to when it was made", () => {
+    render(
+      <DashboardRecentPortalsUI
+        portals={[
+          { ...portal(1), lastOpened: Date.now() - 5 * 60_000 },
+          { ...portal(2), lastOpened: null },
+        ]}
+      />
+    );
+    expect(screen.getByText("Station 1 · 5m ago")).toBeInTheDocument();
+    expect(screen.getByText("Station 2 · 2h ago")).toBeInTheDocument();
+  });
+
+  it("shows only the time for a portal with no station", () => {
+    render(
+      <DashboardRecentPortalsUI
+        portals={[{ ...portal(1), stationName: null }]}
+      />
+    );
+    expect(screen.getByRole("link", { name: /^Portal 1/ })).toHaveTextContent(
+      "Portal 11h ago"
+    );
+  });
+
+  it("keeps no empty action slot on a row whose Delete is hidden", () => {
+    const { container } = render(
+      <DashboardRecentPortalsUI
+        portals={[{ ...portal(1), deleteGate: { kind: "hide" } }]}
+        onDeletePortal={jest.fn()}
+      />
+    );
+    expect(
+      container.querySelector(".MuiListItemSecondaryAction-root")
+    ).toBeNull();
   });
 });

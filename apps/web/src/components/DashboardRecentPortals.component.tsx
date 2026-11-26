@@ -51,7 +51,9 @@ export const DashboardRecentPortalsUI: React.FC<
       <EmptyState
         icon={<Icon name={IconName.Portal} />}
         title="No portals yet"
-        description="A portal is a conversation with a station's data. Ask a question above, or launch a favorite station, to start one."
+        // Names no control on the page: what starts a portal here changes as
+        // the workbench fills in (#1079, #1080).
+        description="A portal is a conversation with a station's data. The ones you open most recently show here."
       />
     );
   }
@@ -70,11 +72,15 @@ export const DashboardRecentPortalsUI: React.FC<
         ]
           .filter(Boolean)
           .join(" · "),
+        // No action at all for a hidden gate, so the row keeps no empty slot.
         action:
-          onDeletePortal && portal.deleteGate ? (
+          onDeletePortal &&
+          portal.deleteGate &&
+          portal.deleteGate.kind !== "hide" ? (
             <GatedIconButton
               icon={IconName.Delete}
               size="small"
+              color="error"
               // Row actions name their row (#794).
               aria-label={`Delete ${portal.name}`}
               gate={portal.deleteGate}

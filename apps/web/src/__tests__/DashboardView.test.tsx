@@ -4,10 +4,12 @@ const { expectNoAxeViolations, render, screen, fireEvent } =
   await import("./test-utils");
 const { DashboardViewUI } = await import("../views/Dashboard.view");
 
+// Pure UI: the parts that fetch come in as nodes from the container.
 const defaultUIProps = {
   onNewPortal: jest.fn(),
-  onDeletePortal: jest.fn(),
-  onUnpin: jest.fn(),
+  healthCheck: <span>API connected — dev (local)</span>,
+  recentPortals: <p>recent portals body</p>,
+  pinnedResults: <p>pinned results body</p>,
 };
 
 describe("DashboardViewUI", () => {
@@ -28,9 +30,15 @@ describe("DashboardViewUI", () => {
     expect(h2s.indexOf("Pinned Results")).toBeGreaterThan(
       h2s.indexOf("Recent portals")
     );
-    expect(screen.getByTestId("workbench-recent-and-tags")).toContainElement(
+    const workbench = screen.getByTestId("workbench-recent-and-tags");
+    expect(workbench).toContainElement(
       screen.getByRole("heading", { name: "Recent portals" })
     );
+    expect(workbench).toContainElement(screen.getByText("recent portals body"));
+    expect(workbench).not.toContainElement(
+      screen.getByText("pinned results body")
+    );
+    expect(screen.getByText("API connected — dev (local)")).toBeInTheDocument();
     await expectNoAxeViolations(container);
   });
 
