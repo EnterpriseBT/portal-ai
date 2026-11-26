@@ -7,7 +7,7 @@ This spec pins the contract for #1076's command palette: a read-scoped `GET /api
 1. **One endpoint, three modes plus `refs`.** `GET /api/search` takes exactly one of `q` (search by name), `tag` (by tag), or `refs` (hydrate ids); with none it returns the caller's favorites. One `loadSet` per request, at most 5 results per type, no counts.
 2. **Read-safety by construction.** Each type is filtered by org, not deleted, and the same `visibilityPredicate(type, …)` its list route uses, so a search can never return what that list wouldn't. An agreement test holds the two together for every type and role.
 3. **`#tag` resolves server-side.** `tag=fin` matches readable tags by case-insensitive name prefix (at most 5 tags), then returns objects carrying any of them. An unreadable tag never matches.
-4. **Recent is per browser.** localStorage holds `{type,id,visitedAt}` (ids only), keyed by org and user, capped at 20, and hydrated through `refs`. Entries the server doesn't return are pruned, but only after a successful response. Portals come from `lastOpened`.
+4. **Recent is per browser.** localStorage holds `{type,id,visitedAt}` (ids only), keyed by org and user, capped at 20, and hydrated through `refs`. Entries the server doesn't return are pruned, but only after a successful response. Portals aren't kept there: the caller's 5 most recently opened portals (the server's `lastOpened`) get their own "Recent portals" group at home, so an existing portal opens in one step.
 5. **Creates are links.** Each index page reads `?create=<kind>`, opens its own dialog when its gate allows, and removes the param (replace). The palette links there. New portal stays an action through #1075's launcher, which moves into a provider so the header and palette share one create.
 6. **New Station is gated** (`useCreateGate("station", …)`) on its page and in the palette.
 7. **Superseded searches are aborted.** The search query opts into react-query's signal (`meta: { abortable: true }`), and the input is debounced 200 ms.
@@ -203,7 +203,7 @@ export function useRecordRecentVisit(type: RecentVisit["type"], object: { id: st
 
   Each query is `enabled` only in its mode and while the palette is open.
 - **Groups by mode.**
-  - **Home:** "Actions", then "Favorites", then "Recent". Recent is the hydrated refs plus portals, merged by `visitedAt` / `lastOpened` descending, at most 8.
+  - **Home:** "Actions", then "Favorites", then "Recent portals" (the caller's 5 most recently opened portals, by `lastOpened` descending), then "Recent" (the hydrated refs, newest first, at most 8).
   - **Search:** "Actions" (those whose label contains the text, case-insensitive), then one group per result type, labelled from `RESULT_GROUP_LABEL`.
   - **Tag with text:** one group labelled `Tagged “<matchedTags[0].name>”` when one tag matched, or `Tagged “<text>…”` when several did, holding every result.
   - **Tag with no text:** one "Tags" group of actions labelled `#<name>`, each setting the query to `#<name>`.
@@ -349,8 +349,8 @@ Run the tests with each package's npm scripts: `cd packages/core && npm run test
   - waits for `ready`;
   - reacts when the param changes on the same route.
 - **`CommandPalette.test.tsx` (container, SDK mocked):**
-  - Home shows Actions, Favorites and Recent.
-  - Recent merges hydrated refs with portals by recency.
+  - Home shows Actions, Favorites, Recent portals and Recent.
+  - Recent portals lists the 5 latest portals, newest first, and picking one opens it; Recent keeps other items, newest first.
   - A successful `refs` response prunes and an error doesn't.
   - Typing debounces to one request.
   - `#fin` sends `tag=fin`, labels its group, and hides Actions.
@@ -377,6 +377,7 @@ Run the tests with each package's npm scripts: `cd packages/core && npm run test
 - Results contain only objects the caller can read, in the active org. An unreadable object's name or existence never appears, by search, tag, favorites or Recent.
 - `#finance` returns only readable objects carrying a readable tag whose name starts with "finance", labelled with the tag. An unreadable tag matches nothing.
 - Every offered action would succeed on the caller's permissions and plan. A refused one is hidden or disabled with its reason. A gated link can't be followed.
+- The palette's home lists the caller's 5 most recently opened portals in a "Recent portals" group, newest first; picking one opens it.
 - A Recent item that was deleted, unshared or is in another org is silently absent and pruned. Recent never shows a stored name.
 - Fully keyboard operable, with an announced result count, and axe passes on the open palette.
 - Typing sends at most one search per 200 ms pause, aborts the superseded one, and the server returns at most 5 results per type.

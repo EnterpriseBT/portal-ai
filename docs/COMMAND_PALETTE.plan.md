@@ -270,3 +270,7 @@ Add the core contract and `GET /api/search` in all four modes, with the read-saf
 ## Next step
 
 Once discovery, spec and plan are confirmed, implementation begins on this branch with slice 1, tests first, one commit per slice.
+
+## Amendment — Recent portals (slice 7)
+
+Added after slice 6 at the user's request (#1076's body amended): the palette's home shows the caller's 5 most recently opened portals in their own "Recent portals" group, newest first, instead of mixing them into Recent. Slice 7 changes the container's groups, its tests and the Help copy that lists the palette's home.
