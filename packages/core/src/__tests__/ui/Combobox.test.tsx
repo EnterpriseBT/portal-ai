@@ -356,7 +356,7 @@ describe("Combobox (#1122)", () => {
         statusText=""
       />
     );
-    expect(getComputedStyle(screen.getByRole("listbox")).position).toBe(
+    expect(window.getComputedStyle(screen.getByRole("listbox")).position).toBe(
       "relative"
     );
   });
