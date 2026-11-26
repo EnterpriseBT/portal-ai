@@ -31,8 +31,10 @@ Merged across types and sorted by **name** (case-insensitive, `localeCompare`; t
 
 - **Collapsed sidebar:** the UI's existing behaviour, the first 8 as icons named by their tooltips and nothing when empty.
 - **Group open/closed:** remembered in localStorage under `portalai-sidebar-favorites-open`, default open.
-- **Loading:** the group renders closed-safe with no items until the four lists answer.
-- **Failure:** a failed list contributes nothing. The rest still show, and nothing toasts, because the sidebar isn't an action surface.
+- **Loading:** no items and no empty hint until the four lists answer, so the group never says there are none while it's still fetching (code review).
+- **Failure:** a failed list contributes nothing, the rest still show, and the group says "Some favorites couldn’t load." in place of (or below) its entries. Nothing toasts, because the sidebar isn't an action surface.
+- **Current page:** on a favorite's page the favorite is `aria-current="page"` and the section link above it (Stations) is `aria-current="true"`, so the nav has one current page (code review).
+- **Width:** the hint and entries never widen the drawer (`contain: inline-size` in both themes): the hint wraps and a long name truncates.
 - **Mobile:** picking a favorite closes the drawer like any sidebar link, through a new `onNavigate` prop on the UI. That's a change to #1122's component and its story, per the PRD.
 
 ## Plan — 2 slices

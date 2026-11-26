@@ -16,12 +16,17 @@ const query = (data: unknown, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 const failed = () => query(undefined, { isError: true, isSuccess: false });
+const loading = () => query(undefined, { isLoading: true, isSuccess: false });
+const state = (data: unknown) =>
+  mockLoading ? loading() : mockAllFail ? failed() : query(data);
 
 let mockStations: Row[] = [];
 let mockPins: Row[] = [];
 let mockViews: Row[] = [];
 let mockConnectors: Row[] = [];
 let mockPinsFail = false;
+let mockLoading = false;
+let mockAllFail = false;
 const mockParams: Record<string, unknown> = {};
 
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -29,25 +34,25 @@ jest.unstable_mockModule("../api/sdk", () => ({
     stations: {
       list: (p: unknown) => {
         mockParams.station = p;
-        return query({ stations: mockStations });
+        return state({ stations: mockStations });
       },
     },
     portalResults: {
       list: (p: unknown) => {
         mockParams.pin = p;
-        return mockPinsFail ? failed() : query({ portalResults: mockPins });
+        return mockPinsFail ? failed() : state({ portalResults: mockPins });
       },
     },
     curatedViews: {
       list: (p: unknown) => {
         mockParams.curated_view = p;
-        return query({ curatedViews: mockViews });
+        return state({ curatedViews: mockViews });
       },
     },
     connectorInstances: {
       list: (p: unknown) => {
         mockParams.connector_instance = p;
-        return query({ connectorInstances: mockConnectors });
+        return state({ connectorInstances: mockConnectors });
       },
     },
   },
@@ -71,6 +76,8 @@ beforeEach(() => {
   mockViews = [{ id: "v1", label: "Orders" }];
   mockConnectors = [{ id: "c1", name: "billing" }];
   mockPinsFail = false;
+  mockLoading = false;
+  mockAllFail = false;
 });
 
 describe("SidebarFavorites (container, #1077)", () => {
@@ -110,10 +117,31 @@ describe("SidebarFavorites (container, #1077)", () => {
     }
   });
 
-  it("shows the other types when one list fails", () => {
+  it("shows the other types when one list fails, and says so", () => {
     mockPinsFail = true;
     render(inNav(<SidebarFavorites collapsed={false} />));
     expect(linkNames()).toEqual(["billing", "Orders", "Sales"]);
+    expect(
+      screen.getByText("Some favorites couldn’t load.")
+    ).toBeInTheDocument();
+  });
+
+  it("never says there are none while loading or after every list fails (#1077 code review)", () => {
+    const hint =
+      "Star a station, pinned result, view or connector to keep it here.";
+    mockLoading = true;
+    const first = render(inNav(<SidebarFavorites collapsed={false} />));
+    expect(screen.queryByText(hint)).toBeNull();
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    first.unmount();
+
+    mockLoading = false;
+    mockAllFail = true;
+    render(inNav(<SidebarFavorites collapsed={false} />));
+    expect(screen.queryByText(hint)).toBeNull();
+    expect(
+      screen.getByText("Some favorites couldn’t load.")
+    ).toBeInTheDocument();
   });
 
   it("marks the favorite for the current page, and pages under it", () => {

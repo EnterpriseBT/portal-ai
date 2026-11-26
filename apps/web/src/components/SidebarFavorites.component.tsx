@@ -31,6 +31,16 @@ export interface SidebarFavoritesUIProps {
    * here, as it does for its other links.
    */
   onNavigate?: () => void;
+  /**
+   * #1077: the favorites are still loading. With none loaded yet the group
+   * shows no hint, rather than saying there are none.
+   */
+  loading?: boolean;
+  /**
+   * #1077: some or all favorites couldn't load. Shown in place of the empty
+   * hint, and below the favorites that did load.
+   */
+  errorMessage?: string | null;
 }
 
 /**
@@ -49,10 +59,15 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
   activeHref,
   limit = 8,
   onNavigate,
+  loading = false,
+  errorMessage = null,
 }) => {
   const [showAll, setShowAll] = useState(false);
   const capped = items.length > limit;
   const shown = showAll ? items : items.slice(0, limit);
+  // The "none yet" hint only once the favorites have loaded without error;
+  // until then it would say there are none.
+  const showHint = items.length === 0 && !loading && !errorMessage;
 
   const links = (list: LauncherItem[]) =>
     list.map((item) => (
@@ -88,7 +103,7 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
       open={open}
       onToggle={onToggle}
     >
-      {items.length === 0 ? (
+      {showHint ? (
         <Typography
           variant="caption"
           color="text.secondary"
@@ -99,19 +114,31 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
           Star a station, pinned result, view or connector to keep it here.
         </Typography>
       ) : (
-        <>
-          {links(shown)}
-          {capped && (
-            // A sidebar item too, so it lines up with the favorites above.
-            <SidebarNavItemUI
-              icon={showAll ? IconName.ExpandLess : IconName.ExpandMore}
-              label={showAll ? "Show fewer" : `Show all (${items.length})`}
-              collapsed={false}
-              nested
-              onClick={() => setShowAll((all) => !all)}
-            />
-          )}
-        </>
+        items.length > 0 && (
+          <>
+            {links(shown)}
+            {capped && (
+              // A sidebar item too, so it lines up with the favorites above.
+              <SidebarNavItemUI
+                icon={showAll ? IconName.ExpandLess : IconName.ExpandMore}
+                label={showAll ? "Show fewer" : `Show all (${items.length})`}
+                collapsed={false}
+                nested
+                onClick={() => setShowAll((all) => !all)}
+              />
+            )}
+          </>
+        )
+      )}
+      {errorMessage && (
+        <Typography
+          variant="caption"
+          color="error"
+          component="p"
+          className="SidebarFavorites-hint"
+        >
+          {errorMessage}
+        </Typography>
       )}
     </SidebarNavItemUI>
   );
@@ -145,8 +172,9 @@ const byName = (a: LauncherItem, b: LauncherItem) =>
  * stations, pinned results, views and connectors from the four
  * `favorite=true` lists, merged and sorted by name. Those lists return only
  * readable, undeleted rows, and a star or unstar anywhere refreshes them
- * (`favoriteKeys`), so the group follows without a reload. A list that
- * fails leaves its type out; the rest still show.
+ * (`favoriteKeys`), so the group follows without a reload. While they
+ * load it shows no hint; a list that fails leaves its type out and the
+ * group says some favorites couldn't load.
  */
 export const SidebarFavorites: React.FC<SidebarFavoritesProps> = ({
   collapsed,
@@ -203,9 +231,16 @@ export const SidebarFavorites: React.FC<SidebarFavoritesProps> = ({
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   )?.href;
 
+  const lists = [stations, pins, views, connectors];
   return (
     <SidebarFavoritesUI
       items={items}
+      loading={lists.some((list) => list.isLoading)}
+      errorMessage={
+        lists.some((list) => list.isError)
+          ? "Some favorites couldn’t load."
+          : null
+      }
       collapsed={collapsed}
       open={open}
       onToggle={() => setOpen(!open)}
