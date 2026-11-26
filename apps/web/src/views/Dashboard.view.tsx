@@ -1,21 +1,12 @@
 import React, { useState, useCallback } from "react";
 
 import type { CreatePortalBody } from "@portalai/core/contracts";
-import {
-  Box,
-  Button,
-  Icon,
-  IconName,
-  PageGrid,
-  PageGridItem,
-  PageHeader,
-  PageSection,
-  Stack,
-} from "@portalai/core/ui";
+import { Button, Icon, IconName, PageSection, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
+import { DashboardRecentPortals } from "../components/DashboardRecentPortals.component";
+import { DashboardWorkbenchUI } from "../components/DashboardWorkbench.component";
 import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
@@ -28,55 +19,45 @@ import { useToast } from "../utils/toast.context";
 
 export interface DashboardViewUIProps {
   onNewPortal: () => void;
-  onDeletePortal: (portalId: string, portalName: string) => void;
-  onUnpin: (resultId: string) => void;
+  /** The API health check, shown under the title. */
+  healthCheck: React.ReactNode;
+  /** The Recent portals body (its container fetches). */
+  recentPortals: React.ReactNode;
+  /** Today's Pinned Results list, until #1081's favorite pin tiles. */
+  pinnedResults: React.ReactNode;
 }
 
+/**
+ * The dashboard on the workbench layout (#1078). The header keeps Open Portal
+ * until #1079's start box takes the `start` slot, and Pinned Results stays a
+ * section of its own after the workbench until #1081's favorite pin tiles
+ * take the `pins` slot. Later children fill the other slots. Pure: the
+ * container hands in each part that fetches.
+ */
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onNewPortal,
-  onDeletePortal,
-  onUnpin,
+  healthCheck,
+  recentPortals,
+  pinnedResults,
 }) => (
-  <Box>
-    <Stack spacing={4}>
-      <PageHeader
-        breadcrumbs={[{ label: "Home" }]}
-        title="Dashboard"
-        icon={<Icon name={IconName.Home} />}
-        primaryAction={
-          <Button
-            variant="contained"
-            startIcon={<Icon name={IconName.Portal} />}
-            onClick={onNewPortal}
-          >
-            Open Portal
-          </Button>
-        }
-      >
-        <HealthCheck showLabel />
-      </PageHeader>
-
-      <PageGrid columns={{ xs: 1 }}>
-        <PageGridItem>
-          <PageSection
-            title="Recent Portals"
-            icon={<Icon name={IconName.Portal} />}
-          >
-            <RecentPortalsListConnected onDeletePortal={onDeletePortal} />
-          </PageSection>
-        </PageGridItem>
-
-        <PageGridItem>
-          <PageSection
-            title="Pinned Results"
-            icon={<Icon name={IconName.PushPin} />}
-          >
-            <PinnedResultsListConnected onUnpin={onUnpin} />
-          </PageSection>
-        </PageGridItem>
-      </PageGrid>
-    </Stack>
-  </Box>
+  <Stack spacing={4}>
+    <DashboardWorkbenchUI
+      headerAction={
+        <Button
+          variant="contained"
+          startIcon={<Icon name={IconName.Portal} />}
+          onClick={onNewPortal}
+        >
+          Open Portal
+        </Button>
+      }
+      headerContent={healthCheck}
+      recent={recentPortals}
+    />
+    <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
+      {pinnedResults}
+    </PageSection>
+  </Stack>
 );
 
 // ── Container (wires hooks) ─────────────────────────────────────────
@@ -168,8 +149,11 @@ export const DashboardView: React.FC = () => {
     <>
       <DashboardViewUI
         onNewPortal={handleNewPortal}
-        onDeletePortal={handleDeletePortal}
-        onUnpin={handleUnpin}
+        healthCheck={<HealthCheck showLabel />}
+        recentPortals={
+          <DashboardRecentPortals onDeletePortal={handleDeletePortal} />
+        }
+        pinnedResults={<PinnedResultsListConnected onUnpin={handleUnpin} />}
       />
 
       <CreatePortalDialog

@@ -79,7 +79,15 @@ const POPULATED: DashboardWorkbenchUIProps = {
   start: startBox("s1"),
   stations: <FavoriteStationsUI items={FAVORITE_STATIONS} onLaunch={fn()} />,
   pins: <FavoritePinsUI pins={PINS} onRetry={fn()} />,
-  recent: <DashboardRecentPortalsUI portals={RECENT_PORTALS} />,
+  recent: (
+    <DashboardRecentPortalsUI
+      portals={RECENT_PORTALS.map((portal) => ({
+        ...portal,
+        deleteGate: { kind: "allow" as const },
+      }))}
+      onDeletePortal={fn()}
+    />
+  ),
   tags: <BrowseByTagExample />,
   attention: <NeedsAttentionUI jobs={ATTENTION_JOBS} />,
 };
