@@ -20,7 +20,7 @@
 
 The ticket chose this approach on 2026-11-26. Waiting for nginx-unprivileged, or extending the exceptions, keeps prod blocked on someone else's schedule. The concrete shape:
 
-1. `FROM nginx:1.30.7-alpine-slim@sha256:8c950211a641ec5b23f265450517001f6bcca533666120ebe36cb4cff3d00a55 AS runtime`, with the tag and the index digest pinned together. `readPin`'s regex already matches `nginx:`.
+1. `FROM nginx:1.30.8-alpine-slim@sha256:e9eaa7298465eab06d618c51556fdcf3fb5061f9ff40bd28ee898fbd7ee7f900 AS runtime`. That's 1.30.8 rather than the ticket's 1.30.7: during implementation the live advisory check found 1.30.8, released 23 Nov, which fixes CVE-2026-132779 (`ssl_early_data`), and its official image was already published, with the tag and the index digest pinned together. `readPin`'s regex already matches `nginx:`.
 2. As root, in the same `RUN` as `apk upgrade && apk add nodejs`, edit `/etc/nginx/nginx.conf`:
    - drop `user`;
    - set `pid /tmp/nginx.pid`;
@@ -34,6 +34,7 @@ The ticket chose this approach on 2026-11-26. Waiting for nginx-unprivileged, or
    - the Hub URL becomes `library/nginx/tags/<v>-alpine-slim`;
    - the fix text names `nginx:` and its `imagetools inspect` command;
    - the self-test fixtures use the official `FROM`, keeping one nginx-unprivileged fixture so `readPin` stays image-agnostic.
+7. **Found in implementation:** nginx.org dropped every `Severity:` line from its advisories page, so the check's `severity !== "none"` skip no longer caught CVE-2009-4487. That's log escaping, which nginx.org won't fix ("Not vulnerable: none" over "Vulnerable: all"), so the weekly check would have flagged every pin forever. The script now skips an advisory with no fix over "all", and its self-test fixture uses the page's new shape.
 
 ## Plan — 1 slice
 

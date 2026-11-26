@@ -32,9 +32,10 @@ import { pathToFileURL } from "node:url";
 
 const ADVISORIES_URL = "https://nginx.org/en/security_advisories.html";
 const DOWNLOAD_URL = "https://nginx.org/en/download.html";
-/** The image's base; a new nginx release reaches it days later. */
+/** The image's base, the official nginx image (#1096); a new nginx release
+ *  reaches it a day or so later. */
 const IMAGE_TAG_URL = (version) =>
-  `https://hub.docker.com/v2/repositories/nginxinc/nginx-unprivileged/tags/${version}-alpine-slim`;
+  `https://hub.docker.com/v2/repositories/library/nginx/tags/${version}-alpine-slim`;
 const DEFAULT_DOCKERFILE = "apps/web/Dockerfile";
 
 /** Patch SLA per nginx severity, in days (docs/SUPPLY_CHAIN.md). */
@@ -128,12 +129,19 @@ export function parseAdvisories(html) {
       if (advisoryShaped) throw new Error(`advisory "${lines[0]}" has no readable "Vulnerable:" line`);
       continue; // a list item that isn't an advisory
     }
+    const fixed = parseNotVulnerable(field("Not vulnerable") ?? "none");
+    const ranges = parseVulnerable(vulnerable);
     advisories.push({
       title: lines[0],
       severity: (field("Severity") ?? "").toLowerCase(),
       cves: lines.filter((l) => /^CVE-\d{4}-\d+$/.test(l)),
-      fixed: parseNotVulnerable(field("Not vulnerable") ?? "none"),
-      ranges: parseVulnerable(vulnerable),
+      fixed,
+      ranges,
+      // "Not vulnerable: none" over "Vulnerable: all" is an issue nginx.org
+      // won't fix (CVE-2009-4487, log escaping): no release will ever clear
+      // it, so no pin can act on it. The page used to mark it "Severity:
+      // none"; it dropped every Severity line in November 2026 (#1096).
+      wontFix: fixed.length === 0 && ranges !== null && ranges.some((r) => r.all),
     });
   }
   if (advisories.length === 0) throw new Error("no advisories found on the nginx.org page");
@@ -168,7 +176,11 @@ export function assess({ pinned, advisories, stable, stableImageExists = true })
   const s = parseVersion(stable);
   const affecting = advisories.filter(
     (a) =>
-      a.severity !== "none" && a.ranges !== null && inRanges(v, a.ranges) && !isFixed(v, a.fixed)
+      a.severity !== "none" &&
+      !a.wontFix &&
+      a.ranges !== null &&
+      inRanges(v, a.ranges) &&
+      !isFixed(v, a.fixed)
   );
   let stale = null;
   if (v[1] % 2 === 1) stale = `${pinned} is a mainline release; the image should run stable (${stable}).`;
@@ -208,7 +220,7 @@ export function renderReport({ pinned, source, origin = source, affecting, stale
   }
   if (stale) out.push(`**Stale:** ${stale}`, "");
   out.push(
-    `**To fix:** move ${source}'s runtime \`FROM\` to the stable \`nginx-unprivileged\` \`-alpine-slim\` tag for the fixed version, and pin its index digest (\`docker buildx imagetools inspect nginxinc/nginx-unprivileged:<tag>\`). Bump the tag and the digest together; the deploy's image gate covers the rest of the image.`,
+    `**To fix:** move ${source}'s runtime \`FROM\` to the official \`nginx\` image's stable \`-alpine-slim\` tag for the fixed version, and pin its index digest (\`docker buildx imagetools inspect nginx:<tag>\`). Bump the tag and the digest together; the deploy's image gate covers the rest of the image.`,
     "",
     fingerprint({ affecting, stale })
   );
@@ -222,13 +234,14 @@ const li = (title, severity, fixed, vulnerable, cve = "") =>
   `Not vulnerable: ${fixed}<br>Vulnerable: ${vulnerable}</p></li>`;
 
 // Shaped like nginx.org's page on 2026-10-29: the two newest advisories
-// verbatim, plus the format's edge cases.
+// verbatim, plus the format's edge cases. The won't-fix entry is in the
+// page's 2026-11-26 shape, with no Severity line (#1096).
 const ADVISORIES_FIXTURE = `<nav><ul><li><a href="/">news</a></li></ul></nav><ul>
 ${li("Buffer overflow when using alias with rewrite", "medium", "1.31.7+, 1.30.6+", "0.1.29-1.31.6", "CVE-2026-15176")}
 ${li("Buffer overflow in script evaluation", "medium", "1.31.7+, 1.30.6+", "1.31.2-1.31.6, 1.30.0-1.30.5", "CVE-2026-93479")}
 ${li("NULL pointer dereference in HTTP/3", "major", "1.25.4+", "1.25.3", "CVE-2024-24989")}
 ${li("Windows path issue", "major", "0.8.40+", "nginx/Windows 0.7.52-0.8.39")}
-${li("An error log data are not sanitized", "none", "none", "all", "CVE-2009-4487")}
+<li><p>An error log data are not sanitized<br><a href="z">CVE-2009-4487</a><br>Not vulnerable: none<br>Vulnerable: all</p></li>
 ${li("Old line fix", "low", "1.29.7+, 1.28.3+", "1.5.6-1.29.6")}
 ${li("Fix | reached later lines", "low", "1.29.9+, 1.28.4+", "1.0.0-1.31.6", "CVE-2099-0001")}
 </ul>`;
@@ -250,7 +263,7 @@ const CASES = [
 const PARSE_FAILURES = [
   { name: "an empty advisories page fails", run: () => parseAdvisories("<html></html>") },
   { name: "a download page with no stable version fails", run: () => parseStable("<h4>Mainline version</h4>nginx-1.31.8") },
-  { name: "a Dockerfile pinned by a moving tag fails", run: () => readPin("FROM nginxinc/nginx-unprivileged:stable-alpine-slim@sha256:abc AS runtime") },
+  { name: "a Dockerfile pinned by a moving tag fails", run: () => readPin("FROM nginx:stable-alpine-slim@sha256:abc AS runtime") },
   { name: "an unreadable version range fails", run: () => parseAdvisories(li("x", "low", "1.0.0+", "soon")) },
   {
     name: "an advisory whose affected versions are relabelled fails, even among readable ones",
@@ -272,7 +285,12 @@ function selfTest() {
   check("parses every advisory and the stable version", advisories.length === 7 && stable === "1.30.6", `${advisories.length} advisories, stable ${stable}`);
   check(
     "reads the exact pin from the real Dockerfile shape",
-    readPin("FROM node:22-alpine AS build\nFROM nginxinc/nginx-unprivileged:1.30.6-alpine-slim@sha256:5d8b AS runtime") === "1.30.6",
+    readPin("FROM node:22-alpine AS build\nFROM nginx:1.30.7-alpine-slim@sha256:8c95 AS runtime") === "1.30.7",
+    "wrong pin"
+  );
+  check(
+    "reads a pin from another nginx image too (the pre-#1096 base)",
+    readPin("FROM nginxinc/nginx-unprivileged:1.30.6-alpine-slim@sha256:5d8b AS runtime") === "1.30.6",
     "wrong pin"
   );
   check(
@@ -344,7 +362,7 @@ async function fetchText(url) {
 }
 
 /**
- * Whether nginx-unprivileged has published `<version>-alpine-slim` yet. A
+ * Whether the official nginx image has published `<version>-alpine-slim` yet. A
  * failed lookup answers true, so a Docker Hub outage reports a newer
  * release rather than hiding it.
  */
