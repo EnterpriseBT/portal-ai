@@ -151,4 +151,22 @@ describe("Recent visits (#1076)", () => {
     expect(result.current.visits).toEqual([]);
     spy.mockRestore();
   });
+
+  it("reads at most 20 visits from a store past the cap (#1076 adversarial review)", () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify(
+        Array.from({ length: 500 }, (_, i) => ({
+          type: "station",
+          id: `s${i}`,
+          visitedAt: 1000 - i,
+        }))
+      )
+    );
+    const { result } = renderHook(() => useRecentVisits(), {
+      wrapper: wrapper("auth0|ada"),
+    });
+    expect(result.current.visits).toHaveLength(RECENT_VISITS_MAX);
+    expect(result.current.visits[0].id).toBe("s0");
+  });
 });

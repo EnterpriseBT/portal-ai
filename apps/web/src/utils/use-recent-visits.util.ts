@@ -102,7 +102,12 @@ export function readVisits(key: string): RecentVisit[] {
   let value = EMPTY;
   try {
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) value = parsed.filter(isVisit);
+    // Capped on read too: a hand-edited store past the cap would otherwise
+    // send more refs than search accepts, and a refused hydration never
+    // prunes, so Recent would stay hidden (#1076 adversarial review).
+    if (Array.isArray(parsed)) {
+      value = parsed.filter(isVisit).slice(0, RECENT_VISITS_MAX);
+    }
   } catch {
     value = EMPTY;
   }
