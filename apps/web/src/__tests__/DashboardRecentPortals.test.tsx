@@ -1,5 +1,8 @@
+import { jest } from "@jest/globals";
+
 const { expectNoAxeViolations, render, screen, within } =
   await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { DashboardRecentPortalsUI } =
   await import("../components/DashboardRecentPortals.component");
 
@@ -42,5 +45,38 @@ describe("DashboardRecentPortalsUI", () => {
     expect(screen.getByText("No portals yet")).toBeInTheDocument();
     expect(screen.getByText(/Ask a question above/)).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it("offers Delete on each row the caller may delete, naming the row", async () => {
+    const onDeletePortal = jest.fn();
+    const { container } = render(
+      <DashboardRecentPortalsUI
+        portals={[
+          { ...portal(1), deleteGate: { kind: "allow" } },
+          { ...portal(2), deleteGate: { kind: "hide" } },
+        ]}
+        onDeletePortal={onDeletePortal}
+      />
+    );
+    const del = screen.getByRole("button", { name: "Delete Portal 1" });
+    // Beside the row's link, not inside it.
+    expect(
+      screen.getByRole("link", { name: /^Portal 1/ })
+    ).not.toContainElement(del);
+    expect(
+      screen.queryByRole("button", { name: "Delete Portal 2" })
+    ).not.toBeInTheDocument();
+    await userEvent.click(del);
+    expect(onDeletePortal).toHaveBeenCalledWith("p1", "Portal 1");
+    await expectNoAxeViolations(container);
+  });
+
+  it("offers no Delete without a handler", () => {
+    render(
+      <DashboardRecentPortalsUI
+        portals={[{ ...portal(1), deleteGate: { kind: "allow" } }]}
+      />
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

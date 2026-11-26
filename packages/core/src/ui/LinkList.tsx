@@ -15,6 +15,9 @@ export interface LinkListItem {
   secondary?: string;
   /** A decorative icon before the name. Say what it means in `secondary`. */
   icon?: React.ReactNode;
+  /** A control at the row's end, beside its link rather than inside it
+   *  (a link can't hold a button), e.g. a Delete that names its row. */
+  action?: React.ReactNode;
 }
 
 export interface LinkListProps {
@@ -29,8 +32,9 @@ export interface LinkListProps {
 
 /**
  * A compact list of links, one line each (#1123): an optional icon, the name,
- * and a short detail at the trailing edge. For lists where a card per item
- * would waste space, like the dashboard's recent portals.
+ * a short detail at the trailing edge, and an optional row action after the
+ * link (#1078). For lists where a card per item would waste space, like the
+ * dashboard's recent portals.
  */
 export const LinkList: React.FC<LinkListProps> = ({
   "aria-label": ariaLabel,
@@ -40,7 +44,12 @@ export const LinkList: React.FC<LinkListProps> = ({
 }) => (
   <List aria-label={ariaLabel} id={id} disablePadding dense>
     {items.map((item, i) => (
-      <ListItem key={item.id} disablePadding divider={i < items.length - 1}>
+      <ListItem
+        key={item.id}
+        disablePadding
+        divider={i < items.length - 1}
+        secondaryAction={item.action}
+      >
         <ListItemButton component={linkComponent} href={item.href}>
           <Stack
             direction="row"

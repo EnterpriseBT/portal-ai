@@ -1,21 +1,12 @@
 import React, { useState, useCallback } from "react";
 
 import type { CreatePortalBody } from "@portalai/core/contracts";
-import {
-  Box,
-  Button,
-  Icon,
-  IconName,
-  PageGrid,
-  PageGridItem,
-  PageHeader,
-  PageSection,
-  Stack,
-} from "@portalai/core/ui";
+import { Button, Icon, IconName, PageSection, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
+import { DashboardRecentPortals } from "../components/DashboardRecentPortals.component";
+import { DashboardWorkbenchUI } from "../components/DashboardWorkbench.component";
 import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
@@ -32,51 +23,35 @@ export interface DashboardViewUIProps {
   onUnpin: (resultId: string) => void;
 }
 
+/**
+ * The dashboard on the workbench layout (#1078). The header keeps Open Portal
+ * until #1079's start box takes the `start` slot, and Pinned Results stays a
+ * section of its own after the workbench until #1081's favorite pin tiles
+ * take the `pins` slot. Later children fill the other slots.
+ */
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onNewPortal,
   onDeletePortal,
   onUnpin,
 }) => (
-  <Box>
-    <Stack spacing={4}>
-      <PageHeader
-        breadcrumbs={[{ label: "Home" }]}
-        title="Dashboard"
-        icon={<Icon name={IconName.Home} />}
-        primaryAction={
-          <Button
-            variant="contained"
-            startIcon={<Icon name={IconName.Portal} />}
-            onClick={onNewPortal}
-          >
-            Open Portal
-          </Button>
-        }
-      >
-        <HealthCheck showLabel />
-      </PageHeader>
-
-      <PageGrid columns={{ xs: 1 }}>
-        <PageGridItem>
-          <PageSection
-            title="Recent Portals"
-            icon={<Icon name={IconName.Portal} />}
-          >
-            <RecentPortalsListConnected onDeletePortal={onDeletePortal} />
-          </PageSection>
-        </PageGridItem>
-
-        <PageGridItem>
-          <PageSection
-            title="Pinned Results"
-            icon={<Icon name={IconName.PushPin} />}
-          >
-            <PinnedResultsListConnected onUnpin={onUnpin} />
-          </PageSection>
-        </PageGridItem>
-      </PageGrid>
-    </Stack>
-  </Box>
+  <Stack spacing={4}>
+    <DashboardWorkbenchUI
+      headerAction={
+        <Button
+          variant="contained"
+          startIcon={<Icon name={IconName.Portal} />}
+          onClick={onNewPortal}
+        >
+          Open Portal
+        </Button>
+      }
+      headerContent={<HealthCheck showLabel />}
+      recent={<DashboardRecentPortals onDeletePortal={onDeletePortal} />}
+    />
+    <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
+      <PinnedResultsListConnected onUnpin={onUnpin} />
+    </PageSection>
+  </Stack>
 );
 
 // ── Container (wires hooks) ─────────────────────────────────────────

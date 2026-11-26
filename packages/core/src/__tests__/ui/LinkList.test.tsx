@@ -55,4 +55,27 @@ describe("LinkList", () => {
       "yes"
     );
   });
+
+  it("puts a row's action beside its link, not inside it", async () => {
+    const { container } = render(
+      <LinkList
+        aria-label="Matches"
+        items={[
+          {
+            id: "a",
+            href: "/a",
+            primary: "Alpha",
+            action: <button type="button">Delete Alpha</button>,
+          },
+        ]}
+      />
+    );
+    const link = screen.getByRole("link", { name: /Alpha/ });
+    const action = screen.getByRole("button", { name: "Delete Alpha" });
+    expect(link).not.toContainElement(action);
+    expect(within(screen.getAllByRole("listitem")[0]).getByRole("button")).toBe(
+      action
+    );
+    await expectNoAxeViolations(container);
+  });
 });
