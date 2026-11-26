@@ -314,6 +314,9 @@ export function sheetCanvasRules(
  *   "Loading". A caller's own `aria-label` still wins;
  * - a favorite's star in `palette.favorite.main` (#1072), held at 3:1 in
  *   both themes.
+ * - a default chip's uncoloured icon in `text.secondary` (#1123). MUI draws it in
+ *   `grey[300]` in a dark theme, and Brand Dark's grey[300] is a surface
+ *   colour, so the icon all but vanished on the chip.
  *
  * `createTheme(options, this)` deep-merges, so a JSON override for the same
  * component keeps its other keys. That's why every override here is an
@@ -352,6 +355,18 @@ export function a11yComponents(palette: Palette): ThemeOptions {
       },
       MuiLink: {
         styleOverrides: { root: { "&:focus-visible": ring } },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            // Only an icon with no colour of its own: an icon passed with
+            // `color="success"` keeps it.
+            "&.MuiChip-colorDefault .MuiChip-icon:not([class*='MuiSvgIcon-color'])":
+              {
+                color: palette.text.secondary,
+              },
+          },
+        },
       },
       MuiButton: {
         styleOverrides: {
