@@ -208,3 +208,18 @@ describe("Version dialog", () => {
     );
   });
 });
+
+describe("SidebarNav Favorites (#1077)", () => {
+  afterEach(() => localStorage.clear());
+
+  it("mounts the Favorites group below the main items", () => {
+    localStorage.setItem("sidebar-state", JSON.stringify("expanded"));
+    render(<SidebarNav />);
+    const favorites = screen.getByRole("button", { name: "Favorites" });
+    const dashboard = screen.getAllByRole("link")[0];
+    expect(
+      dashboard.compareDocumentPosition(favorites) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+});

@@ -1,12 +1,18 @@
 import React, { useState } from "react";
 
+import { useRouterState } from "@tanstack/react-router";
+
 import { Divider, IconName, Typography } from "@portalai/core/ui";
 
+import { sdk } from "../api/sdk";
 import { SidebarNavItemUI } from "./SidebarNavItem.component";
 import {
   LAUNCHER_TYPE_ICON,
+  toLauncherItem,
   type LauncherItem,
+  type LauncherItemType,
 } from "../utils/launcher-items.util";
+import { useStorage } from "../utils/storage.util";
 
 export interface SidebarFavoritesUIProps {
   /** The caller's favorites, in the order to list them. */
@@ -20,6 +26,11 @@ export interface SidebarFavoritesUIProps {
   activeHref?: string;
   /** How many to list before "Show all (n)". */
   limit?: number;
+  /**
+   * #1077: a favorite was followed. The sidebar closes its mobile drawer
+   * here, as it does for its other links.
+   */
+  onNavigate?: () => void;
 }
 
 /**
@@ -37,6 +48,7 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
   onToggle,
   activeHref,
   limit = 8,
+  onNavigate,
 }) => {
   const [showAll, setShowAll] = useState(false);
   const capped = items.length > limit;
@@ -53,6 +65,7 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
         selected={item.href === activeHref}
         iconColor="primary"
         nested
+        onClick={onNavigate}
       />
     ));
 
@@ -101,5 +114,103 @@ export const SidebarFavoritesUI: React.FC<SidebarFavoritesUIProps> = ({
         </>
       )}
     </SidebarNavItemUI>
+  );
+};
+
+// ── Container (#1077) ─────────────────────────────────────────────────
+
+export interface SidebarFavoritesProps {
+  /** The sidebar is collapsed to icons. */
+  collapsed: boolean;
+  /** A favorite was followed (the sidebar closes its mobile drawer). */
+  onNavigate?: () => void;
+}
+
+/** Where the group's expanded state is remembered, per browser. */
+export const SIDEBAR_FAVORITES_OPEN_KEY = "portalai-sidebar-favorites-open";
+
+/** Per type; the list routes clamp `limit` at 100. */
+const FAVORITES_PER_TYPE = 100;
+
+const isBoolean = (value: unknown): value is boolean =>
+  typeof value === "boolean";
+
+const byName = (a: LauncherItem, b: LauncherItem) =>
+  a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+  a.type.localeCompare(b.type) ||
+  a.id.localeCompare(b.id);
+
+/**
+ * The sidebar's Favorites group, wired (#1077): the caller's favorite
+ * stations, pinned results, views and connectors from the four
+ * `favorite=true` lists, merged and sorted by name. Those lists return only
+ * readable, undeleted rows, and a star or unstar anywhere refreshes them
+ * (`favoriteKeys`), so the group follows without a reload. A list that
+ * fails leaves its type out; the rest still show.
+ */
+export const SidebarFavorites: React.FC<SidebarFavoritesProps> = ({
+  collapsed,
+  onNavigate,
+}) => {
+  const page = {
+    favorite: "true",
+    limit: FAVORITES_PER_TYPE,
+    offset: 0,
+  } as const;
+  const stations = sdk.stations.list({
+    ...page,
+    sortBy: "name",
+    sortOrder: "asc",
+  });
+  const pins = sdk.portalResults.list(page);
+  const views = sdk.curatedViews.list({
+    ...page,
+    sortBy: "label",
+    sortOrder: "asc",
+  });
+  const connectors = sdk.connectorInstances.list({
+    ...page,
+    sortBy: "name",
+    sortOrder: "asc",
+  });
+
+  const rows = (
+    type: LauncherItemType,
+    list: { id: string; name: string }[] | undefined
+  ) =>
+    (list ?? []).map((row) =>
+      toLauncherItem({ type, id: row.id, name: row.name, tags: [] })
+    );
+  const items = [
+    ...rows("station", stations.data?.stations),
+    ...rows("pin", pins.data?.portalResults),
+    ...rows(
+      "curated_view",
+      views.data?.curatedViews.map((v) => ({ id: v.id, name: v.label }))
+    ),
+    ...rows("connector_instance", connectors.data?.connectorInstances),
+  ].sort(byName);
+
+  const { value: open, setValue: setOpen } = useStorage<boolean>({
+    key: SIDEBAR_FAVORITES_OPEN_KEY,
+    defaultValue: true,
+    validator: isBoolean,
+  });
+
+  // The location, not the match: the sidebar renders above every page.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const activeHref = items.find(
+    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+  )?.href;
+
+  return (
+    <SidebarFavoritesUI
+      items={items}
+      collapsed={collapsed}
+      open={open}
+      onToggle={() => setOpen(!open)}
+      activeHref={activeHref}
+      onNavigate={onNavigate}
+    />
   );
 };

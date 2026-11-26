@@ -116,4 +116,11 @@ describe("SidebarFavoritesUI (#1122)", () => {
     );
     expect(screen.getByRole("navigation")).toBeEmptyDOMElement();
   });
+
+  it("reports a followed favorite (#1077: the sidebar closes its mobile drawer)", async () => {
+    const onNavigate = jest.fn();
+    render(inNav(<SidebarFavoritesUI {...props({ onNavigate })} />));
+    await userEvent.click(screen.getByRole("link", { name: "Favorite 1" }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
 });

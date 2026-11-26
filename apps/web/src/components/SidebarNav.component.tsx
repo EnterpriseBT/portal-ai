@@ -11,6 +11,7 @@ import type { NavPageId } from "@portalai/core/models";
 import { NAV_PAGE_IDS } from "@portalai/core/models";
 import { useLayout } from "../utils";
 import { useCapabilities } from "../utils/use-capabilities.util";
+import { SidebarFavorites } from "./SidebarFavorites.component";
 import { SidebarNavItem } from "./SidebarNavItem.component";
 import { SidebarVersionCaptionUI } from "./SidebarVersionCaption.component";
 import { useRouter } from "@tanstack/react-router";
@@ -344,6 +345,9 @@ export const SidebarNav = () => {
           onClick={handleClick}
         />
       ))}
+      {/* #1077: the caller's favorites, below the main items; the drawer
+          scrolls them with the nav as one region. */}
+      <SidebarFavorites collapsed={isCollapsed} onNavigate={handleClick} />
     </SidebarNavUI>
   );
 };
