@@ -1,8 +1,11 @@
 import React from "react";
 
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+
 import {
-  CardList,
-  DetailCard,
+  Box,
   EmptyState,
   Icon,
   IconName,
@@ -31,8 +34,9 @@ export interface DashboardRecentPortalsUIProps {
 }
 
 /**
- * The dashboard's short Recent portals list (#1123): the few most recent
- * portals, each with its station, or a teaching empty state.
+ * The dashboard's short Recent portals list (#1123): one line per portal,
+ * its name linking to it, with its station and when it was last opened at
+ * the trailing edge, or a teaching empty state.
  */
 export const DashboardRecentPortalsUI: React.FC<
   DashboardRecentPortalsUIProps
@@ -47,32 +51,41 @@ export const DashboardRecentPortalsUI: React.FC<
     );
   }
 
+  const shown = portals.slice(0, DASHBOARD_RECENT_PORTALS_MAX);
   return (
-    <CardList aria-label="Recent portals">
-      {portals.slice(0, DASHBOARD_RECENT_PORTALS_MAX).map((portal) => (
-        <DetailCard
+    <List aria-label="Recent portals" disablePadding dense>
+      {shown.map((portal, i) => (
+        <ListItem
           key={portal.id}
-          title={portal.name}
-          href={`/portals/${portal.id}`}
-          linkComponent={RouterLink}
-          headingLevel={3}
+          disablePadding
+          divider={i < shown.length - 1}
           data-testid={`recent-portal-${portal.id}`}
         >
-          <Stack spacing={0.25}>
-            {portal.stationName && (
-              <Stack direction="row" spacing={0.5} alignItems="center">
-                <Icon name={IconName.SatelliteAlt} fontSize="inherit" />
-                <Typography variant="caption" color="text.secondary">
-                  {portal.stationName}
+          <ListItemButton component={RouterLink} href={`/portals/${portal.id}`}>
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="baseline"
+              flex={1}
+              minWidth={0}
+            >
+              <Box flex={1} minWidth={0}>
+                <Typography variant="body2" noWrap>
+                  {portal.name}
                 </Typography>
-              </Stack>
-            )}
-            <Typography variant="caption" color="text.secondary">
-              {DateFactory.relativeTime(portal.lastOpened ?? portal.created)}
-            </Typography>
-          </Stack>
-        </DetailCard>
+              </Box>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {[
+                  portal.stationName,
+                  DateFactory.relativeTime(portal.lastOpened ?? portal.created),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Typography>
+            </Stack>
+          </ListItemButton>
+        </ListItem>
       ))}
-    </CardList>
+    </List>
   );
 };

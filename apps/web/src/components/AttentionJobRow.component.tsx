@@ -7,13 +7,7 @@ import {
   type JobStatus,
   type JobType,
 } from "@portalai/core/models";
-import {
-  DetailCard,
-  Icon,
-  IconName,
-  Stack,
-  Typography,
-} from "@portalai/core/ui";
+import { DetailCard, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 
 import { RouterLink } from "./RouterLink.component";
@@ -62,7 +56,6 @@ export const AttentionJobRowUI: React.FC<AttentionJobRowUIProps> = ({
   return (
     <DetailCard
       title={job.where ? `${label} on ${job.where}` : label}
-      icon={<Icon name={IconName.Work} />}
       href={`/jobs/${job.id}`}
       linkComponent={RouterLink}
       headingLevel={3}

@@ -1,7 +1,17 @@
+import React, { useEffect } from "react";
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
+import { useRouter, useRouterState } from "@tanstack/react-router";
 
-import { Typography } from "@portalai/core/ui";
+import {
+  Button,
+  Icon,
+  IconName,
+  PageHeader,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 
 import {
   DashboardWorkbenchUI,
@@ -15,13 +25,16 @@ import {
 } from "../components/FavoritePins.component";
 import { FavoriteStationsUI } from "../components/FavoriteStations.component";
 import { NeedsAttentionUI } from "../components/NeedsAttention.component";
+import { RouterLink } from "../components/RouterLink.component";
 import { StartBoxUI } from "../components/StartBox.component";
+import { TagPageBodyUI } from "../components/TagPageBody.component";
 import {
   ATTENTION_JOBS,
   FAVORITE_STATIONS,
   RECENT_PORTALS,
   STATIONS,
   TAG_COUNTS,
+  TAG_PAGES,
 } from "./dashboard-fixtures";
 import {
   FixtureChart,
@@ -101,12 +114,60 @@ const MIXED: DashboardWorkbenchUIProps = {
   attention: <NeedsAttentionUI jobs={[]} />,
 };
 
-/** #1123: the whole dashboard workbench, composed from its sections. */
+/**
+ * Stand-in for the tag page #1082 builds, so a click on a tag chip shows
+ * what the page lists. Storybook's router has only a root route, so this
+ * reads the location the chip navigated to rather than a route match.
+ */
+const TagPageExample: React.FC<{ tagId: string }> = ({ tagId }) => {
+  const tag = TAG_COUNTS.find((t) => t.tag.id === tagId)?.tag;
+  return (
+    <Stack spacing={4}>
+      <PageHeader
+        title={tag?.name ?? "Tag"}
+        icon={<Icon name={IconName.Label} />}
+        primaryAction={
+          <Button
+            component={RouterLink}
+            href="/"
+            variant="outlined"
+            startIcon={<Icon name={IconName.ArrowBack} />}
+          >
+            Dashboard
+          </Button>
+        }
+      />
+      <TagPageBodyUI groups={TAG_PAGES[tagId] ?? []} />
+    </Stack>
+  );
+};
+
+/** The workbench, or the tag page once a tag chip is clicked. */
+const WorkbenchWithTagPages: React.FC<DashboardWorkbenchUIProps> = (props) => {
+  const router = useRouter();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Each story starts on the dashboard: the router is shared across stories.
+  useEffect(() => {
+    void router.navigate({ to: "/" });
+  }, [router]);
+  const tagId = /^\/tags\/([^/]+)$/.exec(pathname)?.[1];
+  return tagId ? (
+    <TagPageExample tagId={tagId} />
+  ) : (
+    <DashboardWorkbenchUI {...props} />
+  );
+};
+
+/**
+ * #1123: the whole dashboard workbench, composed from its sections. Click a
+ * tag under Browse by tag to see an example of its page.
+ */
 const meta = {
   title: "Dashboard/DashboardWorkbench",
   component: DashboardWorkbenchUI,
   parameters: { layout: "padded" },
   args: POPULATED,
+  render: (args) => <WorkbenchWithTagPages {...args} />,
 } satisfies Meta<typeof DashboardWorkbenchUI>;
 
 export default meta;

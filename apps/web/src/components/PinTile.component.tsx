@@ -47,7 +47,6 @@ export const PinTileUI: React.FC<PinTileUIProps> = ({
   return (
     <DetailCard
       title={pin.title}
-      icon={<Icon name={IconName.PushPin} />}
       href={`/portal-results/${pin.id}`}
       linkComponent={RouterLink}
       headingLevel={3}

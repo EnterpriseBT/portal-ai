@@ -57,7 +57,6 @@ export const FavoriteStationCardUI: React.FC<FavoriteStationCardUIProps> = ({
   return (
     <DetailCard
       title={station.name}
-      icon={<Icon name={IconName.SatelliteAlt} />}
       href={`/stations/${station.id}`}
       linkComponent={RouterLink}
       headingLevel={3}

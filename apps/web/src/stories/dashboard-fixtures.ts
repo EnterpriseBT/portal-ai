@@ -144,3 +144,70 @@ export const TAG_GROUPS: TagResultGroupUIProps[] = [
   },
   { title: "Views", items: [], total: 0, viewAllHref: "/views" },
 ];
+
+const items = (type: string, names: string[]): TagResultItem[] =>
+  names.map((name, i) => ({
+    id: `${type}-${i + 1}`,
+    name,
+    href: `/${type}/${type}-${i + 1}`,
+  }));
+
+const group = (
+  title: string,
+  path: string,
+  names: string[],
+  total = names.length
+): TagResultGroupUIProps => ({
+  title,
+  items: items(path, names),
+  total,
+  viewAllHref: `/${path}`,
+});
+
+/** What carries each of `TAG_COUNTS`' tags, grouped by type; each tag's
+ *  totals add up to its chip's count. */
+export const TAG_PAGES: Record<string, TagResultGroupUIProps[]> = {
+  t1: [
+    group("Stations", "stations", ["Finance Close", "Board Pack"]),
+    group(
+      "Pinned results",
+      "portal-results",
+      ["Q3 variance by region", "Accrual review", "Board summary"],
+      9
+    ),
+    group("Views", "views", [
+      "GL accounts",
+      "Journal entries",
+      "Close calendar",
+    ]),
+    group("Connectors", "connectors", []),
+  ],
+  t2: [
+    group("Stations", "stations", ["Field Inspections"]),
+    group(
+      "Pinned results",
+      "portal-results",
+      ["Open inspections by county", "Inspection sites"],
+      4
+    ),
+    group("Views", "views", ["Open findings", "Site visits"]),
+    group("Connectors", "connectors", ["Inspections CSV"]),
+  ],
+  t3: [
+    group("Stations", "stations", []),
+    group(
+      "Pinned results",
+      "portal-results",
+      ["Q3 variance by region", "Accrual review", "Board summary"],
+      6
+    ),
+    group("Views", "views", []),
+    group("Connectors", "connectors", []),
+  ],
+  t4: [
+    group("Stations", "stations", []),
+    group("Pinned results", "portal-results", []),
+    group("Views", "views", ["Draft budget", "Scratch view"]),
+    group("Connectors", "connectors", []),
+  ],
+};

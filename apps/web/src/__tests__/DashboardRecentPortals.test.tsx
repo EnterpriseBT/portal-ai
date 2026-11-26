@@ -12,16 +12,16 @@ const portal = (n: number) => ({
 });
 
 describe("DashboardRecentPortalsUI", () => {
-  it("links each portal and shows its station", async () => {
+  it("lists each portal on one line, linked, with its station and time", async () => {
     const { container } = render(
       <DashboardRecentPortalsUI portals={[portal(1), portal(2)]} />
     );
-    expect(screen.getByRole("link", { name: "Portal 1" })).toHaveAttribute(
-      "href",
-      "/portals/p1"
-    );
-    expect(screen.getByText("Station 2")).toBeInTheDocument();
-    expect(screen.getByText("1h ago")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /^Portal 1/ });
+    expect(link).toHaveAttribute("href", "/portals/p1");
+    // One line: the name, then its station and when it was last opened.
+    expect(link).toHaveTextContent("Portal 1Station 1 · 1h ago");
+    expect(screen.getByText("Station 2 · 2h ago")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
     await expectNoAxeViolations(container);
   });
 

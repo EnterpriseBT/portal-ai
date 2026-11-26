@@ -367,6 +367,21 @@ describe("ThemeProvider Component", () => {
       expect(THEME_MAP.brand.palette.mode).toBe("light");
     });
 
+    // #1123: MUI draws a default chip's icon in grey[300] in a dark theme,
+    // which is a surface colour in Brand Dark, so the icon vanished.
+    it.each(["brand", "brand.dark"] as const)(
+      "%s draws a default chip's icon in text.secondary",
+      (name) => {
+        const theme = THEME_MAP[name];
+        const root = theme.components?.MuiChip?.styleOverrides?.root as
+          | Record<string, { color?: string }>
+          | undefined;
+        expect(root?.["&.MuiChip-colorDefault .MuiChip-icon"]?.color).toBe(
+          theme.palette.text.secondary
+        );
+      }
+    );
+
     it("should have dark mode for brand.dark theme", () => {
       const darkThemeName = "brand.dark" as const;
       expect(THEME_MAP[darkThemeName].palette.mode).toBe("dark");
