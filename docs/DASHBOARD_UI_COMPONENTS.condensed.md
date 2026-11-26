@@ -25,15 +25,14 @@ Each file exports only `<Name>UI` (Component File Policy), with no container. #1
 
 | File | Component | Holds |
 |---|---|---|
-| `DashboardWorkbench` | `DashboardWorkbenchUI` | `PageHeader` (the page's one `h1`) + optional slots `start`, `stations`, `pins`, `recent`, `tags`, `attention`. A five-column `PageGrid`: the start box (a named form, no heading), favorite stations and pins take full rows; Recent portals spans three beside one `PageSectionGroup` frame holding Browse by tag over Needs attention. Stacks at phone width |
+| `DashboardWorkbench` | `DashboardWorkbenchUI` | `PageHeader` (the page's one `h1`) + optional slots `start`, `stations`, `pins`, `recent`, `tags`, `attention`. A five-column `PageGrid`: the start box (a named form, no heading), favorite stations and pins take full rows; below them Recent portals with Browse by tag under it span three, and Needs attention runs down the right two beside both. Stacks at phone width in that reading order |
 | `WorkbenchSection` | `WorkbenchSectionUI` | `PageSection` (`h2`) + an optional `seeAll: { href, label }` rendered as a `RouterLink` in `primaryAction` |
 | `StartBox` | `StartBoxUI` | One-line core `Composer`: the prompt (placeholder "Ask anything about your data…", Enter/Shift+Enter in its description) with the station chip and `GatedButton` Start inside the frame; `FormAlert` for `serverError`. No example prompts |
 | `StationPicker` | `StationPickerUI` | The chip and its `Menu`: Favorites group first, then All stations |
 | `FavoriteStationCard` / `FavoriteStations` | `…UI` | `DetailCard` (`headingLevel={3}`, `href`), the recent-activity line, a Launch `GatedButton` "Launch {name}". The list is a `CardList` with a teaching `EmptyState` |
 | `PinTile` / `FavoritePins` | `…UI` | Tile: title link, `status: "loading" \| "error" \| "ready"`, `children` content. Grid: capped at `max` (default 6), plus a teaching empty state |
-| `DashboardRecentPortals` | `…UI` | At most 5 rows with each station's name, no "see all", and an empty state. New, so `RecentPortalsListUI` stays as it is |
-| `TagCountChip` / `BrowseByTag` | `…UI` | A link chip in the tag's colour with its count; the chip list with an empty state |
-| `TagResultGroup` / `TagPageBody` | `…UI` | Per-tag page body: groups by type, each with a "View all {type}" link to the filtered list, and an empty group |
+| `DashboardRecentPortals` | `…UI` | At most 5 one-line rows (core `LinkList`): the name, then its station and time. No "see all"; an empty state. New, so `RecentPortalsListUI` stays as it is |
+| `TagCountChip` / `BrowseByTag` | `…UI` | A toggle chip in the tag's colour with its count (`aria-pressed`). Pressing one lists what carries the tag under the chips (core `LinkList`, each with its type's sidebar icon and name); pressing again hides it. Selection is controlled (`selectedTagId`, `onSelectTag`) so the container fetches the matches; loading, error and nothing-visible states; an empty state with no tags |
 | `AttentionJobRow` / `NeedsAttention` | `…UI` | A row with its `JOB_TYPE_LABELS` name, where it runs, relative time, status and a link; the "All clear" state |
 
 Two choices follow from the table:
@@ -43,14 +42,21 @@ Two choices follow from the table:
 
 ## Revision (after slice 3, on the design review)
 
-To match the design doc's workbench wireframe and use the space better: the start box drops its "Try:" examples and becomes one line (new core `Composer`: a growing input whose controls sit inside the frame and wrap under it on a phone); both favorites sections lay out three across (new `columns` on core `CardList`, a grid that stays a list); and Browse by tag and Needs attention share one frame (new core `PageSectionGroup` plus a `plain` `PageSection` variant), each keeping its own `h2`. The start box's section heading went with it, so the page has five section `h2`s.
+To match the design doc's workbench wireframe and use the space better:
+
+- **Start box:** drops its "Try:" examples and becomes one line (new core `Composer`: a growing input whose controls sit inside the frame and wrap under it on a phone). Its section heading went too, so the page has five section `h2`s.
+- **Favorites:** both sections lay out three across (new `columns` on core `CardList`, a grid that stays a list). Station cards, pin tiles and attention rows carry no icon of their own; the section heading has it.
+- **Recent portals:** one line per portal (new core `LinkList`).
+- **Bottom of the page:** Browse by tag sits under Recent portals, and Needs attention runs down the right beside both.
+- **Tags have no page of their own:** pressing a tag lists its matches in place, which changes #1082's "one page per tag".
+- **Theme:** a default chip's icon takes `text.secondary`, since Brand Dark's `grey[300]` hid it.
 
 ## Plan — 3 slices
 
 Every new component gets `stories/<Name>.component.stories.tsx` (stories render the `…UI`) and `__tests__/<Name>.test.tsx`, which calls `expectNoAxeViolations` on the primary and empty states, and on the open menu through `document.body`. Shared story data goes in `stories/dashboard-fixtures.ts`. Any new styling goes in both theme JSONs or `a11yComponents()`, never ad hoc `sx`.
 
 1. **Section frame + start + stations + recent.** `WorkbenchSection`, `StartBox`, `StationPicker`, `FavoriteStationCard`, `FavoriteStations`, `DashboardRecentPortals`. Tests cover: Enter submits and Shift+Enter adds a line (`user.type`, never `fireEvent.submit`); empty prompt, pending and gated Start; the error keeps the prompt; the picker lists favorites first and selecting one updates the chip; card links' `href`; Launch names its station; the 5-row cap.
-2. **Pins, tags, attention.** `PinTile`, `FavoritePins`, `TagCountChip`, `BrowseByTag`, `TagResultGroup`, `TagPageBody`, `AttentionJobRow`, `NeedsAttention`. Tests cover: tile loading and error states, the cap, chip links and counts, group links and an empty group, row labels from `JOB_TYPE_LABELS`, and "All clear".
+2. **Pins, tags, attention.** `PinTile`, `FavoritePins`, `TagCountChip`, `BrowseByTag`, `AttentionJobRow`, `NeedsAttention`. Tests cover: tile loading and error states, the cap, tag toggles and counts, a tag's matches with their types (and its loading, error and empty states), row labels from `JOB_TYPE_LABELS`, and "All clear".
 3. **Workbench + whole-page stories.** `DashboardWorkbench` with Populated, NewOrg (every section empty), Mixed and Phone (`viewport` parameter) stories, each also in Brand Dark (`globals.theme`). A test checks there is one `h1` and that the six section titles are `h2`s, plus axe on populated and empty.
 
 Run per slice: `npm run test:unit -- --testPathPattern '<names>'` (web), then `npm run lint`, `npm run type-check` and `npm run build`. CI runs `component-axe.guard.test.ts` and the full suites.
@@ -66,6 +72,6 @@ Run per slice: `npm run test:unit -- --testPathPattern '<names>'` (web), then `n
 ## Out of scope
 
 - All wiring and mounting: queries, SSE, gates, portal creation and swapping in `Dashboard.view.tsx`. That is #1078 to #1083.
-- The create-with-first-message contract (#1079), compact `ContentBlockRenderer` and lazy tiles (#1081), and the per-tag counts API and route (#1082).
+- The create-with-first-message contract (#1079), compact `ContentBlockRenderer` and lazy tiles (#1081), and the per-tag counts and matches API (#1082).
 - Help, FAQ, Getting Started and ACR changes, since nothing user-visible ships here.
 - Core changes beyond the layout pieces in **Revision**.

@@ -19,12 +19,8 @@ export interface PageSectionProps {
   secondaryActions?: ActionMenuItem[];
   /** Section body content. */
   children: React.ReactNode;
-  /**
-   * Visual variant. "outlined" wraps in an outlined Paper (default),
-   * "divider" uses a top divider, and "plain" adds no frame, for a section
-   * inside a `PageSectionGroup` that frames several together.
-   */
-  variant?: "divider" | "outlined" | "plain";
+  /** Visual variant. "outlined" wraps in an outlined Paper (default), "divider" uses a top divider. */
+  variant?: "divider" | "outlined";
   /** Spacing between the title row and the body content. Defaults to 2. */
   spacing?: number;
   /** Optional padding applied inside the section (useful with "outlined" variant). */

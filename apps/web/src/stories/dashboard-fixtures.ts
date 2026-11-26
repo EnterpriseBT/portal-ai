@@ -3,10 +3,7 @@ import type { FavoriteStationItem } from "../components/FavoriteStationCard.comp
 import type { DashboardRecentPortal } from "../components/DashboardRecentPortals.component";
 import type { TagCountChipUIProps } from "../components/TagCountChip.component";
 import type { AttentionJob } from "../components/AttentionJobRow.component";
-import type {
-  TagResultGroupUIProps,
-  TagResultItem,
-} from "../components/TagResultGroup.component";
+import type { TagMatch } from "../components/BrowseByTag.component";
 
 /** Example dashboard data for the #1123 workbench stories. */
 
@@ -122,92 +119,55 @@ export const ATTENTION_JOBS: AttentionJob[] = [
   },
 ];
 
-const tagged = (prefix: string, names: string[]): TagResultItem[] =>
-  names.map((name, i) => ({
-    id: `${prefix}${i + 1}`,
-    name,
-    href: `/${prefix === "s" ? "stations" : "portal-results"}/${prefix}${i + 1}`,
-  }));
-
-export const TAG_GROUPS: TagResultGroupUIProps[] = [
-  {
-    title: "Stations",
-    items: tagged("s", ["Finance Close", "Board Pack"]),
-    total: 2,
-    viewAllHref: "/stations",
-  },
-  {
-    title: "Pinned results",
-    items: tagged("r", ["Q3 variance by region", "Accrual review"]),
-    total: 11,
-    viewAllHref: "/portal-results",
-  },
-  { title: "Views", items: [], total: 0, viewAllHref: "/views" },
-];
-
-const items = (type: string, names: string[]): TagResultItem[] =>
-  names.map((name, i) => ({
-    id: `${type}-${i + 1}`,
-    name,
-    href: `/${type}/${type}-${i + 1}`,
-  }));
-
-const group = (
-  title: string,
+const match = (
+  type: TagMatch["type"],
   path: string,
-  names: string[],
-  total = names.length
-): TagResultGroupUIProps => ({
-  title,
-  items: items(path, names),
-  total,
-  viewAllHref: `/${path}`,
-});
+  id: string,
+  name: string
+): TagMatch => ({ id, name, type, href: `/${path}/${id}` });
 
-/** What carries each of `TAG_COUNTS`' tags, grouped by type; each tag's
- *  totals add up to its chip's count. */
-export const TAG_PAGES: Record<string, TagResultGroupUIProps[]> = {
+/** What carries each of `TAG_COUNTS`' tags; each list's length is its
+ *  chip's count. */
+export const TAG_MATCHES: Record<string, TagMatch[]> = {
   t1: [
-    group("Stations", "stations", ["Finance Close", "Board Pack"]),
-    group(
-      "Pinned results",
-      "portal-results",
-      ["Q3 variance by region", "Accrual review", "Board summary"],
-      9
-    ),
-    group("Views", "views", [
-      "GL accounts",
-      "Journal entries",
-      "Close calendar",
-    ]),
-    group("Connectors", "connectors", []),
+    match("station", "stations", "s1", "Finance Close"),
+    match("station", "stations", "s6", "Board Pack"),
+    ...[
+      "Q3 variance by region",
+      "Accrual review",
+      "Board summary",
+      "Cash position",
+      "AP aging",
+      "AR aging",
+      "Budget vs actual",
+      "Headcount cost",
+      "Close checklist",
+    ].map((name, i) => match("pin", "portal-results", `r${i + 1}`, name)),
+    match("view", "views", "v1", "GL accounts"),
+    match("view", "views", "v2", "Journal entries"),
+    match("connector", "connectors", "c1", "NetSuite export"),
   ],
   t2: [
-    group("Stations", "stations", ["Field Inspections"]),
-    group(
-      "Pinned results",
-      "portal-results",
-      ["Open inspections by county", "Inspection sites"],
-      4
-    ),
-    group("Views", "views", ["Open findings", "Site visits"]),
-    group("Connectors", "connectors", ["Inspections CSV"]),
+    match("station", "stations", "s2", "Field Inspections"),
+    match("pin", "portal-results", "r10", "Open inspections by county"),
+    match("pin", "portal-results", "r11", "Inspection sites"),
+    match("view", "views", "v3", "Open findings"),
+    match("view", "views", "v4", "Site visits"),
+    match("connector", "connectors", "c2", "Inspections CSV"),
+    match("connector", "connectors", "c3", "County GIS"),
+    match("entity", "entities", "e1", "Findings"),
+    match("entity", "entities", "e2", "Sites"),
   ],
   t3: [
-    group("Stations", "stations", []),
-    group(
-      "Pinned results",
-      "portal-results",
-      ["Q3 variance by region", "Accrual review", "Board summary"],
-      6
-    ),
-    group("Views", "views", []),
-    group("Connectors", "connectors", []),
+    match("pin", "portal-results", "r1", "Q3 variance by region"),
+    match("pin", "portal-results", "r2", "Accrual review"),
+    match("pin", "portal-results", "r3", "Board summary"),
+    match("view", "views", "v5", "Quarterly revenue"),
+    match("view", "views", "v6", "Quarterly headcount"),
+    match("station", "stations", "s6", "Board Pack"),
   ],
   t4: [
-    group("Stations", "stations", []),
-    group("Pinned results", "portal-results", []),
-    group("Views", "views", ["Draft budget", "Scratch view"]),
-    group("Connectors", "connectors", []),
+    match("view", "views", "v7", "Draft budget"),
+    match("view", "views", "v8", "Scratch view"),
   ],
 };

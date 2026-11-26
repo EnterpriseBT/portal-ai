@@ -6,7 +6,6 @@ import {
   PageGrid,
   PageGridItem,
   PageHeader,
-  PageSectionGroup,
   Stack,
 } from "@portalai/core/ui";
 
@@ -27,17 +26,16 @@ export interface DashboardWorkbenchUIProps {
   attention?: React.ReactNode;
 }
 
-/** Five columns on a wide screen: full rows span all five, and the last row
- *  splits three to two, Recent portals beside tags and attention. */
 const FULL = { xs: 1, md: 5 };
 
 /**
  * The dashboard workbench (#1123): the page's one `h1`, the start box (a
  * named form, so it needs no heading of its own), then the sections as
- * `h2`s. Favorite stations and pins take full rows; Recent portals shares
- * the last row with Browse by tag and Needs attention, which sit together in
- * one frame. Everything stacks at phone width. Sections that show favorites
- * link to their list's page (#1078); Recent portals has no list page.
+ * `h2`s. Favorite stations and pins take full rows. Below them, Recent
+ * portals with Browse by tag under it fill the left three fifths, and Needs
+ * attention runs down the right beside both. Everything stacks at phone
+ * width, in that reading order. Sections that show favorites link to their
+ * list's page (#1078); Recent portals has no list page.
  */
 export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
   headerAction,
@@ -49,27 +47,8 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
   tags,
   attention,
 }) => {
-  const tagsSection = tags !== undefined && (
-    <WorkbenchSectionUI
-      title="Browse by tag"
-      icon={<Icon name={IconName.Label} />}
-      seeAll={{ href: "/tags", label: "All tags" }}
-      variant="plain"
-    >
-      {tags}
-    </WorkbenchSectionUI>
-  );
-  const attentionSection = attention !== undefined && (
-    <WorkbenchSectionUI
-      title="Needs attention"
-      icon={<Icon name={IconName.Work} />}
-      seeAll={{ href: "/jobs", label: "All jobs" }}
-      variant="plain"
-    >
-      {attention}
-    </WorkbenchSectionUI>
-  );
-  const sideBySide = recent !== undefined;
+  const hasLeft = recent !== undefined || tags !== undefined;
+  const hasRight = attention !== undefined;
 
   return (
     <Stack spacing={4}>
@@ -107,22 +86,44 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
             </WorkbenchSectionUI>
           </PageGridItem>
         )}
-        {recent !== undefined && (
-          <PageGridItem span={{ xs: 1, md: 3 }}>
-            <WorkbenchSectionUI
-              title="Recent portals"
-              icon={<Icon name={IconName.Portal} />}
-            >
-              {recent}
-            </WorkbenchSectionUI>
+        {hasLeft && (
+          <PageGridItem
+            span={hasRight ? { xs: 1, md: 3 } : FULL}
+            data-testid="workbench-recent-and-tags"
+          >
+            <Stack spacing={3}>
+              {recent !== undefined && (
+                <WorkbenchSectionUI
+                  title="Recent portals"
+                  icon={<Icon name={IconName.Portal} />}
+                >
+                  {recent}
+                </WorkbenchSectionUI>
+              )}
+              {tags !== undefined && (
+                <WorkbenchSectionUI
+                  title="Browse by tag"
+                  icon={<Icon name={IconName.Label} />}
+                  seeAll={{ href: "/tags", label: "All tags" }}
+                >
+                  {tags}
+                </WorkbenchSectionUI>
+              )}
+            </Stack>
           </PageGridItem>
         )}
-        {(tagsSection || attentionSection) && (
-          <PageGridItem span={sideBySide ? { xs: 1, md: 2 } : FULL}>
-            <PageSectionGroup>
-              {tagsSection}
-              {attentionSection}
-            </PageSectionGroup>
+        {hasRight && (
+          <PageGridItem
+            span={hasLeft ? { xs: 1, md: 2 } : FULL}
+            data-testid="workbench-attention"
+          >
+            <WorkbenchSectionUI
+              title="Needs attention"
+              icon={<Icon name={IconName.Work} />}
+              seeAll={{ href: "/jobs", label: "All jobs" }}
+            >
+              {attention}
+            </WorkbenchSectionUI>
           </PageGridItem>
         )}
       </PageGrid>

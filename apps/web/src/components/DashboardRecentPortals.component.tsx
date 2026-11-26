@@ -1,17 +1,6 @@
 import React from "react";
 
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-
-import {
-  Box,
-  EmptyState,
-  Icon,
-  IconName,
-  Stack,
-  Typography,
-} from "@portalai/core/ui";
+import { EmptyState, Icon, IconName, LinkList } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 
 import { RouterLink } from "./RouterLink.component";
@@ -51,41 +40,21 @@ export const DashboardRecentPortalsUI: React.FC<
     );
   }
 
-  const shown = portals.slice(0, DASHBOARD_RECENT_PORTALS_MAX);
   return (
-    <List aria-label="Recent portals" disablePadding dense>
-      {shown.map((portal, i) => (
-        <ListItem
-          key={portal.id}
-          disablePadding
-          divider={i < shown.length - 1}
-          data-testid={`recent-portal-${portal.id}`}
-        >
-          <ListItemButton component={RouterLink} href={`/portals/${portal.id}`}>
-            <Stack
-              direction="row"
-              spacing={2}
-              alignItems="baseline"
-              flex={1}
-              minWidth={0}
-            >
-              <Box flex={1} minWidth={0}>
-                <Typography variant="body2" noWrap>
-                  {portal.name}
-                </Typography>
-              </Box>
-              <Typography variant="caption" color="text.secondary" noWrap>
-                {[
-                  portal.stationName,
-                  DateFactory.relativeTime(portal.lastOpened ?? portal.created),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Typography>
-            </Stack>
-          </ListItemButton>
-        </ListItem>
-      ))}
-    </List>
+    <LinkList
+      aria-label="Recent portals"
+      linkComponent={RouterLink}
+      items={portals.slice(0, DASHBOARD_RECENT_PORTALS_MAX).map((portal) => ({
+        id: portal.id,
+        href: `/portals/${portal.id}`,
+        primary: portal.name,
+        secondary: [
+          portal.stationName,
+          DateFactory.relativeTime(portal.lastOpened ?? portal.created),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }))}
+    />
   );
 };

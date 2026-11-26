@@ -13,8 +13,6 @@ export interface WorkbenchSectionUIProps {
    * ("All stations"), so several sections' links stay distinct.
    */
   seeAll?: { href: string; label: string };
-  /** "plain" drops the frame, for a section inside a `PageSectionGroup`. */
-  variant?: "outlined" | "plain";
   children: React.ReactNode;
   [key: `data-${string}`]: string;
 }
@@ -28,14 +26,12 @@ export const WorkbenchSectionUI: React.FC<WorkbenchSectionUIProps> = ({
   title,
   icon,
   seeAll,
-  variant = "outlined",
   children,
   ...rest
 }) => (
   <PageSection
     title={title}
     icon={icon}
-    variant={variant}
     primaryAction={
       seeAll ? (
         <Button

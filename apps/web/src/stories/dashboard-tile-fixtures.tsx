@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 import { useTheme } from "@mui/material/styles";
 import Table from "@mui/material/Table";
@@ -9,7 +9,12 @@ import TableRow from "@mui/material/TableRow";
 
 import { Typography } from "@portalai/core/ui";
 
+import {
+  BrowseByTagUI,
+  type BrowseByTagUIProps,
+} from "../components/BrowseByTag.component";
 import { VisualFigureUI } from "../components/VisualFigure.component";
+import { TAG_COUNTS, TAG_MATCHES } from "./dashboard-fixtures";
 
 /**
  * Static stand-ins for pinned blocks in the #1123 tile stories. Real tiles
@@ -92,3 +97,25 @@ export const FixtureMap: React.FC = () => (
     </Typography>
   </VisualFigureUI>
 );
+
+/**
+ * Browse by tag with its selection held here and its matches read from the
+ * fixtures, so a story can press a tag and see its list. The real container
+ * (#1082) fetches the matches.
+ */
+export const BrowseByTagExample: React.FC<
+  Partial<Pick<BrowseByTagUIProps, "tags" | "matchesStatus">> & {
+    initialTagId?: string | null;
+  }
+> = ({ tags = TAG_COUNTS, matchesStatus, initialTagId = null }) => {
+  const [selected, setSelected] = useState<string | null>(initialTagId);
+  return (
+    <BrowseByTagUI
+      tags={tags}
+      selectedTagId={selected}
+      onSelectTag={setSelected}
+      matches={selected ? TAG_MATCHES[selected] : undefined}
+      matchesStatus={matchesStatus}
+    />
+  );
+};

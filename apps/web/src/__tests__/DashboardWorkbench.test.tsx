@@ -71,6 +71,8 @@ const sections = (empty: boolean) => ({
           ? []
           : [{ tag: { id: "t1", name: "Finance", color: null }, count: 3 }]
       }
+      selectedTagId={null}
+      onSelectTag={noop}
     />
   ),
   attention: (
@@ -122,22 +124,26 @@ describe("DashboardWorkbenchUI", () => {
     await expectNoAxeViolations(container);
   });
 
-  it("frames Browse by tag and Needs attention together", () => {
+  it("puts Browse by tag under Recent portals, and Needs attention beside both", () => {
     render(<DashboardWorkbenchUI {...ALL} />);
-    const tags = screen.getByRole("heading", {
-      level: 2,
-      name: "Browse by tag",
-    });
-    const attention = screen.getByRole("heading", {
-      level: 2,
-      name: "Needs attention",
-    });
-    const frame = tags.closest(".MuiPaper-root");
-    expect(frame).not.toBeNull();
-    expect(frame).toContainElement(attention);
-    expect(frame).not.toContainElement(
-      screen.getByRole("heading", { level: 2, name: "Recent portals" })
-    );
+    const h2 = (name: string) =>
+      screen.getByRole("heading", { level: 2, name });
+    const left = screen.getByTestId("workbench-recent-and-tags");
+    const right = screen.getByTestId("workbench-attention");
+    expect(left).toContainElement(h2("Recent portals"));
+    expect(left).toContainElement(h2("Browse by tag"));
+    expect(right).toContainElement(h2("Needs attention"));
+    expect(right).not.toContainElement(h2("Recent portals"));
+    // Reading order follows the layout: the left column, then the right.
+    expect(
+      left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("gives Needs attention the full row when the left column is empty", () => {
+    render(<DashboardWorkbenchUI attention={body("attention")} />);
+    expect(screen.queryByTestId("workbench-recent-and-tags")).toBeNull();
+    expect(screen.getByTestId("workbench-attention")).toBeInTheDocument();
   });
 
   it("links each favorites section to its list, and Recent portals nowhere", () => {
