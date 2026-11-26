@@ -79,7 +79,16 @@ const COMBOBOX_SX = {
     m: 0,
     p: 0,
   },
-  "& .ComboboxList": { maxHeight: 400, overflowY: "auto", py: 1 },
+  // `position: relative` makes the list its options' offsetParent: the
+  // hook scrolls the highlighted option into view by its offsetTop, which
+  // otherwise counts from an outer box (a dialog), so wrapping from the last
+  // option to the first scrolled past it, under the input (#1076).
+  "& .ComboboxList": {
+    position: "relative",
+    maxHeight: 400,
+    overflowY: "auto",
+    py: 1,
+  },
   "& .ComboboxGroupLabel": {
     typography: "overline",
     color: "text.secondary",

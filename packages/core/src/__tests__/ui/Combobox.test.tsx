@@ -342,4 +342,22 @@ describe("Combobox (#1122)", () => {
     await user.keyboard("{/Meta}");
     expect(onFollowLink).not.toHaveBeenCalled();
   });
+
+  it("is its options' offsetParent, so a wrap to the top scrolls to it (#1076)", () => {
+    // The hook scrolls the highlighted option into view by its offsetTop;
+    // measured from an outer box, a wrap from last to first hid the first
+    // option under the input. jsdom has no layout, so this pins the cause.
+    render(
+      <Combobox
+        options={options()}
+        inputValue=""
+        onInputChange={() => {}}
+        label="Search"
+        statusText=""
+      />
+    );
+    expect(getComputedStyle(screen.getByRole("listbox")).position).toBe(
+      "relative"
+    );
+  });
 });
