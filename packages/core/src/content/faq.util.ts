@@ -76,7 +76,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      'From a station set up for your data, press "New portal" at the top of the page (or the station\'s own "Open Portal") to open a chat session. On any other page that button uses the station you used last (or, without one, a favorite station), and it names the station before you click; its menu lists your favorite stations and "Choose station…" for any other. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization\'s Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own.',
+      'From a station set up for your data, press "New portal" at the top of the page (or the station\'s own "Open Portal") to open a chat session. On any other page that button uses the station you used last (or, without one, a favorite station), and it names the station before you click; its menu lists your favorite stations and "Choose station…" for any other. The command palette (⌘K or Ctrl+K) offers the same choices from the keyboard. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization\'s Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own.',
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -214,7 +214,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do tags work?",
     answer:
-      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page. An object's page lists its tags in a Tags row; its pencil button opens a dialog where you add or remove them, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. Deleting a tag takes it off everything it was on. In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions.",
+      "Tags are color-coded labels you attach to entities, stations, pinned results, connectors and views to group them. Manage the catalog on the Tags page. An object's page lists its tags in a Tags row; its pencil button opens a dialog where you add or remove them, which needs permission to edit that object. Every one of those lists has a Tags filter that shows the objects carrying any of the tags you pick, and the Tags page shows how many objects of each kind carry each tag. In the command palette, type # and a tag's name to find everything carrying it across all of those kinds. Deleting a tag takes it off everything it was on. In a portal session on a station with the Tags tool pack (Administrate has it), the assistant can do all of this too, with your permissions.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: [
       "Tag",
@@ -222,6 +222,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "Station",
       "Curated View",
     ],
+  },
+  {
+    question: "How do I find something quickly?",
+    answer:
+      "Use the command palette: the “Search or run…” box at the top of every page, or press ⌘K on a Mac or Ctrl+K elsewhere (not while you're typing in a field). With nothing typed it lists actions, your favorites and the items you opened recently. Type to find stations, pinned results, views, connectors, entities and your portals by name, or start with # to find items by tag. Use the arrow keys and Enter to open one, or Escape to close. Actions such as New station open that page's create dialog, and an action you don't have access to says what access it needs. The palette only ever shows what you can see, and Recent is kept in this browser.",
+    category: FAQCategory.Organization,
+    relatedGlossaryTerms: ["Command Palette", "Favorite", "Tag"],
   },
   {
     question: "How do favorites work?",

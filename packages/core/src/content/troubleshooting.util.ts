@@ -152,6 +152,23 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
     ],
   },
   {
+    symptom: "The command palette doesn't find something",
+    cause:
+      "The palette only shows items you have access to, in the organization you're working in. It searches stations, pinned results, views, connectors, entities and your own portals by name (an entity also by key), and shows the first few matches of each kind. It doesn't search records, field mappings, column definitions, groups or policies. A # search matches the start of a tag's name, and only tags you can see.",
+    fix: "Check you're in the right organization and type more of the name to narrow the matches. For a record or a field, open its entity and search there. If you expected to see the item, ask its owner to share it with you, or ask for access to that kind of item.",
+    related: [
+      { surface: "glossary", title: "Command Palette" },
+      { surface: "glossary", title: "Tag" },
+    ],
+    aliases: [
+      "search doesn't find",
+      "can't find in search",
+      "missing from search",
+      "command palette",
+      "ctrl k not working",
+    ],
+  },
+  {
     symptom: "Something couldn't reach the server",
     cause:
       "The app got no answer from the server: your connection dropped, or the service was briefly unavailable. A change may still have been saved if the connection dropped after it was sent.",

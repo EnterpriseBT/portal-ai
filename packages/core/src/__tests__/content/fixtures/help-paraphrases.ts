@@ -123,6 +123,17 @@ export const HELP_PARAPHRASES: readonly { query: string; expect: string }[] = [
     query: "the sync job failed",
     expect: "troubleshooting:a-sync-or-import-job-failed",
   },
+  // #1076: the command palette.
+  { query: "keyboard shortcut to search", expect: "glossary:command-palette" },
+  { query: "what does ctrl k do", expect: "glossary:command-palette" },
+  {
+    query: "How do I find something quickly?",
+    expect: "faq:how-do-i-find-something-quickly",
+  },
+  {
+    query: "search doesn't find my view",
+    expect: "troubleshooting:the-command-palette-doesn-t-find-something",
+  },
 ];
 
 /** Queries nothing in the help content covers: each must return no match. */
