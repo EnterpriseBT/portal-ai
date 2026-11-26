@@ -7,6 +7,8 @@ import {
 } from "@portalai/core/ui";
 import { HeaderMenu } from "../components/HeaderMenu.component";
 import { NewPortalButton } from "../components/NewPortalButton.component";
+import { CommandPalette } from "../components/CommandPalette.component";
+import { CommandPaletteTriggerUI } from "../components/CommandPaletteTrigger.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";
 import { Link } from "@tanstack/react-router";
@@ -16,6 +18,10 @@ import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
 import { MAIN_CONTENT_ID, SkipLinks } from "../components/SkipLinks.component";
 import { useRouteAnnouncer } from "../utils/route-announcer.util";
 import { PortalLauncherProvider } from "../providers/PortalLauncher.provider";
+import {
+  detectPlatform,
+  useCommandPaletteShortcut,
+} from "../utils/use-command-palette-shortcut.util";
 
 export const AuthorizedLayout = ({
   children,
@@ -24,6 +30,19 @@ export const AuthorizedLayout = ({
 }) => {
   const { isMobileExpanded, isMobile } = useLayout();
   useRouteAnnouncer();
+  // #1076: the command palette, from the header's search box or ⌘K / Ctrl+K.
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [platform] = React.useState(detectPlatform);
+  const closePalette = React.useCallback(() => setPaletteOpen(false), []);
+  const togglePalette = React.useCallback(
+    () => setPaletteOpen((open) => !open),
+    []
+  );
+  useCommandPaletteShortcut({
+    open: paletteOpen,
+    onToggle: togglePalette,
+    platform,
+  });
   return (
     // #1076: one launcher for the header button and the command palette.
     <PortalLauncherProvider>
@@ -61,6 +80,12 @@ export const AuthorizedLayout = ({
             </ButtonGroup>
 
             <Box display="flex" alignItems="center" gap={1}>
+              {/* #1076: search and actions; an icon at phone width. */}
+              <CommandPaletteTriggerUI
+                onOpen={() => setPaletteOpen(true)}
+                platform={platform}
+                layout={isMobile ? "icon" : "full"}
+              />
               {/* #1075: start a portal from any page; an icon at phone width. */}
               <NewPortalButton layout={isMobile ? "icon" : "full"} />
               <ButtonGroup>
@@ -95,6 +120,7 @@ export const AuthorizedLayout = ({
             {children}
           </Box>
         </Box>
+        <CommandPalette open={paletteOpen} onClose={closePalette} />
       </Box>
     </PortalLauncherProvider>
   );

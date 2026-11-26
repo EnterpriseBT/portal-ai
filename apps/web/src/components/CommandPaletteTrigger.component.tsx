@@ -1,11 +1,16 @@
 import React from "react";
 
-import { Button, Icon, IconName, Kbd } from "@portalai/core/ui";
+import { Button, Icon, IconButton, IconName, Kbd } from "@portalai/core/ui";
 
 export interface CommandPaletteTriggerUIProps {
   onOpen: () => void;
   /** Which shortcut to show: "⌘K" on a Mac, "Ctrl K" elsewhere. */
   platform: "mac" | "other";
+  /**
+   * #1076: the view decides. The full search box, or an icon at narrow
+   * widths, named by the same text.
+   */
+  layout?: "full" | "icon";
 }
 
 /**
@@ -15,8 +20,20 @@ export interface CommandPaletteTriggerUIProps {
  */
 export const CommandPaletteTriggerUI: React.FC<
   CommandPaletteTriggerUIProps
-> = ({ onOpen, platform }) => {
+> = ({ onOpen, platform, layout = "full" }) => {
   const mac = platform === "mac";
+  if (layout === "icon") {
+    return (
+      <IconButton
+        icon={IconName.Search}
+        color="inherit"
+        onClick={onOpen}
+        aria-label="Search or run…"
+        aria-haspopup="dialog"
+        aria-keyshortcuts={mac ? "Meta+K" : "Control+K"}
+      />
+    );
+  }
   return (
     <Button
       variant="outlined"

@@ -55,6 +55,7 @@ jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
 
 const { render, screen, waitFor, within, expectNoAxeViolations } =
   await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { AuthorizedLayout } = await import("../layouts/Authorized.layout");
 
 describe("AuthorizedLayout", () => {
@@ -96,6 +97,52 @@ describe("AuthorizedLayout", () => {
     expect(
       within(banner).getByRole("button", { name: "New portal" })
     ).toHaveTextContent("New portal");
+  });
+
+  describe("command palette (#1076)", () => {
+    const renderPage = () =>
+      render(
+        <AuthorizedLayout>
+          <div>Test Content</div>
+        </AuthorizedLayout>
+      );
+
+    it("puts the search box before New portal in the header", () => {
+      renderPage();
+      const buttons = within(screen.getByRole("banner"))
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
+      const search = buttons.findIndex((n) => n.includes("Search or run…"));
+      const portal = buttons.findIndex((n) => n.includes("New portal"));
+      expect(search).toBeGreaterThanOrEqual(0);
+      expect(search).toBeLessThan(portal);
+    });
+
+    it("opens from the header's search box", async () => {
+      renderPage();
+      await userEvent.click(
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: /Search or run…/,
+        })
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Search and actions" })
+      ).toBeInTheDocument();
+    });
+
+    it("opens with Ctrl+K, and Ctrl+K closes it", async () => {
+      renderPage();
+      await userEvent.keyboard("{Control>}k{/Control}");
+      expect(
+        await screen.findByRole("dialog", { name: "Search and actions" })
+      ).toBeInTheDocument();
+      await userEvent.keyboard("{Control>}k{/Control}");
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Search and actions" })
+        ).toBeNull()
+      );
+    });
   });
 
   describe("landmarks (#797)", () => {
@@ -181,6 +228,18 @@ describe("AuthorizedLayout", () => {
         name: "New portal",
       });
       expect(button).not.toHaveTextContent("New portal");
+    });
+
+    it("shows the palette's search box as an icon at phone width (#1076)", () => {
+      render(
+        <AuthorizedLayout>
+          <div>Test Content</div>
+        </AuthorizedLayout>
+      );
+      const trigger = within(screen.getByRole("banner")).getByRole("button", {
+        name: "Search or run…",
+      });
+      expect(trigger).not.toHaveTextContent("Search or run…");
     });
 
     it("leaves main reachable while the drawer is closed", async () => {

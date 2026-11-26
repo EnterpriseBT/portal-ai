@@ -16,3 +16,5 @@ type Story = StoryObj<typeof meta>;
 
 export const Mac: Story = {};
 export const Windows: Story = { args: { platform: "other" } };
+/** #1076: at phone width the view passes the icon layout. */
+export const Icon: Story = { args: { layout: "icon" } };

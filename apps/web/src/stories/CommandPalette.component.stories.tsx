@@ -126,3 +126,12 @@ export const ManyRows: Story = {
     ],
   },
 };
+
+/** #1076: a failed search keeps the actions. */
+export const SearchFailed: Story = {
+  args: {
+    query: "sales",
+    groups: [ACTIONS],
+    errorMessage: "Couldn’t search. Try again.",
+  },
+};

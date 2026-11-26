@@ -27,4 +27,18 @@ describe("CommandPaletteTriggerUI (#1122)", () => {
       screen.getByRole("button", { name: "Search or run…" })
     ).toHaveAttribute("aria-keyshortcuts", "Control+K");
   });
+
+  it("is an icon named by the same text at narrow widths (#1076)", async () => {
+    const onOpen = jest.fn();
+    const { container } = render(
+      <CommandPaletteTriggerUI onOpen={onOpen} platform="other" layout="icon" />
+    );
+    const button = screen.getByRole("button", { name: "Search or run…" });
+    expect(button).not.toHaveTextContent("Search or run…");
+    expect(button).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
+    await userEvent.click(button);
+    expect(onOpen).toHaveBeenCalled();
+    await expectNoAxeViolations(container);
+  });
 });
