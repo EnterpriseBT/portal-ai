@@ -32,4 +32,22 @@ describe("CardList", () => {
     const { container } = renderList();
     await expectNoAxeViolations(container);
   });
+
+  it("lays the cards out as a grid when given columns, still a list", async () => {
+    const { container } = render(
+      <CardList aria-label="Favorites" columns={{ xs: 1, md: 3 }}>
+        <DetailCard title="Alpha" headingLevel={2} />
+        <DetailCard title="Beta" headingLevel={2} />
+      </CardList>
+    );
+    const list = screen.getByRole("list", { name: "Favorites" });
+    expect(list).toHaveStyle({ display: "grid" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    await expectNoAxeViolations(container);
+  });
+
+  it("stacks in one column without columns", () => {
+    renderList();
+    expect(screen.getByRole("list")).toHaveStyle({ display: "flex" });
+  });
 });

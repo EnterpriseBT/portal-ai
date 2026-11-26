@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
 import { StartBoxUI } from "../components/StartBox.component";
-import { EXAMPLE_PROMPTS, STATIONS } from "./dashboard-fixtures";
+import { STATIONS } from "./dashboard-fixtures";
 
 /** #1123: type a question, pick a station, start a portal. */
 const meta = {
@@ -12,7 +12,6 @@ const meta = {
   args: {
     stations: STATIONS,
     initialStationId: "s1",
-    examples: EXAMPLE_PROMPTS,
     pending: false,
     serverError: null,
     onStart: fn(),
@@ -25,7 +24,6 @@ type Story = StoryObj<typeof meta>;
 export const Ready: Story = {};
 /** No default station: Start says to pick one. */
 export const PickAStation: Story = { args: { initialStationId: null } };
-export const NoExamples: Story = { args: { examples: [] } };
 export const Pending: Story = { args: { pending: true } };
 export const InlineError: Story = {
   args: {

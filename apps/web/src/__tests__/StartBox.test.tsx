@@ -14,7 +14,6 @@ const STATIONS = [
 const props = (overrides: Partial<StartBoxUIProps> = {}): StartBoxUIProps => ({
   stations: STATIONS,
   initialStationId: "s1",
-  examples: ["Which regions missed Q3?"],
   pending: false,
   serverError: null,
   onStart: jest.fn(),
@@ -139,15 +138,15 @@ describe("StartBoxUI", () => {
     await expectNoAxeViolations(document.body);
   });
 
-  it("fills the prompt from an example and hides examples once typed", async () => {
+  it("describes how Enter behaves, and shows no example prompts", () => {
     render(<StartBoxUI {...props()} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Which regions missed Q3?" })
+    expect(field()).toHaveAccessibleDescription(
+      "Enter to start, Shift+Enter for a new line"
     );
-    expect(field()).toHaveValue("Which regions missed Q3?");
-    expect(field()).toHaveFocus();
-    expect(
-      screen.queryByRole("button", { name: "Which regions missed Q3?" })
-    ).not.toBeInTheDocument();
+    expect(field()).toHaveAttribute(
+      "placeholder",
+      "Ask anything about your data…"
+    );
+    expect(screen.queryByText("Try:")).not.toBeInTheDocument();
   });
 });

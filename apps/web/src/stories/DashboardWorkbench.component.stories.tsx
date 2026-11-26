@@ -18,7 +18,6 @@ import { NeedsAttentionUI } from "../components/NeedsAttention.component";
 import { StartBoxUI } from "../components/StartBox.component";
 import {
   ATTENTION_JOBS,
-  EXAMPLE_PROMPTS,
   FAVORITE_STATIONS,
   RECENT_PORTALS,
   STATIONS,
@@ -58,7 +57,6 @@ const startBox = (stationId: string | null) => (
   <StartBoxUI
     stations={STATIONS}
     initialStationId={stationId}
-    examples={EXAMPLE_PROMPTS}
     pending={false}
     serverError={null}
     onStart={fn()}

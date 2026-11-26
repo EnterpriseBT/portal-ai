@@ -33,6 +33,8 @@ export * from "./GatedIconButton.js";
 export * from "./ActionsSuite.js";
 export * from "./PageHeader.js";
 export * from "./PageSection.js";
+export * from "./PageSectionGroup.js";
+export * from "./Composer.js";
 export * from "./DetailCard.js";
 export * from "./CardList.js";
 export * from "./PageGrid.js";

@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#1123](https://github.com/EnterpriseBT/portal-ai/issues/1123) · Feature · **small / condensed** (discovery + spec + plan + smoke in one doc). First child of the Dashboard redesign epic (#1085); branch `feat/1123-dashboard-ui-components` → `epic/dashboard-redesign`.
 
-**Why.** The redesign turns the dashboard into a workbench with six sections, and how they look together can't be judged one section at a time or after wiring. This ticket builds the layout and every section as pure `…UI` components in `apps/web/src/components`, each with stories and axe-checked tests, mounted nowhere. #1078 to #1083 then wire them to their data. Web only. Nothing changes in core, the API, contracts or the running app.
+**Why.** The redesign turns the dashboard into a workbench with six sections, and how they look together can't be judged one section at a time or after wiring. This ticket builds the layout and every section as pure `…UI` components in `apps/web/src/components`, each with stories and axe-checked tests, mounted nowhere. #1078 to #1083 then wire them to their data. Web, plus three small core additions for the layout (see **Revision**). Nothing changes in the API, contracts or the running app.
 
 ## Current shape
 
@@ -25,9 +25,9 @@ Each file exports only `<Name>UI` (Component File Policy), with no container. #1
 
 | File | Component | Holds |
 |---|---|---|
-| `DashboardWorkbench` | `DashboardWorkbenchUI` | `PageHeader` (the page's one `h1`) + slots `start`, `stations`, `pins`, `recent`, `tags`, `attention`. A `PageGrid` gives full-width rows for the first three, then `{ xs: 1, md: 3 }` for Recent / tags / attention, so it stacks at phone width |
+| `DashboardWorkbench` | `DashboardWorkbenchUI` | `PageHeader` (the page's one `h1`) + optional slots `start`, `stations`, `pins`, `recent`, `tags`, `attention`. A five-column `PageGrid`: the start box (a named form, no heading), favorite stations and pins take full rows; Recent portals spans three beside one `PageSectionGroup` frame holding Browse by tag over Needs attention. Stacks at phone width |
 | `WorkbenchSection` | `WorkbenchSectionUI` | `PageSection` (`h2`) + an optional `seeAll: { href, label }` rendered as a `RouterLink` in `primaryAction` |
-| `StartBox` | `StartBoxUI` | Multiline labelled prompt, station chip, `GatedButton` Start (`gate`, `pending` → `pendingGate`), example prompts when empty, `FormAlert` for `serverError`, "Pick a station" state |
+| `StartBox` | `StartBoxUI` | One-line core `Composer`: the prompt (placeholder "Ask anything about your data…", Enter/Shift+Enter in its description) with the station chip and `GatedButton` Start inside the frame; `FormAlert` for `serverError`. No example prompts |
 | `StationPicker` | `StationPickerUI` | The chip and its `Menu`: Favorites group first, then All stations |
 | `FavoriteStationCard` / `FavoriteStations` | `…UI` | `DetailCard` (`headingLevel={3}`, `href`), the recent-activity line, a Launch `GatedButton` "Launch {name}". The list is a `CardList` with a teaching `EmptyState` |
 | `PinTile` / `FavoritePins` | `…UI` | Tile: title link, `status: "loading" \| "error" \| "ready"`, `children` content. Grid: capped at `max` (default 6), plus a teaching empty state |
@@ -40,6 +40,10 @@ Two choices follow from the table:
 
 - **Tile content goes in `children`.** Real blocks need the SDK, and the compact renderer belongs to #1081. So `PinTileUI` owns only the frame, and the stories pass static fixture content: a `VisualFigureUI` around a small SVG in `palette.dataViz` colours, a plain table, and a map stand-in.
 - **The start box keeps its prompt and station in local UI state.** The Component File Policy allows a component's own interaction state, and keeping it local is what keeps the typed prompt after an error. Its props are `stations`, `initialStationId`, `gate`, `pending`, `serverError` and `onStart({ prompt, stationId })`. Enter submits unless the prompt is empty or `pending`; Shift+Enter adds a line. An empty prompt disables Start with a reason ("Type a question to start"), and the `gate` prop outranks it.
+
+## Revision (after slice 3, on the design review)
+
+To match the design doc's workbench wireframe and use the space better: the start box drops its "Try:" examples and becomes one line (new core `Composer`: a growing input whose controls sit inside the frame and wrap under it on a phone); both favorites sections lay out three across (new `columns` on core `CardList`, a grid that stays a list); and Browse by tag and Needs attention share one frame (new core `PageSectionGroup` plus a `plain` `PageSection` variant), each keeping its own `h2`. The start box's section heading went with it, so the page has five section `h2`s.
 
 ## Plan — 3 slices
 
@@ -64,4 +68,4 @@ Run per slice: `npm run test:unit -- --testPathPattern '<names>'` (web), then `n
 - All wiring and mounting: queries, SSE, gates, portal creation and swapping in `Dashboard.view.tsx`. That is #1078 to #1083.
 - The create-with-first-message contract (#1079), compact `ContentBlockRenderer` and lazy tiles (#1081), and the per-tag counts API and route (#1082).
 - Help, FAQ, Getting Started and ACR changes, since nothing user-visible ships here.
-- Core changes. Everything above composes existing core primitives.
+- Core changes beyond the layout pieces in **Revision**.

@@ -1,0 +1,103 @@
+import React, { useId } from "react";
+import Box from "@mui/material/Box";
+import InputBase from "@mui/material/InputBase";
+
+import { visuallyHidden } from "./visually-hidden.js";
+
+export interface ComposerProps {
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  /** The field's accessible name. The placeholder isn't one (#797). */
+  "aria-label": string;
+  placeholder?: string;
+  /** Read as the field's description, e.g. how Enter behaves. Not shown. */
+  description?: string;
+  inputRef?: React.Ref<HTMLTextAreaElement>;
+  /** Rows the field grows to before it scrolls. Defaults to 8. */
+  maxRows?: number;
+  /** Controls at the field's trailing edge: a picker, a submit button. On a
+   *  narrow screen they wrap onto a line under the text. */
+  actions?: React.ReactNode;
+  className?: string;
+}
+
+/**
+ * A one-line prompt field that grows as you type, with its controls inside
+ * the same frame (#1123), like a chat composer. The frame shows the focus
+ * ring while anything inside it has focus.
+ */
+export const Composer: React.FC<ComposerProps> = ({
+  value,
+  onChange,
+  onKeyDown,
+  "aria-label": ariaLabel,
+  placeholder,
+  description,
+  inputRef,
+  maxRows = 8,
+  actions,
+  className,
+}) => {
+  const descriptionId = useId();
+  return (
+    <Box
+      className={className}
+      // sx in core, with a reason: the frame is a layout of its own (an
+      // input and its controls wrapping together), not a themable variant of
+      // an MUI component. Colours come from the palette.
+      sx={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "flex-end",
+        gap: 1,
+        px: 1.5,
+        py: 1,
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 1,
+        bgcolor: "background.paper",
+        "&:focus-within": {
+          borderColor: "primary.main",
+          boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
+        },
+      }}
+    >
+      <InputBase
+        multiline
+        maxRows={maxRows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown as React.KeyboardEventHandler<HTMLElement>}
+        placeholder={placeholder}
+        inputRef={inputRef}
+        inputProps={{
+          "aria-label": ariaLabel,
+          "aria-describedby": description ? descriptionId : undefined,
+        }}
+        // Wide enough to type in before the controls wrap under it.
+        sx={{ flex: "1 1 16rem", py: 0.75 }}
+      />
+      {actions && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            ml: "auto",
+            flexWrap: "wrap",
+          }}
+        >
+          {actions}
+        </Box>
+      )}
+      {description && (
+        <Box component="span" id={descriptionId} sx={visuallyHidden}>
+          {description}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+export default Composer;

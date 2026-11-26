@@ -15,7 +15,7 @@ export interface FavoriteStationsUIProps {
 
 /**
  * The dashboard's favorite stations (#1123): one card per starred station,
- * or, with none starred, a teaching empty state saying how to add one.
+ * up to three across on a wide screen, or, with none starred, a teaching empty state saying how to add one.
  */
 export const FavoriteStationsUI: React.FC<FavoriteStationsUIProps> = ({
   items,
@@ -33,7 +33,7 @@ export const FavoriteStationsUI: React.FC<FavoriteStationsUIProps> = ({
   }
 
   return (
-    <CardList aria-label="Favorite stations">
+    <CardList aria-label="Favorite stations" columns={{ xs: 1, sm: 2, md: 3 }}>
       {items.map((item) => (
         <FavoriteStationCardUI
           key={item.station.id}

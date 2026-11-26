@@ -6,6 +6,7 @@ import {
   PageGrid,
   PageGridItem,
   PageHeader,
+  PageSectionGroup,
   Stack,
 } from "@portalai/core/ui";
 
@@ -16,8 +17,8 @@ export interface DashboardWorkbenchUIProps {
   headerAction?: React.ReactNode;
   /** Shown under the title: the health check and default-station line. */
   headerContent?: React.ReactNode;
-  /** Each section's body. A section whose slot is omitted isn't rendered,
-   *  so the page can be wired one section at a time (#1078 to #1083). */
+  /** Each part's body. A part whose slot is omitted isn't rendered, so the
+   *  page can be wired one section at a time (#1078 to #1083). */
   start?: React.ReactNode;
   stations?: React.ReactNode;
   pins?: React.ReactNode;
@@ -26,13 +27,17 @@ export interface DashboardWorkbenchUIProps {
   attention?: React.ReactNode;
 }
 
+/** Five columns on a wide screen: full rows span all five, and the last row
+ *  splits three to two, Recent portals beside tags and attention. */
+const FULL = { xs: 1, md: 5 };
+
 /**
- * The dashboard workbench (#1123): the page's one `h1`, then its sections as
- * `h2`s in the workbench order. The start box, favorite stations and pins
- * take full rows; Recent portals, Browse by tag and Needs attention share the
- * last row on wide screens and stack on narrow ones. Sections that show
- * favorites link to their list's page (#1078); Recent portals has no list
- * page, so no "see all".
+ * The dashboard workbench (#1123): the page's one `h1`, the start box (a
+ * named form, so it needs no heading of its own), then the sections as
+ * `h2`s. Favorite stations and pins take full rows; Recent portals shares
+ * the last row with Browse by tag and Needs attention, which sit together in
+ * one frame. Everything stacks at phone width. Sections that show favorites
+ * link to their list's page (#1078); Recent portals has no list page.
  */
 export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
   headerAction,
@@ -44,7 +49,28 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
   tags,
   attention,
 }) => {
-  const full = { xs: 1, md: 3 };
+  const tagsSection = tags !== undefined && (
+    <WorkbenchSectionUI
+      title="Browse by tag"
+      icon={<Icon name={IconName.Label} />}
+      seeAll={{ href: "/tags", label: "All tags" }}
+      variant="plain"
+    >
+      {tags}
+    </WorkbenchSectionUI>
+  );
+  const attentionSection = attention !== undefined && (
+    <WorkbenchSectionUI
+      title="Needs attention"
+      icon={<Icon name={IconName.Work} />}
+      seeAll={{ href: "/jobs", label: "All jobs" }}
+      variant="plain"
+    >
+      {attention}
+    </WorkbenchSectionUI>
+  );
+  const sideBySide = recent !== undefined;
+
   return (
     <Stack spacing={4}>
       <PageHeader
@@ -55,19 +81,12 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
       >
         {headerContent}
       </PageHeader>
-      <PageGrid columns={{ xs: 1, md: 3 }}>
+      <PageGrid columns={{ xs: 1, md: 5 }}>
         {start !== undefined && (
-          <PageGridItem span={full}>
-            <WorkbenchSectionUI
-              title="Start a portal"
-              icon={<Icon name={IconName.Portal} />}
-            >
-              {start}
-            </WorkbenchSectionUI>
-          </PageGridItem>
+          <PageGridItem span={FULL}>{start}</PageGridItem>
         )}
         {stations !== undefined && (
-          <PageGridItem span={full}>
+          <PageGridItem span={FULL}>
             <WorkbenchSectionUI
               title="Favorite stations"
               icon={<Icon name={IconName.SatelliteAlt} />}
@@ -78,7 +97,7 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
           </PageGridItem>
         )}
         {pins !== undefined && (
-          <PageGridItem span={full}>
+          <PageGridItem span={FULL}>
             <WorkbenchSectionUI
               title="Favorite pins"
               icon={<Icon name={IconName.PushPin} />}
@@ -89,7 +108,7 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
           </PageGridItem>
         )}
         {recent !== undefined && (
-          <PageGridItem>
+          <PageGridItem span={{ xs: 1, md: 3 }}>
             <WorkbenchSectionUI
               title="Recent portals"
               icon={<Icon name={IconName.Portal} />}
@@ -98,26 +117,12 @@ export const DashboardWorkbenchUI: React.FC<DashboardWorkbenchUIProps> = ({
             </WorkbenchSectionUI>
           </PageGridItem>
         )}
-        {tags !== undefined && (
-          <PageGridItem>
-            <WorkbenchSectionUI
-              title="Browse by tag"
-              icon={<Icon name={IconName.Label} />}
-              seeAll={{ href: "/tags", label: "All tags" }}
-            >
-              {tags}
-            </WorkbenchSectionUI>
-          </PageGridItem>
-        )}
-        {attention !== undefined && (
-          <PageGridItem>
-            <WorkbenchSectionUI
-              title="Needs attention"
-              icon={<Icon name={IconName.Work} />}
-              seeAll={{ href: "/jobs", label: "All jobs" }}
-            >
-              {attention}
-            </WorkbenchSectionUI>
+        {(tagsSection || attentionSection) && (
+          <PageGridItem span={sideBySide ? { xs: 1, md: 2 } : FULL}>
+            <PageSectionGroup>
+              {tagsSection}
+              {attentionSection}
+            </PageSectionGroup>
           </PageGridItem>
         )}
       </PageGrid>

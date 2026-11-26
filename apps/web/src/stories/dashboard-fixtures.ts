@@ -23,12 +23,6 @@ export const STATIONS: StationOption[] = [
   { id: "s5", name: "Marketing Analytics", favorite: false },
 ];
 
-export const EXAMPLE_PROMPTS = [
-  "Which regions missed their Q3 targets?",
-  "Map open inspections by county",
-  "Summarize churned accounts this month",
-];
-
 export const FAVORITE_STATIONS: FavoriteStationItem[] = [
   {
     station: {

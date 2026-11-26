@@ -285,4 +285,17 @@ describe("PageSection accessibility", () => {
     );
     await expectNoAxeViolations(container);
   });
+
+  it("renders a plain section with no frame or divider", () => {
+    const { container } = render(
+      <PageSection title="Plain" variant="plain">
+        <p>Body</p>
+      </PageSection>
+    );
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Plain" })
+    ).toBeInTheDocument();
+    expect(container.querySelector(".MuiPaper-root")).toBeNull();
+    expect(container.querySelector("hr")).toBeNull();
+  });
 });

@@ -17,7 +17,6 @@ const sections = (empty: boolean) => ({
     <StartBoxUI
       stations={empty ? [] : [{ id: "s1", name: "Finance", favorite: true }]}
       initialStationId={empty ? null : "s1"}
-      examples={["Which regions missed target?"]}
       pending={false}
       serverError={null}
       onStart={noop}
@@ -104,7 +103,7 @@ const ALL = {
 };
 
 describe("DashboardWorkbenchUI", () => {
-  it("renders one h1 and the six sections as h2s, in workbench order", async () => {
+  it("renders one h1, the start box, then the sections as h2s in workbench order", async () => {
     const { container } = render(<DashboardWorkbenchUI {...ALL} />);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(
@@ -113,7 +112,6 @@ describe("DashboardWorkbenchUI", () => {
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)
     ).toEqual([
-      "Start a portal",
       "Favorite stations",
       "Favorite pins",
       "Recent portals",
@@ -122,6 +120,24 @@ describe("DashboardWorkbenchUI", () => {
     ]);
     expect(screen.getByText("attention body")).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it("frames Browse by tag and Needs attention together", () => {
+    render(<DashboardWorkbenchUI {...ALL} />);
+    const tags = screen.getByRole("heading", {
+      level: 2,
+      name: "Browse by tag",
+    });
+    const attention = screen.getByRole("heading", {
+      level: 2,
+      name: "Needs attention",
+    });
+    const frame = tags.closest(".MuiPaper-root");
+    expect(frame).not.toBeNull();
+    expect(frame).toContainElement(attention);
+    expect(frame).not.toContainElement(
+      screen.getByRole("heading", { level: 2, name: "Recent portals" })
+    );
   });
 
   it("links each favorites section to its list, and Recent portals nowhere", () => {
@@ -160,6 +176,9 @@ describe("DashboardWorkbenchUI", () => {
   ])("has no axe violations with real sections: %s", async (_label, empty) => {
     const { container } = render(<DashboardWorkbenchUI {...sections(empty)} />);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("form", { name: "Start a portal" })
+    ).toBeInTheDocument();
     await expectNoAxeViolations(container);
   });
 

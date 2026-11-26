@@ -24,7 +24,7 @@ export interface FavoritePinsUIProps {
 
 /**
  * The dashboard's favorite pins (#1123): a tile per starred pin, up to
- * `max`, or a teaching empty state saying how to add one.
+ * `max` and up to three across on a wide screen, or a teaching empty state saying how to add one.
  */
 export const FavoritePinsUI: React.FC<FavoritePinsUIProps> = ({
   pins,
@@ -43,7 +43,7 @@ export const FavoritePinsUI: React.FC<FavoritePinsUIProps> = ({
   }
 
   return (
-    <CardList aria-label="Favorite pins">
+    <CardList aria-label="Favorite pins" columns={{ xs: 1, sm: 2, md: 3 }}>
       {pins.slice(0, max).map((item) => (
         <PinTileUI
           key={item.pin.id}
