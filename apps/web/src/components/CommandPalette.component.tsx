@@ -143,6 +143,9 @@ export const CommandPaletteUI: React.FC<CommandPaletteUIProps> = ({
           </Typography>
         ))}
         linkComponent={linkComponent}
+        // #1076: any picked link closes the palette, including one to the
+        // page you're on, which changes no location.
+        onFollowLink={onClose}
         inputRef={inputRef}
       />
     </Modal>
@@ -166,7 +169,7 @@ const TAG_SUGGESTIONS = 8;
  * caller's 5 latest portals and other recent items; typing searches every readable object type (one request per
  * 200 ms pause, the superseded one aborted); `#text` searches by tag, and
  * `#` alone suggests tags. Actions are gated like their page buttons, and
- * New portal goes through the shell's one launcher. Any navigation closes it.
+ * Open Portal goes through the shell's one launcher. Any navigation closes it.
  */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   open,
@@ -269,8 +272,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     ...launchStations.map(
       (station): PaletteAction => ({
         id: `new-portal:${station.id}`,
-        label: `New portal in ${station.name}`,
-        icon: IconName.Add,
+        label: `Open Portal in ${station.name}`,
+        icon: IconName.Portal,
         gate: launcher.gate,
         onSelect: () => {
           handleClose();
@@ -280,8 +283,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     ),
     {
       id: "choose-station",
-      label: "New portal: choose station…",
-      icon: IconName.Add,
+      label: "Open Portal: choose station…",
+      icon: IconName.Portal,
       gate: launcher.gate,
       onSelect: () => {
         handleClose();

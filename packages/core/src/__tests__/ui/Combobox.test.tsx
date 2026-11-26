@@ -290,4 +290,47 @@ describe("Combobox (#1122)", () => {
     await userEvent.click(screen.getByRole("option", { name: "New view" }));
     expect(onUpgrade).toHaveBeenCalledTimes(1);
   });
+
+  it("reports a followed link, by click and by Enter (#1076)", async () => {
+    const onFollowLink = jest.fn();
+    const Link = React.forwardRef<
+      HTMLAnchorElement,
+      React.AnchorHTMLAttributes<HTMLAnchorElement>
+    >(({ onClick, ...props }, ref) => (
+      <a
+        ref={ref}
+        {...props}
+        onClick={(event) => {
+          onClick?.(event);
+          event.preventDefault();
+        }}
+      />
+    ));
+    const Followed = () => {
+      const [value, setValue] = React.useState("");
+      return (
+        <Combobox
+          options={options()}
+          inputValue={value}
+          onInputChange={setValue}
+          label="Search"
+          statusText=""
+          linkComponent={Link}
+          onFollowLink={onFollowLink}
+        />
+      );
+    };
+    const clicked = render(<Followed />);
+    await userEvent.click(screen.getByRole("option", { name: "Finance" }));
+    expect(onFollowLink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "st-2" })
+    );
+    clicked.unmount();
+    render(<Followed />);
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(onFollowLink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "st-1" })
+    );
+  });
 });

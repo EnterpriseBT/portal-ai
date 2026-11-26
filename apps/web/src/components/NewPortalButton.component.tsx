@@ -31,7 +31,8 @@ export interface NewPortalButtonUIProps {
 }
 
 /**
- * The header's "New portal" split button (#1122). The main action names
+ * The header's "Open Portal" split button (#1122; "Open Portal" like the
+ * station page and dashboard since #1076). The main action names
  * the station it starts a portal in; its menu offers the page's station,
  * favorite stations (or how to add some) and "Choose station…".
  *
@@ -65,7 +66,7 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
       ? [
           {
             id: `page:${pageStation.id}`,
-            label: `New portal in ${pageStation.name}`,
+            label: `Open Portal in ${pageStation.name}`,
             section: "On this page",
             onClick: () => onLaunchIn(pageStation.id),
             gate: itemGate,
@@ -101,12 +102,12 @@ export const NewPortalButtonUI: React.FC<NewPortalButtonUIProps> = ({
 
   return (
     <SplitButton
-      label={station ? `New portal in ${station.name}` : "New portal"}
+      label={station ? `Open Portal in ${station.name}` : "Open Portal"}
       onClick={station ? onLaunch : onChooseStation}
       gate={gate}
       pending={pending}
       pendingLabel="Starting…"
-      icon={IconName.Add}
+      icon={IconName.Portal}
       menuItems={menuItems}
       menuLabel="More ways to start a portal"
       layout={layout}
@@ -121,7 +122,7 @@ export interface NewPortalButtonProps {
 }
 
 /**
- * The header's New portal button, wired (#1075): the shell's launcher
+ * The header's Open Portal button, wired (#1075): the shell's launcher
  * (`PortalLauncherProvider`, #1076, shared with the command palette)
  * picks the stations, gate and launch, and "Choose station…" opens the
  * existing CreatePortalDialog through the same create, whose error shows in

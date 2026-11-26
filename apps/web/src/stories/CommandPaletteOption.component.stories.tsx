@@ -24,7 +24,7 @@ export const PinWithTags: Story = {
 
 export const Action: Story = {
   args: {
-    entry: { kind: "action", id: "new", label: "New portal", onSelect: fn() },
+    entry: { kind: "action", id: "new", label: "Open Portal", onSelect: fn() },
   },
 };
 

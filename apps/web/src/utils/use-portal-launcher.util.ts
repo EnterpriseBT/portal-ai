@@ -81,7 +81,7 @@ export interface PortalLauncher {
 }
 
 /**
- * The header's New portal launcher (#1075): which stations to offer, the
+ * The header's Open Portal launcher (#1075): which stations to offer, the
  * gate, and the launch. The main click's station is, in order:
  * - the page's station;
  * - the station of the caller's own last-opened portal (`mine=true`), if

@@ -6,7 +6,7 @@ import { TAG_TARGET_NOUNS } from "./tag-usage.util";
 
 /**
  * Display types for the launcher's components (#1122): what the palette,
- * the New portal menu and the sidebar Favorites group render. They aren't
+ * the Open Portal menu and the sidebar Favorites group render. They aren't
  * data contracts; the wiring tickets (#1075, #1076, #1077) map their data
  * onto them.
  */
@@ -25,7 +25,7 @@ export interface LauncherItem {
 }
 
 /**
- * Something the palette can do, such as "New portal". An action runs
+ * Something the palette can do, such as "Open Portal". An action runs
  * `onSelect`, or, when it goes to a page (a create's `?create=` link,
  * #1076), is a link to `href`. Exactly one of the two is set.
  */

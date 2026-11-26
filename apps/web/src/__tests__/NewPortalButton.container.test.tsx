@@ -127,7 +127,7 @@ describe("NewPortalButton (#1075)", () => {
   it("starts a portal in the last-used station, refreshing portals and toasting a failure", async () => {
     render(<Button />);
     await userEvent.click(
-      screen.getByRole("button", { name: /^New portal in Ops$/ })
+      screen.getByRole("button", { name: /^Open Portal in Ops$/ })
     );
     expect(mockMutate).toHaveBeenCalledWith(
       { stationId: "s-last" },
@@ -150,7 +150,7 @@ describe("NewPortalButton (#1075)", () => {
     delete mockReadable["s-last"];
     render(<Button />);
     expect(
-      screen.getByRole("button", { name: /^New portal in Finance$/ })
+      screen.getByRole("button", { name: /^Open Portal in Finance$/ })
     ).toBeInTheDocument();
   });
 
@@ -158,7 +158,7 @@ describe("NewPortalButton (#1075)", () => {
     mockStale = { "s-last": { id: "s-last", name: "Ops" } };
     render(<Button />);
     expect(
-      screen.getByRole("button", { name: /^New portal in Finance$/ })
+      screen.getByRole("button", { name: /^Open Portal in Finance$/ })
     ).toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe("NewPortalButton (#1075)", () => {
     mockLastPortalStationId = undefined;
     mockFavoritesPending = true;
     render(<Button />);
-    const main = screen.getByRole("button", { name: /^New portal$/ });
+    const main = screen.getByRole("button", { name: /^Open Portal$/ });
     expect(main).toHaveAccessibleDescription("Finding your station…");
     await userEvent.click(main);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -177,7 +177,9 @@ describe("NewPortalButton (#1075)", () => {
     mockLastPortalStationId = undefined;
     mockFavorites = [];
     render(<Button />);
-    await userEvent.click(screen.getByRole("button", { name: /^New portal$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Open Portal$/ })
+    );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     // Opening clears any failure from another path.
     expect(mockReset).toHaveBeenCalled();
@@ -214,7 +216,7 @@ describe("NewPortalButton (#1075)", () => {
   it("blocks every launch for a caller who may not start portals", async () => {
     mockGate = { kind: "disable", reason: "Ask for access to start portals" };
     render(<Button />);
-    const main = screen.getByRole("button", { name: /^New portal in Ops$/ });
+    const main = screen.getByRole("button", { name: /^Open Portal in Ops$/ });
     expect(main).toHaveAccessibleDescription("Ask for access to start portals");
     await userEvent.click(main);
     await openMenu();
@@ -225,7 +227,7 @@ describe("NewPortalButton (#1075)", () => {
   it("is hidden from a caller who can't see portals", () => {
     mockGate = { kind: "hide" };
     render(<Button />);
-    expect(screen.queryByRole("button", { name: /New portal/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open Portal/ })).toBeNull();
   });
 });
 
@@ -246,7 +248,7 @@ describe("NewPortalButton and the shared launcher (#1076)", () => {
         <Other />
       </PortalLauncherProvider>
     );
-    await screen.findByRole("button", { name: "New portal in Ops" });
+    await screen.findByRole("button", { name: "Open Portal in Ops" });
     const hooksPerRender = mockCreateHook.mock.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "Other launch" }));
     expect(mockMutate).toHaveBeenCalledWith(

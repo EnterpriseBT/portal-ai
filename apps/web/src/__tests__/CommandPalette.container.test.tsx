@@ -85,6 +85,7 @@ const { PortalLauncherContext } =
 const { recentVisitsKey } = await import("../utils/use-recent-visits.util");
 
 const launch = jest.fn();
+const onCloseHere = jest.fn();
 const openChooser = jest.fn();
 const launcher = {
   station: { id: "s-ops", name: "Ops" },
@@ -182,8 +183,8 @@ describe("CommandPalette (container, #1076)", () => {
     );
     expect(optionNames()).toEqual(
       expect.arrayContaining([
-        "New portal in Ops",
-        "New portal in Finance",
+        "Open Portal in Ops",
+        "Open Portal in Finance",
         "Favorite station· station",
         "Chat· portal",
         "Q3 orders· view",
@@ -287,7 +288,7 @@ describe("CommandPalette (container, #1076)", () => {
   it("starts a portal through the shell's launcher and closes", async () => {
     const { onClose } = renderPalette();
     await userEvent.click(
-      await screen.findByRole("option", { name: "New portal in Finance" })
+      await screen.findByRole("option", { name: "Open Portal in Finance" })
     );
     expect(launch).toHaveBeenCalledWith("s-fin");
     expect(onClose).toHaveBeenCalled();
@@ -296,10 +297,26 @@ describe("CommandPalette (container, #1076)", () => {
   it("opens the station chooser and closes", async () => {
     const { onClose } = renderPalette();
     await userEvent.click(
-      await screen.findByRole("option", { name: "New portal: choose station…" })
+      await screen.findByRole("option", {
+        name: "Open Portal: choose station…",
+      })
     );
     expect(openChooser).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("closes on a picked link even to the page you're on", async () => {
+    mockFavorites = [result("station", "s-here", "This station")];
+    render(
+      <PortalLauncherContext.Provider value={launcher}>
+        <CommandPalette open onClose={onCloseHere} />
+      </PortalLauncherContext.Provider>,
+      { auth, initialEntry: "/stations/s-here" }
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: /This station/ })
+    );
+    expect(onCloseHere).toHaveBeenCalled();
   });
 
   it("links a create action to its page", async () => {

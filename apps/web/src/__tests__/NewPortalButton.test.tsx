@@ -31,7 +31,7 @@ describe("NewPortalButtonUI (#1122)", () => {
     const p = props();
     render(<NewPortalButtonUI {...p} />);
     await userEvent.click(
-      screen.getByRole("button", { name: "New portal in Sales Ops" })
+      screen.getByRole("button", { name: "Open Portal in Sales Ops" })
     );
     expect(p.onLaunch).toHaveBeenCalledTimes(1);
   });
@@ -44,7 +44,7 @@ describe("NewPortalButtonUI (#1122)", () => {
       .getAllByRole("menuitem")
       .map((item) => item.textContent);
     expect(names).toEqual([
-      "New portal in Sales Ops",
+      "Open Portal in Sales Ops",
       "Finance Close",
       "Field Inspections",
       "Choose station…",
@@ -78,7 +78,7 @@ describe("NewPortalButtonUI (#1122)", () => {
   it("chooses a station from the main click when there's none to use", async () => {
     const p = props({ station: null });
     render(<NewPortalButtonUI {...p} />);
-    await userEvent.click(screen.getByRole("button", { name: "New portal" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open Portal" }));
     expect(p.onChooseStation).toHaveBeenCalledTimes(1);
     expect(p.onLaunch).not.toHaveBeenCalled();
   });
@@ -89,7 +89,7 @@ describe("NewPortalButtonUI (#1122)", () => {
     });
     render(<NewPortalButtonUI {...p} />);
     const main = screen.getByRole("button", {
-      name: "New portal in Sales Ops",
+      name: "Open Portal in Sales Ops",
     });
     expect(main).toHaveAccessibleDescription("Ask for access to start portals");
     await openMenu();
@@ -103,7 +103,7 @@ describe("NewPortalButtonUI (#1122)", () => {
     const p = props({ pending: true });
     render(<NewPortalButtonUI {...p} />);
     expect(
-      screen.getByRole("button", { name: "New portal in Sales Ops" })
+      screen.getByRole("button", { name: "Open Portal in Sales Ops" })
     ).toHaveAccessibleDescription("Starting…");
     await openMenu();
     const favorite = screen.getByRole("menuitem", { name: "Finance Close" });
@@ -131,9 +131,18 @@ describe("NewPortalButtonUI (#1122)", () => {
       <NewPortalButtonUI {...props({ layout: "icon" })} />
     );
     const main = screen.getByRole("button", {
-      name: "New portal in Sales Ops",
+      name: "Open Portal in Sales Ops",
     });
     expect(main).not.toHaveTextContent("Sales Ops");
     await expectNoAxeViolations(container);
+  });
+
+  it("uses the portal icon, not a plus (#1076)", () => {
+    render(<NewPortalButtonUI {...props()} />);
+    const main = screen.getByRole("button", {
+      name: /Open Portal in Sales Ops/,
+    });
+    expect(main.querySelector('[data-testid="AddIcon"]')).toBeNull();
+    expect(main.querySelector("svg")).not.toBeNull();
   });
 });

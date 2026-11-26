@@ -50,6 +50,12 @@ export interface ComboboxProps<T extends ComboboxOption = ComboboxOption> {
   footer?: React.ReactNode;
   /** Renders link options; core can't import the app's router. */
   linkComponent?: React.ElementType;
+  /**
+   * Called when a link option is followed, by click or Enter. A host that
+   * should close on any pick calls its close here (#1076): a link to the
+   * page you're already on changes no location, so nothing else would.
+   */
+  onFollowLink?: (option: T) => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }
 
@@ -125,6 +131,7 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
   emptyContent,
   footer,
   linkComponent,
+  onFollowLink,
   inputRef,
 }: ComboboxProps<T>) {
   const id = useId();
@@ -227,6 +234,12 @@ export function Combobox<T extends ComboboxOption = ComboboxOption>({
             component={Link}
             href={option.href}
             {...(optionProps as React.HTMLAttributes<HTMLElement>)}
+            onClick={(event: React.MouseEvent<HTMLElement>) => {
+              (optionProps as React.HTMLAttributes<HTMLElement>).onClick?.(
+                event
+              );
+              onFollowLink?.(option);
+            }}
             aria-describedby={descriptionId}
             className="ComboboxOption"
           >

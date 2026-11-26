@@ -76,7 +76,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      'From a station set up for your data, press "New portal" at the top of the page (or the station\'s own "Open Portal") to open a chat session. On any other page that button uses the station you used last (or, without one, a favorite station), and it names the station before you click; its menu lists your favorite stations and "Choose station…" for any other. The command palette (⌘K or Ctrl+K) offers the same choices from the keyboard. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization\'s Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own.',
+      'From a station set up for your data, press "Open Portal" at the top of the page (or on the station\'s own page) to open a chat session. On any other page that button uses the station you used last (or, without one, a favorite station), and it names the station before you click; its menu lists your favorite stations and "Choose station…" for any other. The command palette (⌘K or Ctrl+K) offers the same choices from the keyboard. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later. A new organization\'s Administrate station is for managing members, access and tags and has no data: use Playground or a station of your own.',
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -233,7 +233,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do favorites work?",
     answer:
-      "Star a station, pinned result, view or connector to make it one of your favorites. The star is on each item in its list and on its own page, and anyone who can see an item can star it. Favorites are yours alone: nobody else sees them, and they don't change the item for anyone. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. A favorite station is also listed in the New portal menu at the top of every page, to start a portal there in one click. If you lose access to a favorite it disappears from your lists, and it comes back starred if your access returns. Deleting an item removes it from everyone's favorites. Tags are the shared way to group items for the whole organization.",
+      "Star a station, pinned result, view or connector to make it one of your favorites. The star is on each item in its list and on its own page, and anyone who can see an item can star it. Favorites are yours alone: nobody else sees them, and they don't change the item for anyone. Each of those lists has a Favorites button, marked with a star, that shows just your favorites without changing the order. A favorite station is also listed in the Open Portal menu at the top of every page, to start a portal there in one click. If you lose access to a favorite it disappears from your lists, and it comes back starred if your access returns. Deleting an item removes it from everyone's favorites. Tags are the shared way to group items for the whole organization.",
     category: FAQCategory.Organization,
     aliases: ["star", "starred", "favourite"],
     relatedGlossaryTerms: [

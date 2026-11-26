@@ -2,7 +2,7 @@ import { sdk } from "../api/sdk";
 
 /**
  * The include a station's page reads it with. The station page, a portal's
- * header and the app header's New portal button (#1075) read the station
+ * header and the app header's Open Portal button (#1075) read the station
  * through this one query key, so React Query fetches it once.
  */
 export const STATION_PAGE_INCLUDE = "connectorInstance,curatedView";
