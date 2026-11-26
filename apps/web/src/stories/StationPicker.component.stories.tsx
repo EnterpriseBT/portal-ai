@@ -16,7 +16,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Selected: Story = {};
-/** No default station: the chip asks for one. */
+/** Nothing selected: the chip asks for one. */
 export const PickAStation: Story = { args: { selectedId: null } };
 export const NoFavorites: Story = {
   args: { stations: STATIONS.map((s) => ({ ...s, favorite: false })) },

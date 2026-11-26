@@ -22,7 +22,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Ready: Story = {};
-/** No default station: Start says to pick one. */
+/** Nothing preselected: Start says to pick one. */
 export const PickAStation: Story = { args: { initialStationId: null } };
 export const Pending: Story = { args: { pending: true } };
 export const InlineError: Story = {

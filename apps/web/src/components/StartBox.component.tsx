@@ -18,8 +18,9 @@ import type { ServerError } from "../utils/api.util";
 
 export interface StartBoxUIProps {
   stations: StationOption[];
-  /** The caller's default station, if any. Used until the user picks one,
-   *  and only while it's among `stations`. */
+  /** A station to preselect, if the caller has one (there's no org default
+   *  station). Used until the user picks one, and only while it's among
+   *  `stations`. */
   initialStationId: string | null;
   /** Whether the caller may start a portal (permission, then plan). */
   gate?: ActionGate;
@@ -46,10 +47,10 @@ export const StartBoxUI: React.FC<StartBoxUIProps> = ({
   onStart,
 }) => {
   const [prompt, setPrompt] = useState("");
-  // The user's pick, if any; until then the default. Either counts only
-  // while it's a station the caller can see, so a deleted or unreadable
-  // default (or one that hasn't loaded yet) reads as "Pick a station" and
-  // is never sent.
+  // The user's pick, if any; until then the preselected station. Either
+  // counts only while it's a station the caller can see, so a deleted or
+  // unreadable one (or one that hasn't loaded yet) reads as "Pick a
+  // station" and is never sent.
   const [pickedId, setPickedId] = useState<string | null>(null);
   const candidate = pickedId ?? initialStationId;
   const stationId = stations.some((s) => s.id === candidate) ? candidate : null;

@@ -14,7 +14,7 @@ import { WorkbenchSectionUI } from "./WorkbenchSection.component";
 export interface DashboardWorkbenchUIProps {
   /** The header's trailing action, e.g. Open Portal until the start box lands. */
   headerAction?: React.ReactNode;
-  /** Shown under the title: the health check and default-station line. */
+  /** Shown under the title: the API health check. */
   headerContent?: React.ReactNode;
   /** Each part's body. A part whose slot is omitted isn't rendered, so the
    *  page can be wired one section at a time (#1078 to #1083). */

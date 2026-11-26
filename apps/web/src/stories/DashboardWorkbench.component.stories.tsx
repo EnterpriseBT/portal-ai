@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { Typography } from "@portalai/core/ui";
+import { Stack, Typography } from "@portalai/core/ui";
 
 import {
   DashboardWorkbenchUI,
@@ -14,6 +14,7 @@ import {
 } from "../components/FavoritePins.component";
 import { FavoriteStationsUI } from "../components/FavoriteStations.component";
 import { NeedsAttentionUI } from "../components/NeedsAttention.component";
+import { HealthCheckUI } from "../components/HealthCheck.component";
 import { StartBoxUI } from "../components/StartBox.component";
 import {
   ATTENTION_JOBS,
@@ -46,10 +47,21 @@ const PINS: FavoritePinItem[] = [
   },
 ];
 
+/** The page's API health check, as the dashboard shows it today. The real
+ *  `HealthCheck` calls the API, so the story renders its UI with a fixture. */
 const header = (
-  <Typography variant="body2" color="text.secondary">
-    Default station: Finance Close
-  </Typography>
+  <Stack direction="row" alignItems="center" spacing={1}>
+    <HealthCheckUI
+      data={{
+        timestamp: new Date().toISOString(),
+        version: "dev",
+        sha: "local",
+      }}
+    />
+    <Typography variant="caption" color="text.secondary">
+      API connected — dev (local)
+    </Typography>
+  </Stack>
 );
 
 const startBox = (stationId: string | null) => (
@@ -74,6 +86,7 @@ const POPULATED: DashboardWorkbenchUIProps = {
 
 /** A brand-new org: every section shows its teaching empty state. */
 const NEW_ORG: DashboardWorkbenchUIProps = {
+  headerContent: header,
   start: startBox(null),
   stations: <FavoriteStationsUI items={[]} onLaunch={fn()} />,
   pins: <FavoritePinsUI pins={[]} />,

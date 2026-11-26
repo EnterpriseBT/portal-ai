@@ -74,7 +74,7 @@ describe("StartBoxUI", () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 
-  it("asks for a station when there's no default, then starts once picked", async () => {
+  it("asks for a station when none is preselected, then starts once picked", async () => {
     const onStart = jest.fn();
     render(<StartBoxUI {...props({ onStart, initialStationId: null })} />);
     await userEvent.type(field(), "Top accounts{Enter}");
@@ -94,7 +94,7 @@ describe("StartBoxUI", () => {
     });
   });
 
-  it("never sends a default station that isn't in the list", async () => {
+  it("never sends a preselected station that isn't in the list", async () => {
     const onStart = jest.fn();
     render(<StartBoxUI {...props({ onStart, initialStationId: "gone" })} />);
     expect(
@@ -105,7 +105,7 @@ describe("StartBoxUI", () => {
     expect(start()).toHaveAccessibleDescription("Pick a station to start");
   });
 
-  it("picks up a default that arrives after mount, until the user picks", async () => {
+  it("picks up a preselected station that arrives after mount, until the user picks", async () => {
     const onStart = jest.fn();
     const { rerender } = render(
       <StartBoxUI {...props({ onStart, initialStationId: null })} />
@@ -121,7 +121,7 @@ describe("StartBoxUI", () => {
     await userEvent.click(
       await screen.findByRole("menuitem", { name: /Field Inspections/ })
     );
-    // A later default doesn't override the user's pick.
+    // A later preselection doesn't override the user's pick.
     rerender(<StartBoxUI {...props({ onStart, initialStationId: "s1" })} />);
     await userEvent.type(field(), "Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledWith({

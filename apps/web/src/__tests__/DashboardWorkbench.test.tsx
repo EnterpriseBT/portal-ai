@@ -192,12 +192,12 @@ describe("DashboardWorkbenchUI", () => {
     render(
       <DashboardWorkbenchUI
         headerAction={<button type="button">Open Portal</button>}
-        headerContent={<p>Default station: Finance</p>}
+        headerContent={<p>API connected — dev (local)</p>}
       />
     );
     expect(
       screen.getByRole("button", { name: "Open Portal" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Default station: Finance")).toBeInTheDocument();
+    expect(screen.getByText("API connected — dev (local)")).toBeInTheDocument();
   });
 });
