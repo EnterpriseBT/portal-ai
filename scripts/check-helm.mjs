@@ -770,8 +770,9 @@ const scenarios = [
           ),
       ],
       [
-        // Found on the live install: the image's USER is the name `nginx`,
-        // and runAsNonRoot refuses a non-numeric user it can't verify.
+        // Found on the live install: runAsNonRoot refuses a non-numeric user
+        // it can't verify, so the chart gives the uid numerically whatever
+        // the image's USER says (the image ends on `USER 101` since #1096).
         "web pod runs as a numeric non-root user (the web image's 101)",
         (out) =>
           /runAsUser: 101\n/.test(manifest(out, "Deployment", "p-portalai-web")),

@@ -34,7 +34,7 @@ The ticket chose this approach on 2026-11-26. Waiting for nginx-unprivileged, or
    - the Hub URL becomes `library/nginx/tags/<v>-alpine-slim`;
    - the fix text names `nginx:` and its `imagetools inspect` command;
    - the self-test fixtures use the official `FROM`, keeping one nginx-unprivileged fixture so `readPin` stays image-agnostic.
-7. **Found in implementation:** nginx.org dropped every `Severity:` line from its advisories page, so the check's `severity !== "none"` skip no longer caught CVE-2009-4487. That's log escaping, which nginx.org won't fix ("Not vulnerable: none" over "Vulnerable: all"), so the weekly check would have flagged every pin forever. The script now skips an advisory with no fix over "all", and its self-test fixture uses the page's new shape.
+7. **Found in implementation:** nginx.org dropped every `Severity:` line from its advisories page, so the check's `severity !== "none"` skip no longer caught CVE-2009-4487. That's log escaping, which nginx.org won't fix ("Not vulnerable: none" over "Vulnerable: all"), so the weekly check would have flagged every pin forever. The script now skips only the CVEs its `WONT_FIX` list names, with a reason, rather than every unfixed advisory (code review: a new one with no fix yet looks the same). It also counts a "Not vulnerable:" line as advisory-shaped, so a relabelled advisory still fails closed, and gives an unrated advisory the strictest 7-day SLA. Its self-test covers each case in the page's new shape.
 
 ## Plan — 1 slice
 
