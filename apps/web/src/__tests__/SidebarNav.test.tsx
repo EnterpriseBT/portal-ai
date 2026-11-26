@@ -244,7 +244,10 @@ describe("SidebarNav Favorites (#1077)", () => {
           selected
           nested
         />
-      </nav>
+      </nav>,
+      // On the favorite's page, where the router's Link counts as active
+      // for Stations too.
+      { initialEntry: "/stations/s1" }
     );
     expect(screen.getByRole("link", { name: "Stations" })).toHaveAttribute(
       "aria-current",

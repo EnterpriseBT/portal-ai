@@ -86,6 +86,11 @@ export const SidebarNavItemUI = ({
     ? {
         component: Link,
         to: href,
+        // The router's Link marks itself aria-current="page" whenever its
+        // route is active, by default for every page under it too, which
+        // would override `current`. Exact matching leaves pages under it to
+        // `current` ("true" for a section, #1077).
+        activeOptions: { exact: true },
         "aria-current": selected ? current : undefined,
       }
     : hasChildren
