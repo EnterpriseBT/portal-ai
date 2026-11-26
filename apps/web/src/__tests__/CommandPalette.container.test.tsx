@@ -164,33 +164,49 @@ beforeEach(() => {
 });
 
 describe("CommandPalette (container, #1076)", () => {
-  it("shows Actions, Favorites and Recent at home, and passes axe", async () => {
+  it("shows Actions, Favorites, Recent portals and Recent at home, and passes axe", async () => {
     localStorage.setItem(
       KEY,
       JSON.stringify([{ type: "curated_view", id: "v1", visitedAt: 100 }])
     );
     mockRefs = [result("curated_view", "v1", "Q3 orders")];
     mockPortals = [{ id: "p1", name: "Chat", lastOpened: 50 }];
-    const { baseElement } = renderPalette();
+    renderPalette();
     await waitFor(() =>
-      expect(groupNames()).toEqual(["Actions", "Favorites", "Recent"])
+      expect(groupNames()).toEqual([
+        "Actions",
+        "Favorites",
+        "Recent portals",
+        "Recent",
+      ])
     );
     expect(optionNames()).toEqual(
       expect.arrayContaining([
         "New portal in Ops",
         "New portal in Finance",
         "Favorite station· station",
-        "Q3 orders· view",
         "Chat· portal",
+        "Q3 orders· view",
       ])
     );
-    // Recent: newest first across stored visits and portals.
-    const recent = optionNames();
-    expect(recent.indexOf("Q3 orders· view")).toBeLessThan(
-      recent.indexOf("Chat· portal")
-    );
     await expectNoAxeViolations(screen.getByRole("dialog"));
-    void baseElement;
+  });
+
+  it("lists the latest portals newest first, each opening its portal", async () => {
+    mockPortals = [
+      { id: "p-new", name: "Newest chat", lastOpened: 300 },
+      { id: "p-mid", name: "Middle chat", lastOpened: 200 },
+      { id: "p-old", name: "Older chat", lastOpened: 100 },
+    ];
+    renderPalette();
+    const newest = await screen.findByRole("option", { name: /Newest chat/ });
+    expect(newest).toHaveAttribute("href", "/portals/p-new");
+    const names = optionNames().filter((n) => n.endsWith("· portal"));
+    expect(names).toEqual([
+      "Newest chat· portal",
+      "Middle chat· portal",
+      "Older chat· portal",
+    ]);
   });
 
   it("prunes Recent after a successful hydration, never after a failure", async () => {

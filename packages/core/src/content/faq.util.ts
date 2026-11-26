@@ -226,7 +226,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I find something quickly?",
     answer:
-      "Use the command palette: the “Search or run…” box at the top of every page, or press ⌘K on a Mac or Ctrl+K elsewhere (not while you're typing in a field). With nothing typed it lists actions, your favorites and the items you opened recently. Type to find stations, pinned results, views, connectors, entities and your portals by name, or start with # to find items by tag. Use the arrow keys and Enter to open one, or Escape to close. Actions such as New station open that page's create dialog, and an action you don't have access to says what access it needs. The palette only ever shows what you can see, and Recent is kept in this browser.",
+      "Use the command palette: the “Search or run…” box at the top of every page, or press ⌘K on a Mac or Ctrl+K elsewhere (not while you're typing in a field). With nothing typed it lists actions, your favorites, your five latest portals (pick one to reopen it) and the other items you opened recently. Type to find stations, pinned results, views, connectors, entities and your portals by name, or start with # to find items by tag. Use the arrow keys and Enter to open one, or Escape to close. Actions such as New station open that page's create dialog, and an action you don't have access to says what access it needs. The palette only ever shows what you can see, and Recent is kept in this browser.",
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Command Palette", "Favorite", "Tag"],
   },

@@ -255,7 +255,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Command Palette",
     category: GlossaryCategory.System,
     definition:
-      "The search box at the top of every page, also opened with ⌘K on a Mac or Ctrl+K elsewhere. It lists your favorites, the items you opened recently and actions such as starting a portal or a new station, and finds stations, pinned results, views, connectors, entities and your portals by name. Start with # to find items by tag. It only ever shows what you have access to.",
+      "The search box at the top of every page, also opened with ⌘K on a Mac or Ctrl+K elsewhere. It lists your favorites, your latest portals, the items you opened recently and actions such as starting a portal or a new station, and finds stations, pinned results, views, connectors, entities and your portals by name. Start with # to find items by tag. It only ever shows what you have access to.",
     example:
       "Press Ctrl+K, type “q3” and press Enter to open the Q3 orders view, or type #finance to see everything tagged Finance.",
     relatedTerms: ["Favorite", "Tag", "Station", "Portal"],

@@ -162,8 +162,8 @@ const RECENT_PORTALS = 5;
 const TAG_SUGGESTIONS = 8;
 
 /**
- * The command palette, wired (#1076). Home shows Actions, Favorites and
- * Recent; typing searches every readable object type (one request per
+ * The command palette, wired (#1076). Home shows Actions, Favorites, the
+ * caller's 5 latest portals and other recent items; typing searches every readable object type (one request per
  * 200 ms pause, the superseded one aborted); `#text` searches by tag, and
  * `#` alone suggests tags. Actions are gated like their page buttons, and
  * New portal goes through the shell's one launcher. Any navigation closes it.
@@ -330,34 +330,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const groups: PaletteGroup[] = [];
   let active: { isLoading: boolean; isError: boolean } | undefined;
   if (home) {
-    const visitedAt = new Map(
-      visits.map((v) => [`${v.type}:${v.id}`, v.visitedAt])
+    // The caller's latest portals, newest first, so an existing chat opens
+    // in one step; other recent items follow, newest first.
+    const recentPortalEntries = (recentPortals.data?.portals ?? []).map(
+      (p): PaletteEntry => ({
+        kind: "item",
+        ...toLauncherItem({ type: "portal", id: p.id, name: p.name, tags: [] }),
+      })
     );
-    const recentEntries = [
-      ...(recentData?.results ?? []).map((r) => ({
-        entry: { kind: "item" as const, ...toLauncherItem(r) },
-        at: visitedAt.get(`${r.type}:${r.id}`) ?? 0,
-      })),
-      ...(recentPortals.data?.portals ?? []).map((p) => ({
-        entry: {
-          kind: "item" as const,
-          ...toLauncherItem({
-            type: "portal",
-            id: p.id,
-            name: p.name,
-            tags: [],
-          }),
-        },
-        at: p.lastOpened ?? 0,
-      })),
-    ]
-      .sort((a, b) => b.at - a.at)
-      .slice(0, RECENT_SHOWN)
-      .map((r) => r.entry);
     groups.push(
       { label: "Actions", entries: actionEntries("") },
       { label: "Favorites", entries: items(favorites.data?.results) },
-      { label: "Recent", entries: recentEntries }
+      { label: "Recent portals", entries: recentPortalEntries },
+      {
+        label: "Recent",
+        entries: items(recentData?.results.slice(0, RECENT_SHOWN)),
+      }
     );
     active = favorites;
   } else if (parsed.mode === "search") {
