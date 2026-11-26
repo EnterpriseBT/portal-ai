@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { useTheme } from "@mui/material/styles";
 import Table from "@mui/material/Table";
@@ -13,6 +13,10 @@ import {
   BrowseByTagUI,
   type BrowseByTagUIProps,
 } from "../components/BrowseByTag.component";
+import {
+  PaginationToolbar,
+  usePagination,
+} from "../components/PaginationToolbar.component";
 import { VisualFigureUI } from "../components/VisualFigure.component";
 import { TAG_COUNTS, TAG_MATCHES } from "./dashboard-fixtures";
 
@@ -99,9 +103,9 @@ export const FixtureMap: React.FC = () => (
 );
 
 /**
- * Browse by tag with its selection held here and its matches read from the
- * fixtures, so a story can press a tag and see its list. The real container
- * (#1082) fetches the matches.
+ * Browse by tag with its selection, search and paging held here and its
+ * matches read from the fixtures, so a story can press a tag, search its
+ * matches and page through them. The real container (#1082) fetches them.
  */
 export const BrowseByTagExample: React.FC<
   Partial<Pick<BrowseByTagUIProps, "tags" | "matchesStatus">> & {
@@ -109,13 +113,30 @@ export const BrowseByTagExample: React.FC<
   }
 > = ({ tags = TAG_COUNTS, matchesStatus, initialTagId = null }) => {
   const [selected, setSelected] = useState<string | null>(initialTagId);
+  const pagination = usePagination({ limit: 5, limitOptions: [5, 10, 25] });
+  const { search, offset, limit, setTotal, setSearch, setOffset } = pagination;
+
+  const all = selected ? (TAG_MATCHES[selected] ?? []) : [];
+  const found = all.filter((m) =>
+    m.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
+  useEffect(() => setTotal(found.length), [found.length, setTotal]);
+
+  const handleSelect = (tagId: string | null) => {
+    setSelected(tagId);
+    setSearch("");
+    setOffset(0);
+  };
+
   return (
     <BrowseByTagUI
       tags={tags}
       selectedTagId={selected}
-      onSelectTag={setSelected}
-      matches={selected ? TAG_MATCHES[selected] : undefined}
+      onSelectTag={handleSelect}
+      matches={found.slice(offset, offset + limit)}
       matchesStatus={matchesStatus}
+      matchesFiltered={pagination.isFiltered}
+      matchesToolbar={<PaginationToolbar {...pagination.toolbarProps} />}
     />
   );
 };

@@ -46,15 +46,23 @@ export interface BrowseByTagUIProps {
   selectedTagId: string | null;
   /** Called with a tag to show its matches, or null to hide them. */
   onSelectTag: (tagId: string | null) => void;
-  /** The selected tag's matches, once loaded. */
+  /** The selected tag's matches, once loaded: the current page of them. */
   matches?: TagMatch[];
   matchesStatus?: "loading" | "error" | "ready";
+  /** Search and paging for the matches, shown above them while a tag is
+   *  selected: the container's `<PaginationToolbar {...toolbarProps} />`,
+   *  as every list does. */
+  matchesToolbar?: React.ReactNode;
+  /** The matches are narrowed by a search, so an empty page means nothing
+   *  matched it rather than nothing carrying the tag. */
+  matchesFiltered?: boolean;
 }
 
 /**
  * The dashboard's Browse by tag (#1123): each tag with its count. Pressing a
  * tag lists the objects that carry it, each with its type's icon, under the
- * tags; pressing it again hides them. With no tags, a teaching empty state.
+ * tags, with a search box and paging above them; pressing it again hides
+ * them. With no tags, a teaching empty state.
  */
 export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
   tags,
@@ -62,6 +70,8 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
   onSelectTag,
   matches = [],
   matchesStatus = "ready",
+  matchesToolbar,
+  matchesFiltered = false,
 }) => {
   const listId = useId();
 
@@ -101,7 +111,8 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
         ))}
       </Stack>
       {selected && (
-        <Box id={listId}>
+        <Stack id={listId} spacing={1}>
+          {matchesToolbar}
           {matchesStatus === "loading" && (
             <StatusMessage
               loading
@@ -116,7 +127,9 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
           )}
           {matchesStatus === "ready" && matches.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              Nothing you can see has this tag.
+              {matchesFiltered
+                ? `No items tagged ${selected.name} match your search.`
+                : "Nothing you can see has this tag."}
             </Typography>
           )}
           {matchesStatus === "ready" && matches.length > 0 && (
@@ -132,7 +145,7 @@ export const BrowseByTagUI: React.FC<BrowseByTagUIProps> = ({
               }))}
             />
           )}
-        </Box>
+        </Stack>
       )}
     </Stack>
   );

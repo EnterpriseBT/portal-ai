@@ -125,6 +125,59 @@ describe("BrowseByTagUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the matches' search and paging only while a tag is selected", () => {
+    const toolbar = <div data-testid="matches-toolbar" />;
+    const { rerender } = render(
+      <BrowseByTagUI
+        tags={tags}
+        selectedTagId={null}
+        onSelectTag={jest.fn()}
+        matchesToolbar={toolbar}
+      />
+    );
+    expect(screen.queryByTestId("matches-toolbar")).toBeNull();
+    rerender(
+      <BrowseByTagUI
+        tags={tags}
+        selectedTagId="t1"
+        onSelectTag={jest.fn()}
+        matches={MATCHES.t1}
+        matchesToolbar={toolbar}
+      />
+    );
+    const finance = screen.getByRole("button", { name: "Finance (2)" });
+    // The toolbar sits in the region the chip controls, above the list.
+    const region = document.getElementById(
+      finance.getAttribute("aria-controls") ?? ""
+    );
+    expect(region).toContainElement(screen.getByTestId("matches-toolbar"));
+    expect(
+      screen
+        .getByTestId("matches-toolbar")
+        .compareDocumentPosition(
+          screen.getByRole("list", { name: "Tagged Finance" })
+        ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("says when a search matched nothing, distinct from an empty tag", () => {
+    render(
+      <BrowseByTagUI
+        tags={tags}
+        selectedTagId="t1"
+        onSelectTag={jest.fn()}
+        matches={[]}
+        matchesFiltered
+      />
+    );
+    expect(
+      screen.getByText("No items tagged Finance match your search.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Nothing you can see has this tag.")
+    ).not.toBeInTheDocument();
+  });
+
   it("shows a teaching empty state", async () => {
     const { container } = render(
       <BrowseByTagUI tags={[]} selectedTagId={null} onSelectTag={jest.fn()} />
