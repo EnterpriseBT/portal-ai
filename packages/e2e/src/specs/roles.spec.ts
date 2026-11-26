@@ -44,19 +44,23 @@ function collectConsoleErrors(page: Page): string[] {
 /** Open Settings and read the org and the bearer token the app itself sent,
  *  so the server probes go out as exactly this signed-in identity. */
 async function openSettings(page: Page) {
-  const current = page.waitForResponse((r) => isCurrentOrg(r.request()));
+  // Wait for the app's request, not its response: a response the page never
+  // received (seen once as a 304 the server logged in 41ms) left this hanging
+  // until the test timed out. The read below goes out as the same identity.
+  const sent = page.waitForRequest(isCurrentOrg, { timeout: 60_000 });
   await page.goto("/settings");
-  const res = await current;
+  const req = await sent;
+  const authorization = req.headers()["authorization"];
+  // The API the app itself called, which E2E_BASE_URL may have repointed.
+  const api = new URL(req.url()).origin;
+  const res = await page.request.get(`${api}/api/organization/current`, {
+    headers: { authorization },
+  });
   expect(res.status(), "GET /api/organization/current").toBe(200);
   const body = (await res.json()) as {
     payload: { organization: { id: string; name: string } };
   };
-  return {
-    org: body.payload.organization,
-    authorization: res.request().headers()["authorization"],
-    // The API the app itself called, which E2E_BASE_URL may have repointed.
-    api: new URL(res.url()).origin,
-  };
+  return { org: body.payload.organization, authorization, api };
 }
 
 /** The Organization tab's usage card renders with the danger zone, so once
