@@ -42,7 +42,7 @@ api:
 
 web:
   replicaCount: 1
-  # nginx-unprivileged listens on 8080.
+  # The web image's nginx listens on 8080.
   port: 8080
   env: {}
   resources:
@@ -51,8 +51,8 @@ web:
       memory: 64Mi
     limits:
       memory: 256Mi
-  # nginx-unprivileged runs as uid 101. Its USER is the name `nginx`, which
-  # runAsNonRoot can't verify, so the uid is given numerically.
+  # The web image runs nginx as uid 101 (#1096). The uid is given
+  # numerically so runAsNonRoot can verify it, whatever the image's USER says.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 101

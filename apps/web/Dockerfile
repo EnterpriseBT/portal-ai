@@ -52,12 +52,17 @@ COPY apps/web/ apps/web/
 RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 
 # --- Runtime stage (nginx, non-root) ---
-# nginx-unprivileged listens on 8080 and runs as uid 101 — no root in the
-# serving container, matching the chart's securityContext.runAsNonRoot.
+# The official nginx image, made unprivileged here (#1096): it listens on 8080
+# and runs as uid 101 (the image's own `nginx` user), so no process in the
+# serving container is root, matching the chart's securityContext.runAsNonRoot.
+# We used nginxinc/nginx-unprivileged until it went a week without publishing
+# a CVE-fixing release the official image already had; owning the few
+# hardening steps below keeps us on nginx.org's release schedule instead.
 # Pinned by digest (the multi-arch index), not just the tag: the deploy
 # workflows gate each platform in separate builds before the push build, and
 # a tag that moved between them would push layers the scan never saw (#909).
-# Bump the tag and the digest together.
+# Bump the tag and the digest together
+# (`docker buildx imagetools inspect nginx:<tag>`).
 # The stable line, not mainline, in its -slim variant: nginx with no dynamic
 # modules (geoip, image-filter, njs, xslt), none of which nginx.conf uses
 # (#918). nginx comes from nginx.org's repository. The Trivy gate matches it
@@ -66,24 +71,40 @@ RUN npx turbo run build --filter=@portalai/web --env-mode=loose
 # before Trivy's data. A fix that can't ship yet (no -alpine-slim image) gets
 # a time-boxed entry in .github/actions/image-gate/trivyignore.yaml, scoped to
 # this version's purl: delete it in the PR that bumps this tag + digest.
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6 AS runtime
+FROM nginx:1.30.8-alpine-slim@sha256:e9eaa7298465eab06d618c51556fdcf3fb5061f9ff40bd28ee898fbd7ee7f900 AS runtime
 
 # Patch the base layer's OS packages to the latest in its Alpine release, then
 # add nodejs (no npm) so the dependency-free render-config.mjs runs at startup.
 # The deploy-time Trivy gate (#909, the API image's #573 gate) scans the whole
 # image for fixable CRITICAL/HIGH CVEs; the pinned base tag ships stale
 # packages (60 such findings before this upgrade, 0 after).
-USER root
-RUN apk upgrade --no-cache && apk add --no-cache nodejs
-USER nginx
+#
+# Then make nginx runnable as uid 101 (#1096), as nginx-unprivileged did: the
+# stock nginx.conf sets `user nginx` (a master that isn't root can't switch
+# user) and keeps its pid in root-owned /run, and the temp paths compiled in
+# under /var/cache/nginx are root-owned. Drop `user`, move the pid and every
+# temp path to /tmp, and hand /var/cache/nginx to 101 as well.
+# /etc/nginx/conf.d stays root-owned on purpose: default.conf is baked and we
+# use no templates, so the entrypoint's 10-listen-on-ipv6 script logs that it
+# can't modify default.conf and exits 0, and nothing rewrites our listen.
+RUN apk upgrade --no-cache && apk add --no-cache nodejs \
+ && sed -i -e '/^user /d' \
+      -e 's,^pid .*,pid        /tmp/nginx.pid;,' \
+      -e '/^http {/a\    client_body_temp_path /tmp/client_temp;\n    proxy_temp_path       /tmp/proxy_temp;\n    fastcgi_temp_path     /tmp/fastcgi_temp;\n    uwsgi_temp_path       /tmp/uwsgi_temp;\n    scgi_temp_path        /tmp/scgi_temp;' \
+      /etc/nginx/nginx.conf \
+ && chown -R 101:101 /var/cache/nginx
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/scripts/render-config.mjs /opt/render-config.mjs
-# Runs before nginx starts (nginx-unprivileged sources /docker-entrypoint.d/*.sh).
+# Runs before nginx starts (the image's /docker-entrypoint.sh sources every
+# /docker-entrypoint.d/*.sh, as uid 101 here).
 COPY apps/web/scripts/40-render-config.sh /docker-entrypoint.d/40-render-config.sh
 
 # --chown so the startup entrypoint (running as uid 101) can write config.js
 # into the served directory.
-COPY --chown=nginx:nginx --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY --chown=101:101 --from=build /app/apps/web/dist /usr/share/nginx/html
+
+# Numeric, so the chart's runAsNonRoot can verify it isn't root.
+USER 101
 
 EXPOSE 8080
