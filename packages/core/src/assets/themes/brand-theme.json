@@ -929,7 +929,8 @@
           },
           "&.SidebarNavItem-nested": {
             "height": 40,
-            "paddingLeft": 48
+            "paddingLeft": 48,
+            "contain": "inline-size"
           }
         }
       }
@@ -1052,6 +1053,7 @@
         "root": {
           "& .SidebarFavorites-hint": {
             "display": "block",
+            "contain": "inline-size",
             "padding": "8px 24px 8px 48px"
           }
         }
