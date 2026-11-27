@@ -20,6 +20,9 @@ export const DESCRIPTION_MAX_LENGTH = 2000;
 export const KEY_MAX_LENGTH = 58;
 /** An email address: RFC 5321's 256-octet path, less its angle brackets. */
 export const EMAIL_MAX_LENGTH = 254;
+/** A portal message (#1079): room for a pasted table or a long question,
+ *  bounded for the model and the stored row. */
+export const PORTAL_MESSAGE_MAX_LENGTH = 20_000;
 /** Postgres's identifier limit (NAMEDATALEN − 1), in bytes. */
 export const PG_IDENTIFIER_MAX_BYTES = 63;
 
@@ -33,6 +36,18 @@ export const nameField = (field = "Name") =>
     .trim()
     .min(1, `${field} is required`)
     .max(NAME_MAX_LENGTH, tooLongMessage(field, NAME_MAX_LENGTH));
+
+/** Trimmed, required, at most `PORTAL_MESSAGE_MAX_LENGTH` (#1079). Every
+ *  portal message composes it: a create's first message and every send. */
+export const portalMessageField = (field = "Message") =>
+  z
+    .string()
+    .trim()
+    .min(1, `${field} is required`)
+    .max(
+      PORTAL_MESSAGE_MAX_LENGTH,
+      tooLongMessage(field, PORTAL_MESSAGE_MAX_LENGTH)
+    );
 
 /** At most `DESCRIPTION_MAX_LENGTH`, untrimmed. Callers add `.optional()` /
  *  `.nullable()`. */

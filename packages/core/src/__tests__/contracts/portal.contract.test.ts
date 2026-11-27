@@ -1,5 +1,8 @@
 import {
   CreatePortalBodySchema,
+  StartPortalBodySchema,
+  InitialMessageOutcomeSchema,
+  PortalCreateResponsePayloadSchema,
   SendMessageBodySchema,
   UpdatePortalBodySchema,
   UpdatePortalResultBodySchema,
@@ -57,6 +60,95 @@ describe("CreatePortalBodySchema", () => {
     const result = CreatePortalBodySchema.safeParse({ stationId: "" });
     expect(result.success).toBe(false);
   });
+
+  // #1079: a portal can start with its first message.
+  it("accepts an initial message and trims it", () => {
+    const result = CreatePortalBodySchema.parse({
+      stationId: "st-1",
+      initialMessage: "  What changed in Q3?  ",
+    });
+    expect(result.initialMessage).toBe("What changed in Q3?");
+  });
+
+  it("rejects a blank or over-long initial message, naming the field", () => {
+    const blank = CreatePortalBodySchema.safeParse({
+      stationId: "st-1",
+      initialMessage: "   ",
+    });
+    expect(blank.success).toBe(false);
+    expect(blank.error!.issues[0]!.message).toBe("Initial message is required");
+    const long = CreatePortalBodySchema.safeParse({
+      stationId: "st-1",
+      initialMessage: "a".repeat(20_001),
+    });
+    expect(long.error!.issues[0]!.message).toBe(
+      "Initial message must be 20000 characters or fewer"
+    );
+  });
+
+  it("rejects an unknown key", () => {
+    const result = CreatePortalBodySchema.safeParse({
+      stationId: "st-1",
+      message: "hi",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── StartPortalBodySchema (#1079) ───────────────────────────────────
+
+describe("StartPortalBodySchema", () => {
+  it("accepts a station and a question", () => {
+    expect(
+      StartPortalBodySchema.parse({ stationId: "st-1", initialMessage: " Hi " })
+    ).toEqual({ stationId: "st-1", initialMessage: "Hi" });
+  });
+
+  it("requires both, with the start box's messages", () => {
+    const result = StartPortalBodySchema.safeParse({
+      stationId: "",
+      initialMessage: "",
+    });
+    expect(result.success).toBe(false);
+    const byField = Object.fromEntries(
+      result.error!.issues.map((i) => [i.path[0], i.message])
+    );
+    expect(byField).toEqual({
+      stationId: "Pick a station",
+      initialMessage: "Question is required",
+    });
+  });
+});
+
+// ── InitialMessageOutcomeSchema (#1079) ─────────────────────────────
+
+describe("InitialMessageOutcomeSchema", () => {
+  it("parses a pending and a refused outcome", () => {
+    expect(
+      InitialMessageOutcomeSchema.parse({ status: "pending" }).status
+    ).toBe("pending");
+    expect(
+      InitialMessageOutcomeSchema.parse({
+        status: "refused",
+        code: "AGENT_TURN_LIMITED",
+        message: "Try again in a moment.",
+        retryAfterSeconds: 30,
+      }).status
+    ).toBe("refused");
+  });
+
+  it("rides the create response only when present", () => {
+    expect(
+      PortalCreateResponsePayloadSchema.parse({ portal: validPortal })
+        .initialMessage
+    ).toBeUndefined();
+    expect(
+      PortalCreateResponsePayloadSchema.parse({
+        portal: validPortal,
+        initialMessage: { status: "pending" },
+      }).initialMessage
+    ).toEqual({ status: "pending" });
+  });
 });
 
 // ── SendMessageBodySchema ───────────────────────────────────────────
@@ -75,6 +167,17 @@ describe("SendMessageBodySchema", () => {
   it("should reject empty message", () => {
     const result = SendMessageBodySchema.safeParse({ message: "" });
     expect(result.success).toBe(false);
+  });
+
+  // #1079: every portal message shares one limit.
+  it("trims the message and rejects one over the limit", () => {
+    expect(SendMessageBodySchema.parse({ message: " hi " }).message).toBe("hi");
+    const result = SendMessageBodySchema.safeParse({
+      message: "a".repeat(20_001),
+    });
+    expect(result.error!.issues[0]!.message).toBe(
+      "Message must be 20000 characters or fewer"
+    );
   });
 });
 
