@@ -17,6 +17,7 @@ import type {
   ToolResultEvent,
   DoneEvent,
   PinnedBlockEntry,
+  InitialMessageOutcome,
 } from "@portalai/core/contracts";
 import {
   HelpBlockContentSchema,
@@ -37,6 +38,7 @@ import { DissolvePrecomputeService } from "./dissolve-precompute.service.js";
 import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
+import { AgentTurnCeilingService } from "./agent-turn-ceiling.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import {
@@ -104,6 +106,8 @@ export type { StationContext };
 export interface CreatePortalResult {
   portalId: string;
   stationContext: StationContext;
+  /** #1079: set exactly when the create carried an initial message. */
+  initialMessage?: InitialMessageOutcome;
 }
 
 export interface PortalWithMessages {
@@ -659,15 +663,24 @@ export class PortalService {
    *
    * Validates the station, creates the DB row, loads station data into
    * in-memory AlaSQL tables, and returns the portal ID plus station context.
+   *
+   * #1079: an `initialMessage` (already trimmed by the contract) is the
+   * portal's first user turn. The order is fixed so an invalid or refused
+   * request never consumes a turn: validate, then ask the agent-turn ceiling,
+   * then write the portal and (when admitted) its user row in one
+   * transaction. A refused message still creates the portal; the outcome
+   * says why there's no turn.
    */
   static async createPortal({
     stationId,
     organizationId,
     userId,
+    initialMessage,
   }: {
     stationId: string;
     organizationId: string;
     userId: string;
+    initialMessage?: string;
   }): Promise<CreatePortalResult> {
     const repo = DbService.repository;
 
@@ -699,19 +712,63 @@ export class PortalService {
     const now = SystemUtilities.utc.now().getTime();
     const name = `Portal — ${SystemUtilities.utc.format(now, "MMM d, yyyy")}`;
 
-    const portal = await repo.portals.create({
-      id: SystemUtilities.id.v4.generate(),
-      organizationId,
-      stationId,
-      name,
-      lastOpened: null,
-      created: now,
-      createdBy: userId,
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
+    // Admission runs after validation and before any write, so a station
+    // that can't open a portal never burns a turn.
+    const admission =
+      initialMessage === undefined
+        ? undefined
+        : await AgentTurnCeilingService.checkAdmission(organizationId);
+
+    const portal = await DbService.transaction(async (tx) => {
+      const created = await repo.portals.create(
+        {
+          id: SystemUtilities.id.v4.generate(),
+          organizationId,
+          stationId,
+          name,
+          lastOpened: null,
+          created: now,
+          createdBy: userId,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        },
+        tx
+      );
+      if (initialMessage !== undefined && admission?.allowed) {
+        // The row shape `addMessage` writes for a sent turn.
+        await repo.portalMessages.create(
+          {
+            id: SystemUtilities.id.v4.generate(),
+            portalId: created.id,
+            organizationId,
+            role: "user",
+            blocks: [{ type: "text", content: initialMessage }],
+            created: now,
+            createdBy: userId,
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          tx
+        );
+      }
+      return created;
     });
+
+    let outcome: InitialMessageOutcome | undefined;
+    if (admission) {
+      outcome = admission.allowed
+        ? { status: "pending" }
+        : {
+            status: "refused",
+            code: "AGENT_TURN_LIMITED",
+            message: AgentTurnCeilingService.refusalMessage(admission),
+            retryAfterSeconds: admission.retryAfterSeconds,
+          };
+    }
 
     const stationContext = await buildStationContext({
       station,
@@ -719,8 +776,15 @@ export class PortalService {
       userId,
     });
 
-    logger.info({ portalId: portal.id, stationId }, "Portal created");
-    return { portalId: portal.id, stationContext };
+    logger.info(
+      { portalId: portal.id, stationId, initialMessage: outcome?.status },
+      "Portal created"
+    );
+    return {
+      portalId: portal.id,
+      stationContext,
+      ...(outcome && { initialMessage: outcome }),
+    };
   }
 
   // -------------------------------------------------------------------------

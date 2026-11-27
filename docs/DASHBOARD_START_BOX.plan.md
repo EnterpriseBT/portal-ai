@@ -89,8 +89,8 @@ Core only. No caller reads the new fields yet, so the API and web compile unchan
 - Edit: `apps/api/src/routes/portal.router.ts`.
   - **Create:** passes `initialMessage` through and returns `initialMessage` in its 201.
   - **Send:** uses `refusalMessage`.
-  - **OpenAPI:** the create block references the registered components, and `POST /:id/messages` gets a new `@openapi` block.
-- Edit: `apps/api/src/config/swagger.config.ts`. Register `CreatePortalBody`, `PortalCreateResponse` and `SendMessageBody`.
+  - **OpenAPI:** the create block references the registered components, and the existing `POST /:id/messages` block references `SendMessageBody` and documents its 429.
+- Edit: `apps/api/src/config/swagger.config.ts`. Register `CreatePortalBody`, `InitialMessageOutcome` and `SendMessageBody`.
 - Edit tests:
   - `apps/api/src/__tests__/services/agent-turn-ceiling.service.test.ts`
   - `apps/api/src/__tests__/__integration__/routes/portal.router.integration.test.ts`

@@ -8,6 +8,9 @@ import {
   ApiEndpointWireSchema,
   ColumnBindingSchema,
   ConnectorInstanceSyncRequestBodySchema,
+  CreatePortalBodySchema,
+  InitialMessageOutcomeSchema,
+  SendMessageBodySchema,
   FieldMappingUpdateRequestBodySchema,
   CreateApiEndpointRequestBodySchema,
   DeleteApiEndpointResponsePayloadSchema,
@@ -410,6 +413,20 @@ const orgSwitcherSchemas: Record<string, unknown> = {
   ),
   OrganizationSwitchRequest: z.toJSONSchema(
     OrganizationSwitchRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Portal create and send bodies (#1079), and the outcome of a create's first
+ * message. Sourced from `@portalai/core/contracts` so the routes' JSDoc
+ * references the same shapes the routes parse.
+ */
+const portalMessageSchemas: Record<string, unknown> = {
+  CreatePortalBody: z.toJSONSchema(CreatePortalBodySchema, JSON_SCHEMA_OPTS),
+  SendMessageBody: z.toJSONSchema(SendMessageBodySchema, JSON_SCHEMA_OPTS),
+  InitialMessageOutcome: z.toJSONSchema(
+    InitialMessageOutcomeSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -2458,6 +2475,7 @@ const options: swaggerJsdoc.Options = {
         ...tierSchemas,
         ...orgSwitcherSchemas,
         ...orgDeleteSchemas,
+        ...portalMessageSchemas,
         ...billingSchemas,
         ...usageLedgerSchemas,
         ...publicSiteSchemas,

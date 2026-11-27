@@ -153,12 +153,12 @@ A failed transaction leaves neither row behind. A turn the ceiling admitted stay
 
 - Its message now comes from `portalMessageField`, so a blank or over-long message is `400 PORTAL_INVALID_PAYLOAD` naming "Message".
 - The refusal text comes from `refusalMessage`.
-- It gains the `@openapi` block it lacks. The block references `SendMessageBody` and answers 200 `{ portalId, status }`, 400, 404 and 429 (with `Retry-After`).
+- Its `@openapi` block (which sits above the PATCH route's comment, not over the handler) references `SendMessageBody` and gains the 429 (with `Retry-After`) it was missing.
 
 ### API — OpenAPI (`apps/api/src/config/swagger.config.ts`)
 
-- Register `CreatePortalBody`, `PortalCreateResponse` (including `InitialMessageOutcome`) and `SendMessageBody` via `z.toJSONSchema`.
-- The create block (`portal.router.ts:37-97`) references `CreatePortalBody` for its request and `PortalCreateResponse` for its 201.
+- Register `CreatePortalBody`, `InitialMessageOutcome` and `SendMessageBody` via `z.toJSONSchema`.
+- The create block (`portal.router.ts:37-97`) references `CreatePortalBody` for its request, and its 201's `initialMessage` references `InitialMessageOutcome`. `PortalCreateResponsePayloadSchema` isn't registered: it types `portal` as a full `Portal`, while the route sends `{ id }` beside `portalId` and `stationContext`. The 201 now documents `portal` as `{ id }`.
 
 ### Web — SDK (`apps/web/src/api/portals.api.ts:41`)
 
