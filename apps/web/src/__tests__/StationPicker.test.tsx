@@ -98,4 +98,103 @@ describe("StationPickerUI", () => {
       await screen.findByRole("menuitem", { name: "No stations yet" })
     ).toHaveAttribute("aria-disabled", "true");
   });
+
+  // #1079: the dashboard's box searches every station the caller can see,
+  // not only the first page it loaded.
+  describe("search (#1079)", () => {
+    const search = (overrides = {}) => ({
+      query: "",
+      onQueryChange: jest.fn(),
+      results: [] as typeof STATIONS,
+      searching: false,
+      ...overrides,
+    });
+    const open = async () => {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Pick a station" })
+      );
+      return screen.findByRole("menu");
+    };
+
+    it("lists the loaded stations for an empty query, and reports what's typed", async () => {
+      const onQueryChange = jest.fn();
+      render(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={jest.fn()}
+          search={search({ onQueryChange })}
+        />
+      );
+      const menu = await open();
+      expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
+      await userEvent.type(
+        screen.getByRole("textbox", { name: "Search stations" }),
+        "o"
+      );
+      expect(onQueryChange).toHaveBeenLastCalledWith("o");
+      await expectNoAxeViolations(document.body);
+    });
+
+    it("shows the results for a typed query and selects one", async () => {
+      const onSelect = jest.fn();
+      render(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={onSelect}
+          search={search({
+            query: "ops",
+            results: [{ id: "s9", name: "Ops Review", favorite: false }],
+          })}
+        />
+      );
+      const menu = await open();
+      const names = within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent);
+      expect(names).toEqual(["Ops Review"]);
+      await userEvent.click(
+        within(menu).getByRole("menuitem", { name: /Ops Review/ })
+      );
+      expect(onSelect).toHaveBeenCalledWith("s9");
+    });
+
+    it("says when it's searching, and when nothing matches", async () => {
+      const { rerender } = render(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={jest.fn()}
+          search={search({ query: "zz", searching: true })}
+        />
+      );
+      await open();
+      expect(screen.getByText("Searching…")).toBeInTheDocument();
+      rerender(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={jest.fn()}
+          search={search({ query: "zz" })}
+        />
+      );
+      expect(screen.getByText("No stations match")).toBeInTheDocument();
+      expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
+    });
+
+    it("has no search field without the prop", async () => {
+      render(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={jest.fn()}
+        />
+      );
+      await open();
+      expect(
+        screen.queryByRole("textbox", { name: "Search stations" })
+      ).not.toBeInTheDocument();
+    });
+  });
 });

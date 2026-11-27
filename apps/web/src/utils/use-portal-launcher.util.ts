@@ -1,7 +1,10 @@
 import { useState } from "react";
 
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import type { CreatePortalBody } from "@portalai/core/contracts";
+import type {
+  CreatePortalBody,
+  StartPortalBody,
+} from "@portalai/core/contracts";
 import type { ActionGate } from "@portalai/core/ui";
 
 import { queryKeys, sdk } from "../api/sdk";
@@ -79,7 +82,17 @@ export interface PortalLauncher {
     onSubmit: (body: CreatePortalBody) => void;
     serverError: ServerError | null;
   };
+  /** #1079: the dashboard's start box, sharing the one create. */
+  startBox: {
+    /** Starts a portal with its first question. Errors show in the box. */
+    onStart: (body: StartPortalBody) => void;
+    /** The last start-box create's error, else null. */
+    serverError: ServerError | null;
+  };
 }
+
+/** Which of the launcher's paths submitted the latest create (#1079). */
+type LaunchSurface = "launch" | "chooser" | "startBox";
 
 /**
  * The header's Open Portal launcher (#1075): which stations to offer, the
@@ -132,25 +145,44 @@ export function usePortalLauncher(): PortalLauncher {
 
   const create = sdk.portals.create();
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [surface, setSurface] = useState<LaunchSurface | null>(null);
 
   // Plain functions: the React Compiler memoizes them, and the mutation's
   // result object changes every render, so a hand-written useCallback over
   // it never held (#1075 code review).
-  const start = (body: CreatePortalBody, fromChooser: boolean) => {
+  const start = (body: CreatePortalBody, from: LaunchSurface) => {
+    setSurface(from);
     create.mutate(body, {
       invalidate: [queryKeys.portals.root],
-      // The chooser shows a failure in its FormAlert; elsewhere, a toast.
-      ...(fromChooser
-        ? {}
-        : { toast: { error: "Couldn't start the portal." } }),
+      // The chooser and the start box show a failure beside their fields;
+      // the main click has nowhere to, so it toasts.
+      ...(from === "launch"
+        ? { toast: { error: "Couldn't start the portal." } }
+        : {}),
       onSuccess: (data) => {
         setChooserOpen(false);
-        navigate({ to: `/portals/${data.portal.id}` });
+        const outcome = data.initialMessage;
+        // #1079: a refused first question still created the portal; it
+        // opens with the question back in its composer.
+        navigate({
+          to: `/portals/${data.portal.id}`,
+          ...(outcome?.status === "refused" && body.initialMessage
+            ? {
+                state: {
+                  refusedInitialMessage: {
+                    prompt: body.initialMessage,
+                    message: outcome.message,
+                  },
+                },
+              }
+            : {}),
+        });
       },
     });
   };
-  const launch = (stationId: string) => start({ stationId }, false);
-  const onSubmit = (body: CreatePortalBody) => start(body, true);
+  const launch = (stationId: string) => start({ stationId }, "launch");
+  const onSubmit = (body: CreatePortalBody) => start(body, "chooser");
+  const onStart = (body: StartPortalBody) => start(body, "startBox");
   // A failure from another path mustn't greet the dialog when it opens.
   const onOpen = () => {
     create.reset();
@@ -174,8 +206,13 @@ export function usePortalLauncher(): PortalLauncher {
       onOpen,
       onClose,
       onSubmit,
-      // Only a chooser submit's error is the dialog's to show.
+      // Only a chooser submit's error is the dialog's to show: opening it
+      // resets the create, and nothing else submits while it's open.
       serverError: chooserOpen ? toServerError(create.error) : null,
+    },
+    startBox: {
+      onStart,
+      serverError: surface === "startBox" ? toServerError(create.error) : null,
     },
   };
 }

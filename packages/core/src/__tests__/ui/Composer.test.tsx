@@ -87,4 +87,19 @@ describe("Composer", () => {
     expect(field).not.toHaveAttribute("aria-invalid", "true");
     expect(field).not.toHaveAttribute("maxlength");
   });
+
+  it("reports a blur, so a form can mark the field touched (#1079)", async () => {
+    const onBlur = jest.fn();
+    render(
+      <Composer
+        aria-label="Prompt"
+        value=""
+        onChange={() => undefined}
+        onBlur={onBlur}
+      />
+    );
+    await userEvent.click(screen.getByRole("textbox", { name: "Prompt" }));
+    await userEvent.tab();
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
 });

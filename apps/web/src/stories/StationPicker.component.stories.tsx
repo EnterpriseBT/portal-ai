@@ -22,3 +22,34 @@ export const NoFavorites: Story = {
   args: { stations: STATIONS.map((s) => ({ ...s, favorite: false })) },
 };
 export const NoStations: Story = { args: { stations: [], selectedId: null } };
+
+/** #1079: with `search`, the menu opens with a "Search stations" field;
+ *  a typed query lists its results instead. */
+const search = {
+  query: "",
+  onQueryChange: fn(),
+  results: [],
+  searching: false,
+};
+export const WithSearch: Story = {
+  args: { selectedId: null, search },
+};
+export const SearchResults: Story = {
+  args: {
+    selectedId: null,
+    search: {
+      ...search,
+      query: "ops",
+      results: [{ id: "s9", name: "Ops Review", favorite: false }],
+    },
+  },
+};
+export const Searching: Story = {
+  args: {
+    selectedId: null,
+    search: { ...search, query: "ops", searching: true },
+  },
+};
+export const NoMatch: Story = {
+  args: { selectedId: null, search: { ...search, query: "zz" } },
+};

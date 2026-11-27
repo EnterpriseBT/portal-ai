@@ -40,8 +40,8 @@ describe("StartBoxUI", () => {
     await userEvent.type(field(), "  Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s1",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -59,8 +59,8 @@ describe("StartBoxUI", () => {
     await userEvent.type(field(), "Top accounts");
     await userEvent.click(start());
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s1",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -89,8 +89,8 @@ describe("StartBoxUI", () => {
     );
     await userEvent.click(start());
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s2",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -125,8 +125,8 @@ describe("StartBoxUI", () => {
     rerender(<StartBoxUI {...props({ onStart, initialStationId: "s1" })} />);
     await userEvent.type(field(), "Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s2",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -184,5 +184,102 @@ describe("StartBoxUI", () => {
       "Ask anything about your data…"
     );
     expect(screen.queryByText("Try:")).not.toBeInTheDocument();
+  });
+
+  // ── #1079: validation, and a station found by search ───────────────
+
+  const LONG = "a".repeat(20_001);
+  const TOO_LONG = "Question must be 20000 characters or fewer";
+
+  it("refuses a question over the limit, says why and focuses it", async () => {
+    const onStart = jest.fn();
+    render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    await userEvent.click(start());
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(field()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(TOO_LONG)).toBeInTheDocument();
+    expect(field()).toHaveFocus();
+    // Kept, never cut, so nothing typed is lost.
+    expect(field()).toHaveValue(LONG);
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("shows the limit only once the field is left or submitted", async () => {
+    render(<StartBoxUI {...props()} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    expect(screen.queryByText(TOO_LONG)).not.toBeInTheDocument();
+    expect(field()).not.toHaveAttribute("aria-invalid", "true");
+
+    await userEvent.tab();
+    expect(screen.getByText(TOO_LONG)).toBeInTheDocument();
+  });
+
+  it("clears the error once the question fits again", async () => {
+    const onStart = jest.fn();
+    render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    await userEvent.click(start());
+    await userEvent.clear(field());
+    await userEvent.type(field(), "Top accounts");
+    expect(screen.queryByText(TOO_LONG)).not.toBeInTheDocument();
+    await userEvent.click(start());
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s1",
+      initialMessage: "Top accounts",
+    });
+  });
+
+  it("starts in a station found by search, and keeps it named", async () => {
+    const onStart = jest.fn();
+    const onQueryChange = jest.fn();
+    const found = { id: "s9", name: "Ops Review", favorite: false };
+    const { rerender } = render(
+      <StartBoxUI
+        {...props({
+          onStart,
+          initialStationId: null,
+          stationSearch: {
+            query: "ops",
+            onQueryChange,
+            results: [found],
+            searching: false,
+          },
+        })}
+      />
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Pick a station" })
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /Ops Review/ })
+    );
+    // The query moves on and the station drops out of the results.
+    rerender(
+      <StartBoxUI
+        {...props({
+          onStart,
+          initialStationId: null,
+          stationSearch: {
+            query: "",
+            onQueryChange,
+            results: [],
+            searching: false,
+          },
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /Ops Review, station/ })
+    ).toBeInTheDocument();
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s9",
+      initialMessage: "Top accounts",
+    });
   });
 });

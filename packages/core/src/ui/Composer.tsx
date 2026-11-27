@@ -9,6 +9,8 @@ export interface ComposerProps {
   value: string;
   onChange: (value: string) => void;
   onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  /** The text field lost focus (#1079): a form marks it touched. */
+  onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
   /** The field's accessible name. The placeholder isn't one (#797). */
   "aria-label": string;
   placeholder?: string;
@@ -36,6 +38,7 @@ export const Composer: React.FC<ComposerProps> = ({
   value,
   onChange,
   onKeyDown,
+  onBlur,
   "aria-label": ariaLabel,
   placeholder,
   description,
@@ -80,6 +83,7 @@ export const Composer: React.FC<ComposerProps> = ({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown as React.KeyboardEventHandler<HTMLElement>}
+          onBlur={onBlur as React.FocusEventHandler<HTMLElement> | undefined}
           placeholder={placeholder}
           inputRef={inputRef}
           inputProps={{

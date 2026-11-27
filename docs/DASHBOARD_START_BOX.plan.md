@@ -164,7 +164,8 @@ Core only. No caller reads the new fields yet, so the API and web compile unchan
   - A refused outcome navigates with `refusedInitialMessage` state.
   - The `PortalLauncher` type in `portal-launcher.context.ts` follows if it's declared there.
 - Edit stories: `StationPicker` (a search story) and `StartBox` (a validation-error story, and `onStart`'s new shape) under `apps/web/src/stories/`.
-- Edit tests: `StationPicker.test.tsx`, `StartBox.test.tsx` and `use-portal-launcher.util.test.ts`. Also update any test or fixture that builds a `PortalLauncher` literal (header, palette) for the new `startBox` field.
+- Edit: `packages/core/src/ui/Composer.tsx` gains `onBlur` (the start box marks the prompt touched on it), with a case in `Composer.test.tsx`. Rebuild core.
+- Edit tests: `StationPicker.test.tsx` and `StartBox.test.tsx`; new `use-portal-launcher.start-box.test.tsx` for the launcher cases (the existing util test mocks nothing). Also update any test or fixture that builds a `PortalLauncher` literal (header, palette) for the new `startBox` field.
 
 **Steps**
 

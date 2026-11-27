@@ -220,6 +220,8 @@ The notice clears on the next successful send, as today.
 
 It never sets a `maxLength`.
 
+It also gains `onBlur?: React.FocusEventHandler<HTMLTextAreaElement>` (added in slice 4), so the start box can mark the prompt touched.
+
 ### Web — `StationPicker` (`apps/web/src/components/StationPicker.component.tsx`)
 
 `StationPickerUIProps` gains:
@@ -314,7 +316,7 @@ Run per package with `npm run test:unit` / `npm run test:integration`, never raw
 
 ### Web: `apps/web/src/__tests__/`
 
-**`use-portal-launcher.util.test.ts`.** About 5 cases:
+**`use-portal-launcher.start-box.test.tsx`** (new; `use-portal-launcher.util.test.ts` covers only the pure helpers and mocks nothing). About 5 cases:
 - `startBox.onStart` posts `{ stationId, initialMessage }`;
 - pending navigates to `/portals/:id` with no history state;
 - refused navigates with `refusedInitialMessage`;

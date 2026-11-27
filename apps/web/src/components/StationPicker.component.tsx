@@ -1,4 +1,4 @@
-import React, { useId, useState } from "react";
+import React, { useId, useRef, useState } from "react";
 
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
@@ -6,6 +6,9 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import MenuList from "@mui/material/MenuList";
+import Popover from "@mui/material/Popover";
+import TextField from "@mui/material/TextField";
 
 import { Icon, IconName } from "@portalai/core/ui";
 
@@ -17,11 +20,24 @@ export interface StationOption {
   favorite: boolean;
 }
 
+/** #1079: searching every station the caller can see, beyond `stations`. */
+export interface StationSearch {
+  query: string;
+  onQueryChange: (query: string) => void;
+  /** The stations matching a typed `query`. */
+  results: StationOption[];
+  /** A search for `query` is in flight. */
+  searching: boolean;
+}
+
 export interface StationPickerUIProps {
   stations: StationOption[];
   /** The chosen station, or null when there's none yet. */
   selectedId: string | null;
   onSelect: (stationId: string) => void;
+  /** Adds a "Search stations" field above the list. Without it, the menu
+   *  lists `stations` only. */
+  search?: StationSearch;
 }
 
 /**
@@ -33,14 +49,23 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   stations,
   selectedId,
   onSelect,
+  search,
 }) => {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const menuId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const open = anchor !== null;
 
-  const selected = stations.find((s) => s.id === selectedId) ?? null;
-  const favorites = stations.filter((s) => s.favorite);
-  const others = stations.filter((s) => !s.favorite);
+  const selected =
+    stations.find((s) => s.id === selectedId) ??
+    search?.results.find((s) => s.id === selectedId) ??
+    null;
+  // A typed query lists its results; otherwise the loaded stations.
+  const searchingByQuery = search !== undefined && search.query.trim() !== "";
+  const listed = searchingByQuery ? search.results : stations;
+  const favorites = listed.filter((s) => s.favorite);
+  const others = listed.filter((s) => !s.favorite);
 
   const handleSelect = (stationId: string) => {
     setAnchor(null);
@@ -66,6 +91,38 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
     </MenuItem>
   );
 
+  const items = (
+    <>
+      {favorites.map(item)}
+      {favorites.length > 0 && others.length > 0 && <Divider />}
+      {others.map(item)}
+    </>
+  );
+
+  // Status rows: disabled items, so the list still reads as the menu's
+  // content. "Searching…" wins over an empty result while a search runs.
+  const status = !searchingByQuery ? (
+    stations.length === 0 && <MenuItem disabled>No stations yet</MenuItem>
+  ) : search.searching ? (
+    <MenuItem disabled>Searching…</MenuItem>
+  ) : (
+    search.results.length === 0 && (
+      <MenuItem disabled>No stations match</MenuItem>
+    )
+  );
+
+  // A text field can't sit inside role="menu", so with search the field
+  // goes above a MenuList in a popover; ArrowDown moves into the list.
+  const handleSearchKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== "ArrowDown") return;
+    const first = listRef.current?.querySelector<HTMLElement>(
+      '[role="menuitem"]:not([aria-disabled="true"])'
+    );
+    if (!first) return;
+    event.preventDefault();
+    first.focus();
+  };
+
   return (
     <>
       <Chip
@@ -82,17 +139,42 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
       />
-      <Menu
-        id={menuId}
-        anchorEl={anchor}
-        open={open}
-        onClose={() => setAnchor(null)}
-      >
-        {stations.length === 0 && <MenuItem disabled>No stations yet</MenuItem>}
-        {favorites.map(item)}
-        {favorites.length > 0 && others.length > 0 && <Divider />}
-        {others.map(item)}
-      </Menu>
+      {search ? (
+        <Popover
+          anchorEl={anchor}
+          open={open}
+          onClose={() => setAnchor(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          slotProps={{
+            transition: { onEntered: () => searchRef.current?.focus() },
+          }}
+        >
+          <TextField
+            size="small"
+            placeholder="Search stations"
+            value={search.query}
+            onChange={(event) => search.onQueryChange(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            inputRef={searchRef}
+            slotProps={{ htmlInput: { "aria-label": "Search stations" } }}
+            sx={{ m: 1, minWidth: 240 }}
+          />
+          <MenuList id={menuId} ref={listRef} aria-label="Stations">
+            {status}
+            {items}
+          </MenuList>
+        </Popover>
+      ) : (
+        <Menu
+          id={menuId}
+          anchorEl={anchor}
+          open={open}
+          onClose={() => setAnchor(null)}
+        >
+          {status}
+          {items}
+        </Menu>
+      )}
     </>
   );
 };
