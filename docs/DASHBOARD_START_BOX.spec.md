@@ -365,11 +365,11 @@ Run per package with `npm run test:unit` / `npm run test:integration`, never raw
 ## Acceptance criteria
 
 - [ ] Typing a question on the dashboard and pressing Enter lands the user in a new portal in the chosen station, with that question as its first message and the agent answering it.
-- [ ] Reloading a portal whose newest message is an unanswered question of the caller's starts its answer. A reader of someone else's portal never starts one.
+- [ ] A portal the start box just created with an admitted question starts its answer on open, once. An older unanswered question (a failed turn) is not re-run when its portal is opened, and a reader of someone else's portal never starts one. *(Narrowed in the code review; see D3.)*
 - [ ] With the org over its agent-turn limit, starting from the box still creates the portal and opens it with the question in its composer and the turn-limit notice showing.
 - [ ] A blank question can't be started, and one over 20,000 characters shows a field error and isn't sent. The API refuses either with `400 PORTAL_INVALID_PAYLOAD` naming the field, on create and on send.
 - [ ] Creating a portal without `initialMessage` behaves as today, so the header chooser, the palette and the station launchers are unchanged.
-- [ ] The chip preselects the most recent portal's station, offers favorites first and then search, never offers an unreadable station, and keeps a station the user picked.
+- [ ] The chip preselects the most recent portal's station. An empty search suggests up to five stations under "Recent stations", "Favorite stations" and "New stations"; typing searches every readable station. It never offers an unreadable station (`include=station` names only readable stations), and keeps a station the user picked. A favorite's star is the brand yellow.
 - [ ] A create failure shows inline in the box and keeps the prompt. A caller who can't create portals sees Start's gate reason.
 - [ ] The dashboard has no Open Portal button or dialog of its own. The header's Open Portal still opens the chooser.
 - [ ] `POST /api/portals` and `POST /api/portals/:id/messages` are documented in Swagger with the new fields.
