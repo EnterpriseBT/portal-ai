@@ -78,12 +78,18 @@ beforeEach(() => {
   mockNewestStations = [];
 });
 
-const listedNames = async () => {
+/** Each group's heading and its stations' names, in order. */
+const listedGroups = async () => {
   const list = await screen.findByRole("listbox");
-  return Array.from(list.querySelectorAll('[role="option"]')).map(
-    (option) =>
-      option.querySelector("span:not([aria-hidden]):not([hidden])")?.textContent
-  );
+  return Array.from(list.querySelectorAll('[role="group"]')).map((group) => ({
+    group: document.getElementById(group.getAttribute("aria-labelledby") ?? "")
+      ?.textContent,
+    names: Array.from(group.querySelectorAll('[role="option"]')).map(
+      (option) =>
+        option.querySelector("span:not([aria-hidden]):not([hidden])")
+          ?.textContent
+    ),
+  }));
 };
 
 describe("DashboardStartBox (#1079)", () => {
@@ -198,12 +204,11 @@ describe("DashboardStartBox (#1079)", () => {
       await userEvent.click(
         screen.getByRole("button", { name: /Alpha, station/ })
       );
-      expect(await listedNames()).toEqual([
-        "Alpha",
-        "Beta",
-        "Finance",
-        "Newest",
-        "Newer",
+      // Grouped by why each is listed, as the Open Portal menu groups.
+      expect(await listedGroups()).toEqual([
+        { group: "Recent stations", names: ["Alpha", "Beta"] },
+        { group: "Favorite stations", names: ["Finance"] },
+        { group: "New stations", names: ["Newest", "Newer"] },
       ]);
       expect(mockPortalsList).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -227,7 +232,10 @@ describe("DashboardStartBox (#1079)", () => {
       await userEvent.click(
         screen.getByRole("button", { name: /Ops, station/ })
       );
-      expect(await listedNames()).toEqual(["Ops", "Finance"]);
+      expect(await listedGroups()).toEqual([
+        { group: "Recent stations", names: ["Ops"] },
+        { group: "Favorite stations", names: ["Finance"] },
+      ]);
     });
 
     it("keeps the preselected station listed though it's past the first five", async () => {
@@ -247,14 +255,45 @@ describe("DashboardStartBox (#1079)", () => {
       await userEvent.click(
         screen.getByRole("button", { name: /Old, station/ })
       );
-      expect(await listedNames()).toEqual([
-        "Station 1",
-        "Station 2",
-        "Station 3",
-        "Station 4",
-        "Station 5",
-        "Old",
+      // The station used last heads the list, under Recent stations.
+      expect(await listedGroups()).toEqual([
+        { group: "Recent stations", names: ["Old"] },
+        {
+          group: "New stations",
+          names: [
+            "Station 1",
+            "Station 2",
+            "Station 3",
+            "Station 4",
+            "Station 5",
+          ],
+        },
       ]);
+    });
+
+    it("lists a favorite that's also recent once, under Recent stations, starred", async () => {
+      mockRecentPortals = [{ stationId: "s-fav", stationName: "Finance" }];
+      render(
+        <Box
+          launcher={launcherWith({
+            station: { id: "s-fav", name: "Finance" },
+            favoriteStations: [
+              { id: "s-fav", name: "Finance" },
+              { id: "s-fav2", name: "Field" },
+            ],
+          })}
+        />
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: /Finance, station/ })
+      );
+      expect(await listedGroups()).toEqual([
+        { group: "Recent stations", names: ["Finance"] },
+        { group: "Favorite stations", names: ["Field"] },
+      ]);
+      expect(
+        screen.getByRole("option", { name: "Finance" })
+      ).toHaveAccessibleDescription("Favorite");
     });
   });
 });

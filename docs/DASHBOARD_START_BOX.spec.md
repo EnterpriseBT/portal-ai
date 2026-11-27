@@ -254,7 +254,7 @@ Without `search` it renders exactly as today, so its stories and tests still pas
 
   | `StartBoxUI` prop | Value |
   |---|---|
-  | `stations` | Up to 5 suggestions (`utils/start-box-stations.util.ts`, added before smoke at the user's request): the stations of the caller's latest portals (`portals.list` `mine`, `lastOpened` desc, `include=station`), then favorites, then the newest stations (`stations.list` `created` desc), each once; plus `launcher.station` when it isn't among them. The picker lists them in that order, starring favorites |
+  | `stations` | Up to 5 suggestions (`utils/start-box-stations.util.ts`, added before smoke at the user's request): the stations of the caller's latest portals (`portals.list` `mine`, `lastOpened` desc, `include=station`), then favorites, then the newest stations (`stations.list` `created` desc), each once, grouped under "Recent stations", "Favorite stations" and "New stations"; plus `launcher.station` when it isn't among them, in its group. The picker's search is core `Combobox`, which renders the group headings; search results are ungrouped |
   | `initialStationId` | `launcher.station?.id ?? null` |
   | `gate` | `launcher.gate` |
   | `pending` | `launcher.pending` |

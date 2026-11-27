@@ -11,7 +11,6 @@ import {
   Combobox,
   Icon,
   IconName,
-  Typography,
   type ComboboxOption,
 } from "@portalai/core/ui";
 
@@ -21,6 +20,9 @@ export interface StationOption {
   name: string;
   /** Starred by the caller: marked with a star. */
   favorite: boolean;
+  /** The heading it's listed under in the search popup (#1079), saying why
+   *  it's suggested. Options of one group must be adjacent. */
+  group?: string;
 }
 
 /** #1079: searching every station the caller can see, beyond `stations`. */
@@ -117,6 +119,7 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
     (station) => ({
       id: station.id,
       label: station.name,
+      group: station.group,
       description: station.favorite ? "Favorite" : undefined,
       onSelect: () => handleSelect(station.id),
       station,
@@ -177,18 +180,8 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
                   }
                   fontSize="small"
                 />
+                {/* A favorite's star is read as its description. */}
                 <span>{station.name}</span>
-                {/* Read as the option's description, not its name. */}
-                {station.favorite && (
-                  <Typography
-                    component="span"
-                    variant="body2"
-                    color="text.secondary"
-                    aria-hidden
-                  >
-                    Favorite
-                  </Typography>
-                )}
               </>
             )}
             emptyContent={emptyText}
