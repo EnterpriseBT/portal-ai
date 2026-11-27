@@ -254,7 +254,7 @@ Without `search` it renders exactly as today, so its stories and tests still pas
 
   | `StartBoxUI` prop | Value |
   |---|---|
-  | `stations` | `launcher.favoriteStations` as favorites, plus `launcher.station` when it isn't one |
+  | `stations` | Up to 5 suggestions (`utils/start-box-stations.util.ts`, added before smoke at the user's request): the stations of the caller's latest portals (`portals.list` `mine`, `lastOpened` desc, `include=station`), then favorites, then the newest stations (`stations.list` `created` desc), each once; plus `launcher.station` when it isn't among them. The picker lists them in that order, starring favorites |
   | `initialStationId` | `launcher.station?.id ?? null` |
   | `gate` | `launcher.gate` |
   | `pending` | `launcher.pending` |

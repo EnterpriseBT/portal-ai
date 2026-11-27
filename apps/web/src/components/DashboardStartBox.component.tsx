@@ -2,6 +2,10 @@ import React, { useState } from "react";
 
 import { sdk } from "../api/sdk";
 import { usePortalLauncherContext } from "../utils/portal-launcher.context";
+import {
+  SUGGESTED_STATIONS_LIMIT,
+  suggestStations,
+} from "../utils/start-box-stations.util";
 import { useDebouncedValue } from "../utils/use-debounced-value.util";
 import { StartBoxUI } from "./StartBox.component";
 import type { StationOption } from "./StationPicker.component";
@@ -14,9 +18,9 @@ export const STATION_SEARCH_LIMIT = 10;
 /**
  * The dashboard's start box (#1079): `StartBoxUI` wired to the shell's one
  * portal launcher, so a start shares the header's create (one in-flight
- * request, one pending state). It offers the caller's favorite stations and
- * the launcher's station, preselecting the latter, and searches every
- * station the caller can read once a query is typed.
+ * request, one pending state). Before anything is typed it suggests up to
+ * five stations (see `suggestStations`), preselecting the launcher's; once
+ * a query is typed it searches every station the caller can read.
  */
 export const DashboardStartBox: React.FC = () => {
   const launcher = usePortalLauncherContext();
@@ -45,16 +49,31 @@ export const DashboardStartBox: React.FC = () => {
     { enabled: debounced !== "" }
   );
 
-  const favorites: StationOption[] = launcher.favoriteStations.map((s) => ({
-    ...s,
-    favorite: true,
-  }));
+  // The suggestions' sources: the caller's latest portals with their
+  // stations (a few extra, since several may share a station) and the
+  // org's newest stations. Both lists are caller-scoped by the API.
+  const recent = sdk.portals.list({
+    limit: SUGGESTED_STATIONS_LIMIT * 2,
+    offset: 0,
+    sortBy: "lastOpened",
+    sortOrder: "desc",
+    mine: "true",
+    include: "station",
+  });
+  const newest = sdk.stations.list({
+    limit: SUGGESTED_STATIONS_LIMIT,
+    offset: 0,
+    sortBy: "created",
+    sortOrder: "desc",
+  });
   const { station } = launcher;
-  const stations =
-    station && !favorites.some((s) => s.id === station.id)
-      ? [...favorites, { ...station, favorite: false }]
-      : favorites;
-  const favoriteIds = new Set(favorites.map((s) => s.id));
+  const stations = suggestStations({
+    recentPortals: recent.data?.portals ?? [],
+    favorites: launcher.favoriteStations,
+    newest: newest.data?.stations ?? [],
+    keep: station,
+  });
+  const favoriteIds = new Set(launcher.favoriteStations.map((s) => s.id));
   const results: StationOption[] =
     debounced === ""
       ? []

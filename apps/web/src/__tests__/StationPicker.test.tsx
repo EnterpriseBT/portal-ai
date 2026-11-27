@@ -40,7 +40,7 @@ describe("StationPickerUI", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists favorite stations first and selects one", async () => {
+  it("lists stations in the order given, starring favorites, and selects one", async () => {
     const onSelect = jest.fn();
     render(
       <StationPickerUI
@@ -57,10 +57,11 @@ describe("StationPickerUI", () => {
     const names = within(menu)
       .getAllByRole("menuitem")
       .map((item) => item.textContent);
+    // The caller orders them (#1079: the start box's suggestions).
     expect(names).toEqual([
+      "Customer Success",
       "Finance CloseFavorite",
       "Field InspectionsFavorite",
-      "Customer Success",
     ]);
     await expectNoAxeViolations(document.body);
 

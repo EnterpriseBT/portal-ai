@@ -1,7 +1,6 @@
 import React, { useId, useRef, useState } from "react";
 
 import Chip from "@mui/material/Chip";
-import Divider from "@mui/material/Divider";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
@@ -16,7 +15,7 @@ import { Icon, IconName } from "@portalai/core/ui";
 export interface StationOption {
   id: string;
   name: string;
-  /** Starred by the caller. Favorites are listed first. */
+  /** Starred by the caller: marked with a star. */
   favorite: boolean;
 }
 
@@ -43,7 +42,7 @@ export interface StationPickerUIProps {
 /**
  * The start box's station chip and its menu (#1123). The chip shows the
  * chosen station, or "Pick a station" when there's none. The menu lists
- * favorite stations first, each marked with a star, then the rest.
+ * `stations` in the order given, marking favorites with a star.
  */
 export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   stations,
@@ -64,8 +63,6 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   // A typed query lists its results; otherwise the loaded stations.
   const searchingByQuery = search !== undefined && search.query.trim() !== "";
   const listed = searchingByQuery ? search.results : stations;
-  const favorites = listed.filter((s) => s.favorite);
-  const others = listed.filter((s) => !s.favorite);
 
   // A closed picker forgets its search (#1137 code review), so it reopens
   // on the favorites rather than on an old query's results.
@@ -98,13 +95,9 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
     </MenuItem>
   );
 
-  const items = (
-    <>
-      {favorites.map(item)}
-      {favorites.length > 0 && others.length > 0 && <Divider />}
-      {others.map(item)}
-    </>
-  );
+  // In the order given: the caller decides what comes first (#1079: the
+  // start box's suggestions).
+  const items = <>{listed.map(item)}</>;
 
   // Status rows: disabled items, so the list still reads as the menu's
   // content. "Searching…" wins over an empty result while a search runs.

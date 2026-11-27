@@ -7,12 +7,29 @@ import { jest } from "@jest/globals";
 import type { ActionGate } from "@portalai/core/ui";
 import type { PortalLauncher } from "../utils/use-portal-launcher.util";
 
-const mockStationsList = jest.fn<
-  (params: unknown, options?: { enabled?: boolean }) => unknown
->(() => ({ data: undefined, isFetching: false }));
+type Row = { id: string; name: string };
+// The caller's recently opened portals, newest first, with their stations.
+let mockRecentPortals: { stationId: string; stationName?: string | null }[];
+// The org's stations, newest first (an empty query's last source).
+let mockNewestStations: Row[];
+const mockStationsList = jest.fn(
+  (
+    params: { search?: string; sortBy?: string },
+    _options?: { enabled?: boolean }
+  ) =>
+    params.search === undefined
+      ? { data: { stations: mockNewestStations }, isFetching: false }
+      : { data: undefined, isFetching: false }
+);
+const mockPortalsList = jest.fn((_params: unknown) => ({
+  data: { portals: mockRecentPortals },
+}));
 
 jest.unstable_mockModule("../api/sdk", () => ({
-  sdk: { stations: { list: mockStationsList } },
+  sdk: {
+    stations: { list: mockStationsList },
+    portals: { list: mockPortalsList },
+  },
 }));
 
 const { act, expectNoAxeViolations, render, screen } =
@@ -56,7 +73,17 @@ const field = () => screen.getByRole("textbox", { name: "Ask a question" });
 beforeEach(() => {
   onStart.mockReset();
   mockStationsList.mockClear();
+  mockPortalsList.mockClear();
+  mockRecentPortals = [{ stationId: "s-last", stationName: "Ops" }];
+  mockNewestStations = [];
 });
+
+const listedNames = async () => {
+  const menu = await screen.findByRole("menu");
+  return Array.from(menu.querySelectorAll('[role="menuitem"]')).map(
+    (item) => item.querySelector(".MuiListItemText-primary")?.textContent
+  );
+};
 
 describe("DashboardStartBox (#1079)", () => {
   it("preselects the launcher's station and starts there", async () => {
@@ -100,7 +127,9 @@ describe("DashboardStartBox (#1079)", () => {
       });
       render(<Box launcher={launcherWith()} />);
       const enabledCalls = () =>
-        mockStationsList.mock.calls.filter(([, options]) => options?.enabled);
+        mockStationsList.mock.calls.filter(
+          ([params, options]) => params.search !== undefined && options?.enabled
+        );
       expect(enabledCalls()).toHaveLength(0);
 
       await user.click(screen.getByRole("button", { name: /Ops, station/ }));
@@ -139,5 +168,92 @@ describe("DashboardStartBox (#1079)", () => {
   it("doesn't show an earlier visit's failure", () => {
     render(<Box launcher={failed()} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // An empty search suggests up to five stations: those of the caller's
+  // most recently opened portals, then favorites, then the newest stations.
+  describe("suggestions for an empty search", () => {
+    it("lists recent portals' stations, then favorites, then the newest, five at most", async () => {
+      mockRecentPortals = [
+        { stationId: "s-a", stationName: "Alpha" },
+        { stationId: "s-b", stationName: "Beta" },
+        // A second portal on Alpha counts once.
+        { stationId: "s-a", stationName: "Alpha" },
+      ];
+      mockNewestStations = [
+        { id: "s-new1", name: "Newest" },
+        { id: "s-fav", name: "Finance" },
+        { id: "s-new2", name: "Newer" },
+        { id: "s-new3", name: "New" },
+      ];
+      render(
+        <Box
+          launcher={launcherWith({
+            station: { id: "s-a", name: "Alpha" },
+            favoriteStations: [{ id: "s-fav", name: "Finance" }],
+          })}
+        />
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: /Alpha, station/ })
+      );
+      expect(await listedNames()).toEqual([
+        "Alpha",
+        "Beta",
+        "Finance",
+        "Newest",
+        "Newer",
+      ]);
+      expect(mockPortalsList).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mine: "true",
+          sortBy: "lastOpened",
+          sortOrder: "desc",
+          include: "station",
+        })
+      );
+      expect(mockStationsList).toHaveBeenCalledWith(
+        expect.objectContaining({ sortBy: "created", sortOrder: "desc" })
+      );
+    });
+
+    it("skips a recent portal whose station has no name to show", async () => {
+      mockRecentPortals = [
+        { stationId: "s-gone", stationName: null },
+        { stationId: "s-last", stationName: "Ops" },
+      ];
+      render(<Box launcher={launcherWith()} />);
+      await userEvent.click(
+        screen.getByRole("button", { name: /Ops, station/ })
+      );
+      expect(await listedNames()).toEqual(["Ops", "Finance"]);
+    });
+
+    it("keeps the preselected station listed though it's past the first five", async () => {
+      mockRecentPortals = [];
+      mockNewestStations = [1, 2, 3, 4, 5].map((n) => ({
+        id: `s-${n}`,
+        name: `Station ${n}`,
+      }));
+      render(
+        <Box
+          launcher={launcherWith({
+            station: { id: "s-old", name: "Old" },
+            favoriteStations: [],
+          })}
+        />
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: /Old, station/ })
+      );
+      expect(await listedNames()).toEqual([
+        "Station 1",
+        "Station 2",
+        "Station 3",
+        "Station 4",
+        "Station 5",
+        "Old",
+      ]);
+    });
   });
 });
