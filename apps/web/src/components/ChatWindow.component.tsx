@@ -31,6 +31,9 @@ export const CHAT_INPUT_PLACEHOLDER =
 
 export interface ChatWindowHandle {
   clear: () => void;
+  /** #1079: puts `text` in the composer and focuses it, caret at the end
+   *  (a refused first question, ready to send again). */
+  setDraft: (text: string) => void;
   scrollToBottom: () => void;
   scrollToMessage: (messageId: string) => boolean;
 }
@@ -83,6 +86,10 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
     const [showJumpTop, setShowJumpTop] = useState(false);
     const [showJumpBottom, setShowJumpBottom] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    // #1079: setDraft focuses once the new value has rendered, so the caret
+    // lands after it rather than at the end of the old one.
+    const focusDraftRef = useRef(false);
     // #271: expose the scroll container to descendants (viz widgets use it as
     // their IntersectionObserver root). State-backed so the context updates
     // once the node attaches; keeps `scrollRef.current` in sync for the
@@ -146,6 +153,10 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
       ref,
       () => ({
         clear: () => setValue(""),
+        setDraft: (text: string) => {
+          focusDraftRef.current = true;
+          setValue(text);
+        },
         scrollToBottom: scrollToBottomImpl,
         scrollToMessage: (messageId: string) => {
           const container = scrollRef.current;
@@ -160,6 +171,15 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
       }),
       [scrollToBottomImpl]
     );
+
+    useEffect(() => {
+      if (!focusDraftRef.current) return;
+      focusDraftRef.current = false;
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(value.length, value.length);
+    }, [value]);
 
     // Recalculate whether the jump-to-top/bottom buttons should be visible.
     // Hidden when the feed isn't overflowing or the user is already at that edge.
@@ -307,6 +327,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
             // description.
             slotProps={{ htmlInput: { "aria-label": "Message" } }}
             placeholder={CHAT_INPUT_PLACEHOLDER}
+            inputRef={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}

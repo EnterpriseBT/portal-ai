@@ -35,11 +35,18 @@ const defaultAuth: NormalizedAuth = {
   logout: () => {},
 };
 
-const createTestRouter = (initialEntry = "/") => {
+const createTestRouter = (
+  initialEntry = "/",
+  initialState?: Record<string, unknown>
+) => {
   const rootRoute = createRootRoute();
+  const history = createMemoryHistory({ initialEntries: [initialEntry] });
+  // A memory history's entries carry no state, so a test that arrives with
+  // navigation state (#1079's refused first message) replaces the entry.
+  if (initialState) history.replace(initialEntry, initialState);
   return createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+    history,
     context: { queryClient: new QueryClient() },
   });
 };
@@ -49,6 +56,8 @@ interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   auth?: Partial<NormalizedAuth>;
   /** The router's starting location, e.g. "/stations?create=station" (#1076). */
   initialEntry?: string;
+  /** History state on that location, as `navigate({ state })` leaves it. */
+  initialState?: Record<string, unknown>;
 }
 
 function renderWithProviders(
@@ -57,10 +66,11 @@ function renderWithProviders(
     queryClient = new QueryClient(),
     auth,
     initialEntry,
+    initialState,
     ...options
   }: CustomRenderOptions = {}
 ) {
-  const testRouter = createTestRouter(initialEntry);
+  const testRouter = createTestRouter(initialEntry, initialState);
   const authValue: NormalizedAuth = { ...defaultAuth, ...auth };
 
   function Wrapper({ children }: { children: React.ReactNode }) {
@@ -87,6 +97,7 @@ function renderWithProviders(
   return {
     ...render(ui, { wrapper: Wrapper, ...options }),
     queryClient,
+    router: testRouter,
   };
 }
 
