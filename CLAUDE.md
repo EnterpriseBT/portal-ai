@@ -647,6 +647,8 @@ The Help **search box** is deliberately *not* in the URL: user-typed text brings
 
 Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persisted in localStorage under `portalai-theme` (JSON-encoded `"brand"` / `"brand.dark"`). Fonts: **Exo 2** (body), **Fraunces** (headings), **Space Grotesk** (secondary sans), **Space Mono** (monospace) — shipped as WOFF2 with TTF fallbacks (`packages/core` `build:fonts`).
 
+**A filled star always means a favorite, and it's always the brand yellow** (`palette.favorite`, held at 3:1 in both themes). Core's `Icon` renders `IconName.Star` in that colour by default, so a star needs no colour of its own; the unstarred outline (`StarBorder`) stays neutral. Don't use a star for anything else (Settings' subscription tier uses `Layers`).
+
 `apps/site` consumes the same two theme JSONs through a build-time bridge (`scripts/generate-tokens.mjs` → CSS custom properties) rather than MUI, and honours the same localStorage key — so a visitor's choice survives the trip between the marketing site and the app. A palette change in `@portalai/core` reaches the site on its next build; there is no second copy of the brand.
 
 ## Environment URLs
