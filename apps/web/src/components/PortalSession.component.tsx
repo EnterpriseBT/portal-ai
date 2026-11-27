@@ -25,7 +25,10 @@ import { FAQCategory } from "@portalai/core/content";
 import { sdk, queryKeys } from "../api/sdk";
 import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
-import { readRefusedInitialMessage } from "../utils/portal-initial-message.util";
+import {
+  readPendingInitialMessage,
+  readRefusedInitialMessage,
+} from "../utils/portal-initial-message.util";
 import type { PortalStreamTurn } from "../utils/portal-stream.util";
 import { changedStationAttachments } from "../utils/station-attachment-tools.util";
 import { changedTags } from "../utils/tag-tools.util";
@@ -453,10 +456,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const chatRef = useRef<ChatWindowHandle>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);
 
-  // #1079: a portal started with a question the turn ceiling refused arrives
-  // with it in history state. Read once, at mount: the effect below clears it.
+  // #1079: a portal the start box created arrives with its first question's
+  // outcome in history state (admitted, or refused by the turn ceiling). Read
+  // once, at mount: the effect below clears it.
   const [refusedDraft] = useState(() =>
     readRefusedInitialMessage(location.state)
+  );
+  const [pendingFirstTurn] = useState(() =>
+    readPendingInitialMessage(location.state)
   );
 
   // #498: an AGENT_TURN_LIMITED send denial surfaces inline (never the
@@ -477,16 +484,19 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const resetMessages = sdk.portals.resetMessages(portalId);
   const toast = useToast();
 
-  // #1079: put the refused question back in the composer, then replace the
-  // history entry without it, so Back and Forward don't seed it again. The
-  // notice was seeded with the state above.
+  // #1079: put a refused question back in the composer (the notice was
+  // seeded above), then replace the history entry without either outcome, so
+  // Back and Forward don't act on it again.
   useEffect(() => {
-    if (!refusedDraft) return;
-    chatRef.current?.setDraft(refusedDraft.prompt);
-    const { refusedInitialMessage: _refused, ...state } =
-      router.history.location.state;
+    if (!refusedDraft && !pendingFirstTurn) return;
+    if (refusedDraft) chatRef.current?.setDraft(refusedDraft.prompt);
+    const {
+      refusedInitialMessage: _refused,
+      pendingInitialMessage: _pending,
+      ...state
+    } = router.history.location.state;
     router.history.replace(router.history.location.href, state);
-  }, [refusedDraft, router]);
+  }, [refusedDraft, pendingFirstTurn, router]);
 
   // On session open: scroll to the target message (if opened from a pinned
   // result) or to the bottom of the feed. Runs once per portalId + first
@@ -587,8 +597,11 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       await sendMessage.mutateAsync({ message });
       setTurnLimitMessage(null);
     } catch (err) {
-      // Remove the optimistic message if the send failed.
+      // Remove the optimistic message if the send failed, and put its text
+      // back (#1137 code review): the composer was cleared on submit, so a
+      // refusal (the turn limit, a message over the limit) would lose it.
       streamActions.removeLocalMessage(optimisticId);
+      chatRef.current?.setDraft(message);
       // #498: the turn-ceiling denial gets its own friendly surface.
       const serverError = toServerError(err as ApiError);
       if (serverError?.code === "AGENT_TURN_LIMITED") {
@@ -620,13 +633,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const canWrite = portalQuery.data?.portal.capabilities.write ?? true;
   const readOnlyLock = portalReadOnlyLock(canWrite);
 
-  // #1079: a portal whose newest message is the caller's has a turn waiting:
-  // one created with its first question, or one left between send and
-  // stream. On the first load for this portal, a caller who may write opens
-  // the stream for it. Checked once per portal, so a refetch (a pin, a
-  // finished turn) never opens another; the server replays a turn that's
-  // already answered (#504). A reader never resumes: the server would only
-  // replay for them.
+  // #1079: a portal the start box just created with an admitted first
+  // question opens the stream that answers it. Only that turn: a portal
+  // whose newest user row is an older turn that failed (no reply stored)
+  // isn't re-run on every visit, since the stream route doesn't re-admit a
+  // turn against the ceiling (#1137 code review). On the first load, the
+  // newest row must still be the caller's question and they must be able to
+  // write. Checked once per portal, so a refetch never opens another; the
+  // server replays a turn that's already answered (#504).
   const portalLoaded = portalQuery.data !== undefined;
   const newestRole = serverMessages[serverMessages.length - 1]?.role;
   const resumeCheckedRef = useRef<string | null>(null);
@@ -635,12 +649,21 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   useEffect(() => {
     if (!portalLoaded || resumeCheckedRef.current === portalId) return;
     resumeCheckedRef.current = portalId;
-    if (newestRole !== "user" || !canWrite || isStreaming) return;
+    if (!pendingFirstTurn || newestRole !== "user" || !canWrite || isStreaming)
+      return;
     // Stamped from the send's promise, not the effect body: `send` resolves
     // once the stream is open, before any of its events.
     const startedAt = Date.now();
     void sendStream(portalId).then(() => setStreamStartedAt(startedAt));
-  }, [portalLoaded, portalId, newestRole, canWrite, isStreaming, sendStream]);
+  }, [
+    portalLoaded,
+    portalId,
+    pendingFirstTurn,
+    newestRole,
+    canWrite,
+    isStreaming,
+    sendStream,
+  ]);
   const chatLock = readOnlyLock.locked
     ? readOnlyLock
     : jobLock.locked

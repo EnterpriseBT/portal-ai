@@ -670,6 +670,13 @@ export class PortalService {
    * then write the portal and (when admitted) its user row in one
    * transaction. A refused message still creates the portal; the outcome
    * says why there's no turn.
+   *
+   * Admission counts the turn as it admits it, so a write that fails after
+   * admission (a DB error, a pool admission timeout) still counts one turn
+   * against the ceiling with nothing stored. The send route behaves the same
+   * way: its admission also runs before its write. The ceiling is a rate
+   * limit on attempts, not a ledger, so this isn't compensated (#1137 code
+   * review).
    */
   static async createPortal({
     stationId,

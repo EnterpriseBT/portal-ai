@@ -183,6 +183,44 @@ describe("StationPickerUI", () => {
       expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
     });
 
+    // #1137 code review: the popup holds a field and a menu, so it's
+    // announced as a dialog; and it reopens without the old search.
+    it("opens a named dialog, and forgets the query on pick and on close", async () => {
+      const onQueryChange = jest.fn();
+      render(
+        <StationPickerUI
+          stations={STATIONS}
+          selectedId={null}
+          onSelect={jest.fn()}
+          search={search({
+            query: "ops",
+            onQueryChange,
+            results: [{ id: "s9", name: "Ops Review", favorite: false }],
+          })}
+        />
+      );
+      const chip = screen.getByRole("button", { name: "Pick a station" });
+      expect(chip).toHaveAttribute("aria-haspopup", "dialog");
+      await userEvent.click(chip);
+      const dialog = await screen.findByRole("dialog", {
+        name: "Pick a station",
+      });
+      expect(chip).toHaveAttribute("aria-controls", dialog.id);
+      expect(
+        within(dialog).getByRole("textbox", { name: "Search stations" })
+      ).toBeInTheDocument();
+      await userEvent.click(
+        within(dialog).getByRole("menuitem", { name: /Ops Review/ })
+      );
+      expect(onQueryChange).toHaveBeenLastCalledWith("");
+
+      onQueryChange.mockClear();
+      await userEvent.click(chip);
+      await screen.findByRole("dialog", { name: "Pick a station" });
+      await userEvent.keyboard("{Escape}");
+      expect(onQueryChange).toHaveBeenLastCalledWith("");
+    });
+
     it("has no search field without the prop", async () => {
       render(
         <StationPickerUI

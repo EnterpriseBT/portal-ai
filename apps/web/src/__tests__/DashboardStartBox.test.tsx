@@ -120,17 +120,24 @@ describe("DashboardStartBox (#1079)", () => {
     }
   });
 
-  it("shows a start failure in the box", () => {
-    render(
-      <Box
-        launcher={launcherWith({
-          startBox: {
-            onStart,
-            serverError: { message: "Couldn't start", code: "PORTAL_FAILED" },
-          },
-        })}
-      />
-    );
+  const failed = () =>
+    launcherWith({
+      startBox: {
+        onStart,
+        serverError: { message: "Couldn't start", code: "PORTAL_FAILED" },
+      },
+    });
+
+  it("shows a start failure in the box", async () => {
+    render(<Box launcher={failed()} />);
+    await userEvent.type(field(), "Top accounts{Enter}");
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't start");
+  });
+
+  // #1137 code review: the launcher outlives the dashboard, so its last
+  // error mustn't greet the box on the next visit.
+  it("doesn't show an earlier visit's failure", () => {
+    render(<Box launcher={failed()} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

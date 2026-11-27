@@ -893,8 +893,12 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     // Upgrade CTA for a non-pro tier; composer stays enabled.
     expect(screen.getByText("View plans")).toBeInTheDocument();
     expect(input).toBeEnabled();
-    // The optimistic message was rolled back.
-    expect(screen.queryByText("One too many")).not.toBeInTheDocument();
+    // The optimistic message was rolled back, and its text is back in the
+    // composer to send again (#1137 code review).
+    expect(
+      screen.queryByTestId("portal-session-empty")
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(input).toHaveValue("One too many"));
   });
 
   it("a non-turn-limit send failure does NOT render the notice", async () => {
@@ -958,12 +962,20 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     refetch: jest.fn(async () => ({})),
   });
 
-  it("resumes a portal whose newest message is the caller's, once, even after a refetch", async () => {
+  const justCreated = {
+    initialEntry: "/portals/portal-1",
+    initialState: { pendingInitialMessage: true },
+  };
+
+  it("answers the first question of a portal the start box just created, once, even after a refetch", async () => {
     mockGetPortal.mockImplementation(pendingTurn);
 
     const { PortalSession } =
       await import("../components/PortalSession.component");
-    const { rerender } = render(<PortalSession portalId="portal-1" />);
+    const { rerender, router } = render(
+      <PortalSession portalId="portal-1" />,
+      justCreated
+    );
 
     await waitFor(() => expect(responseStreams()).toHaveLength(1));
     // The turn ends, so nothing is streaming any more...
@@ -979,6 +991,22 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     await settle();
     expect(responseStreams()).toHaveLength(1);
     expect(mockSendMessage).not.toHaveBeenCalled();
+    // The mark is gone, so Back and Forward don't answer it again.
+    expect(router.history.location.state.pendingInitialMessage).toBeUndefined();
+  });
+
+  // #1137 code review: a failed turn stores no reply, so its question stays
+  // the newest row. Re-running it on every visit would call the model
+  // without the turn ceiling's admission.
+  it("doesn't re-run an older unanswered question when a portal is opened", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
   });
 
   it("doesn't resume a portal whose newest message is the assistant's", async () => {
@@ -991,7 +1019,7 @@ describe("PortalSession (container) via PortalSessionUI", () => {
 
     const { PortalSession } =
       await import("../components/PortalSession.component");
-    render(<PortalSession portalId="portal-1" />);
+    render(<PortalSession portalId="portal-1" />, justCreated);
 
     await settle();
     expect(responseStreams()).toHaveLength(0);
@@ -1008,7 +1036,7 @@ describe("PortalSession (container) via PortalSessionUI", () => {
 
     const { PortalSession } =
       await import("../components/PortalSession.component");
-    render(<PortalSession portalId="portal-1" />);
+    render(<PortalSession portalId="portal-1" />, justCreated);
 
     await settle();
     expect(responseStreams()).toHaveLength(0);
@@ -1084,5 +1112,30 @@ describe("PortalSession (container) via PortalSessionUI", () => {
         screen.queryByText(refusedState.refusedInitialMessage.message)
       ).not.toBeInTheDocument()
     );
+  });
+
+  // #1137 code review: a message over the 20,000-character limit is refused
+  // with a 400; the composer was cleared on submit, so the text comes back.
+  it("puts a refused message back in the composer", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockSendMessage.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Invalid portal payload: message: Message must be 20000 characters or fewer"
+        ),
+        { code: "PORTAL_INVALID_PAYLOAD", status: 400 }
+      )
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "A very long table" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => expect(mockSendMessage).toHaveBeenCalled());
+    await waitFor(() => expect(input).toHaveValue("A very long table"));
   });
 });

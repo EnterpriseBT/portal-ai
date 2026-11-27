@@ -32,7 +32,7 @@ Each slice:
 
 - **Slice 1: core contracts and `Composer` `error`.** These are leaf changes. Everything after imports `portalMessageField`, `StartPortalBodySchema` and `InitialMessageOutcome`.
 - **Slice 2: the API create-with-message.** The server half of D1, D2 and D4. After this slice, a caller with `curl` can create a portal holding its first question.
-- **Slice 3: `PortalSession` resume and the refused draft.** D3 and the receiving half of D2. It's useful on its own: it also fixes a reload between send and stream.
+- **Slice 3: `PortalSession` resume and the refused draft.** D3 and the receiving half of D2. (The code review narrowed the resume to the new portal's first question, so the reload case it once covered isn't.)
 - **Slice 4: the start box path.** `StationPicker` search, `StartBoxUI` validation and the launcher's `startBox`. Nothing renders it on the dashboard yet.
 - **Slice 5: the dashboard wiring and docs.** `DashboardStartBox`, the removed dashboard create path and the help copy.
 

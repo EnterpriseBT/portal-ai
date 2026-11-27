@@ -162,20 +162,23 @@ export function usePortalLauncher(): PortalLauncher {
       onSuccess: (data) => {
         setChooserOpen(false);
         const outcome = data.initialMessage;
-        // #1079: a refused first question still created the portal; it
-        // opens with the question back in its composer.
+        // #1079: the portal opens knowing its first question's outcome: an
+        // admitted one is answered there, and a refused one (the portal was
+        // still created) goes back in its composer.
         navigate({
           to: `/portals/${data.portal.id}`,
-          ...(outcome?.status === "refused" && body.initialMessage
-            ? {
-                state: {
-                  refusedInitialMessage: {
-                    prompt: body.initialMessage,
-                    message: outcome.message,
+          ...(outcome?.status === "pending"
+            ? { state: { pendingInitialMessage: true as const } }
+            : outcome?.status === "refused" && body.initialMessage
+              ? {
+                  state: {
+                    refusedInitialMessage: {
+                      prompt: body.initialMessage,
+                      message: outcome.message,
+                    },
                   },
-                },
-              }
-            : {}),
+                }
+              : {}),
         });
       },
     });

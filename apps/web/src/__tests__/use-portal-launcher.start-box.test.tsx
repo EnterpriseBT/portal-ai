@@ -83,7 +83,7 @@ describe("usePortalLauncher startBox (#1079)", () => {
     expect(options.toast).toBeUndefined();
   });
 
-  it("opens the portal plainly when the question was admitted", async () => {
+  it("opens the portal to answer an admitted question", async () => {
     const { router } = render(<Probe />);
     act(() =>
       launcher.startBox.onStart({
@@ -100,6 +100,7 @@ describe("usePortalLauncher startBox (#1079)", () => {
     await waitFor(() =>
       expect(router.history.location.pathname).toBe("/portals/p-1")
     );
+    expect(router.history.location.state.pendingInitialMessage).toBe(true);
     expect(router.history.location.state.refusedInitialMessage).toBeUndefined();
   });
 

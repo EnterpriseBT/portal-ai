@@ -67,8 +67,15 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   const favorites = listed.filter((s) => s.favorite);
   const others = listed.filter((s) => !s.favorite);
 
-  const handleSelect = (stationId: string) => {
+  // A closed picker forgets its search (#1137 code review), so it reopens
+  // on the favorites rather than on an old query's results.
+  const close = () => {
     setAnchor(null);
+    if (search && search.query !== "") search.onQueryChange("");
+  };
+
+  const handleSelect = (stationId: string) => {
+    close();
     onSelect(stationId);
   };
 
@@ -135,7 +142,9 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
         variant={selected ? "filled" : "outlined"}
         color={selected ? "default" : "primary"}
         onClick={(event) => setAnchor(event.currentTarget)}
-        aria-haspopup="menu"
+        // With search the popup is a dialog holding a field and a menu, not
+        // a menu on its own (#1137 code review).
+        aria-haspopup={search ? "dialog" : "menu"}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
       />
@@ -143,9 +152,14 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
         <Popover
           anchorEl={anchor}
           open={open}
-          onClose={() => setAnchor(null)}
+          onClose={close}
           anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
           slotProps={{
+            paper: {
+              id: menuId,
+              role: "dialog",
+              "aria-label": "Pick a station",
+            },
             transition: { onEntered: () => searchRef.current?.focus() },
           }}
         >
@@ -157,9 +171,10 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
             onKeyDown={handleSearchKeyDown}
             inputRef={searchRef}
             slotProps={{ htmlInput: { "aria-label": "Search stations" } }}
-            sx={{ m: 1, minWidth: 240 }}
+            margin="dense"
+            fullWidth
           />
-          <MenuList id={menuId} ref={listRef} aria-label="Stations">
+          <MenuList ref={listRef} aria-label="Stations">
             {status}
             {items}
           </MenuList>

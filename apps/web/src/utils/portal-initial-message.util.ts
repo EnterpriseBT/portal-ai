@@ -1,8 +1,13 @@
 /**
- * #1079: a portal started with a question the agent-turn ceiling refused is
- * still created, and the start box opens it carrying the question in history
- * state. The portal page puts it back in the composer, shows the turn-limit
- * notice, then drops the state so Back and Forward don't bring it back.
+ * #1079: the start box opens the portal it created carrying its first
+ * question's outcome in history state, which the portal page reads once and
+ * then drops, so Back and Forward don't act on it again:
+ * - admitted (`pendingInitialMessage`): the page opens the stream that
+ *   answers it. Only this turn is resumed: a portal whose newest message is
+ *   an older, failed turn isn't re-run on every visit (#1137 code review),
+ *   since the stream route doesn't re-admit a turn against the ceiling;
+ * - refused (`refusedInitialMessage`): the page puts the question back in
+ *   the composer and shows the turn-limit notice.
  */
 
 export interface RefusedInitialMessage {
@@ -15,6 +20,7 @@ export interface RefusedInitialMessage {
 declare module "@tanstack/react-router" {
   interface HistoryState {
     refusedInitialMessage?: RefusedInitialMessage;
+    pendingInitialMessage?: true;
   }
 }
 
@@ -35,3 +41,10 @@ export const readRefusedInitialMessage = (
   if (typeof message !== "string") return null;
   return { prompt, message };
 };
+
+/** Whether `state` says the portal's first question was admitted and waits
+ *  for its answer. */
+export const readPendingInitialMessage = (state: unknown): boolean =>
+  typeof state === "object" &&
+  state !== null &&
+  (state as { pendingInitialMessage?: unknown }).pendingInitialMessage === true;

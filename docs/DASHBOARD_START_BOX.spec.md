@@ -8,7 +8,7 @@ This pins the contract for creating a portal with its first message (core, API, 
 
 1. **D1: the first message rides on create.** `CreatePortalBodySchema` gains an optional `initialMessage`. When it's admitted, the portal and its user row commit in one transaction, and the portal page's stream runs the turn like any other.
 2. **D2: a refusal still creates the portal.** If the turn ceiling refuses the first message, the portal is created without it and the 201 says `initialMessage: { status: "refused", … }`. The portal page seeds its composer with the prompt and shows the existing turn-limit notice.
-3. **D3: a pending turn is resumed on open.** `PortalSession` opens the stream once on load when the newest message is a user row and the caller can write. The server's #504 lock and replay make this safe to repeat.
+3. **D3: the new portal's first question is answered on open.** The launcher opens an admitted create with history state `{ pendingInitialMessage: true }`. `PortalSession` opens the stream once on load only with that state, when the newest message is a user row and the caller can write. The server's #504 lock and replay make this safe to repeat. *Narrowed in the code review (#1137):* resuming any newest user row would re-run an older failed turn on every visit, unadmitted, since a failed turn stores no reply and the stream route doesn't check the ceiling.
 4. **D4: one length limit, 20,000 characters.** `portalMessageField` is used by `initialMessage` and by `SendMessageBodySchema.message`. That tightens `POST /:id/messages`: a message past the limit, or blank after trimming, is now a 400 naming the field.
 5. **D5: the launcher owns every create.** The start box goes through `usePortalLauncher` (shared via `PortalLauncherContext`). The dashboard's own create mutation, `CreatePortalDialog` and Open Portal button go. The header launcher keeps the dialog.
 6. **Discovery's open questions, as resolved on commit:**
@@ -181,7 +181,7 @@ startBox: {
   - **Toast:** only `launch` raises one.
   - **`chooser.serverError`:** set only for the chooser's submit, as today.
   - **`startBox.serverError`:** set only for a start-box submit.
-- **Admitted** (`initialMessage` pending or absent): navigates to `/portals/:id`.
+- **Admitted** (`initialMessage` pending): navigates to `/portals/:id` with history state `{ pendingInitialMessage: true }`. Absent (no first message): navigates plainly.
 - **Refused:** navigates with history state `{ refusedInitialMessage: { prompt, message } }`.
 - One `create` mutation still serves every surface, so a double submit across them sends once.
 - `pending` and `gate` are unchanged.
@@ -197,7 +197,7 @@ Adds `setDraft: (text: string) => void`. It sets the composer's value and moves 
 
 ### Web — `PortalSession` (`apps/web/src/components/PortalSession.component.tsx:367`)
 
-**Resume.** Once the first `portalQuery` success has loaded for a `portalId`, the session checks three things:
+**Resume.** Only when the page opened with `pendingInitialMessage` history state (read once at mount, then cleared with the refused state). Once the first `portalQuery` success has loaded for a `portalId`, the session checks three things:
 - the newest server message has `role === "user"`;
 - the caller has `capabilities.write`;
 - no stream is running.
@@ -318,7 +318,7 @@ Run per package with `npm run test:unit` / `npm run test:integration`, never raw
 
 **`use-portal-launcher.start-box.test.tsx`** (new; `use-portal-launcher.util.test.ts` covers only the pure helpers and mocks nothing). About 5 cases:
 - `startBox.onStart` posts `{ stationId, initialMessage }`;
-- pending navigates to `/portals/:id` with no history state;
+- pending navigates to `/portals/:id` with `pendingInitialMessage` state;
 - refused navigates with `refusedInitialMessage`;
 - a start-box failure sets `startBox.serverError` but not `chooser.serverError`, and raises no toast;
 - a `launch` failure still toasts.

@@ -20,6 +20,14 @@ export const STATION_SEARCH_LIMIT = 10;
  */
 export const DashboardStartBox: React.FC = () => {
   const launcher = usePortalLauncherContext();
+  // The launcher outlives the dashboard, so its last start-box error would
+  // greet the box when the dashboard is opened again (#1137 code review).
+  // The box shows one only after a start from this visit.
+  const [started, setStarted] = useState(false);
+  const handleStart: typeof launcher.startBox.onStart = (body) => {
+    setStarted(true);
+    launcher.startBox.onStart(body);
+  };
 
   const [query, setQuery] = useState("");
   // Cleared at once, so an emptied field never shows an older search.
@@ -62,8 +70,8 @@ export const DashboardStartBox: React.FC = () => {
       initialStationId={station?.id ?? null}
       gate={launcher.gate}
       pending={launcher.pending}
-      serverError={launcher.startBox.serverError}
-      onStart={launcher.startBox.onStart}
+      serverError={started ? launcher.startBox.serverError : null}
+      onStart={handleStart}
       stationSearch={{
         query,
         onQueryChange: setQuery,
