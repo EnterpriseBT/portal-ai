@@ -1,0 +1,136 @@
+/**
+ * #1079: the dashboard's start box, wired to the shell's one launcher and a
+ * station search.
+ */
+import { jest } from "@jest/globals";
+
+import type { ActionGate } from "@portalai/core/ui";
+import type { PortalLauncher } from "../utils/use-portal-launcher.util";
+
+const mockStationsList = jest.fn<
+  (params: unknown, options?: { enabled?: boolean }) => unknown
+>(() => ({ data: undefined, isFetching: false }));
+
+jest.unstable_mockModule("../api/sdk", () => ({
+  sdk: { stations: { list: mockStationsList } },
+}));
+
+const { act, expectNoAxeViolations, render, screen } =
+  await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
+const { DashboardStartBox } =
+  await import("../components/DashboardStartBox.component");
+const { PortalLauncherContext } =
+  await import("../utils/portal-launcher.context");
+
+const onStart = jest.fn();
+const launcherWith = (
+  overrides: Partial<PortalLauncher> = {}
+): PortalLauncher => ({
+  station: { id: "s-last", name: "Ops" },
+  pageStation: null,
+  favoriteStations: [{ id: "s-fav", name: "Finance" }],
+  settling: false,
+  gate: { kind: "allow" } as ActionGate,
+  pending: false,
+  launch: jest.fn(),
+  chooser: {
+    open: false,
+    onOpen: jest.fn(),
+    onClose: jest.fn(),
+    onSubmit: jest.fn(),
+    serverError: null,
+  },
+  startBox: { onStart, serverError: null },
+  ...overrides,
+});
+
+const Box = ({ launcher }: { launcher: PortalLauncher }) => (
+  <PortalLauncherContext.Provider value={launcher}>
+    <DashboardStartBox />
+  </PortalLauncherContext.Provider>
+);
+
+const field = () => screen.getByRole("textbox", { name: "Ask a question" });
+
+beforeEach(() => {
+  onStart.mockReset();
+  mockStationsList.mockClear();
+});
+
+describe("DashboardStartBox (#1079)", () => {
+  it("preselects the launcher's station and starts there", async () => {
+    const { container } = render(<Box launcher={launcherWith()} />);
+    expect(
+      screen.getByRole("button", { name: /^Ops, station/ })
+    ).toBeInTheDocument();
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s-last",
+      initialMessage: "Top accounts",
+    });
+    await expectNoAxeViolations(container);
+  });
+
+  it("keeps a picked station when the recent portals reload", async () => {
+    const { rerender } = render(<Box launcher={launcherWith()} />);
+    await userEvent.click(screen.getByRole("button", { name: /Ops, station/ }));
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /Finance/ })
+    );
+    // The last-used station moves on after a reload.
+    rerender(
+      <Box launcher={launcherWith({ station: { id: "s-new", name: "New" } })} />
+    );
+    expect(
+      screen.getByRole("button", { name: /^Finance, station/ })
+    ).toBeInTheDocument();
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s-fav",
+      initialMessage: "Top accounts",
+    });
+  });
+
+  it("searches stations by the debounced query, only once one is typed", async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({
+        advanceTimers: jest.advanceTimersByTime,
+      });
+      render(<Box launcher={launcherWith()} />);
+      const enabledCalls = () =>
+        mockStationsList.mock.calls.filter(([, options]) => options?.enabled);
+      expect(enabledCalls()).toHaveLength(0);
+
+      await user.click(screen.getByRole("button", { name: /Ops, station/ }));
+      await user.type(
+        await screen.findByRole("textbox", { name: "Search stations" }),
+        "fin"
+      );
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      const [params] = enabledCalls().at(-1)!;
+      expect(params).toEqual(
+        expect.objectContaining({ search: "fin", limit: 10, offset: 0 })
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("shows a start failure in the box", () => {
+    render(
+      <Box
+        launcher={launcherWith({
+          startBox: {
+            onStart,
+            serverError: { message: "Couldn't start", code: "PORTAL_FAILED" },
+          },
+        })}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't start");
+  });
+});

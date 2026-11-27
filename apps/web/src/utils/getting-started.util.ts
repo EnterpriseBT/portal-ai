@@ -44,7 +44,7 @@ export const GETTING_STARTED_STEPS: GettingStartedStep[] = [
   {
     title: "Open a portal",
     description:
-      "Press Open Portal at the top of any page to open a portal session, and ask the assistant a question about your data. On a station's page it opens in that station; elsewhere it uses the station you used last, and its menu lists your favorite stations and Choose station…. Pin any results worth keeping so they're one click away on your dashboard.",
+      "Type a question in the dashboard's start box, pick a station, and press Enter: a portal opens with the assistant already answering. From any other page, Open Portal at the top opens a portal session: on a station's page it opens in that station; elsewhere it uses the station you used last, and its menu lists your favorite stations and Choose station…. Pin any results worth keeping so they're one click away on your dashboard.",
     ctaLabel: "Go to Stations",
     ctaRoute: ApplicationRoute.Stations,
   },

@@ -7,9 +7,9 @@
 | | |
 |---|---|
 | **Product** | Portals AI: the web application and the public marketing site |
-| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14; 2.2.1: #1021; 2.4.11: #1024; 1.4.1, 1.4.11: #1022, walked 2026-11-15; 2.1.1, 2.1.4, 2.4.3, 2.4.5, 4.1.2, 4.1.3: the command palette, #1076, held by its component tests and walked in its smoke; 2.4.5, 4.1.2: the sidebar's Favorites group, a disclosure of links with `aria-expanded` and `aria-current`, #1077, held by its component tests) |
+| **Evaluated build** | `epic/a11y-conformance` at `a590c6cd` (2026-11-13), plus the walks recorded in `docs/A11Y_AUDIT.md`. A row changed since names the fix and re-walk it rests on (1.4.10: #1019; 1.4.12: #1020; both re-measured 2026-11-14; 2.2.1: #1021; 2.4.11: #1024; 1.4.1, 1.4.11: #1022, walked 2026-11-15; 2.1.1, 2.1.4, 2.4.3, 2.4.5, 4.1.2, 4.1.3: the command palette, #1076, held by its component tests and walked in its smoke; 2.4.5, 4.1.2: the sidebar's Favorites group, a disclosure of links with `aria-expanded` and `aria-current`, #1077, held by its component tests; 3.3.1, 4.1.2: the dashboard's start box, whose question error shows after blur or submit with `aria-invalid` and focus, and whose station search is a labelled field above a named menu in a popover, #1079, held by its component tests) |
 | **First release carrying it** | The first production release after epic #791 merges to `main` |
-| **Report date** | 2026-11-26 |
+| **Report date** | 2026-11-27 |
 | **Contact** | support@portalsai.io (accessibility feedback); sales@portalsai.io (procurement and report requests) |
 | **Evidence log** | [`docs/A11Y_AUDIT.md`](A11Y_AUDIT.md): the automated audit history, the keyboard pass (KB-nn), the resize, reflow, text-spacing and orientation pass (RZ-nn), and the screen-reader pass (SR flows) |
 

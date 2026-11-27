@@ -369,7 +369,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Portal",
     category: GlossaryCategory.Analytics,
     definition:
-      "A chat session where you ask questions about the data in a station; the assistant answers using the station's tool packs. A portal is only as good as the data behind it: the assistant answers from the records a station has actually imported, not from general knowledge, so a station with no connected source — or one whose records haven't been imported yet — can only answer in generalities. Ask about one thing at a time, too. A narrow question routes cleanly to the right tool; a compound one gives the assistant several jobs at once and no clear place to start. A portal is private to the person who started it: anyone else sees it only if they've been granted access to portals.",
+      "A chat session where you ask questions about the data in a station; the assistant answers using the station's tool packs. Start one from the dashboard with your first question, or with Open Portal at the top of any page. A portal is only as good as the data behind it: the assistant answers from the records a station has actually imported, not from general knowledge, so a station with no connected source — or one whose records haven't been imported yet — can only answer in generalities. Ask about one thing at a time, too. A narrow question routes cleanly to the right tool; a compound one gives the assistant several jobs at once and no clear place to start. A portal is private to the person who started it: anyone else sees it only if they've been granted access to portals.",
     example:
       'Open a portal on the Sales station and ask, "What was last quarter\'s revenue by region?"',
     relatedTerms: [
