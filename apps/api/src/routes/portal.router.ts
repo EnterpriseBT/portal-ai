@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, inArray, type SQL } from "drizzle-orm";
 
 import {
   PortalListRequestQuerySchema,
@@ -18,7 +18,12 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
-import { portals, portalMessages, portalResults } from "../db/schema/index.js";
+import {
+  portals,
+  portalMessages,
+  portalResults,
+  stations,
+} from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PermissionService } from "../services/permission.service.js";
@@ -30,6 +35,39 @@ import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal" });
 
+/**
+ * #1079: blank `stationName` on each row whose station the caller can't
+ * read in their org (unreadable == absent), or that's deleted: the
+ * repository skips soft-deleted rows. One query for the page's stations.
+ */
+async function withReadableStationNames<
+  T extends { stationId: string; stationName?: string | null },
+>(
+  rows: T[],
+  set: Awaited<ReturnType<typeof PermissionService.loadSet>>,
+  organizationId: string
+): Promise<T[]> {
+  const ids = [...new Set(rows.map((row) => row.stationId))];
+  if (ids.length === 0) return rows;
+  const found = await DbService.repository.stations.findMany(
+    and(eq(stations.organizationId, organizationId), inArray(stations.id, ids))
+  );
+  const readable = new Set(
+    found
+      .filter((station) =>
+        ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "station",
+          station
+        )
+      )
+      .map((station) => station.id)
+  );
+  return rows.map((row) =>
+    readable.has(row.stationId) ? row : { ...row, stationName: null }
+  );
+}
 export const portalRouter = Router();
 
 // ── POST /api/portals ─────────────────────────────────────────────────────
@@ -223,6 +261,12 @@ portalRouter.post(
  *           type: string
  *           enum: ["true"]
  *         description: Only the caller's own portals, even when their grants let them see others'
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *           enum: [station]
+ *         description: "`station` adds each portal's `stationName`: null when the caller can't read the station or it's deleted (#1079)"
  *     responses:
  *       200:
  *         description: Portals retrieved successfully
@@ -301,10 +345,16 @@ portalRouter.get(
         include: include_,
       };
 
-      const [data, total] = await Promise.all([
+      const [rows, total] = await Promise.all([
         DbService.repository.portals.findMany(where, listOpts),
         DbService.repository.portals.count(where),
       ]);
+      // #1079: a list hides what the caller can't read. The join names any
+      // station, so a portal on one the caller can't read (or one that's
+      // deleted) keeps its row without the station's name.
+      const data = include_?.includes("station")
+        ? await withReadableStationNames(rows, set, organizationId)
+        : rows;
 
       return HttpService.success<PortalListResponsePayload>(res, {
         // #688: each row with the caller's capabilities.

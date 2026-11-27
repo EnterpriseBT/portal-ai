@@ -256,7 +256,7 @@ describe("StartBoxUI", () => {
       screen.getByRole("button", { name: "Pick a station" })
     );
     await userEvent.click(
-      await screen.findByRole("menuitem", { name: /Ops Review/ })
+      await screen.findByRole("option", { name: /Ops Review/ })
     );
     // The query moves on and the station drops out of the results.
     rerender(

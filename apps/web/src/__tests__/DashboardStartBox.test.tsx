@@ -79,9 +79,10 @@ beforeEach(() => {
 });
 
 const listedNames = async () => {
-  const menu = await screen.findByRole("menu");
-  return Array.from(menu.querySelectorAll('[role="menuitem"]')).map(
-    (item) => item.querySelector(".MuiListItemText-primary")?.textContent
+  const list = await screen.findByRole("listbox");
+  return Array.from(list.querySelectorAll('[role="option"]')).map(
+    (option) =>
+      option.querySelector("span:not([aria-hidden]):not([hidden])")?.textContent
   );
 };
 
@@ -103,7 +104,7 @@ describe("DashboardStartBox (#1079)", () => {
     const { rerender } = render(<Box launcher={launcherWith()} />);
     await userEvent.click(screen.getByRole("button", { name: /Ops, station/ }));
     await userEvent.click(
-      await screen.findByRole("menuitem", { name: /Finance/ })
+      await screen.findByRole("option", { name: /Finance/ })
     );
     // The last-used station moves on after a reload.
     rerender(
@@ -134,7 +135,7 @@ describe("DashboardStartBox (#1079)", () => {
 
       await user.click(screen.getByRole("button", { name: /Ops, station/ }));
       await user.type(
-        await screen.findByRole("textbox", { name: "Search stations" }),
+        await screen.findByRole("combobox", { name: "Search stations" }),
         "fin"
       );
       act(() => {

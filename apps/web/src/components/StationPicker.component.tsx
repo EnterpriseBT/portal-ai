@@ -5,11 +5,15 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
-import MenuList from "@mui/material/MenuList";
 import Popover from "@mui/material/Popover";
-import TextField from "@mui/material/TextField";
 
-import { Icon, IconName } from "@portalai/core/ui";
+import {
+  Combobox,
+  Icon,
+  IconName,
+  Typography,
+  type ComboboxOption,
+} from "@portalai/core/ui";
 
 /** A station the start box can start a portal in. */
 export interface StationOption {
@@ -53,7 +57,6 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const menuId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
   const open = anchor !== null;
 
   const selected =
@@ -99,29 +102,32 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
   // start box's suggestions).
   const items = <>{listed.map(item)}</>;
 
-  // Status rows: disabled items, so the list still reads as the menu's
-  // content. "Searching…" wins over an empty result while a search runs.
-  const status = !searchingByQuery ? (
-    stations.length === 0 && <MenuItem disabled>No stations yet</MenuItem>
-  ) : search.searching ? (
-    <MenuItem disabled>Searching…</MenuItem>
-  ) : (
-    search.results.length === 0 && (
-      <MenuItem disabled>No stations match</MenuItem>
-    )
-  );
+  // What an empty list says. "Searching…" wins over an empty result while a
+  // search runs.
+  const emptyText = !searchingByQuery
+    ? "No stations yet"
+    : search?.searching
+      ? "Searching…"
+      : "No stations match";
 
-  // A text field can't sit inside role="menu", so with search the field
-  // goes above a MenuList in a popover; ArrowDown moves into the list.
-  const handleSearchKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key !== "ArrowDown") return;
-    const first = listRef.current?.querySelector<HTMLElement>(
-      '[role="menuitem"]:not([aria-disabled="true"])'
-    );
-    if (!first) return;
-    event.preventDefault();
-    first.focus();
-  };
+  // With search, the list is core's Combobox: the same field and options as
+  // the header's command palette (#1079), and the APG combobox pattern a
+  // field above a list needs.
+  const options: (ComboboxOption & { station: StationOption })[] = listed.map(
+    (station) => ({
+      id: station.id,
+      label: station.name,
+      description: station.favorite ? "Favorite" : undefined,
+      onSelect: () => handleSelect(station.id),
+      station,
+    })
+  );
+  const statusText =
+    searchingByQuery && search?.searching
+      ? "Searching…"
+      : options.length === 0
+        ? emptyText
+        : `${options.length} ${options.length === 1 ? "station" : "stations"}`;
 
   return (
     <>
@@ -156,21 +162,38 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
             transition: { onEntered: () => searchRef.current?.focus() },
           }}
         >
-          <TextField
-            size="small"
+          <Combobox
+            options={options}
+            inputValue={search.query}
+            onInputChange={search.onQueryChange}
+            label="Search stations"
             placeholder="Search stations"
-            value={search.query}
-            onChange={(event) => search.onQueryChange(event.target.value)}
-            onKeyDown={handleSearchKeyDown}
+            statusText={statusText}
+            renderOption={({ station }) => (
+              <>
+                <Icon
+                  name={
+                    station.favorite ? IconName.Star : IconName.SatelliteAlt
+                  }
+                  fontSize="small"
+                />
+                <span>{station.name}</span>
+                {/* Read as the option's description, not its name. */}
+                {station.favorite && (
+                  <Typography
+                    component="span"
+                    variant="body2"
+                    color="text.secondary"
+                    aria-hidden
+                  >
+                    Favorite
+                  </Typography>
+                )}
+              </>
+            )}
+            emptyContent={emptyText}
             inputRef={searchRef}
-            slotProps={{ htmlInput: { "aria-label": "Search stations" } }}
-            margin="dense"
-            fullWidth
           />
-          <MenuList ref={listRef} aria-label="Stations">
-            {status}
-            {items}
-          </MenuList>
         </Popover>
       ) : (
         <Menu
@@ -179,7 +202,9 @@ export const StationPickerUI: React.FC<StationPickerUIProps> = ({
           open={open}
           onClose={() => setAnchor(null)}
         >
-          {status}
+          {stations.length === 0 && (
+            <MenuItem disabled>No stations yet</MenuItem>
+          )}
           {items}
         </Menu>
       )}

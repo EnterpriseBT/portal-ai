@@ -571,6 +571,32 @@ describe("Portal Router", () => {
       expect(res.body.payload.portals[0].stationName).toBe("Research Lab");
     });
 
+    it("#1079: names no deleted station when include=station", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId, {
+        name: "Gone Lab",
+        deleted: Date.now(),
+        deletedBy: "SYSTEM_TEST",
+      });
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .get("/api/portals?include=station")
+        .expect(200);
+
+      expect(res.body.payload.portals).toHaveLength(1);
+      expect(res.body.payload.portals[0].stationName).toBeNull();
+    });
+
     it("omits stationName when include is absent", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

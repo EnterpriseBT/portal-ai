@@ -114,7 +114,7 @@ describe("StationPickerUI", () => {
       await userEvent.click(
         screen.getByRole("button", { name: "Pick a station" })
       );
-      return screen.findByRole("menu");
+      return screen.findByRole("dialog", { name: "Pick a station" });
     };
 
     it("lists the loaded stations for an empty query, and reports what's typed", async () => {
@@ -128,9 +128,9 @@ describe("StationPickerUI", () => {
         />
       );
       const menu = await open();
-      expect(within(menu).getAllByRole("menuitem")).toHaveLength(3);
+      expect(within(menu).getAllByRole("option")).toHaveLength(3);
       await userEvent.type(
-        screen.getByRole("textbox", { name: "Search stations" }),
+        screen.getByRole("combobox", { name: "Search stations" }),
         "o"
       );
       expect(onQueryChange).toHaveBeenLastCalledWith("o");
@@ -152,11 +152,13 @@ describe("StationPickerUI", () => {
       );
       const menu = await open();
       const names = within(menu)
-        .getAllByRole("menuitem")
+        .getAllByRole("option")
         .map((item) => item.textContent);
+      // An option's name is its station's (a favorite's star line is read as
+      // its description).
       expect(names).toEqual(["Ops Review"]);
       await userEvent.click(
-        within(menu).getByRole("menuitem", { name: /Ops Review/ })
+        within(menu).getByRole("option", { name: /Ops Review/ })
       );
       expect(onSelect).toHaveBeenCalledWith("s9");
     });
@@ -171,7 +173,7 @@ describe("StationPickerUI", () => {
         />
       );
       await open();
-      expect(screen.getByText("Searching…")).toBeInTheDocument();
+      expect(screen.getAllByText("Searching…").length).toBeGreaterThan(0);
       rerender(
         <StationPickerUI
           stations={STATIONS}
@@ -180,7 +182,9 @@ describe("StationPickerUI", () => {
           search={search({ query: "zz" })}
         />
       );
-      expect(screen.getByText("No stations match")).toBeInTheDocument();
+      expect(screen.getAllByText("No stations match").length).toBeGreaterThan(
+        0
+      );
       expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
     });
 
@@ -208,10 +212,10 @@ describe("StationPickerUI", () => {
       });
       expect(chip).toHaveAttribute("aria-controls", dialog.id);
       expect(
-        within(dialog).getByRole("textbox", { name: "Search stations" })
+        within(dialog).getByRole("combobox", { name: "Search stations" })
       ).toBeInTheDocument();
       await userEvent.click(
-        within(dialog).getByRole("menuitem", { name: /Ops Review/ })
+        within(dialog).getByRole("option", { name: /Ops Review/ })
       );
       expect(onQueryChange).toHaveBeenLastCalledWith("");
 
@@ -230,9 +234,12 @@ describe("StationPickerUI", () => {
           onSelect={jest.fn()}
         />
       );
-      await open();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Pick a station" })
+      );
+      expect(await screen.findByRole("menu")).toBeInTheDocument();
       expect(
-        screen.queryByRole("textbox", { name: "Search stations" })
+        screen.queryByRole("combobox", { name: "Search stations" })
       ).not.toBeInTheDocument();
     });
   });
