@@ -9,6 +9,7 @@ import type { ActionGate } from "@portalai/core/ui";
 
 import { queryKeys, sdk } from "../api/sdk";
 import { toServerError, type ServerError } from "./api.util";
+import { rememberPendingFirstTurn } from "./portal-initial-message.util";
 import { RECENT_PORTALS_PARAMS } from "./portal-launcher.context";
 import { usePortalStation } from "./portal-station.util";
 import { useCreateGate } from "./use-create-gate.util";
@@ -152,7 +153,7 @@ export function usePortalLauncher(): PortalLauncher {
   // it never held (#1075 code review).
   const start = (body: CreatePortalBody, from: LaunchSurface) => {
     setSurface(from);
-    create.mutate(body, {
+    const request = create.mutateAsync(body, {
       invalidate: [queryKeys.portals.root],
       // The chooser and the start box show a failure beside their fields;
       // the main click has nowhere to, so it toasts.
@@ -182,6 +183,18 @@ export function usePortalLauncher(): PortalLauncher {
         });
       },
     });
+    // #1137 adversarial walk: from the request's promise, not onSuccess, so
+    // an admitted question is remembered even when the caller pressed Back
+    // before it answered; its portal answers it on the next visit. A failure
+    // is already the mutation's error.
+    request.then(
+      (data) => {
+        if (data.initialMessage?.status === "pending") {
+          rememberPendingFirstTurn(data.portal.id);
+        }
+      },
+      () => {}
+    );
   };
   const launch = (stationId: string) => start({ stationId }, "launch");
   const onSubmit = (body: CreatePortalBody) => start(body, "chooser");

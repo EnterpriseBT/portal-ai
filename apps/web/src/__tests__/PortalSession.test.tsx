@@ -534,6 +534,8 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     mockGetPortal.mockReset();
     mockSendMessage.mockReset();
     MockEventSource.reset();
+    // #1079: no pending-first-turn mark leaks between tests.
+    sessionStorage.clear();
   });
 
   // #279 — the one test covering the whole chain: a `tool_call` on the wire
@@ -1007,6 +1009,47 @@ describe("PortalSession (container) via PortalSessionUI", () => {
 
     await settle();
     expect(responseStreams()).toHaveLength(0);
+  });
+
+  // #1137 adversarial walk: Back pressed while the start box's create was in
+  // flight. The question was admitted but the portal never opened, so the
+  // first visit after (from Recent portals, no history state) answers it.
+  it("answers an admitted first question on the first visit after leaving mid-start, once", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+    const { rememberPendingFirstTurn, hasPendingFirstTurn } =
+      await import("../utils/portal-initial-message.util");
+    rememberPendingFirstTurn("portal-1");
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    const { unmount } = render(<PortalSession portalId="portal-1" />);
+
+    await waitFor(() => expect(responseStreams()).toHaveLength(1));
+    expect(hasPendingFirstTurn("portal-1")).toBe(false);
+    act(() => {
+      responseStreams()[0].__emit("done", { type: "done", messageId: "m-1" });
+    });
+    unmount();
+
+    // A later visit finds no mark, so a turn that failed isn't re-run.
+    render(<PortalSession portalId="portal-1" />);
+    await settle();
+    expect(responseStreams()).toHaveLength(1);
+  });
+
+  it("doesn't answer on another portal's mark", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+    const { rememberPendingFirstTurn, hasPendingFirstTurn } =
+      await import("../utils/portal-initial-message.util");
+    rememberPendingFirstTurn("portal-2");
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
+    expect(hasPendingFirstTurn("portal-2")).toBe(true);
   });
 
   it("doesn't resume a portal whose newest message is the assistant's", async () => {

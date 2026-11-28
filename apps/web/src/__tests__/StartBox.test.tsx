@@ -54,6 +54,35 @@ describe("StartBoxUI", () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 
+  // #1137 adversarial walk: the dashboard stays on screen until the new
+  // portal's page loads, after the create has answered. A start holds Start
+  // until the box goes or the start fails, so a late click can't make a
+  // second portal.
+  it("holds Start after a start until it fails", async () => {
+    const onStart = jest.fn();
+    const { rerender } = render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledTimes(1);
+    // The create answered: no longer pending, and no error.
+    rerender(<StartBoxUI {...props({ onStart })} />);
+    expect(start()).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(start());
+    await userEvent.type(field(), "{Enter}");
+    expect(onStart).toHaveBeenCalledTimes(1);
+    // A failure lets the user try again.
+    rerender(
+      <StartBoxUI
+        {...props({
+          onStart,
+          serverError: { message: "Couldn't start", code: "PORTAL_FAILED" },
+        })}
+      />
+    );
+    expect(start()).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(start());
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
   it("starts from the Start button", async () => {
     const onStart = jest.fn();
     render(<StartBoxUI {...props({ onStart })} />);

@@ -75,6 +75,12 @@ export const StartBoxUI: React.FC<StartBoxUIProps> = ({
   // station" and is never sent. A pick is kept with its option (#1079): one
   // found by search stays named after the query moves on.
   const [picked, setPicked] = useState<StationOption | null>(null);
+  // #1137 adversarial walk: after the create answers, the dashboard stays on
+  // screen until the new portal's page loads, and dedupe only covers a
+  // request still in flight. So a start holds Start until the box goes or
+  // the start fails; otherwise a late click makes a second portal.
+  const [launched, setLaunched] = useState(false);
+  const holding = pending || (launched && !serverError);
   const known = picked
     ? stations.some((s) => s.id === picked.id)
       ? stations
@@ -106,7 +112,7 @@ export const StartBoxUI: React.FC<StartBoxUIProps> = ({
   const startGate: ActionGate =
     gate && gate.kind !== "allow"
       ? gate
-      : pending
+      : holding
         ? pendingGate(true, "Starting…")
         : !stationId
           ? { kind: "disable", reason: "Pick a station to start" }
@@ -125,6 +131,7 @@ export const StartBoxUI: React.FC<StartBoxUIProps> = ({
       requestAnimationFrame(() => focusFirstInvalidField(form));
       return;
     }
+    setLaunched(true);
     onStart(validation.data);
   };
 

@@ -69,7 +69,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
       create: () => {
         mockCreateHook();
         return {
-          mutate: mockMutate,
+          // The launcher creates through mutateAsync; the request never
+          // settles here.
+          mutateAsync: (...args: unknown[]) => {
+            mockMutate(...args);
+            return new Promise(() => {});
+          },
           reset: mockReset,
           isPending: false,
           error: mockCreateError,

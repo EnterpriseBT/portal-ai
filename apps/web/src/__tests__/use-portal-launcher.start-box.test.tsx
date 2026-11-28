@@ -14,7 +14,14 @@ type MutateOptions = {
 };
 
 let mockCreateError: { message: string; code: string } | null;
-const mockMutate = jest.fn<(body: unknown, options: MutateOptions) => void>();
+// The launcher creates through `mutateAsync`; each call's promise is settled
+// by the test.
+let mockSettle: {
+  resolve: (data: unknown) => void;
+  reject: (e: unknown) => void;
+};
+const mockMutate =
+  jest.fn<(body: unknown, options: MutateOptions) => Promise<unknown>>();
 const mockReset = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -30,7 +37,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portals: {
       list: () => ({ data: { portals: [] }, isPending: false }),
       create: () => ({
-        mutate: mockMutate,
+        mutateAsync: mockMutate,
         reset: mockReset,
         isPending: false,
         error: mockCreateError,
@@ -46,6 +53,8 @@ jest.unstable_mockModule("../utils/use-create-gate.util", () => ({
 
 const { act, render, waitFor } = await import("./test-utils");
 const { usePortalLauncher } = await import("../utils/use-portal-launcher.util");
+const { hasPendingFirstTurn } =
+  await import("../utils/portal-initial-message.util");
 
 let launcher!: PortalLauncher;
 const capture = (value: PortalLauncher) => {
@@ -64,7 +73,14 @@ const lastCall = () => {
 beforeEach(() => {
   mockCreateError = null;
   mockMutate.mockReset();
+  mockMutate.mockImplementation(
+    () =>
+      new Promise((resolve, reject) => {
+        mockSettle = { resolve, reject };
+      })
+  );
   mockReset.mockReset();
+  sessionStorage.clear();
 });
 
 describe("usePortalLauncher startBox (#1079)", () => {
@@ -131,6 +147,51 @@ describe("usePortalLauncher startBox (#1079)", () => {
       prompt: "Top accounts",
       message: "You're sending messages too quickly. Try again in a moment.",
     });
+  });
+
+  // #1137 adversarial walk: Back pressed before the create answered. The
+  // mark is written from the request's promise, so it lands even though the
+  // box is gone, and the portal answers its question when it's next opened.
+  it("remembers an admitted question for its portal, even after the caller leaves", async () => {
+    const { unmount } = render(<Probe />);
+    act(() =>
+      launcher.startBox.onStart({
+        stationId: "s1",
+        initialMessage: "Top accounts",
+      })
+    );
+    unmount();
+    await act(async () =>
+      mockSettle.resolve({
+        portal: { id: "p-9" },
+        initialMessage: { status: "pending" },
+      })
+    );
+    expect(hasPendingFirstTurn("p-9")).toBe(true);
+  });
+
+  it("remembers nothing for a refused question or a failed start", async () => {
+    render(<Probe />);
+    act(() =>
+      launcher.startBox.onStart({ stationId: "s1", initialMessage: "One" })
+    );
+    await act(async () =>
+      mockSettle.resolve({
+        portal: { id: "p-10" },
+        initialMessage: {
+          status: "refused",
+          code: "AGENT_TURN_LIMITED",
+          message: "Limit",
+          retryAfterSeconds: 30,
+        },
+      })
+    );
+    act(() =>
+      launcher.startBox.onStart({ stationId: "s1", initialMessage: "Two" })
+    );
+    await act(async () => mockSettle.reject(new Error("boom")));
+    expect(hasPendingFirstTurn("p-10")).toBe(false);
+    expect(sessionStorage.length).toBe(0);
   });
 
   it("keeps a start-box failure in the box, out of the chooser", () => {

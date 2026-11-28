@@ -26,6 +26,8 @@ import { sdk, queryKeys } from "../api/sdk";
 import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
 import {
+  forgetPendingFirstTurn,
+  hasPendingFirstTurn,
   readPendingInitialMessage,
   readRefusedInitialMessage,
 } from "../utils/portal-initial-message.util";
@@ -458,12 +460,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   // #1079: a portal the start box created arrives with its first question's
   // outcome in history state (admitted, or refused by the turn ceiling). Read
-  // once, at mount: the effect below clears it.
+  // once, at mount: the effect below clears it. An admitted question whose
+  // portal never opened (Back pressed mid-start) is found by its session
+  // mark instead, on the next visit (#1137 adversarial walk).
   const [refusedDraft] = useState(() =>
     readRefusedInitialMessage(location.state)
   );
-  const [pendingFirstTurn] = useState(() =>
-    readPendingInitialMessage(location.state)
+  const [pendingFirstTurn] = useState(
+    () =>
+      readPendingInitialMessage(location.state) || hasPendingFirstTurn(portalId)
   );
 
   // #498: an AGENT_TURN_LIMITED send denial surfaces inline (never the
@@ -490,13 +495,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   useEffect(() => {
     if (!refusedDraft && !pendingFirstTurn) return;
     if (refusedDraft) chatRef.current?.setDraft(refusedDraft.prompt);
+    // Read once: a later visit never resumes it again.
+    forgetPendingFirstTurn(portalId);
     const {
       refusedInitialMessage: _refused,
       pendingInitialMessage: _pending,
       ...state
     } = router.history.location.state;
     router.history.replace(router.history.location.href, state);
-  }, [refusedDraft, pendingFirstTurn, router]);
+  }, [refusedDraft, pendingFirstTurn, router, portalId]);
 
   // On session open: scroll to the target message (if opened from a pinned
   // result) or to the bottom of the feed. Runs once per portalId + first
