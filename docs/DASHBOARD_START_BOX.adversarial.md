@@ -83,7 +83,10 @@ Steps tagged `— backend` are API, Redis or DB probes outside the browser (send
 
 | Probe | Observed | Severity | Disposition |
 |---|---|---|---|
-| _(filled during the walk; empty when every probe held)_ | | low / med / high | fixed-in-PR / waived: <reason> |
+| §3 Double submit: a Start click after the create answered, before the dashboard unmounted | Each late click made another portal and spent another turn (4 clicks, 4 portals) | med | fixed-in-PR (`49724f2a`): the box holds Start from a start until it unmounts or fails; re-walked, 8 late clicks sent 1 request |
+| §3 Back during a pending start | Portal created and turn counted, but its question was never answered, then or on a later visit | med | fixed-in-PR (`49724f2a`): the launcher marks the portal in session storage from the create's promise and the portal page answers it once on the next visit in that tab; re-walked, answered once, nothing on reload. Other tabs and a closed tab still lose it |
+| §6 Forced resume via history state | A stream runs a pending row with no turn counted | low | waived: pre-existing in the stream route (recorded in the code review); only on the caller's own portal |
+| §6 Refused portal reloaded | The seeded question is lost after a reload | low | waived: accepted, no turn is spent and nothing breaks |
 
 ## Sign-off
 
