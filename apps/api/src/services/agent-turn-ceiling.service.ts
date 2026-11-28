@@ -91,6 +91,18 @@ export class AgentTurnCeilingService {
     }
   }
 
+  /**
+   * The user-facing refusal for a denied admission, shared by the send and
+   * create routes so both read the same (#1079).
+   */
+  static refusalMessage(
+    denial: Extract<TurnAdmission, { allowed: false }>
+  ): string {
+    return denial.window === "day"
+      ? "You've reached your plan's agent-turn limit for today. It resets at midnight UTC."
+      : "You're sending messages too quickly. Try again in a moment.";
+  }
+
   private static deny(
     organizationId: string,
     window: "minute" | "day",

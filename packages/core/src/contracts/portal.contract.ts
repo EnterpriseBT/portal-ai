@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { nameField } from "./text-limits.contract.js";
+import { nameField, portalMessageField } from "./text-limits.contract.js";
 
 import { withCapabilities } from "./capabilities.contract.js";
 
@@ -111,16 +111,47 @@ export type PortalGetResponsePayload = z.infer<
 // ── Create ────────────────────────────────────────────────────────────
 
 // #745: an unknown key is a 400 naming it, not silently dropped.
+// #1079: `initialMessage` starts the portal with its first message; without
+// it, a create is exactly what it was.
 export const CreatePortalBodySchema = z
   .object({
     stationId: z.string().min(1),
+    initialMessage: portalMessageField("Initial message").optional(),
   })
   .strict();
 
 export type CreatePortalBody = z.infer<typeof CreatePortalBodySchema>;
 
+/** The dashboard start box's form (#1079): a create with both fields
+ *  required, in the box's own words. */
+export const StartPortalBodySchema = z
+  .object({
+    stationId: z.string().min(1, "Pick a station"),
+    initialMessage: portalMessageField("Question"),
+  })
+  .strict();
+
+export type StartPortalBody = z.infer<typeof StartPortalBodySchema>;
+
+/** What became of a create's first message (#1079). `refused` means the
+ *  agent-turn ceiling declined it: the portal exists without the message, so
+ *  the caller can offer it again once the window passes. */
+export const InitialMessageOutcomeSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending") }),
+  z.object({
+    status: z.literal("refused"),
+    code: z.literal("AGENT_TURN_LIMITED"),
+    message: z.string(),
+    retryAfterSeconds: z.number().int().nonnegative(),
+  }),
+]);
+
+export type InitialMessageOutcome = z.infer<typeof InitialMessageOutcomeSchema>;
+
 export const PortalCreateResponsePayloadSchema = z.object({
   portal: PortalSchema,
+  /** Present only when the body carried `initialMessage`. */
+  initialMessage: InitialMessageOutcomeSchema.optional(),
 });
 
 export type PortalCreateResponsePayload = z.infer<
@@ -132,7 +163,8 @@ export type PortalCreateResponsePayload = z.infer<
 // #745: an unknown key is a 400 naming it, not silently dropped.
 export const SendMessageBodySchema = z
   .object({
-    message: z.string().min(1),
+    // #1079: the same limit as a create's first message.
+    message: portalMessageField("Message"),
   })
   .strict();
 

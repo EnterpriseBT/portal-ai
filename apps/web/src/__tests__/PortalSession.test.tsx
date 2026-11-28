@@ -534,6 +534,8 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     mockGetPortal.mockReset();
     mockSendMessage.mockReset();
     MockEventSource.reset();
+    // #1079: no pending-first-turn mark leaks between tests.
+    sessionStorage.clear();
   });
 
   // #279 — the one test covering the whole chain: a `tool_call` on the wire
@@ -893,8 +895,12 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     // Upgrade CTA for a non-pro tier; composer stays enabled.
     expect(screen.getByText("View plans")).toBeInTheDocument();
     expect(input).toBeEnabled();
-    // The optimistic message was rolled back.
-    expect(screen.queryByText("One too many")).not.toBeInTheDocument();
+    // The optimistic message was rolled back, and its text is back in the
+    // composer to send again (#1137 code review).
+    expect(
+      screen.queryByTestId("portal-session-empty")
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(input).toHaveValue("One too many"));
   });
 
   it("a non-turn-limit send failure does NOT render the notice", async () => {
@@ -939,5 +945,240 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     expect(
       await screen.findByText("You don't have permission to edit this portal.")
     ).toBeInTheDocument();
+  });
+
+  // ── #1079 — resume a pending first turn, hold a refused one ─────────
+
+  const responseStreams = () =>
+    MockEventSource.instances.filter((es) => es.url.includes("/stream"));
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 50)));
+  const pendingTurn = () => ({
+    ...makeQueryResult([
+      makeMessage({
+        id: "msg-u",
+        role: "user",
+        blocks: [{ type: "text", content: "How many orders shipped?" }],
+      }),
+    ]),
+    // `done` refetches the portal, which makeQueryResult doesn't stub.
+    refetch: jest.fn(async () => ({})),
+  });
+
+  const justCreated = {
+    initialEntry: "/portals/portal-1",
+    initialState: { pendingInitialMessage: true },
+  };
+
+  it("answers the first question of a portal the start box just created, once, even after a refetch", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    const { rerender, router } = render(
+      <PortalSession portalId="portal-1" />,
+      justCreated
+    );
+
+    await waitFor(() => expect(responseStreams()).toHaveLength(1));
+    // The turn ends, so nothing is streaming any more...
+    act(() => {
+      responseStreams()[0].__emit("done", { type: "done", messageId: "m-1" });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled()
+    );
+    // ...and a refetch hands back a fresh result whose newest row is still
+    // the user's. The session doesn't open a second stream for it.
+    rerender(<PortalSession portalId="portal-1" />);
+    await settle();
+    expect(responseStreams()).toHaveLength(1);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    // The mark is gone, so Back and Forward don't answer it again.
+    expect(router.history.location.state.pendingInitialMessage).toBeUndefined();
+  });
+
+  // #1137 code review: a failed turn stores no reply, so its question stays
+  // the newest row. Re-running it on every visit would call the model
+  // without the turn ceiling's admission.
+  it("doesn't re-run an older unanswered question when a portal is opened", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
+  });
+
+  // #1137 adversarial walk: Back pressed while the start box's create was in
+  // flight. The question was admitted but the portal never opened, so the
+  // first visit after (from Recent portals, no history state) answers it.
+  it("answers an admitted first question on the first visit after leaving mid-start, once", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+    const { rememberPendingFirstTurn, hasPendingFirstTurn } =
+      await import("../utils/portal-initial-message.util");
+    rememberPendingFirstTurn("portal-1");
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    const { unmount } = render(<PortalSession portalId="portal-1" />);
+
+    await waitFor(() => expect(responseStreams()).toHaveLength(1));
+    expect(hasPendingFirstTurn("portal-1")).toBe(false);
+    act(() => {
+      responseStreams()[0].__emit("done", { type: "done", messageId: "m-1" });
+    });
+    unmount();
+
+    // A later visit finds no mark, so a turn that failed isn't re-run.
+    render(<PortalSession portalId="portal-1" />);
+    await settle();
+    expect(responseStreams()).toHaveLength(1);
+  });
+
+  it("doesn't answer on another portal's mark", async () => {
+    mockGetPortal.mockImplementation(pendingTurn);
+    const { rememberPendingFirstTurn, hasPendingFirstTurn } =
+      await import("../utils/portal-initial-message.util");
+    rememberPendingFirstTurn("portal-2");
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
+    expect(hasPendingFirstTurn("portal-2")).toBe(true);
+  });
+
+  it("doesn't resume a portal whose newest message is the assistant's", async () => {
+    mockGetPortal.mockReturnValue(
+      makeQueryResult([
+        makeMessage({ id: "msg-u", role: "user", created: 1 }),
+        makeMessage({ id: "msg-a", role: "assistant", created: 2 }),
+      ])
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />, justCreated);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
+  });
+
+  it("doesn't resume for a caller who can only read the portal", async () => {
+    const result = pendingTurn();
+    result.data!.portal.capabilities = {
+      read: true,
+      write: false,
+      delete: false,
+    };
+    mockGetPortal.mockReturnValue(result);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />, justCreated);
+
+    await settle();
+    expect(responseStreams()).toHaveLength(0);
+  });
+
+  const refusedState = {
+    refusedInitialMessage: {
+      prompt: "How many orders shipped?",
+      message: "You're sending messages too quickly. Try again in a moment.",
+    },
+  };
+
+  it("puts a refused first question in the composer and shows the turn-limit notice", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockUsageData.mockReturnValue({ tier: { tier: "standard" } });
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />, {
+      initialEntry: "/portals/portal-1",
+      initialState: refusedState,
+    });
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    await waitFor(() => expect(input).toHaveValue("How many orders shipped?"));
+    expect(
+      screen.getByText(refusedState.refusedInitialMessage.message)
+    ).toBeInTheDocument();
+    expect(screen.getByText("View plans")).toBeInTheDocument();
+    expect(responseStreams()).toHaveLength(0);
+  });
+
+  it("clears the refused question from history, so Back and Forward don't bring it back", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    const { router } = render(<PortalSession portalId="portal-1" />, {
+      initialEntry: "/portals/portal-1",
+      initialState: refusedState,
+    });
+
+    await waitFor(() =>
+      expect(
+        router.history.location.state.refusedInitialMessage
+      ).toBeUndefined()
+    );
+    expect(router.history.location.pathname).toBe("/portals/portal-1");
+  });
+
+  it("clears the notice when the refused question is sent again", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockSendMessage.mockResolvedValue(undefined);
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />, {
+      initialEntry: "/portals/portal-1",
+      initialState: refusedState,
+    });
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    await waitFor(() => expect(input).toHaveValue("How many orders shipped?"));
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() =>
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        message: "How many orders shipped?",
+      })
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText(refusedState.refusedInitialMessage.message)
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  // #1137 code review: a message over the 20,000-character limit is refused
+  // with a 400; the composer was cleared on submit, so the text comes back.
+  it("puts a refused message back in the composer", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockSendMessage.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Invalid portal payload: message: Message must be 20000 characters or fewer"
+        ),
+        { code: "PORTAL_INVALID_PAYLOAD", status: 400 }
+      )
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "A very long table" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => expect(mockSendMessage).toHaveBeenCalled());
+    await waitFor(() => expect(input).toHaveValue("A very long table"));
   });
 });

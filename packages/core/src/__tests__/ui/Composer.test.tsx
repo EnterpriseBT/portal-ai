@@ -56,4 +56,50 @@ describe("Composer", () => {
       "aria-describedby"
     );
   });
+
+  // #1079: a field error shows under the frame and describes the field.
+  it("shows an error, marks the field invalid and describes it", async () => {
+    const { container } = render(
+      <Composer
+        aria-label="Ask a question"
+        description="Enter to start"
+        value={"a".repeat(10)}
+        onChange={() => undefined}
+        error="Question must be 20000 characters or fewer"
+      />
+    );
+    const field = screen.getByRole("textbox", { name: "Ask a question" });
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription(
+      "Enter to start Question must be 20000 characters or fewer"
+    );
+    expect(
+      screen.getByText("Question must be 20000 characters or fewer")
+    ).toBeVisible();
+    await expectNoAxeViolations(container);
+  });
+
+  it("is valid with no error, and never truncates with maxLength", () => {
+    render(
+      <Composer aria-label="Prompt" value="" onChange={() => undefined} />
+    );
+    const field = screen.getByRole("textbox", { name: "Prompt" });
+    expect(field).not.toHaveAttribute("aria-invalid", "true");
+    expect(field).not.toHaveAttribute("maxlength");
+  });
+
+  it("reports a blur, so a form can mark the field touched (#1079)", async () => {
+    const onBlur = jest.fn();
+    render(
+      <Composer
+        aria-label="Prompt"
+        value=""
+        onChange={() => undefined}
+        onBlur={onBlur}
+      />
+    );
+    await userEvent.click(screen.getByRole("textbox", { name: "Prompt" }));
+    await userEvent.tab();
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
 });

@@ -6,12 +6,14 @@ import {
   EMAIL_MAX_LENGTH,
   KEY_MAX_LENGTH,
   NAME_MAX_LENGTH,
+  PORTAL_MESSAGE_MAX_LENGTH,
   clipToLength,
   descriptionField,
   emailField,
   keyField,
   nameField,
   planTextLimitIssues,
+  portalMessageField,
   tooLongMessage,
 } from "../../contracts/text-limits.contract.js";
 import type { LayoutPlan } from "../../contracts/spreadsheet-parsing.contract.js";
@@ -213,6 +215,34 @@ describe("text limits (#801)", () => {
           message: "Normalized key must be 58 characters or fewer",
         },
       ]);
+    });
+  });
+
+  describe("portalMessageField (#1079)", () => {
+    it("pins the limit", () => {
+      expect(PORTAL_MESSAGE_MAX_LENGTH).toBe(20_000);
+    });
+
+    it("trims the message", () => {
+      expect(portalMessageField().parse("  hi there \n")).toBe("hi there");
+    });
+
+    it("rejects an empty or whitespace-only message", () => {
+      expect(firstMessage(portalMessageField().safeParse(""))).toBe(
+        "Message is required"
+      );
+      expect(
+        firstMessage(portalMessageField("Question").safeParse(" \n\t "))
+      ).toBe("Question is required");
+    });
+
+    it("accepts exactly the limit and rejects one more", () => {
+      expect(portalMessageField().safeParse("a".repeat(20_000)).success).toBe(
+        true
+      );
+      expect(
+        firstMessage(portalMessageField().safeParse("a".repeat(20_001)))
+      ).toBe("Message must be 20000 characters or fewer");
     });
   });
 });

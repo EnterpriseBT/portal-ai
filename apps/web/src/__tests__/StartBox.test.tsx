@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 
 import type { StartBoxUIProps } from "../components/StartBox.component";
 
-const { expectNoAxeViolations, render, screen } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, within } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { StartBoxUI } = await import("../components/StartBox.component");
 
@@ -40,8 +41,8 @@ describe("StartBoxUI", () => {
     await userEvent.type(field(), "  Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s1",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -53,14 +54,43 @@ describe("StartBoxUI", () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 
+  // #1137 adversarial walk: the dashboard stays on screen until the new
+  // portal's page loads, after the create has answered. A start holds Start
+  // until the box goes or the start fails, so a late click can't make a
+  // second portal.
+  it("holds Start after a start until it fails", async () => {
+    const onStart = jest.fn();
+    const { rerender } = render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledTimes(1);
+    // The create answered: no longer pending, and no error.
+    rerender(<StartBoxUI {...props({ onStart })} />);
+    expect(start()).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(start());
+    await userEvent.type(field(), "{Enter}");
+    expect(onStart).toHaveBeenCalledTimes(1);
+    // A failure lets the user try again.
+    rerender(
+      <StartBoxUI
+        {...props({
+          onStart,
+          serverError: { message: "Couldn't start", code: "PORTAL_FAILED" },
+        })}
+      />
+    );
+    expect(start()).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(start());
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
   it("starts from the Start button", async () => {
     const onStart = jest.fn();
     render(<StartBoxUI {...props({ onStart })} />);
     await userEvent.type(field(), "Top accounts");
     await userEvent.click(start());
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s1",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -89,8 +119,8 @@ describe("StartBoxUI", () => {
     );
     await userEvent.click(start());
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s2",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -125,8 +155,8 @@ describe("StartBoxUI", () => {
     rerender(<StartBoxUI {...props({ onStart, initialStationId: "s1" })} />);
     await userEvent.type(field(), "Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledWith({
-      prompt: "Top accounts",
       stationId: "s2",
+      initialMessage: "Top accounts",
     });
   });
 
@@ -184,5 +214,113 @@ describe("StartBoxUI", () => {
       "Ask anything about your data…"
     );
     expect(screen.queryByText("Try:")).not.toBeInTheDocument();
+  });
+
+  // ── #1079: validation, and a station found by search ───────────────
+
+  const LONG = "a".repeat(20_001);
+  const TOO_LONG = "Question must be 20000 characters or fewer";
+
+  it("refuses a question over the limit, says why and focuses it", async () => {
+    const onStart = jest.fn();
+    render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    await userEvent.click(start());
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(field()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(TOO_LONG)).toBeInTheDocument();
+    expect(field()).toHaveFocus();
+    // Kept, never cut, so nothing typed is lost.
+    expect(field()).toHaveValue(LONG);
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("shows the limit only once the field is left or submitted", async () => {
+    render(<StartBoxUI {...props()} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    expect(screen.queryByText(TOO_LONG)).not.toBeInTheDocument();
+    expect(field()).not.toHaveAttribute("aria-invalid", "true");
+
+    await userEvent.tab();
+    expect(screen.getByText(TOO_LONG)).toBeInTheDocument();
+  });
+
+  it("clears the error once the question fits again", async () => {
+    const onStart = jest.fn();
+    render(<StartBoxUI {...props({ onStart })} />);
+    await userEvent.click(field());
+    await userEvent.paste(LONG);
+    await userEvent.click(start());
+    await userEvent.clear(field());
+    await userEvent.type(field(), "Top accounts");
+    expect(screen.queryByText(TOO_LONG)).not.toBeInTheDocument();
+    await userEvent.click(start());
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s1",
+      initialMessage: "Top accounts",
+    });
+  });
+
+  it("starts in a station found by search, and keeps it named", async () => {
+    const onStart = jest.fn();
+    const onQueryChange = jest.fn();
+    const found = { id: "s9", name: "Ops Review", favorite: false };
+    const { rerender } = render(
+      <StartBoxUI
+        {...props({
+          onStart,
+          initialStationId: null,
+          stationSearch: {
+            query: "ops",
+            onQueryChange,
+            results: [found],
+            searching: false,
+          },
+        })}
+      />
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Pick a station" })
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: /Ops Review/ })
+    );
+    // The query moves on and the station drops out of the results.
+    rerender(
+      <StartBoxUI
+        {...props({
+          onStart,
+          initialStationId: null,
+          stationSearch: {
+            query: "",
+            onQueryChange,
+            results: [],
+            searching: false,
+          },
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /Ops Review, station/ })
+    ).toBeInTheDocument();
+    // Reopened, it's listed under its own heading after the suggestions.
+    await userEvent.click(
+      screen.getByRole("button", { name: /Ops Review, station/ })
+    );
+    const selected = await screen.findByRole("group", {
+      name: "Selected station",
+    });
+    expect(
+      within(selected).getByRole("option", { name: /Ops Review/ })
+    ).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.type(field(), "Top accounts{Enter}");
+    expect(onStart).toHaveBeenCalledWith({
+      stationId: "s9",
+      initialMessage: "Top accounts",
+    });
   });
 });

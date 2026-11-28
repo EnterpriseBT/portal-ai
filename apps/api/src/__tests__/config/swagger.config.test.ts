@@ -9,6 +9,9 @@ import {
   ApiEndpointWireSchema,
   ColumnBindingSchema,
   CreateApiEndpointRequestBodySchema,
+  CreatePortalBodySchema,
+  InitialMessageOutcomeSchema,
+  SendMessageBodySchema,
   DeleteApiEndpointResponsePayloadSchema,
   DiscoverColumnsRequestBodySchema,
   DiscoverColumnsResultSchema,
@@ -897,5 +900,62 @@ describe("swagger spec — map tile routes document the busy 503 (#698)", () => 
       | undefined;
     expect(busy).toBeDefined();
     expect(busy?.headers?.["Retry-After"]).toBeDefined();
+  });
+});
+
+describe("swagger spec — portal create and send (#1079)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const schemas = spec.components?.schemas ?? {};
+  type Op = {
+    requestBody?: { content: Record<string, { schema: unknown }> };
+    responses?: Record<
+      string,
+      {
+        headers?: Record<string, unknown>;
+        content?: Record<string, { schema: unknown }>;
+      }
+    >;
+  };
+  const op = (path: string) =>
+    (spec.paths?.[path] as { post?: Op } | undefined)?.post;
+
+  it("registers the request bodies and the first message's outcome", () => {
+    expect(schemas.CreatePortalBody).toEqual(
+      z.toJSONSchema(CreatePortalBodySchema, {
+        unrepresentable: "any" as const,
+      })
+    );
+    expect(schemas.SendMessageBody).toEqual(
+      z.toJSONSchema(SendMessageBodySchema, { unrepresentable: "any" as const })
+    );
+    expect(schemas.InitialMessageOutcome).toEqual(
+      z.toJSONSchema(InitialMessageOutcomeSchema, {
+        unrepresentable: "any" as const,
+      })
+    );
+  });
+
+  it("POST /api/portals takes CreatePortalBody and answers the outcome in its 201", () => {
+    const create = op("/api/portals");
+    expect(create?.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/CreatePortalBody",
+    });
+    const body = create?.responses?.["201"]?.content?.["application/json"]
+      ?.schema as {
+      properties: {
+        payload: { properties: Record<string, unknown> };
+      };
+    };
+    expect(body.properties.payload.properties.initialMessage).toEqual({
+      $ref: "#/components/schemas/InitialMessageOutcome",
+    });
+  });
+
+  it("POST /api/portals/{id}/messages takes SendMessageBody and documents its 429", () => {
+    const send = op("/api/portals/{id}/messages");
+    expect(send?.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/SendMessageBody",
+    });
+    expect(send?.responses?.["429"]?.headers?.["Retry-After"]).toBeDefined();
   });
 });

@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, inArray, type SQL } from "drizzle-orm";
 
 import {
   PortalListRequestQuerySchema,
@@ -18,7 +18,12 @@ import { invalidPayload } from "../utils/zod-issue.util.js";
 import { DbService } from "../services/db.service.js";
 import { ObjectAccessService } from "../services/object-access.service.js";
 import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
-import { portals, portalMessages, portalResults } from "../db/schema/index.js";
+import {
+  portals,
+  portalMessages,
+  portalResults,
+  stations,
+} from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalAccessService } from "../services/portal-access.service.js";
 import { PermissionService } from "../services/permission.service.js";
@@ -30,6 +35,39 @@ import type { Request } from "../types/request.js";
 
 const logger = createLogger({ module: "portal" });
 
+/**
+ * #1079: blank `stationName` on each row whose station the caller can't
+ * read in their org (unreadable == absent), or that's deleted: the
+ * repository skips soft-deleted rows. One query for the page's stations.
+ */
+async function withReadableStationNames<
+  T extends { stationId: string; stationName?: string | null },
+>(
+  rows: T[],
+  set: Awaited<ReturnType<typeof PermissionService.loadSet>>,
+  organizationId: string
+): Promise<T[]> {
+  const ids = [...new Set(rows.map((row) => row.stationId))];
+  if (ids.length === 0) return rows;
+  const found = await DbService.repository.stations.findMany(
+    and(eq(stations.organizationId, organizationId), inArray(stations.id, ids))
+  );
+  const readable = new Set(
+    found
+      .filter((station) =>
+        ObjectAccessService.readableInOrg(
+          set,
+          organizationId,
+          "station",
+          station
+        )
+      )
+      .map((station) => station.id)
+  );
+  return rows.map((row) =>
+    readable.has(row.stationId) ? row : { ...row, stationName: null }
+  );
+}
 export const portalRouter = Router();
 
 // ── POST /api/portals ─────────────────────────────────────────────────────
@@ -41,7 +79,12 @@ export const portalRouter = Router();
  *     tags:
  *       - Portals
  *     summary: Create a portal
- *     description: Creates a new portal session for the given station. The station must have at least one tool pack configured.
+ *     description: >-
+ *       Creates a new portal session for the given station. The station must have at least one tool pack configured.
+ *       An `initialMessage` is the portal's first question (#1079). After the station checks it's admitted against the
+ *       agent-turn ceiling, and when admitted it's stored with the portal in one transaction, so the portal page's stream
+ *       answers it. A refused message still creates the portal: the 201 carries `initialMessage.status: refused` with the
+ *       reason and no message is stored.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -49,12 +92,7 @@ export const portalRouter = Router();
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [stationId]
- *             properties:
- *               stationId:
- *                 type: string
- *                 description: ID of the station to open a portal for
+ *             $ref: '#/components/schemas/CreatePortalBody'
  *     responses:
  *       201:
  *         description: Portal created successfully
@@ -75,9 +113,15 @@ export const portalRouter = Router();
  *                       type: object
  *                       additionalProperties: true
  *                     portal:
- *                       $ref: '#/components/schemas/Portal'
+ *                       type: object
+ *                       required: [id]
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                     initialMessage:
+ *                       $ref: '#/components/schemas/InitialMessageOutcome'
  *       400:
- *         description: Invalid payload (PORTAL_INVALID_PAYLOAD) or station has no tool packs (PORTAL_STATION_NO_TOOLS)
+ *         description: Invalid payload (PORTAL_INVALID_PAYLOAD, including a blank or over-long initialMessage) or station has no tool packs (PORTAL_STATION_NO_TOOLS). Nothing is written and no turn is counted
  *         content:
  *           application/json:
  *             schema:
@@ -112,7 +156,7 @@ portalRouter.post(
       }
 
       const { organizationId, userId } = req.application!.metadata;
-      const { stationId } = parsed.data;
+      const { stationId, initialMessage } = parsed.data;
 
       // #685: a portal opens only on a station the caller can read
       // (unreadable == absent), and creating one is an owned write.
@@ -137,6 +181,7 @@ portalRouter.post(
         stationId,
         organizationId,
         userId,
+        initialMessage,
       });
 
       logger.info(
@@ -159,6 +204,11 @@ portalRouter.post(
           // #1100: the caller's identity is for the prompt; it isn't part
           // of this response (JSON drops the undefined key).
           stationContext: { ...result.stationContext, caller: undefined },
+          // #1079: a refused first message is still a 201 (the portal was
+          // created), so it carries no Retry-After header.
+          ...(result.initialMessage && {
+            initialMessage: result.initialMessage,
+          }),
         },
         201
       );
@@ -211,6 +261,12 @@ portalRouter.post(
  *           type: string
  *           enum: ["true"]
  *         description: Only the caller's own portals, even when their grants let them see others'
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *           enum: [station]
+ *         description: "`station` adds each portal's `stationName`: null when the caller can't read the station or it's deleted (#1079)"
  *     responses:
  *       200:
  *         description: Portals retrieved successfully
@@ -289,10 +345,16 @@ portalRouter.get(
         include: include_,
       };
 
-      const [data, total] = await Promise.all([
+      const [rows, total] = await Promise.all([
         DbService.repository.portals.findMany(where, listOpts),
         DbService.repository.portals.count(where),
       ]);
+      // #1079: a list hides what the caller can't read. The join names any
+      // station, so a portal on one the caller can't read (or one that's
+      // deleted) keeps its row without the station's name.
+      const data = include_?.includes("station")
+        ? await withReadableStationNames(rows, set, organizationId)
+        : rows;
 
       return HttpService.success<PortalListResponsePayload>(res, {
         // #688: each row with the caller's capabilities.
@@ -545,12 +607,7 @@ portalRouter.delete(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [message]
- *             properties:
- *               message:
- *                 type: string
- *                 example: What is the average revenue per customer?
+ *             $ref: '#/components/schemas/SendMessageBody'
  *     responses:
  *       200:
  *         description: Message persisted, streaming started
@@ -580,6 +637,14 @@ portalRouter.delete(
  *         description: The caller can read the portal but not change it (#685)
  *       404:
  *         description: Portal not found, or not readable by the caller (#685, portals are per-user, `PORTAL_NOT_FOUND`); or its station is deleted or no longer readable by the caller (#699, `STATION_NOT_FOUND`). Nothing is written
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       429:
+ *         description: The org's agent-turn ceiling refused the turn (AGENT_TURN_LIMITED). Nothing is written
+ *         headers:
+ *           Retry-After: { description: Seconds until the ceiling's window resets, schema: { type: integer } }
  *         content:
  *           application/json:
  *             schema:
@@ -826,9 +891,7 @@ portalRouter.post(
           new ApiError(
             429,
             ApiCode.AGENT_TURN_LIMITED,
-            admission.window === "day"
-              ? "You've reached your plan's agent-turn limit for today. It resets at midnight UTC."
-              : "You're sending messages too quickly. Try again in a moment."
+            AgentTurnCeilingService.refusalMessage(admission)
           )
         );
       }

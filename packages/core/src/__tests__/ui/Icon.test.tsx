@@ -59,4 +59,27 @@ describe("Icon Component", () => {
     const { container } = render(<Icon name={IconName.Home} />);
     await expectNoAxeViolations(container);
   });
+
+  // #1079: a filled star always means a favorite, so it's the brand yellow
+  // (palette.favorite) everywhere unless a caller says otherwise.
+  describe("the favorite star", () => {
+    it("is the favorite colour by default", () => {
+      render(<Icon name={IconName.Star} data-testid="star" />);
+      expect(screen.getByTestId("star")).toHaveClass(
+        "MuiSvgIcon-colorFavorite"
+      );
+    });
+
+    it("keeps a colour the caller passes", () => {
+      render(<Icon name={IconName.Star} color="primary" data-testid="star" />);
+      expect(screen.getByTestId("star")).toHaveClass("MuiSvgIcon-colorPrimary");
+    });
+
+    it("leaves the unstarred outline neutral", () => {
+      render(<Icon name={IconName.StarBorder} data-testid="outline" />);
+      expect(screen.getByTestId("outline")).not.toHaveClass(
+        "MuiSvgIcon-colorFavorite"
+      );
+    });
+  });
 });

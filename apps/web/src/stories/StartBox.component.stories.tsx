@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { fn } from "@storybook/test";
+import { expect, fn, userEvent, within } from "@storybook/test";
 
 import { StartBoxUI } from "../components/StartBox.component";
 import { STATIONS } from "./dashboard-fixtures";
@@ -44,6 +44,33 @@ export const Upsell: Story = {
       kind: "upsell",
       reason: "Your plan's portal sessions are used up for this period",
       onUpgrade: fn(),
+    },
+  },
+};
+
+/** #1079: a question over the 20,000-character message limit is refused on
+ *  Start, shown under the field and kept, never cut. */
+export const QuestionTooLong: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = canvas.getByRole("textbox", { name: "Ask a question" });
+    await userEvent.click(field);
+    await userEvent.paste("a".repeat(20_001));
+    await userEvent.click(canvas.getByRole("button", { name: "Start" }));
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(args.onStart).not.toHaveBeenCalled();
+  },
+};
+
+/** #1079: the picker searches every station the caller can see. */
+export const WithStationSearch: Story = {
+  args: {
+    initialStationId: null,
+    stationSearch: {
+      query: "",
+      onQueryChange: fn(),
+      results: [],
+      searching: false,
     },
   },
 };

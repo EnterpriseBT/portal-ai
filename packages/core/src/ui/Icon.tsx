@@ -147,7 +147,12 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
       case IconName.Favorite:
         return <FavoriteIcon ref={ref} {...props} />;
       case IconName.Star:
-        return <StarIcon ref={ref} {...props} />;
+        // #1079: a filled star always marks a favorite, so it's the brand
+        // yellow (palette.favorite, held at 3:1 in both themes) unless the
+        // caller passes a colour. The unstarred outline stays neutral.
+        return (
+          <StarIcon ref={ref} {...props} color={props.color ?? "favorite"} />
+        );
       case IconName.StarBorder:
         return <StarBorderIcon ref={ref} {...props} />;
       case IconName.Check:

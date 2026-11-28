@@ -121,7 +121,7 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
     symptom: "The assistant says I've reached my turn limit",
     cause:
       "Your plan allows a set number of assistant turns per minute and per day, and that limit has been reached.",
-    fix: "Wait for the limit to reset (the message says when), or upgrade your plan under Settings → Billing for a higher limit.",
+    fix: "Wait for the limit to reset (the message says when), or upgrade your plan under Settings → Billing for a higher limit. A question you started from the dashboard isn't lost: the portal is still created, and the question waits in its message box with the limit's notice above it. Send it once the limit resets.",
     related: [
       {
         surface: "faq",
@@ -133,6 +133,8 @@ export const TROUBLESHOOTING_ENTRIES: TroubleshootingEntry[] = [
       "too many messages",
       "rate limit",
       "message limit reached",
+      "portal opened without an answer",
+      "my question didn't send",
     ],
   },
   {

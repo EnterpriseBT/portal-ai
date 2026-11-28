@@ -1,5 +1,7 @@
+import React from "react";
 import { jest } from "@jest/globals";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -9,6 +11,7 @@ import {
 import {
   ChatWindowUI,
   CHAT_INPUT_PLACEHOLDER,
+  type ChatWindowHandle,
 } from "../components/ChatWindow.component";
 import { useScrollRoot } from "../utils/scroll-root.context";
 
@@ -484,5 +487,24 @@ describe("ChatWindowUI focus on mount (#793)", () => {
     const box = screen.getByRole("textbox", { name: "Message" });
     await new Promise((r) => setTimeout(r, 100));
     expect(box).not.toHaveFocus();
+  });
+});
+
+// #1079: a question the turn limit refused on create comes back into the
+// composer, ready to send again.
+describe("ChatWindowUI setDraft (#1079)", () => {
+  it("fills the composer and focuses it with the caret at the end", async () => {
+    const ref = React.createRef<ChatWindowHandle>();
+    render(<ChatWindowUI ref={ref} {...createProps()} />);
+
+    act(() => ref.current!.setDraft("How many orders shipped?"));
+
+    const box = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    expect(box).toHaveValue("How many orders shipped?");
+    await waitFor(() => expect(box).toHaveFocus());
+    expect(box.selectionStart).toBe("How many orders shipped?".length);
+    expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled();
   });
 });

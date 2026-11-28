@@ -49,7 +49,14 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { organizations, stations, portals, portalMessages, tiers } = schema;
+const {
+  organizations,
+  stations,
+  stationToolpacks,
+  portals,
+  portalMessages,
+  tiers,
+} = schema;
 
 const now = Date.now();
 
@@ -68,6 +75,7 @@ describe("agent-turn ceiling gate (#498)", () => {
   let db!: ReturnType<typeof drizzle>;
   let organizationId!: string;
   let portalId!: string;
+  let stationId!: string;
   const tierSlug = `turn-gate-${generateId().slice(0, 8)}`;
 
   beforeAll(async () => {
@@ -116,12 +124,26 @@ describe("agent-turn ceiling gate (#498)", () => {
       .set({ tier: tierSlug } as never)
       .where(eq(organizations.id, organizationId));
 
-    const stationId = generateId();
+    stationId = generateId();
     await db.insert(stations).values({
       id: stationId,
       organizationId,
       name: "Turn Gate Station",
       description: null,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+
+    // #1079: a create needs a tool pack; the send route doesn't read it.
+    await db.insert(stationToolpacks).values({
+      id: generateId(),
+      stationId,
+      builtinSlug: "data_query",
+      organizationToolpackId: null,
       created: now,
       createdBy: "SYSTEM_TEST",
       updated: null,
@@ -188,5 +210,49 @@ describe("agent-turn ceiling gate (#498)", () => {
       .from(portalMessages)
       .where(eq(portalMessages.portalId, portalId));
     expect(afterSecond).toHaveLength(1);
+  });
+
+  // #1079: a create carrying the first question is gated like a send, but a
+  // refusal still creates the portal (201) and writes no message.
+  it("admits the first create-with-message and refuses the second with the send route's text", async () => {
+    // A later minute than case 8's, so its two turns don't count here.
+    const instant = Date.now() + 5 * MINUTE_MS;
+    jest.spyOn(Date, "now").mockReturnValue(instant);
+    const retryAfter = Math.ceil((MINUTE_MS - (instant % MINUTE_MS)) / 1000);
+
+    const first = await request(app)
+      .post("/api/portals")
+      .send({ stationId, initialMessage: "first question" });
+    expect(first.status).toBe(201);
+    expect(first.body.payload.initialMessage).toEqual({ status: "pending" });
+    const admitted = await db
+      .select()
+      .from(portalMessages)
+      .where(eq(portalMessages.portalId, first.body.payload.portal.id));
+    expect(admitted).toHaveLength(1);
+
+    const second = await request(app)
+      .post("/api/portals")
+      .send({ stationId, initialMessage: "second question, same minute" });
+    expect(second.status).toBe(201);
+    expect(second.headers["retry-after"]).toBeUndefined();
+    expect(second.body.payload.initialMessage).toEqual({
+      status: "refused",
+      code: ApiCode.AGENT_TURN_LIMITED,
+      message: "You're sending messages too quickly. Try again in a moment.",
+      retryAfterSeconds: retryAfter,
+    });
+    const refused = await db
+      .select()
+      .from(portalMessages)
+      .where(eq(portalMessages.portalId, second.body.payload.portal.id));
+    expect(refused).toHaveLength(0);
+
+    // The same words the send route answers with in the same window.
+    const send = await request(app)
+      .post(`/api/portals/${portalId}/messages`)
+      .send({ message: "a send in the same minute" });
+    expect(send.status).toBe(429);
+    expect(send.body.message).toBe(second.body.payload.initialMessage.message);
   });
 });

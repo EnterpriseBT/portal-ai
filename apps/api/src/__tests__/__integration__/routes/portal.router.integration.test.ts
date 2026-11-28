@@ -50,6 +50,9 @@ jest.unstable_mockModule("../../../services/analytics.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { AgentTurnCeilingService } =
+  await import("../../../services/agent-turn-ceiling.service.js");
+const { DbService } = await import("../../../services/db.service.js");
 const { stations, stationToolpacks, portals, portalMessages, portalResults } =
   schema;
 
@@ -225,6 +228,160 @@ describe("Portal Router", () => {
       expect(res.body.message).toBe(
         'Invalid portal payload: Unrecognized key: "stationID"'
       );
+    });
+
+    // #1079: the first question rides on create.
+    describe("with an initialMessage (#1079)", () => {
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      const portalsOf = (organizationId: string) =>
+        (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(portals)
+          .where(eq(portals.organizationId, organizationId));
+
+      const messagesOf = (portalId: string) =>
+        (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(portalMessages)
+          .where(eq(portalMessages.portalId, portalId));
+
+      it("creates the portal with one trimmed user row and answers pending", async () => {
+        const { organizationId, userId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+        const station = createStation(organizationId);
+        await insertStation(db as ReturnType<typeof drizzle>, station);
+
+        const res = await request(app)
+          .post("/api/portals")
+          .send({
+            stationId: station.id,
+            initialMessage: "  What was Q3 revenue?  ",
+          })
+          .expect(201);
+
+        expect(res.body.payload.initialMessage).toEqual({ status: "pending" });
+        expect(res.headers["retry-after"]).toBeUndefined();
+        const messages = await messagesOf(res.body.payload.portal.id);
+        expect(messages).toHaveLength(1);
+        expect(messages[0].role).toBe("user");
+        expect(messages[0].createdBy).toBe(userId);
+        expect(messages[0].organizationId).toBe(organizationId);
+        expect(messages[0].blocks).toEqual([
+          { type: "text", content: "What was Q3 revenue?" },
+        ]);
+      });
+
+      it("without one, answers no initialMessage and writes no message", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+        const station = createStation(organizationId);
+        await insertStation(db as ReturnType<typeof drizzle>, station);
+        const admission = jest.spyOn(AgentTurnCeilingService, "checkAdmission");
+
+        const res = await request(app)
+          .post("/api/portals")
+          .send({ stationId: station.id })
+          .expect(201);
+
+        expect(res.body.payload).not.toHaveProperty("initialMessage");
+        expect(await messagesOf(res.body.payload.portal.id)).toHaveLength(0);
+        // No question, no turn: the ceiling isn't consulted.
+        expect(admission).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["a blank", "   ", "Initial message is required"],
+        [
+          "an over-limit",
+          "x".repeat(20_001),
+          "Initial message must be 20000 characters or fewer",
+        ],
+      ])(
+        "%s initialMessage is a 400 naming it, with no portal",
+        async (_label, initialMessage, message) => {
+          const { organizationId } = await seedUserAndOrg(
+            db as ReturnType<typeof drizzle>,
+            AUTH0_ID
+          );
+          const station = createStation(organizationId);
+          await insertStation(db as ReturnType<typeof drizzle>, station);
+
+          const res = await request(app)
+            .post("/api/portals")
+            .send({ stationId: station.id, initialMessage })
+            .expect(400);
+
+          expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+          expect(res.body.message).toBe(
+            `Invalid portal payload: initialMessage: ${message}`
+          );
+          expect(await portalsOf(organizationId)).toHaveLength(0);
+        }
+      );
+
+      it("a station with no tool packs is a 400 that consumes no turn", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+        const station = createStation(organizationId);
+        await insertStation(db as ReturnType<typeof drizzle>, station, {
+          toolPacks: [],
+        });
+        const admission = jest.spyOn(AgentTurnCeilingService, "checkAdmission");
+
+        const res = await request(app)
+          .post("/api/portals")
+          .send({ stationId: station.id, initialMessage: "Hello" })
+          .expect(400);
+
+        expect(res.body.code).toBe(ApiCode.PORTAL_STATION_NO_TOOLS);
+        expect(admission).not.toHaveBeenCalled();
+        expect(await portalsOf(organizationId)).toHaveLength(0);
+      });
+
+      it("an unknown station is a 404 that consumes no turn", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+        const admission = jest.spyOn(AgentTurnCeilingService, "checkAdmission");
+
+        const res = await request(app)
+          .post("/api/portals")
+          .send({ stationId: generateId(), initialMessage: "Hello" })
+          .expect(404);
+
+        expect(res.body.code).toBe(ApiCode.STATION_NOT_FOUND);
+        expect(admission).not.toHaveBeenCalled();
+        expect(await portalsOf(organizationId)).toHaveLength(0);
+      });
+
+      it("a failed message insert leaves no portal behind", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+        const station = createStation(organizationId);
+        await insertStation(db as ReturnType<typeof drizzle>, station);
+        jest
+          .spyOn(DbService.repository.portalMessages, "create")
+          .mockRejectedValue(new Error("insert failed"));
+
+        await request(app)
+          .post("/api/portals")
+          .send({ stationId: station.id, initialMessage: "Hello" })
+          .expect(500);
+
+        expect(await portalsOf(organizationId)).toHaveLength(0);
+      });
     });
   });
 
@@ -412,6 +569,32 @@ describe("Portal Router", () => {
 
       expect(res.body.payload.portals).toHaveLength(1);
       expect(res.body.payload.portals[0].stationName).toBe("Research Lab");
+    });
+
+    it("#1079: names no deleted station when include=station", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId, {
+        name: "Gone Lab",
+        deleted: Date.now(),
+        deletedBy: "SYSTEM_TEST",
+      });
+      await insertStation(db as ReturnType<typeof drizzle>, station);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .get("/api/portals?include=station")
+        .expect(200);
+
+      expect(res.body.payload.portals).toHaveLength(1);
+      expect(res.body.payload.portals[0].stationName).toBeNull();
     });
 
     it("omits stationName when include is absent", async () => {
@@ -965,6 +1148,20 @@ describe("Portal Router", () => {
         .expect(400);
       expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
       expect(res.body.message).toMatch(/^Invalid message payload: /);
+    });
+
+    // #1079: the send route shares the portal message limit.
+    it("returns 400 naming Message when it's over the limit", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/portals/${generateId()}/messages`)
+        .send({ message: "x".repeat(20_001) })
+        .expect(400);
+      expect(res.body.code).toBe(ApiCode.PORTAL_INVALID_PAYLOAD);
+      expect(res.body.message).toBe(
+        "Invalid message payload: message: Message must be 20000 characters or fewer"
+      );
     });
   });
 });

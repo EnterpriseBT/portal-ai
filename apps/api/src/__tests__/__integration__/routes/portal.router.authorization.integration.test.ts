@@ -399,4 +399,48 @@ describe("Portal authorization (#685)", () => {
     const created = await live(ok.body.payload.portalId as string);
     expect(created?.createdBy).toBe(fx.memberId);
   });
+
+  // #1079: a list hides what the caller can't read. A portal of their own on
+  // a station they can no longer read keeps its row but not the station's
+  // name, so the start box never suggests a station that would 404.
+  it("include=station names only the stations the caller can read", async () => {
+    const ownerStation = await station(fx.orgId, fx.ownerId);
+    const onOwners = generateId();
+    await db.insert(portals).values({
+      id: onOwners,
+      organizationId: fx.orgId,
+      stationId: ownerStation,
+      name: "On the owner's station",
+      lastOpened: null,
+      ...base(fx.memberId),
+    } as never);
+    const onOwn = await portal(fx.orgId, fx.memberId, "On their own");
+
+    currentSub = MEMBER_SUB;
+    const res = await request(app).get("/api/portals?include=station");
+    expect(res.status).toBe(200);
+    const byId = new Map(
+      (
+        res.body.payload.portals as Array<{
+          id: string;
+          stationName: string | null;
+        }>
+      ).map((p) => [p.id, p.stationName])
+    );
+    expect(byId.get(onOwners)).toBeNull();
+    expect(byId.get(onOwn)).toMatch(/^Station /);
+
+    // The owner reads their own station's name on their own portal.
+    currentSub = OWNER_SUB;
+    const ownerPortal = await portal(fx.orgId, fx.ownerId, "Owner's");
+    const owners = await request(app).get("/api/portals?include=station");
+    expect(
+      (
+        owners.body.payload.portals as Array<{
+          id: string;
+          stationName: string | null;
+        }>
+      ).find((p) => p.id === ownerPortal)?.stationName
+    ).toMatch(/^Station /);
+  });
 });

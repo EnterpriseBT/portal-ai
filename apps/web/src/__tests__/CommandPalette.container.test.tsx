@@ -117,6 +117,7 @@ const launcher = {
     onSubmit: jest.fn(),
     serverError: null,
   },
+  startBox: { onStart: jest.fn(), serverError: null },
 };
 
 const auth = {

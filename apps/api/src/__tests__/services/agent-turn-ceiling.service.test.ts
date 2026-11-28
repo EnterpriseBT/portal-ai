@@ -142,3 +142,29 @@ it("a minute-window pass still increments the day window before the day check", 
   expect(admission).toMatchObject({ allowed: false, window: "day" });
   expect(mockIncrementFixedWindow).toHaveBeenCalledTimes(2);
 });
+
+// ── refusalMessage (#1079) ───────────────────────────────────────────
+
+it("refusalMessage names the day window's reset", () => {
+  expect(
+    AgentTurnCeilingService.refusalMessage({
+      allowed: false,
+      window: "day",
+      limit: 9,
+      retryAfterSeconds: 3600,
+    })
+  ).toBe(
+    "You've reached your plan's agent-turn limit for today. It resets at midnight UTC."
+  );
+});
+
+it("refusalMessage asks the caller to slow down on the minute window", () => {
+  expect(
+    AgentTurnCeilingService.refusalMessage({
+      allowed: false,
+      window: "minute",
+      limit: 1,
+      retryAfterSeconds: 30,
+    })
+  ).toBe("You're sending messages too quickly. Try again in a moment.");
+});

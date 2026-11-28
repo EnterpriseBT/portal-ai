@@ -431,8 +431,9 @@ export const SettingsView = () => {
                           {
                             label: "Subscription Tier",
                             value: formatTierName(tier.tier),
+                            // Not a star: a star always marks a favorite.
                             icon: (
-                              <Icon name={IconName.Star} fontSize="small" />
+                              <Icon name={IconName.Layers} fontSize="small" />
                             ),
                           },
                           {

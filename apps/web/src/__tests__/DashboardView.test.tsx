@@ -1,12 +1,11 @@
 import { jest } from "@jest/globals";
 
-const { expectNoAxeViolations, render, screen, fireEvent } =
-  await import("./test-utils");
+const { expectNoAxeViolations, render, screen } = await import("./test-utils");
 const { DashboardViewUI } = await import("../views/Dashboard.view");
 
 // Pure UI: the parts that fetch come in as nodes from the container.
 const defaultUIProps = {
-  onNewPortal: jest.fn(),
+  startBox: <form aria-label="Start a portal" />,
   healthCheck: <span>API connected — dev (local)</span>,
   recentPortals: <p>recent portals body</p>,
   pinnedResults: <p>pinned results body</p>,
@@ -52,9 +51,6 @@ describe("DashboardViewUI", () => {
     ]) {
       expect(screen.queryByRole("heading", { name })).not.toBeInTheDocument();
     }
-    expect(
-      screen.queryByRole("form", { name: "Start a portal" })
-    ).not.toBeInTheDocument();
   });
 
   it("does not render a default-station line", () => {
@@ -62,10 +58,25 @@ describe("DashboardViewUI", () => {
     expect(screen.queryByText(/Default station/i)).not.toBeInTheDocument();
   });
 
-  it("calls onNewPortal when the header's Open Portal is clicked", () => {
-    const onNewPortal = jest.fn();
-    render(<DashboardViewUI {...defaultUIProps} onNewPortal={onNewPortal} />);
-    fireEvent.click(screen.getByRole("button", { name: /Open Portal/i }));
-    expect(onNewPortal).toHaveBeenCalled();
+  // #1079: the start box replaces the dashboard's own Open Portal; the
+  // header's launcher stays the shell's.
+  it("has no Open Portal of its own", () => {
+    render(<DashboardViewUI {...defaultUIProps} />);
+    expect(
+      screen.queryByRole("button", { name: /Open Portal/i })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("puts the start box in the workbench's start slot, under the h1", () => {
+    render(<DashboardViewUI {...defaultUIProps} />);
+    const form = screen.getByRole("form", { name: "Start a portal" });
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(
+      h1.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("workbench-recent-and-tags")
+    ).not.toContainElement(form);
   });
 });

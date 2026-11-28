@@ -1,14 +1,12 @@
 import React, { useState, useCallback } from "react";
 
-import type { CreatePortalBody } from "@portalai/core/contracts";
-import { Button, Icon, IconName, PageSection, Stack } from "@portalai/core/ui";
+import { Icon, IconName, PageSection, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 
+import { DashboardStartBox } from "../components/DashboardStartBox.component";
 import { DashboardRecentPortals } from "../components/DashboardRecentPortals.component";
 import { DashboardWorkbenchUI } from "../components/DashboardWorkbench.component";
 import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
-import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
@@ -18,7 +16,8 @@ import { useToast } from "../utils/toast.context";
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
 export interface DashboardViewUIProps {
-  onNewPortal: () => void;
+  /** The start box (#1079), in the workbench's start slot. */
+  startBox: React.ReactNode;
   /** The API health check, shown under the title. */
   healthCheck: React.ReactNode;
   /** The Recent portals body (its container fetches). */
@@ -28,30 +27,22 @@ export interface DashboardViewUIProps {
 }
 
 /**
- * The dashboard on the workbench layout (#1078). The header keeps Open Portal
- * until #1079's start box takes the `start` slot, and Pinned Results stays a
- * section of its own after the workbench until #1081's favorite pin tiles
- * take the `pins` slot. Later children fill the other slots. Pure: the
- * container hands in each part that fetches.
+ * The dashboard on the workbench layout (#1078). The start box (#1079) is
+ * how a portal starts here; the header's launcher stays the shell's. Pinned
+ * Results stays a section of its own after the workbench until #1081's
+ * favorite pin tiles take the `pins` slot. Later children fill the other
+ * slots. Pure: the container hands in each part that fetches.
  */
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
-  onNewPortal,
+  startBox,
   healthCheck,
   recentPortals,
   pinnedResults,
 }) => (
   <Stack spacing={4}>
     <DashboardWorkbenchUI
-      headerAction={
-        <Button
-          variant="contained"
-          startIcon={<Icon name={IconName.Portal} />}
-          onClick={onNewPortal}
-        >
-          Open Portal
-        </Button>
-      }
       headerContent={healthCheck}
+      start={startBox}
       recent={recentPortals}
     />
     <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
@@ -64,34 +55,8 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 
 export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const toast = useToast();
   const removeMutation = sdk.portalResults.remove();
-
-  // ── Create portal ───────────────────────────────────────────
-  const [createOpen, setCreateOpen] = useState(false);
-  const createMutation = sdk.portals.create();
-
-  const handleNewPortal = useCallback(() => {
-    setCreateOpen(true);
-  }, []);
-
-  const handleCreateClose = useCallback(() => {
-    setCreateOpen(false);
-  }, []);
-
-  const handleCreateSubmit = useCallback(
-    (body: CreatePortalBody) => {
-      createMutation.mutate(body, {
-        invalidate: [queryKeys.portals.root],
-        onSuccess: (data) => {
-          handleCreateClose();
-          navigate({ to: `/portals/${data.portal.id}` });
-        },
-      });
-    },
-    [createMutation, handleCreateClose, navigate]
-  );
 
   // ── Delete portal ───────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -148,23 +113,12 @@ export const DashboardView: React.FC = () => {
   return (
     <>
       <DashboardViewUI
-        onNewPortal={handleNewPortal}
+        startBox={<DashboardStartBox />}
         healthCheck={<HealthCheck showLabel />}
         recentPortals={
           <DashboardRecentPortals onDeletePortal={handleDeletePortal} />
         }
         pinnedResults={<PinnedResultsListConnected onUnpin={handleUnpin} />}
-      />
-
-      <CreatePortalDialog
-        open={createOpen}
-        onClose={() => {
-          createMutation.reset();
-          handleCreateClose();
-        }}
-        onSubmit={handleCreateSubmit}
-        isPending={createMutation.isPending}
-        serverError={toServerError(createMutation.error)}
       />
 
       <DeletePortalDialog

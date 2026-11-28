@@ -19,6 +19,9 @@ const mockFindById_organization = jest
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
+    // #1079: createPortal writes the portal (and a first message) in one
+    // transaction; the repo mocks stand in for the transaction's client.
+    transaction: <R>(fn: (tx: unknown) => Promise<R>) => fn("tx"),
     repository: {
       stations: { findById: mockFindById_station },
       stationToolpacks: { findByStationId: mockFindByStationId_toolpacks },
