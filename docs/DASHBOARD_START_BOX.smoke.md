@@ -54,7 +54,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 - [ ] With the search empty, up to **five** stations are listed under up to three headings, in this order:
   - **"Recent stations"**: the stations of your latest portals, newest first;
   - **"Favorite stations"**: your starred stations not already listed;
-  - **"New stations"**: the org's newest stations, filling up to five.
+  - **"More stations"**: the org's newest stations, filling up to five.
 
   Each station appears once.
 - [ ] A favorite's star is the **brand yellow**, in this list and elsewhere: the header's Open Portal menu, the sidebar's Favorites, a station page's favorite toggle and the favorites filter chip. An unstarred outline stays grey. `— manual` for the visual judgment.

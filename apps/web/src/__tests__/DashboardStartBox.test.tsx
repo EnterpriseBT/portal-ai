@@ -208,7 +208,7 @@ describe("DashboardStartBox (#1079)", () => {
       expect(await listedGroups()).toEqual([
         { group: "Recent stations", names: ["Alpha", "Beta"] },
         { group: "Favorite stations", names: ["Finance"] },
-        { group: "New stations", names: ["Newest", "Newer"] },
+        { group: "More stations", names: ["Newest", "Newer"] },
       ]);
       expect(mockPortalsList).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -259,7 +259,7 @@ describe("DashboardStartBox (#1079)", () => {
       expect(await listedGroups()).toEqual([
         { group: "Recent stations", names: ["Old"] },
         {
-          group: "New stations",
+          group: "More stations",
           names: [
             "Station 1",
             "Station 2",

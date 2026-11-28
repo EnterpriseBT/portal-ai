@@ -11,7 +11,7 @@ export const PICKED_STATION_GROUP = "Selected station";
 export const STATION_SUGGESTION_GROUPS = {
   recent: "Recent stations",
   favorite: "Favorite stations",
-  newest: "New stations",
+  newest: "More stations",
 } as const;
 
 const GROUP_ORDER: string[] = [
@@ -27,7 +27,7 @@ type NamedStation = { id: string; name: string };
  * grouped by why each is listed, as the header's Open Portal menu groups:
  * 1. "Recent stations": those of the caller's most recently opened portals;
  * 2. "Favorite stations": their favorites;
- * 3. "New stations": the org's newest stations.
+ * 3. "More stations": the org's newest stations.
  *
  * Each station is listed once, under the first group it falls in (a
  * favorite that's also recent sits under Recent, still starred), and at most

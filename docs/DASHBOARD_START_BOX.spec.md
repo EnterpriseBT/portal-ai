@@ -254,7 +254,7 @@ Without `search` it renders exactly as today, so its stories and tests still pas
 
   | `StartBoxUI` prop | Value |
   |---|---|
-  | `stations` | Up to 5 suggestions (`utils/start-box-stations.util.ts`, added before smoke at the user's request): the stations of the caller's latest portals (`portals.list` `mine`, `lastOpened` desc, `include=station`), then favorites, then the newest stations (`stations.list` `created` desc), each once, grouped under "Recent stations", "Favorite stations" and "New stations"; plus `launcher.station` when it isn't among them, in its group. The picker's search is core `Combobox`, which renders the group headings; search results are ungrouped |
+  | `stations` | Up to 5 suggestions (`utils/start-box-stations.util.ts`, added before smoke at the user's request): the stations of the caller's latest portals (`portals.list` `mine`, `lastOpened` desc, `include=station`), then favorites, then the newest stations (`stations.list` `created` desc), each once, grouped under "Recent stations", "Favorite stations" and "More stations"; plus `launcher.station` when it isn't among them, in its group. The picker's search is core `Combobox`, which renders the group headings; search results are ungrouped |
   | `initialStationId` | `launcher.station?.id ?? null` |
   | `gate` | `launcher.gate` |
   | `pending` | `launcher.pending` |
@@ -369,7 +369,7 @@ Run per package with `npm run test:unit` / `npm run test:integration`, never raw
 - [ ] With the org over its agent-turn limit, starting from the box still creates the portal and opens it with the question in its composer and the turn-limit notice showing.
 - [ ] A blank question can't be started, and one over 20,000 characters shows a field error and isn't sent. The API refuses either with `400 PORTAL_INVALID_PAYLOAD` naming the field, on create and on send.
 - [ ] Creating a portal without `initialMessage` behaves as today, so the header chooser, the palette and the station launchers are unchanged.
-- [ ] The chip preselects the most recent portal's station. An empty search suggests up to five stations under "Recent stations", "Favorite stations" and "New stations"; typing searches every readable station. It never offers an unreadable station (`include=station` names only readable stations), and keeps a station the user picked. A favorite's star is the brand yellow.
+- [ ] The chip preselects the most recent portal's station. An empty search suggests up to five stations under "Recent stations", "Favorite stations" and "More stations"; typing searches every readable station. It never offers an unreadable station (`include=station` names only readable stations), and keeps a station the user picked. A favorite's star is the brand yellow.
 - [ ] A create failure shows inline in the box and keeps the prompt. A caller who can't create portals sees Start's gate reason.
 - [ ] The dashboard has no Open Portal button or dialog of its own. The header's Open Portal still opens the chooser.
 - [ ] `POST /api/portals` and `POST /api/portals/:id/messages` are documented in Swagger with the new fields.
