@@ -2,7 +2,8 @@ import { jest } from "@jest/globals";
 
 import type { StartBoxUIProps } from "../components/StartBox.component";
 
-const { expectNoAxeViolations, render, screen } = await import("./test-utils");
+const { expectNoAxeViolations, render, screen, within } =
+  await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { StartBoxUI } = await import("../components/StartBox.component");
 
@@ -276,6 +277,17 @@ describe("StartBoxUI", () => {
     expect(
       screen.getByRole("button", { name: /Ops Review, station/ })
     ).toBeInTheDocument();
+    // Reopened, it's listed under its own heading after the suggestions.
+    await userEvent.click(
+      screen.getByRole("button", { name: /Ops Review, station/ })
+    );
+    const selected = await screen.findByRole("group", {
+      name: "Selected station",
+    });
+    expect(
+      within(selected).getByRole("option", { name: /Ops Review/ })
+    ).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
     await userEvent.type(field(), "Top accounts{Enter}");
     expect(onStart).toHaveBeenCalledWith({
       stationId: "s9",

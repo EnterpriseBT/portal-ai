@@ -29,6 +29,7 @@ import {
   validateWithSchema,
   type FormErrors,
 } from "../utils/form-validation.util";
+import { PICKED_STATION_GROUP } from "../utils/start-box-stations.util";
 
 export interface StartBoxUIProps {
   stations: StationOption[];
@@ -77,7 +78,7 @@ export const StartBoxUI: React.FC<StartBoxUIProps> = ({
   const known = picked
     ? stations.some((s) => s.id === picked.id)
       ? stations
-      : [...stations, picked]
+      : [...stations, { ...picked, group: PICKED_STATION_GROUP }]
     : stations;
   const candidate = picked?.id ?? initialStationId;
   const stationId = known.some((s) => s.id === candidate) ? candidate : null;

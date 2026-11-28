@@ -59,7 +59,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 - [ ] A favorite's star is the **brand yellow**, in this list and elsewhere: the header's Open Portal menu, the sidebar's Favorites, a station page's favorite toggle and the favorites filter chip. An unstarred outline stays grey. `— manual` for the visual judgment.
 - [ ] The search field and the options sit **inset from the popup's edges** (16px), as in the header's Open Portal menu. `— manual`
 - [ ] Type the first few letters of a station that isn't suggested. After a short pause the list shows only matching stations, ungrouped (or "Searching…", then the matches). A query that matches nothing shows "No stations match".
-- [ ] Pick a station found by search. The chip shows its name, and the popup closes. Reopen the chip: the search is empty and the suggestions are back.
+- [ ] Pick a station found by search. The chip shows its name, and the popup closes. Reopen the chip: the search is empty, the suggestions are back, and the picked station is listed last under **"Selected station"** (when it isn't already suggested).
 - [ ] Press Escape in the popup: it closes and focus returns to the chip.
 - [ ] Settings → Billing: the "Subscription Tier" line uses a layers icon, not a star.
 - [ ] `— backend` Unreadable stations are never suggested. As the e2e **member** (`e2e:use member`), have a portal of your own on a station you can no longer read: create a portal on a station shared with you, then remove the share. On `/dashboard`:

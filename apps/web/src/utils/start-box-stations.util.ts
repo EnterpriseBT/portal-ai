@@ -4,6 +4,10 @@ import type { StationOption } from "../components/StationPicker.component";
 export const SUGGESTED_STATIONS_LIMIT = 5;
 
 /** The suggestion groups' headings, in the order they're listed. */
+/** The heading a station picked from search sits under when it isn't among
+ *  the suggestions, so the list still says why it's there. Listed last. */
+export const PICKED_STATION_GROUP = "Selected station";
+
 export const STATION_SUGGESTION_GROUPS = {
   recent: "Recent stations",
   favorite: "Favorite stations",
