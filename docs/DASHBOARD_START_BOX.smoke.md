@@ -20,7 +20,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 ### Fixtures
 
 - [ ] The `e2e-fixture` org (`npm run --workspace @portalai/e2e e2e:seed`) with at least these stations:
-  - **My Station**, the seeded default station (has data and the `data_query` pack);
+  - **Playground**, provisioned with every org since #848 (has data and the `data_query` pack). `e2e:seed` reuses an existing org by name, so an `e2e-fixture` org seeded before 2026-11-17 has no Playground: it still has the old **My Station**. Use that in its place, or delete the org and re-seed;
   - **one favorite station** (star it from Stations);
   - **at least two other stations**, so the suggestions have something to group.
 - [ ] At least one portal you opened earlier, so "Recent stations" has an entry. Open any portal once if there's none.
@@ -42,9 +42,9 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 - [ ] The dashboard has **no Open Portal button of its own** in its header, and no Open Portal dialog. The app header's Open Portal split button is still there.
 - [ ] The chip is preselected with the station of your most recently opened portal. Its accessible name is "<station>, station. Change station".
 - [ ] With the field empty, Start is `aria-disabled` and described "Type a question to start".
-- [ ] Pick **My Station** in the chip. Type **"How many records are in this station?"** and press **Enter** (1 turn).
+- [ ] Pick **Playground** in the chip. Type **"How many records are in this station?"** and press **Enter** (1 turn).
 - [ ] You land on `/portals/<id>`. The question is the first message (right-aligned, as the caller's). The typing indicator appears, then the assistant streams an answer, without you pressing anything else.
-- [ ] Recent portals on the dashboard lists the new portal first, with "My Station" as its station.
+- [ ] Recent portals on the dashboard lists the new portal first, with "Playground" as its station.
 - [ ] Shift+Enter in the box adds a new line rather than starting.
 - [ ] Back on the dashboard, start another question with the **Start button** instead of Enter: **"List the views in this station."** (1 turn). It lands in a new portal and answers.
 - [ ] `— backend` In `db:studio` → `portal_messages` for the first new portal: exactly one `user` row, `blocks` = `[{"type":"text","content":"How many records are in this station?"}]` (trimmed), `created_by` = your user id, then one `assistant` row.
@@ -85,7 +85,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 
 - [ ] `— backend` Switch the org to standard so it has a limit: `update organizations set tier = 'standard' where id = '<orgId>';` (psql or `db:studio`).
 - [ ] `— backend` Force the day limit: `docker exec portalai-redis-1 redis-cli SET "usage:rate:agent-turns:<orgId>:day:$(node -p 'Math.floor(Date.now()/86400000)')" 1000 EX 86400`
-- [ ] On the dashboard, start **"Summarize this station's data."** in My Station.
+- [ ] On the dashboard, start **"Summarize this station's data."** in Playground.
 - [ ] A **new portal still opens**. Its composer holds "Summarize this station's data." with the caret at the end. Above it the turn-limit notice reads "You've reached your plan's agent-turn limit for today. It resets at midnight UTC." with View plans on a non-pro tier. No answer streams.
 - [ ] `— backend` `db:studio` → `portal_messages` for that portal: **no rows**. The `POST /api/portals` response (network panel) was `201` with `initialMessage: {"status":"refused","code":"AGENT_TURN_LIMITED", …}` and **no `Retry-After` header**.
 - [ ] Press browser Back, then Forward. The composer isn't re-seeded and the notice doesn't come back: the history state was cleared.
