@@ -4,7 +4,7 @@ Manual smoke test for [#1079](https://github.com/EnterpriseBT/portal-ai/issues/1
 
 Run **§Preflight** once. Each section after it is independent. Steps tagged `— manual` need a human; `— backend` steps are API, Redis or DB checks outside the browser. Every other step is walkable by `/smoke-walk`.
 
-**Turn budget.** The local standard tier allows **9 agent turns a day per org**. §1 spends 2, §2 spends 1 and §6 spends 1. §4 forces refusals through Redis and spends none. If the org is already near its limit, clear the day counter first (§Reset).
+**Turn limit.** The `e2e-fixture` org is on the **enterprise** tier, which has no agent-turn limit and writes no turn counter, so §1–§3 and §6 spend nothing that matters. §4 and §5 need a limit to refuse against and a counter to watch, so they switch the org to **standard** (9 agent turns a day) for their duration and switch it back at the end of §5. While on standard, the walk spends 1 turn (§4's last step).
 
 ---
 
@@ -15,36 +15,38 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 - [ ] `git checkout feat/1079-dashboard-start-box && git pull --ff-only`
 - [ ] `npm install && npm run build --workspace @portalai/core`. Core changed: the message limit and start/outcome contracts, `Composer`'s `error`/`onBlur`, and `Icon`'s yellow star. **Restart the API dev server** after the build, because nodemon doesn't watch core. No migration and no seed.
 - [ ] `npm run dev` boots cleanly (API :3001, web :3000).
-- [ ] Signed in as the e2e owner (`npm run --workspace @portalai/e2e e2e:auth` if the session expired). Login lands on `/dashboard`.
+- [ ] Signed in as the e2e owner (`npm run --workspace @portalai/e2e e2e:auth` if the session expired). Login lands on the dashboard at `/`.
 
 ### Fixtures
 
 - [ ] The `e2e-fixture` org (`npm run --workspace @portalai/e2e e2e:seed`) with at least these stations:
-  - **Playground** (has data and the `data_query` pack);
+  - **My Station**, the seeded default station (has data and the `data_query` pack);
   - **one favorite station** (star it from Stations);
   - **at least two other stations**, so the suggestions have something to group.
 - [ ] At least one portal you opened earlier, so "Recent stations" has an entry. Open any portal once if there's none.
-- [ ] Note the org id (Settings, or `db:studio` → `organizations`). §4 and §Reset need it.
+- [ ] Note the org id (`db:studio` → `organizations`, the row named `e2e-fixture`). §4, §5 and §Reset need it.
+- [ ] Redis runs in the container `portalai-redis-1` (there's no compose service named `redis`), so the Redis commands below use `docker exec portalai-redis-1`.
 
 ### Reset between runs
 
 - [ ] Clear the turn-limit counters (`— backend`):
-  `docker compose exec redis redis-cli --scan --pattern 'usage:rate:agent-turns:<orgId>:*' | xargs -r docker compose exec -T redis redis-cli DEL`
+  `docker exec portalai-redis-1 redis-cli --scan --pattern 'usage:rate:agent-turns:<orgId>:*' | xargs -r -n1 docker exec portalai-redis-1 redis-cli DEL`
+- [ ] If a run stopped partway through §4 or §5, put the org back on enterprise (`— backend`): `update organizations set tier = 'enterprise' where id = '<orgId>';`
 - [ ] Portals created during the walk can stay, or delete them from Recent portals' row Delete.
 
 ---
 
 ## §1 — Start a portal from the dashboard (slices 2, 4 and 5)
 
-- [ ] On `/dashboard`, the page's one `h1` is "Dashboard", and directly under it is a form named "Start a portal" with the field "Ask a question" (placeholder "Ask anything about your data…"), a station chip and Start.
+- [ ] On the dashboard (`/`), the page's one `h1` is "Dashboard", and directly under it is a form named "Start a portal" with the field "Ask a question" (placeholder "Ask anything about your data…"), a station chip and Start.
 - [ ] The dashboard has **no Open Portal button of its own** in its header, and no Open Portal dialog. The app header's Open Portal split button is still there.
 - [ ] The chip is preselected with the station of your most recently opened portal. Its accessible name is "<station>, station. Change station".
 - [ ] With the field empty, Start is `aria-disabled` and described "Type a question to start".
-- [ ] Pick **Playground** in the chip. Type **"How many records are in this station?"** and press **Enter** (1 turn).
+- [ ] Pick **My Station** in the chip. Type **"How many records are in this station?"** and press **Enter** (1 turn).
 - [ ] You land on `/portals/<id>`. The question is the first message (right-aligned, as the caller's). The typing indicator appears, then the assistant streams an answer, without you pressing anything else.
-- [ ] Recent portals on the dashboard lists the new portal first, with "Playground" as its station.
+- [ ] Recent portals on the dashboard lists the new portal first, with "My Station" as its station.
 - [ ] Shift+Enter in the box adds a new line rather than starting.
-- [ ] Back on `/dashboard`, start another question with the **Start button** instead of Enter: **"List the views in this station."** (1 turn). It lands in a new portal and answers.
+- [ ] Back on the dashboard, start another question with the **Start button** instead of Enter: **"List the views in this station."** (1 turn). It lands in a new portal and answers.
 - [ ] `— backend` In `db:studio` → `portal_messages` for the first new portal: exactly one `user` row, `blocks` = `[{"type":"text","content":"How many records are in this station?"}]` (trimmed), `created_by` = your user id, then one `assistant` row.
 
 ## §2 — The station chip: suggestions and search (slice 4, pre-smoke additions)
@@ -62,7 +64,7 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 - [ ] Pick a station found by search. The chip shows its name, and the popup closes. Reopen the chip: the search is empty, the suggestions are back, and the picked station is listed last under **"Selected station"** (when it isn't already suggested).
 - [ ] Press Escape in the popup: it closes and focus returns to the chip.
 - [ ] Settings → Billing: the "Subscription Tier" line uses a layers icon, not a star.
-- [ ] `— backend` Unreadable stations are never suggested. As the e2e **member** (`e2e:use member`), have a portal of your own on a station you can no longer read: create a portal on a station shared with you, then remove the share. On `/dashboard`:
+- [ ] `— backend` Unreadable stations are never suggested. As the e2e **member** (`e2e:use member`), have a portal of your own on a station you can no longer read: create a portal on a station shared with you, then remove the share. On the dashboard:
   - Recent portals lists that portal **without** a station name;
   - the chip's "Recent stations" doesn't list that station.
 
@@ -81,20 +83,22 @@ Run **§Preflight** once. Each section after it is independent. Steps tagged `�
 
 ## §4 — A refused first question (slices 2, 3 and 4)
 
-- [ ] `— backend` Force the day limit: `docker compose exec redis redis-cli SET "usage:rate:agent-turns:<orgId>:day:$(node -p 'Math.floor(Date.now()/86400000)')" 1000 EX 86400`
-- [ ] On `/dashboard`, start **"Summarize this station's data."** in Playground.
+- [ ] `— backend` Switch the org to standard so it has a limit: `update organizations set tier = 'standard' where id = '<orgId>';` (psql or `db:studio`).
+- [ ] `— backend` Force the day limit: `docker exec portalai-redis-1 redis-cli SET "usage:rate:agent-turns:<orgId>:day:$(node -p 'Math.floor(Date.now()/86400000)')" 1000 EX 86400`
+- [ ] On the dashboard, start **"Summarize this station's data."** in My Station.
 - [ ] A **new portal still opens**. Its composer holds "Summarize this station's data." with the caret at the end. Above it the turn-limit notice reads "You've reached your plan's agent-turn limit for today. It resets at midnight UTC." with View plans on a non-pro tier. No answer streams.
 - [ ] `— backend` `db:studio` → `portal_messages` for that portal: **no rows**. The `POST /api/portals` response (network panel) was `201` with `initialMessage: {"status":"refused","code":"AGENT_TURN_LIMITED", …}` and **no `Retry-After` header**.
 - [ ] Press browser Back, then Forward. The composer isn't re-seeded and the notice doesn't come back: the history state was cleared.
 - [ ] In that portal, press Submit on the seeded question. The send is refused with the same notice, and the question **stays in the composer**.
-- [ ] Clear the forced limit (§Reset). Submit again: the notice clears, and the answer streams (1 turn, counted in §1's budget if you skip a §1 step).
+- [ ] Clear the forced limit (§Reset). Submit again: the notice clears, and the answer streams (1 turn). The org stays on standard for §5.
 
 ## §5 — Resume only the new portal's first question (slice 3, narrowed in code review)
 
 - [ ] The §1 walk already showed a new portal answering its first question on arrival.
 - [ ] Reload that portal after its answer finishes. No new answer starts: no new `/stream` request in the network panel, and the conversation is unchanged.
-- [ ] `— backend` An older unanswered question isn't re-run. In `db:studio`, add a `user` row as the newest message of an existing portal of yours (`portal_messages`: `role` = `user`, `blocks` = `[{"type":"text","content":"stale question"}]`, `created_by` = your user id, `created` = now). Open that portal: "stale question" shows, **no** `/api/sse/portals/<id>/stream` request is made, and the turn counter doesn't move.
+- [ ] `— backend` An older unanswered question isn't re-run. In `db:studio`, add a `user` row as the newest message of a live (not deleted) portal of yours that already has an answer (`portal_messages`: `role` = `user`, `blocks` = `[{"type":"text","content":"stale question"}]`, `created_by` = your user id, `created` = now). Open that portal: "stale question" shows, **no** `/api/sse/portals/<id>/stream` request is made, and the turn counter doesn't move: `docker exec portalai-redis-1 redis-cli GET "usage:rate:agent-turns:<orgId>:day:$(node -p 'Math.floor(Date.now()/86400000)')"` reads the same before and after. Delete the row afterwards.
 - [ ] `— manual` A reader never starts a turn. With a portal grant on someone else's portal that ends in their unanswered question, opening it as the reader starts no stream, and the composer is locked with "You can read this portal, but not send messages in it."
+- [ ] `— backend` Put the org back on enterprise: `update organizations set tier = 'enterprise' where id = '<orgId>';`
 
 ## §6 — The rest of the launcher is unchanged (slice 5)
 
